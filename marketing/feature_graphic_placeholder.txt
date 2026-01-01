@@ -1,0 +1,2 @@
+Placeholder for Play Store Feature Graphic (1024x500 PNG).
+Add your marketing artwork at marketing/feature_graphic.png

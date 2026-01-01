@@ -1,0 +1,2 @@
+Placeholder for Social Share Banner (1200x630 PNG).
+Add your social share banner at marketing/social_share_banner.png

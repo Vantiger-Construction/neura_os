@@ -1,0 +1,1 @@
+// Full home_screen.dart with navigation grid
