@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../avatar/avatar_globals.dart';
 import '../avatar/avatar_host.dart';
+import '../avatar/avatar_route_observer.dart';
+import '../core/neura_event_bus.dart';
 import '../integrations/neura_sources_hooks.dart';
 import '../screens/home_screen.dart';
 
@@ -14,6 +16,7 @@ class NeuraApp extends StatelessWidget {
       title: 'Neura Companion',
       theme: ThemeData.dark(useMaterial3: true),
       debugShowCheckedModeBanner: false,
+      navigatorObservers: [AvatarRouteObserver(NeuraEventBus.I)],
       builder: (context, child) {
         final c = child ?? const SizedBox.shrink();
         return GlobalAvatarHost(
