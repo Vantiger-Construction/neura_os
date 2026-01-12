@@ -35,8 +35,7 @@ class NeuraVoiceFrame {
     required this.mm,
   });
 
-  static const idle = NeuraVoiceFrame(
-      talkLevel: 0, rest: 0.88, aa: 0, ee: 0, oo: 0, ff: 0, mm: 0.12);
+  static const idle = NeuraVoiceFrame(talkLevel: 0, rest: 0.88, aa: 0, ee: 0, oo: 0, ff: 0, mm: 0.12);
 }
 
 class NeuraVoicePack {
@@ -186,9 +185,7 @@ class NeuraEnvelopeLoader {
       final s = await rootBundle.loadString(path);
       final obj = json.decode(s) as Map<String, dynamic>;
       final fps = (obj['fps'] as num?)?.toInt() ?? 30;
-      final levels = (obj['levels'] as List<dynamic>? ?? const [])
-          .map((e) => (e as num).toDouble())
-          .toList();
+      final levels = (obj['levels'] as List<dynamic>? ?? const []).map((e) => (e as num).toDouble()).toList();
       return NeuraEnvelope(fps: fps, levels: levels);
     } catch (_) {
       return null;
@@ -226,9 +223,7 @@ class NeuraVisemeWeights {
     w.oo = numv('oo');
     w.ff = numv('ff');
     w.mm = numv('mm');
-    w.rest = (m.containsKey('rest'))
-        ? numv('rest')
-        : (1.0 - (w.aa + w.ee + w.oo + w.ff + w.mm)).clamp(0.0, 1.0);
+    w.rest = (m.containsKey('rest')) ? numv('rest') : (1.0 - (w.aa + w.ee + w.oo + w.ff + w.mm)).clamp(0.0, 1.0);
     w.normalize();
     return w;
   }
@@ -263,8 +258,7 @@ class NeuraVisemeTimeline {
     base.oo *= (0.35 + 0.65 * t);
     base.ff *= (0.50 + 0.50 * t);
     base.mm *= (0.70 + 0.30 * (1.0 - t));
-    base.rest = (1.0 - (base.aa + base.ee + base.oo + base.ff + base.mm))
-        .clamp(0.0, 1.0);
+    base.rest = (1.0 - (base.aa + base.ee + base.oo + base.ff + base.mm)).clamp(0.0, 1.0);
     base.normalize();
     return base;
   }
@@ -272,9 +266,7 @@ class NeuraVisemeTimeline {
   static NeuraVisemeTimeline fromFramesJson(Map<String, dynamic> obj) {
     final fps = (obj['fps'] as num?)?.toInt() ?? 30;
     final list = (obj['frames'] as List<dynamic>? ?? const []);
-    final frames = list
-        .map((e) => NeuraVisemeWeights.fromMap(e as Map<String, dynamic>))
-        .toList(growable: false);
+    final frames = list.map((e) => NeuraVisemeWeights.fromMap(e as Map<String, dynamic>)).toList(growable: false);
     return NeuraVisemeTimeline(fps: fps, frames: frames);
   }
 }
@@ -286,8 +278,7 @@ class NeuraVisemeTimelineLoader {
     try {
       final s = await rootBundle.loadString(path);
       final obj = json.decode(s) as Map<String, dynamic>;
-      if (obj.containsKey('frames'))
-        return NeuraVisemeTimeline.fromFramesJson(obj);
+      if (obj.containsKey('frames')) return NeuraVisemeTimeline.fromFramesJson(obj);
       return null;
     } catch (_) {
       return null;
@@ -333,9 +324,7 @@ class NeuraVisemeFallback {
     final targetEe = vowelEnergy * (vE / sumV) * 1.00;
     final targetOo = vowelEnergy * (vO / sumV) * 1.05;
 
-    final targetRest =
-        (1.0 - (targetAa + targetEe + targetOo + targetFf + targetMm))
-            .clamp(0.0, 1.0);
+    final targetRest = (1.0 - (targetAa + targetEe + targetOo + targetFf + targetMm)).clamp(0.0, 1.0);
 
     _w.mm = _lerp(_w.mm, targetMm, dt);
     _w.ff = _lerp(_w.ff, targetFf, dt);
@@ -360,8 +349,7 @@ class NeuraVisemeFallback {
 class _MicFrame {
   final double talkLevel;
   final double rest, aa, ee, oo, ff, mm;
-  const _MicFrame(
-      this.talkLevel, this.rest, this.aa, this.ee, this.oo, this.ff, this.mm);
+  const _MicFrame(this.talkLevel, this.rest, this.aa, this.ee, this.oo, this.ff, this.mm);
 }
 
 class NeuraMicVisemeEngine {
@@ -455,19 +443,15 @@ class NeuraMicVisemeEngine {
 }
 
 class NeuraMicDriver {
-  FlutterSoundRecorder? _rec;
+  final FlutterSoundRecorder _rec = FlutterSoundRecorder();
   final NeuraMicVisemeEngine engine;
 
   final StreamController<_MicFrame> _out = StreamController.broadcast();
   Stream<_MicFrame> get stream => _out.stream;
 
-  final StreamController<Uint8List> _pcmController =
-      StreamController<Uint8List>();
-
   bool _running = false;
 
-  NeuraMicDriver({NeuraMicVisemeEngine? engine})
-      : engine = engine ?? NeuraMicVisemeEngine();
+  NeuraMicDriver({NeuraMicVisemeEngine? engine}) : engine = engine ?? NeuraMicVisemeEngine();
 
   Future<void> start() async {
     if (_running) return;
@@ -477,38 +461,33 @@ class NeuraMicDriver {
       throw Exception('Microphone permission denied.');
     }
 
-    _rec ??= FlutterSoundRecorder();
+    await _rec.openRecorder();
+    await _rec.setSubscriptionDuration(Duration(milliseconds: (1000 / engine.analysisHz).round()));
 
-    await _rec!.openRecorder();
-    await _rec!.setSubscriptionDuration(
-        Duration(milliseconds: (1000 / engine.analysisHz).round()));
-
-    await _rec!.startRecorder(
-      toStream: _pcmController.sink,
+    await _rec.startRecorder(
+      toStream: _pcmSink,
       codec: Codec.pcm16,
       sampleRate: engine.sampleRate,
       numChannels: 1,
       bitRate: engine.sampleRate * 16,
     );
 
-    _pcmController.stream.listen(_pcmSink);
-
     _running = true;
   }
 
   Future<void> stop() async {
     if (!_running) return;
-    await _rec!.stopRecorder();
-    await _rec!.closeRecorder();
+    await _rec.stopRecorder();
+    await _rec.closeRecorder();
     _running = false;
   }
 
   void dispose() {
     _out.close();
-    _pcmController.close();
   }
 
-  void _pcmSink(Uint8List data) {
+  void _pcmSink(dynamic data) {
+    if (data is! Uint8List) return;
     final bytes = data;
 
     final bd = ByteData.sublistView(bytes);

@@ -1,0 +1,15 @@
+git : The term 'git' is not recognized as the name of a 
+cmdlet, function, script file, or operable program. Check the 
+spelling of the name, or if a path was included, verify that 
+the path is correct and try again.
+At 
+I:\flutter\flutter\bin\internal\update_engine_version.ps1:53 
+char:11
++ } elseif (git -C "$flutterRoot" ls-files 
+bin/internal/engine.version) ...
++           ~~~
+    + CategoryInfo          : ObjectNotFound: (git:String) [], 
+    ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+Terminate batch job (Y/N)? Terminate batch job (Y/N)? Terminate batch job (Y/N)? Terminate batch job (Y/N)? 

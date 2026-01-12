@@ -1,3 +1,4 @@
+import '../models/journal_entry.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 class SyncService {
@@ -8,4 +9,3 @@ class SyncService {
     // TODO: pull remote changes, push local changes, resolve conflicts
   }
 }
-

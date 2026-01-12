@@ -1,0 +1,1 @@
+// Placeholder content for emergency_assist.dart

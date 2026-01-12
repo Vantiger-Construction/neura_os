@@ -46,7 +46,7 @@ class NeuraFlutterTtsVisemeBridge {
       b.emit(const NeuraTalkingEvent(false));
       b.emit(const NeuraMouthOpenEvent(0.0));
       b.emit(const NeuraVisemeEvent(NeuraViseme.rest));
-      b.emit(NeuraErrorEvent('TTS error: $message', source: 'flutter_tts'));
+      b.emit(NeuraErrorEvent('TTS error: $message', hint: 'flutter_tts'));
     });
 
     // Progress handler gives substring positions in the original text for many platforms.

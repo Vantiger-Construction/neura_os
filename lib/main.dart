@@ -5,6 +5,7 @@ import 'modules/core/error_handler.dart';
 import 'src/app.dart';
 import 'src/modules/focus/focus_controller.dart';
 import 'src/shell/shell_prefs.dart';
+import 'services/neura_voice_pack.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,5 +18,12 @@ Future<void> main() async {
   await ShellPrefsController.instance.init();
   await FocusController.instance.init();
 
-  runApp(const NeuraApp());
+  // Voice/talk/viseme stream for the Rive resident (non-blocking safety)
+  try {
+    await NeuraVoicePack.I.init(enableMic: true);
+  } catch (_) {
+    // If mic permissions / audio init fail, the OS should still boot.
+  }
+
+  runApp(const NeuroCompanionApp());
 }

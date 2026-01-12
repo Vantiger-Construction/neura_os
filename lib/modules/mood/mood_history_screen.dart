@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'mood_store.dart';
-import '../../widgets/neura_explain.dart';
 
 class MoodHistoryScreen extends StatefulWidget {
   const MoodHistoryScreen({super.key});
@@ -40,25 +39,7 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Mood History'),
-        actions: [
-          IconButton(
-            tooltip: 'Why am I seeing this?',
-            icon: const Icon(Icons.info_outline),
-            onPressed: () => showNeuraExplain(
-              context,
-              spec: const NeuraExplainSpec(
-                title: 'Why this history exists',
-                body: 'This is your local record of mood check-ins. Neura uses it to spot trends and build healthier suggestions over time.',
-                bullets: [
-                  'Trends > single moments.',
-                  'Stored locally on this device.',
-                  'Exportable / deletable via Data Controls.',
-                ],
-              ),
-            ),
-          ),
-          IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-        ],
+        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

@@ -2,31 +2,79 @@ import 'dart:async';
 
 import 'neura_events.dart';
 
-/// Tiny typed event bus for Neura runtime signals.
-/// No dependencies. One global instance is enough for most apps.
+/// NeuraEventBus
+///
+/// A tiny, dependency-free event bus that supports:
+/// - `NeuraEventBus.I.emit(event)`
+/// - `NeuraEventBus.I.stream` (broadcast) for typed systems like AvatarOrchestrator
+/// - `NeuraEventBus.I.on<T>((e) { ... })` which returns an unsubscribe function
+/// - Back-compat: `onAny((Object e) { ... })` like the original shim
+///
+/// Notes:
+/// - Emits are best-effort: listener exceptions are swallowed.
+/// - The bus intentionally accepts **any** Object. Downstream listeners can filter.
 class NeuraEventBus {
   NeuraEventBus._();
 
   static final NeuraEventBus I = NeuraEventBus._();
 
-  final StreamController<NeuraEvent> _controller = StreamController<NeuraEvent>.broadcast();
+  final StreamController<Object> _controller = StreamController<Object>.broadcast();
+  final List<void Function(Object)> _anyListeners = <void Function(Object)>[];
 
-  Stream<NeuraEvent> get stream => _controller.stream;
+  /// Broadcast stream of all events.
+  Stream<Object> get rawStream => _controller.stream;
 
-  /// Subscribe to a specific event type.
-  ///
-  /// Returns an unsubscribe callback.
-  void Function() on<T extends NeuraEvent>(void Function(T event) handler) {
-    final sub = stream.where((e) => e is T).cast<T>().listen(handler);
+  /// Broadcast stream filtered to a specific event type.
+  Stream<T> streamOf<T>() => _controller.stream.where((e) => e is T).cast<T>();
+
+  /// Convenience: stream of NeuraEvents.
+  /// AvatarOrchestrator uses this.
+  Stream<NeuraEvent> get stream => streamOf<NeuraEvent>();
+
+  /// Emit an event to all subscribers.
+  void emit(Object event) {
+    // Notify legacy listeners first (they existed in the shim).
+    if (_anyListeners.isNotEmpty) {
+      for (final l in List<void Function(Object)>.from(_anyListeners)) {
+        try {
+          l(event);
+        } catch (_) {
+          // ignore
+        }
+      }
+    }
+
+    // Then stream subscribers.
+    if (!_controller.isClosed) {
+      try {
+        _controller.add(event);
+      } catch (_) {
+        // ignore
+      }
+    }
+  }
+
+  /// Back-compat API from the original shim.
+  void onAny(void Function(Object) listener) => _anyListeners.add(listener);
+  void offAny(void Function(Object) listener) => _anyListeners.remove(listener);
+
+  /// Typed subscription helper.
+  /// Returns an unsubscribe function.
+  void Function() on<T>(void Function(T event) listener) {
+    final sub = streamOf<T>().listen(
+      (e) {
+        try {
+          listener(e);
+        } catch (_) {
+          // ignore
+        }
+      },
+    );
     return () => sub.cancel();
   }
 
-  void emit(NeuraEvent event) {
-    if (_controller.isClosed) return;
-    _controller.add(event);
-  }
-
-  void dispose() {
-    _controller.close();
+  Future<void> dispose() async {
+    _anyListeners.clear();
+    await _controller.close();
   }
 }

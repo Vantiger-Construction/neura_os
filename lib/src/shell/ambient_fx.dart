@@ -15,11 +15,8 @@ class AmbientFx extends StatefulWidget {
   State<AmbientFx> createState() => _AmbientFxState();
 }
 
-class _AmbientFxState extends State<AmbientFx>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(seconds: 12))
-        ..repeat();
+class _AmbientFxState extends State<AmbientFx> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
   final Random _r = Random(7);
   late final List<_Orb> _orbs;
 
@@ -71,12 +68,7 @@ class _Orb {
   final double speed;
   final double phase;
 
-  const _Orb(
-      {required this.x,
-      required this.y,
-      required this.radius,
-      required this.speed,
-      required this.phase});
+  const _Orb({required this.x, required this.y, required this.radius, required this.speed, required this.phase});
 }
 
 class _AmbientPainter extends CustomPainter {
@@ -87,7 +79,34 @@ class _AmbientPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Placeholder paint method
+    // Slight vignette.
+    final bg = Paint()
+      ..shader = RadialGradient(
+        center: Alignment.center,
+        radius: 1.2,
+        colors: [
+          Colors.transparent,
+          Colors.black.withOpacity(0.55),
+        ],
+      ).createShader(Offset(size.width / 2, size.height / 2) & size);
+    canvas.drawRect(Offset.zero & size, bg);
+
+    for (final o in orbs) {
+      final dx = (o.x * size.width) + sin((t * 2 * pi * o.speed) + o.phase) * 60;
+      final dy = (o.y * size.height) + cos((t * 2 * pi * o.speed) + o.phase) * 60;
+
+      final core = Paint()
+        ..shader = RadialGradient(
+          colors: [
+            Colors.cyanAccent.withOpacity(0.05),
+            Colors.deepPurpleAccent.withOpacity(0.03),
+            Colors.transparent,
+          ],
+          stops: const [0.0, 0.35, 1.0],
+        ).createShader(Rect.fromCircle(center: Offset(dx, dy), radius: o.radius));
+
+      canvas.drawCircle(Offset(dx, dy), o.radius, core);
+    }
   }
 
   @override

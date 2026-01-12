@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
 
 class HelpScreen extends StatelessWidget {
-  const HelpScreen({super.key});
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Getting Started'),
+        title: Text('Getting Started'),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(16),
         child: ListView(
           children: const [
             Text('Welcome to Neura Companion!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),

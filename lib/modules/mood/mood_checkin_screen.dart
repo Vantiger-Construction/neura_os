@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../widgets/neura_explain.dart';
-
 import 'mood_models.dart';
 import 'mood_store.dart';
-import '../coach/coach_hooks.dart';
 
 class MoodCheckInScreen extends StatefulWidget {
   const MoodCheckInScreen({super.key});
@@ -44,11 +41,10 @@ class _MoodCheckInScreenState extends State<MoodCheckInScreen> {
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    final entry = MoodEntry(timestamp: DateTime.now(), mood0to10: _mood, note: _note.text.trim());
-    await MoodStore.instance.add(entry);
+    await MoodStore.instance.add(
+      MoodEntry(timestamp: DateTime.now(), mood0to10: _mood, note: _note.text.trim()),
+    );
     if (!mounted) return;
-    // Coach hook: turn the moment into a reflection (optional pop-up, user-controlled).
-    await CoachHooks.afterMoodCheckin(context, entry);
     setState(() => _saving = false);
     Navigator.of(context).pop(true);
   }
@@ -56,27 +52,7 @@ class _MoodCheckInScreenState extends State<MoodCheckInScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Mood Check‑In'),
-        actions: [
-          IconButton(
-            tooltip: 'Why am I doing this?',
-            icon: const Icon(Icons.info_outline),
-            onPressed: () => showNeuraExplain(
-              context,
-              spec: const NeuraExplainSpec(
-                title: 'Why this check‑in matters',
-                body: 'This is a tiny daily snapshot that helps Neura spot patterns and suggest rituals that actually fit your life.',
-                bullets: [
-                  'You control what you share (the note is optional).',
-                  'Entries are stored locally and can be exported or deleted.',
-                  'Neura uses trends, not single moments, to make suggestions.',
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Mood Check‑In')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
