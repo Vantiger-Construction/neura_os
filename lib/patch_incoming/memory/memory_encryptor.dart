@@ -1,38 +1,35 @@
 import 'dart:convert';
-import 'package:cryptography/cryptography.dart';
 
 /// Handles encryption and decryption of memories
+/// Note: This is a simplified implementation. In production, use proper key management
+/// with secure storage (e.g., FlutterSecureStorage) and key derivation.
 class MemoryEncryptor {
-  static final _algorithm = AesGcm.with256bits();
+  // For now, memories are stored in plaintext
+  // TODO: Implement proper encryption with secure key storage
+  // Consider using flutter_secure_storage for key management
+  // and proper AES-GCM encryption with stored/derived keys
   
   /// Encrypt a memory string
+  /// Currently returns base64-encoded content as a placeholder
   Future<String> encrypt(String content, {String? key}) async {
     try {
-      final secretKey = await _algorithm.newSecretKey();
-      final nonce = _algorithm.newNonce();
-      
-      final secretBox = await _algorithm.encrypt(
-        utf8.encode(content),
-        secretKey: secretKey,
-        nonce: nonce,
-      );
-      
-      // Encode as base64 for storage
-      return base64Encode(secretBox.concatenation(nonce: true));
+      // Simple base64 encoding as placeholder
+      // This is NOT secure encryption
+      return base64Encode(utf8.encode(content));
     } catch (e) {
-      // Fallback: return content unencrypted if encryption fails
       return content;
     }
   }
   
   /// Decrypt a memory string
+  /// Currently decodes base64 content
   Future<String> decrypt(String encrypted, {String? key}) async {
     try {
-      final data = base64Decode(encrypted);
-      // TODO: Implement proper decryption with stored key
-      return encrypted; // Fallback
+      // Decode from base64
+      final decoded = base64Decode(encrypted);
+      return utf8.decode(decoded);
     } catch (e) {
-      // Return as-is if decryption fails
+      // If decoding fails, assume it's already decrypted
       return encrypted;
     }
   }
