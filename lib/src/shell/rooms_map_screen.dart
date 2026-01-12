@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'portal_route.dart';
 import 'rooms_catalog.dart';
 import 'shell_prefs.dart';
-import '../../modules/human/human_prefs_controller.dart';
 
 class RoomsMapScreen extends StatefulWidget {
   const RoomsMapScreen({super.key});
@@ -75,11 +74,6 @@ class _RoomsMapScreenState extends State<RoomsMapScreen> {
               child: ValueListenableBuilder(
                 valueListenable: ShellPrefsController.instance.prefs,
                 builder: (context, prefs, _) {
-                  return ValueListenableBuilder(
-                    valueListenable: HumanPrefsController.instance.prefs,
-                    builder: (context, human, __) {
-                      final portalFx = prefs.portalFx && !human.safeMode;
-                      final shimmer = prefs.walkingShimmer && !human.safeMode;
                   final filtered = rooms.where((r) {
                     final q = _search.text.trim().toLowerCase();
                     final matchesQ = q.isEmpty || r.title.toLowerCase().contains(q) || r.subtitle.toLowerCase().contains(q);
@@ -97,18 +91,16 @@ class _RoomsMapScreenState extends State<RoomsMapScreen> {
                     );
                   }
 
-                      return ListView.separated(
+                  return ListView.separated(
                     itemCount: filtered.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (context, i) {
                       final room = filtered[i];
                       return _RoomCard(
                         room: room,
-                        walkingShimmer: shimmer,
-                        onOpen: () => _openRoom(context, room, portalFx),
+                        walkingShimmer: prefs.walkingShimmer,
+                        onOpen: () => _openRoom(context, room, prefs.portalFx),
                       );
-                    },
-                  );
                     },
                   );
                 },

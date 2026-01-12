@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:in_app_purchase/in_app_purchase.dart';
-
 import '../services/billing_service.dart';
 
 class PurchaseHistoryScreen extends StatefulWidget {
@@ -29,22 +27,15 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
 
   @override
   Widget build(BuildContext ctx) {
-    if (_loading)
-      return Scaffold(
-          appBar: AppBar(title: Text('Purchase History')),
-          body: Center(child: CircularProgressIndicator()));
+    if (_loading) return Scaffold(appBar: AppBar(title: Text('Purchase History')), body: Center(child: CircularProgressIndicator()));
     return Scaffold(
       appBar: AppBar(title: Text('Purchase History')),
       body: ListView(
-        children: _purchases
-            .map((p) => ListTile(
-                  title: Text(p.productID),
-                  subtitle: Text(p.status.toString()),
-                ))
-            .toList(),
+        children: _purchases.map((p) => ListTile(
+          title: Text(p.productID),
+          subtitle: Text(p.status.toString()),
+        )).toList(),
       ),
     );
   }
 }
-
-

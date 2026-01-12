@@ -1,15 +1,13 @@
 import 'package:flutter/foundation.dart';
 
-import 'neura_events.dart';
-
 @immutable
-class NeuraFaultEvent extends NeuraEvent {
+class NeuraFaultEvent {
   final String message;
   final String? stack;
   final String source; // e.g. "FlutterError", "PlatformDispatcher"
   final DateTime atUtc;
 
-  NeuraFaultEvent({
+  const NeuraFaultEvent({
     required this.message,
     required this.source,
     this.stack,

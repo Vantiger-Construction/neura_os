@@ -1,67 +1,135 @@
-# Neura Companion – Avatar Orchestrator Patch
+# Neura Companion Patch — Wire NeuraEventBus to Real Sources
 
-This patch adds an **app-wide signal bus + avatar orchestrator** so Neura can react to:
-- navigation (room changes)
-- global errors (with safe recovery + optional “Dimensional Sync” flavor)
-- tool/network activity (thinking)
-- voice lifecycle (listening/talking)
-- app lifecycle (foreground/background)
+This patch adds a **crash-safe “signal bridge” layer** so your real runtime systems (STT, TTS, async work, API calls) can drive the Neura avatar automatically.
 
 ## What you get
-- `NeuraEventBus` (typed events; no dependencies)
-- `AvatarOrchestrator` (listens to bus and drives `AvatarController`)
-- `AvatarRouteObserver` (turns route changes into events)
-- `NeuraDiagnostics.wireGlobalErrorHooks()` (captures Flutter + platform errors safely)
+- **NeuraSourcesHooks**: tiny, dependency-free hooks you can call from anywhere.
+- **Ref-counted signals**: overlapping work/voice won’t flicker on/off.
+- Optional bridges for common plugins:
+  - `speech_to_text` (STT)
+  - `flutter_tts` (TTS)
 
-## Install
-1) Drop these files into your project root (merge folders).
-2) Add the snippet below to `main.dart`.
+> Important: The optional bridges import those packages. Only import those bridge files if you have the packages in `pubspec.yaml`.
 
-### Minimal wiring snippet (safe)
-Add these imports:
-```dart
-import 'core/neura_diagnostics.dart';
-import 'core/neura_event_bus.dart';
-import 'avatar/avatar_orchestrator.dart';
-import 'avatar/avatar_route_observer.dart';
-import 'avatar/avatar_globals.dart';
+---
+
+## 1) Merge patch
+Copy these files into your project (merge folders):
+- `lib/integrations/neura_sources_hooks.dart`
+- `lib/integrations/neura_work_tracker.dart`
+- `lib/integrations/stt/neura_speech_to_text_bridge.dart` (optional)
+- `lib/integrations/tts/neura_flutter_tts_bridge.dart` (optional)
+
+Then:
+```bash
+flutter pub get
 ```
 
-Then, inside `main()` *before* `runApp(...)`:
+---
+
+## 2) Wire to Speech-to-Text (STT)
+### If you already have an STT service
+Just add hooks in your start/stop:
+
 ```dart
-NeuraDiagnostics.wireGlobalErrorHooks(
-  onErrorEvent: (e) => NeuraEventBus.I.emit(e),
+import 'integrations/neura_sources_hooks.dart';
+
+Future<void> startListening() async {
+  NeuraSourcesHooks.sttStart();
+  try {
+    // your existing STT start
+  } catch (e, st) {
+    NeuraSourcesHooks.error(e, st, hint: 'STT startListening');
+  }
+}
+
+Future<void> stopListening() async {
+  try {
+    // your existing STT stop
+  } finally {
+    NeuraSourcesHooks.sttStop();
+  }
+}
+```
+
+### If you want a ready-made bridge (requires `speech_to_text`)
+```dart
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'integrations/stt/neura_speech_to_text_bridge.dart';
+
+final speech = stt.SpeechToText();
+final bridge = NeuraSpeechToTextBridge(speech);
+await bridge.initialize();
+await bridge.listen();
+```
+
+---
+
+## 3) Wire to Text-to-Speech (TTS)
+### If you already have a TTS service
+Add hooks when speaking starts/stops:
+
+```dart
+import 'integrations/neura_sources_hooks.dart';
+
+Future<void> speak(String text) async {
+  return NeuraSourcesHooks.trackTalking(
+    () async {
+      // your existing TTS call
+    },
+    hint: 'TTS speak',
+  );
+}
+```
+
+### If you want a ready-made bridge (requires `flutter_tts`)
+```dart
+import 'package:flutter_tts/flutter_tts.dart';
+import 'integrations/tts/neura_flutter_tts_bridge.dart';
+
+final tts = FlutterTts();
+await NeuraFlutterTtsBridge(tts).attach();
+```
+
+---
+
+## 4) Wire “thinking” to real async work (API calls, DB, long tasks)
+Wrap ANY Future:
+
+```dart
+import 'integrations/neura_sources_hooks.dart';
+
+final result = await NeuraSourcesHooks.trackThinking(
+  () => myApi.call(),
+  hint: 'OpenAI call',
 );
-
-// Start orchestrator (drives Neura’s expressions based on events)
-final orchestrator = AvatarOrchestrator(
-  controller: AvatarGlobals.controller,
-  bus: NeuraEventBus.I,
-)..start();
 ```
 
-Finally, in `MaterialApp(...)` add the observer:
+Or manual begin/end if you need it:
+
 ```dart
-navigatorObservers: [AvatarRouteObserver(NeuraEventBus.I)],
+final token = NeuraSourcesHooks.thinkingBegin(hint: 'Sync job');
+try {
+  await doWork();
+} finally {
+  token.release();
+}
 ```
 
-### Optional: stop orchestrator on dispose
-If you keep a reference, call `orchestrator.dispose()` when appropriate.
-Most apps can just keep it alive for the whole process lifetime.
+---
 
-## How to trigger reactions from anywhere
+## 5) Emit mood/energy from real signals (optional)
+If you compute mood/energy elsewhere:
+
 ```dart
-NeuraEventBus.I.emit(const NeuraThinkingEvent(true));
-NeuraEventBus.I.emit(const NeuraThinkingEvent(false));
-
-NeuraEventBus.I.emit(const NeuraListeningEvent(true));
-NeuraEventBus.I.emit(const NeuraTalkingEvent(true));
-
-NeuraEventBus.I.emit(NeuraMoodEvent(mood: 0.4, energy: 0.7));
-NeuraEventBus.I.emit(const NeuraPulseEvent.wave());
+NeuraSourcesHooks.setMood(mood: 0.2, energy: 0.7);
 ```
 
-## No-crash guarantee
-- Missing assets already fall back in the Avatar Support patch.
-- This patch ensures **errors become events** and the avatar flips to “error” briefly instead of hard crashing.
-- If you *do* want to crash in debug (recommended), `wireGlobalErrorHooks` still forwards to default error behavior in debug.
+---
+
+## Common gotcha
+If your avatar doesn’t react, confirm you already have:
+- `AvatarOrchestrator` started and listening to `NeuraEventBus.I`.
+- `GlobalAvatarHost` wrapped around the app.
+
+(Those come from the previous patch.)

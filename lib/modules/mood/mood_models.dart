@@ -5,11 +5,7 @@ class MoodEntry {
   final int mood0to10;
   final String note;
 
-  MoodEntry(
-      {required this.timestamp, required this.mood0to10, required this.note});
-
-  // Getter for mood as a double value from 0.0 to 10.0
-  double get mood => mood0to10.toDouble();
+  MoodEntry({required this.timestamp, required this.mood0to10, required this.note});
 
   Map<String, Object?> toJson() => {
         'ts': timestamp.toUtc().toIso8601String(),
@@ -33,7 +29,7 @@ class MoodEntry {
         .whereType<Map>()
         .map((m) => MoodEntry.fromJson(Map<String, Object?>.from(m)))
         .toList()
-      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
   }
 
   static String encodeList(List<MoodEntry> items) {

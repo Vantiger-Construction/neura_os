@@ -3,7 +3,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models/neura_room.dart';
 import 'services/neura_ambient_audio_service.dart';
-import '../neura_runtime/neura_bus.dart';
 
 class NeuraShellState extends ChangeNotifier {
   static const _kRoomId = 'neura_shell.room_id';
@@ -52,32 +51,12 @@ class NeuraShellState extends ChangeNotifier {
     _room = room;
     notifyListeners();
 
-    // Inform Neura's runtime/timeline.
-    NeuraBus.I.enterRoom(_keyFromRoom(room));
-
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kRoomId, room.id);
 
     final asset = room.ambientSoundAsset;
     if (_ambientEnabled && asset != null) {
       await _audio.playLoop(asset);
-    }
-  }
-
-  NeuraRoomKey _keyFromRoom(NeuraRoom room) {
-    switch (room.id) {
-      case 'reflection_bay':
-        return NeuraRoomKey.reflectionBay;
-      case 'joy_lounge':
-        return NeuraRoomKey.joyLounge;
-      case 'mood_den':
-        return NeuraRoomKey.moodDen;
-      case 'dream_atrium':
-        return NeuraRoomKey.dreamAtrium;
-      case 'legacy_vault':
-        return NeuraRoomKey.legacyVault;
-      default:
-        return NeuraRoomKey.penthouse;
     }
   }
 

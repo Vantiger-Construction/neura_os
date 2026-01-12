@@ -50,11 +50,8 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
   @override
   void initState() {
     super.initState();
-    _format = (widget.initialFormat ?? widget.capsule.deliveryFormat)
-        .toLowerCase()
-        .trim();
-    if (_format != 'zip' && _format != 'pdf' && _format != 'json')
-      _format = 'zip';
+    _format = (widget.initialFormat ?? widget.capsule.deliveryFormat).toLowerCase().trim();
+    if (_format != 'zip' && _format != 'pdf' && _format != 'json') _format = 'zip';
 
     _decryptIfPossible = widget.capsule.isEncrypted; // sensible default
     _boot();
@@ -62,11 +59,7 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
 
   bool _looksLikeGrandma(String s) {
     final v = s.toLowerCase();
-    return v.contains('grandma') ||
-        v.contains('gramma') ||
-        v.contains('granny') ||
-        v.contains('nana') ||
-        v.contains('nan');
+    return v.contains('grandma') || v.contains('gramma') || v.contains('granny') || v.contains('nana') || v.contains('nan');
   }
 
   Future<void> _boot() async {
@@ -92,10 +85,7 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
       pickContact = null;
     }
     if (pickContact == null) {
-      final grandma = contacts
-          .where((c) =>
-              _looksLikeGrandma(c.displayName) || _looksLikeGrandma(c.note))
-          .toList();
+      final grandma = contacts.where((c) => _looksLikeGrandma(c.displayName) || _looksLikeGrandma(c.note)).toList();
       if (grandma.isNotEmpty) pickContact = grandma.first.id;
     }
     pickContact ??= contacts.isEmpty ? null : contacts.first.id;
@@ -145,11 +135,8 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
     final now = DateTime.now();
     final date =
         '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    final cName = (contact?.displayName ?? 'there').trim().isEmpty
-        ? 'there'
-        : (contact?.displayName ?? 'there');
-    final title =
-        widget.capsule.title.isEmpty ? 'Legacy Capsule' : widget.capsule.title;
+    final cName = (contact?.displayName ?? 'there').trim().isEmpty ? 'there' : (contact?.displayName ?? 'there');
+    final title = widget.capsule.title.isEmpty ? 'Legacy Capsule' : widget.capsule.title;
     return template
         .replaceAll('{contactName}', cName)
         .replaceAll('{capsuleTitle}', title)
@@ -176,12 +163,8 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
           decoration: const InputDecoration(labelText: 'Enter the passphrase'),
         ),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(context, controller.text),
-              child: const Text('Continue')),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Continue')),
         ],
       ),
     );
@@ -200,8 +183,7 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
       }
 
       final contact = _selectedContact;
-      final deliveryNote =
-          _messageCtrl.text.trim().isEmpty ? null : _messageCtrl.text.trim();
+      final deliveryNote = _messageCtrl.text.trim().isEmpty ? null : _messageCtrl.text.trim();
 
       final file = await LegacyDeliveryService.instance.createDeliveryPacket(
         capsule: widget.capsule,
@@ -213,9 +195,7 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
         context: context,
       );
 
-      final contactLine = contact == null
-          ? ''
-          : '\n\nRecipient: ${contact.displayName} <${contact.address}>';
+      final contactLine = contact == null ? '' : '\n\nRecipient: ${contact.displayName} <${contact.address}>';
 
       await LegacyDeliveryService.instance.shareFiles(
         filePaths: [file.path],
@@ -223,12 +203,10 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
       );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Share sheet opened.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Share sheet opened.')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Send failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Send failed: $e')));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -260,9 +238,7 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          capsule.title.isEmpty
-                              ? '(Untitled Capsule)'
-                              : capsule.title,
+                          capsule.title.isEmpty ? '(Untitled Capsule)' : capsule.title,
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 4),
@@ -278,15 +254,10 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
                   value: _selectedContactId,
-                  decoration: const InputDecoration(
-                      labelText: 'Trusted contact (optional)'),
+                  decoration: const InputDecoration(labelText: 'Trusted contact (optional)'),
                   items: [
-                    const DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text('None (choose recipient in share sheet)')),
-                    ..._contacts.map((c) => DropdownMenuItem<String?>(
-                        value: c.id,
-                        child: Text('${c.displayName} (${c.address})'))),
+                    const DropdownMenuItem<String?>(value: null, child: Text('None (choose recipient in share sheet)')),
+                    ..._contacts.map((c) => DropdownMenuItem<String?>(value: c.id, child: Text('${c.displayName} (${c.address})'))),
                   ],
                   onChanged: (v) {
                     setState(() => _selectedContactId = v);
@@ -296,12 +267,8 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
                   value: _selectedTemplateId,
-                  decoration:
-                      const InputDecoration(labelText: 'Message template'),
-                  items: _templates
-                      .map((t) => DropdownMenuItem<String?>(
-                          value: t.id, child: Text(t.name)))
-                      .toList(),
+                  decoration: const InputDecoration(labelText: 'Message template'),
+                  items: _templates.map((t) => DropdownMenuItem<String?>(value: t.id, child: Text(t.name))).toList(),
                   onChanged: (v) {
                     setState(() => _selectedTemplateId = v);
                     _regenerateMessage();
@@ -321,12 +288,11 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
                   value: _format,
                   decoration: const InputDecoration(labelText: 'Packet format'),
                   items: const [
-                    DropdownMenuItem(
-                        value: 'zip', child: Text('ZIP packet (best)')),
+                    DropdownMenuItem(value: 'zip', child: Text('ZIP packet (best)')),
                     DropdownMenuItem(value: 'pdf', child: Text('PDF letter')),
                     DropdownMenuItem(value: 'json', child: Text('JSON (raw)')),
                   ],
-                  onChanged: (v) => setState(() => _format = v ?? _format),
+                  onChanged: (v) => setState(() => _format = v),
                 ),
                 const SizedBox(height: 12),
                 if (capsule.isEncrypted)
@@ -334,8 +300,7 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
                     value: _decryptIfPossible,
                     onChanged: (v) => setState(() => _decryptIfPossible = v),
                     title: const Text('Decrypt before sending'),
-                    subtitle: const Text(
-                        'Recipients can read without passphrase, but you must enter it now.'),
+                    subtitle: const Text('Recipients can read without passphrase, but you must enter it now.'),
                   )
                 else
                   const ListTile(
@@ -346,24 +311,19 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
                   ListTile(
                     leading: const Icon(Icons.content_copy),
                     title: const Text('Copy a reminder note'),
-                    subtitle: const Text(
-                        'Copies a safe note about passphrases (without the actual passphrase).'),
+                    subtitle: const Text('Copies a safe note about passphrases (without the actual passphrase).'),
                     onTap: () async {
-                      const note =
-                          'Reminder: If the Legacy Packet is encrypted, you’ll need the passphrase I gave you separately.';
+                      const note = 'Reminder: If the Legacy Packet is encrypted, you’ll need the passphrase I gave you separately.';
                       await Clipboard.setData(const ClipboardData(text: note));
                       if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Copied.')));
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied.')));
                     },
                   ),
                 const SizedBox(height: 18),
                 ElevatedButton.icon(
                   onPressed: _loading ? null : _share,
                   icon: const Icon(Icons.send),
-                  label: Text(widget.autoOpenShareSheet
-                      ? 'Sending…'
-                      : 'Open share sheet'),
+                  label: Text(widget.autoOpenShareSheet ? 'Sending…' : 'Open share sheet'),
                 ),
               ],
             ),

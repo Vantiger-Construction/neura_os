@@ -1,33 +1,25 @@
 import 'package:flutter/material.dart';
 
-import '../avatar/avatar_globals.dart';
-import '../avatar/avatar_host.dart';
-import '../integrations/neura_sources_hooks.dart';
-import '../screens/home_screen.dart';
+import '../modules/core/error_handler.dart';
+import '../modules/navigation/enhanced_navigation.dart';
+import 'shell/neura_shell.dart';
+import '../neura_shell/neura_shell_root.dart';
 
-class NeuraApp extends StatelessWidget {
-  const NeuraApp({super.key});
+class NeuroCompanionApp extends StatelessWidget {
+  const NeuroCompanionApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Neura Companion',
-      theme: ThemeData.dark(useMaterial3: true),
-      debugShowCheckedModeBanner: false,
+      title: 'Neura OS',
+      theme: ThemeData.dark(),
+      scaffoldMessengerKey: ErrorHandler.scaffoldMessengerKey,
       builder: (context, child) {
-        final c = child ?? const SizedBox.shrink();
-        return GlobalAvatarHost(
-          child: c,
-          controller: AvatarGlobals.controller,
-          avatarService: AvatarGlobals.service,
-          onTap: () {
-            // A tiny default interaction: wave when the user taps Neura.
-            NeuraSourcesHooks.pulseWave();
-          },
+        return NeuraShellRoot(
+          child: NeuraShell(child: child ?? const SizedBox.shrink()),
         );
       },
-      home: const HomeScreen(),
+      home: const EnhancedNavigation(),
     );
   }
 }
-

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../neura_runtime/neura_runtime_controller.dart';
 import 'neura_shell_state.dart';
 import 'widgets/neura_shell_overlay.dart';
 
@@ -17,18 +16,6 @@ class NeuraShellRoot extends StatefulWidget {
   State<NeuraShellRoot> createState() => _NeuraShellRootState();
 }
 
-class NeuraShellInherited extends InheritedWidget {
-  final NeuraShellState notifier;
-
-  const NeuraShellInherited({
-    required this.notifier,
-    required super.child,
-  });
-
-  @override
-  bool updateShouldNotify(NeuraShellInherited oldWidget) => false;
-}
-
 class _NeuraShellRootState extends State<NeuraShellRoot> {
   final NeuraShellState _state = NeuraShellState();
 
@@ -37,9 +24,6 @@ class _NeuraShellRootState extends State<NeuraShellRoot> {
     super.initState();
     // Non-blocking init: show UI immediately, then hydrate.
     _state.load();
-
-    // Boot Neura's runtime (voice + memory + room prompts).
-    NeuraRuntimeController.I.start();
   }
 
   @override
@@ -50,7 +34,7 @@ class _NeuraShellRootState extends State<NeuraShellRoot> {
 
   @override
   Widget build(BuildContext context) {
-    return NeuraShellInherited(
+    return InheritedNotifier<NeuraShellState>(
       notifier: _state,
       child: NeuraShellOverlay(child: widget.child),
     );

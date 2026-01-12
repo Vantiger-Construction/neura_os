@@ -9,20 +9,11 @@ import '../../screens/dream_journal_calendar_screen.dart';
 import '../../screens/dream_show_screen.dart';
 import '../../screens/dream_visualizer_screen.dart';
 import '../../screens/journal_prompt_screen.dart';
-import '../../screens/neura_timeline_screen.dart';
 import '../../screens/voice_journal_screen.dart';
 import '../../src/modules/legacy/legacy_home_screen.dart';
 import '../../src/modules/settings/settings.dart';
 import '../chat/neura_chat_screen.dart';
 import '../diagnostics/diagnostics_screen.dart';
-import '../human/life_snapshot_screen.dart';
-import '../human/persona_lab_screen.dart';
-import '../human/two_minute_rescue_screen.dart';
-import '../quests/quest_mode_screen.dart';
-import '../review/weekly_review_screen.dart';
-import '../support/support_center_screen.dart';
-import '../vault/memory_vault_screen.dart';
-import '../coach/coach_settings_screen.dart';
 
 class EnhancedNavigation extends StatefulWidget {
   const EnhancedNavigation({super.key});
@@ -145,55 +136,7 @@ class _Dashboard extends StatelessWidget {
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MoodCheckInScreen())),
             ),
             _Tile(
-              icon: Icons.timer_outlined,
-              title: 'Two‑Minute Rescue',
-              subtitle: 'Stop the spiral, fast.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TwoMinuteRescueScreen())),
-            ),
-            _Tile(
-              icon: Icons.analytics_outlined,
-              title: 'Life Snapshot',
-              subtitle: '7 days at a glance.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LifeSnapshotScreen())),
-            ),
-            _Tile(
-              icon: Icons.emoji_events_outlined,
-              title: 'Quest Mode',
-              subtitle: 'Tiny missions. Big momentum.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const QuestModeScreen())),
-            ),
-            _Tile(
-              icon: Icons.event_note_outlined,
-              title: 'Weekly Review',
-              subtitle: 'A kind 7‑day recap.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WeeklyReviewScreen())),
-            ),
-            _Tile(
-              icon: Icons.psychology_alt_outlined,
-              title: 'Neura Coach',
-              subtitle: 'Reflections + Coach Timeline.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CoachSettingsScreen())),
-            ),
-            _Tile(
-              icon: Icons.support_agent_outlined,
-              title: 'Support Center',
-              subtitle: 'Grounding + trusted contacts.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SupportCenterScreen())),
-            ),
-            _Tile(
-              icon: Icons.lock_outline,
-              title: 'Memory Vault',
-              subtitle: 'Private notes, local only.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MemoryVaultScreen())),
-            ),
-            _Tile(
               icon: Icons.timeline,
-              title: 'Neura Timeline',
-              subtitle: 'What the OS thinks is happening.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NeuraTimelineScreen())),
-            ),
-            _Tile(
-              icon: Icons.show_chart,
               title: 'Mood History',
               subtitle: 'Your emotional weather.',
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MoodHistoryScreen())),
@@ -239,12 +182,6 @@ class _Dashboard extends StatelessWidget {
               },
             ),
             _Tile(
-              icon: Icons.tune_outlined,
-              title: 'Persona Lab',
-              subtitle: 'Tune Neura for you.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PersonaLabScreen())),
-            ),
-            _Tile(
               icon: Icons.settings_outlined,
               title: 'Settings',
               subtitle: 'Privacy, safety, controls.',
@@ -269,7 +206,7 @@ class _Dashboard extends StatelessWidget {
             title: const Text('Daily tiny quest'),
             subtitle: const Text('Pick one: drink water • 10-min walk • write one honest paragraph'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const QuestModeScreen())),
+            onTap: openChat,
           ),
         ),
       ],

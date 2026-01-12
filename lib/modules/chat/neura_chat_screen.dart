@@ -13,8 +13,7 @@ class NeuraChatScreen extends StatefulWidget {
 class _NeuraChatScreenState extends State<NeuraChatScreen> {
   final _controller = TextEditingController();
   final List<_ChatLine> _lines = [
-    _ChatLine.bot(
-        'Hi. I’m Neura. Tell me what’s up — we’ll make a plan or we’ll breathe first.'),
+    _ChatLine.bot('Hi. I’m Neura. Tell me what’s up — we’ll make a plan or we’ll breathe first.'),
   ];
 
   @override
@@ -47,11 +46,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
               itemCount: _lines.length,
               itemBuilder: (context, i) {
                 final line = _lines[i];
-                final align =
-                    line.isUser ? Alignment.centerRight : Alignment.centerLeft;
-                final color = line.isUser
-                    ? Colors.blueGrey.shade700
-                    : Colors.grey.shade800;
+                final align = line.isUser ? Alignment.centerRight : Alignment.centerLeft;
+                final color = line.isUser ? Colors.blueGrey.shade700 : Colors.grey.shade850;
                 return Align(
                   alignment: align,
                   child: Container(

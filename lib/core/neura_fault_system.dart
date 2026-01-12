@@ -27,6 +27,7 @@ class NeuraFaultSystem {
     _installed = true;
 
     // 1) Friendly error widget (replaces red screen)
+    final oldBuilder = ErrorWidget.builder;
     ErrorWidget.builder = (FlutterErrorDetails details) {
       return _NeuraFriendlyError(
         details: details,
@@ -58,6 +59,10 @@ class NeuraFaultSystem {
       _handle(bus, controller, event, recoveryDuration);
       return true; // we handled it
     };
+
+    // Restore builder on hot restart? Not needed, but keep it stable.
+    // oldBuilder is intentionally unused to avoid dead code warnings in some builds.
+    unawaited(Future<void>.value());
   }
 
   static void _handle(
@@ -180,5 +185,3 @@ class _NeuraFriendlyError extends StatelessWidget {
     );
   }
 }
-
-

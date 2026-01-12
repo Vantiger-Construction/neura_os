@@ -1,21 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../modules/chat/neura_chat_screen.dart';
-import '../../modules/coach/coach_settings_screen.dart';
 import '../../modules/diagnostics/diagnostics_screen.dart';
-import '../../modules/human/accessibility_screen.dart';
-import '../../modules/human/life_snapshot_screen.dart';
-import '../../modules/human/persona_lab_screen.dart';
-import '../../modules/human/theme_screen.dart';
-import '../../modules/human/two_minute_rescue_screen.dart';
+import '../../modules/voice/voice_lab_screen.dart';
 import '../../modules/mood/mood_checkin_screen.dart';
 import '../../modules/mood/mood_history_screen.dart';
-import '../../modules/pay_it_forward/pay_it_forward_screen.dart';
-import '../../modules/quests/quest_mode_screen.dart';
-import '../../modules/review/weekly_review_screen.dart';
-import '../../modules/support/support_center_screen.dart';
-import '../../modules/timeline/life_timeline_screen.dart';
-import '../../modules/vault/memory_vault_screen.dart';
 import '../../screens/dream_journal_calendar_screen.dart';
 import '../../screens/dream_show_screen.dart';
 import '../../screens/dream_visualizer_screen.dart';
@@ -24,7 +13,6 @@ import '../../screens/voice_journal_screen.dart';
 import '../modules/focus/focus_office_screen.dart';
 import '../modules/legacy/legacy_home_screen.dart';
 import '../modules/settings/settings.dart';
-import '../modules/voice/voice_lab_screen.dart';
 
 enum RoomCategory {
   core,
@@ -43,7 +31,7 @@ class RoomItem {
   final RoomCategory category;
   final WidgetBuilder builder;
 
-  RoomItem({
+  const RoomItem({
     required this.id,
     required this.title,
     required this.subtitle,
@@ -54,7 +42,7 @@ class RoomItem {
 }
 
 class RoomsCatalog {
-  static List<RoomItem> all() => [
+  static List<RoomItem> all() => const [
         RoomItem(
           id: 'chat',
           title: 'Neura (Chat)',
@@ -62,70 +50,6 @@ class RoomsCatalog {
           icon: Icons.chat_bubble_outline,
           category: RoomCategory.core,
           builder: (_) => NeuraChatScreen(),
-        ),
-        RoomItem(
-          id: 'two_minute_rescue',
-          title: 'Two‑Minute Rescue',
-          subtitle: 'Micro-actions to stop the spiral.',
-          icon: Icons.timer_outlined,
-          category: RoomCategory.core,
-          builder: (_) => TwoMinuteRescueScreen(),
-        ),
-        RoomItem(
-          id: 'pay_it_forward',
-          title: 'Pay It Forward',
-          subtitle: 'Log kindness + build a goodwill streak.',
-          icon: Icons.volunteer_activism,
-          category: RoomCategory.core,
-          builder: (_) => PayItForwardScreen(),
-        ),
-        RoomItem(
-          id: 'life_snapshot',
-          title: 'Life Snapshot',
-          subtitle: 'Your last 7 days at a glance.',
-          icon: Icons.analytics_outlined,
-          category: RoomCategory.mood,
-          builder: (_) => LifeSnapshotScreen(),
-        ),
-        RoomItem(
-          id: 'life_timeline',
-          title: 'Life Timeline',
-          subtitle: 'Moods, quests, kindness, and reviews—one feed.',
-          icon: Icons.timeline,
-          category: RoomCategory.tools,
-          builder: (_) => LifeTimelineScreen(),
-        ),
-        RoomItem(
-          id: 'quest_mode',
-          title: 'Quest Mode',
-          subtitle: 'Tiny missions. Real momentum.',
-          icon: Icons.emoji_events_outlined,
-          category: RoomCategory.core,
-          builder: (_) => QuestModeScreen(),
-        ),
-        RoomItem(
-          id: 'weekly_review',
-          title: 'Weekly Review',
-          subtitle: 'Auto-summarize your week (kindly).',
-          icon: Icons.event_note_outlined,
-          category: RoomCategory.core,
-          builder: (_) => WeeklyReviewScreen(),
-        ),
-        RoomItem(
-          id: 'support_center',
-          title: 'Support Center',
-          subtitle: 'Calm protocols + trusted contacts.',
-          icon: Icons.health_and_safety_outlined,
-          category: RoomCategory.core,
-          builder: (_) => SupportCenterScreen(),
-        ),
-        RoomItem(
-          id: 'memory_vault',
-          title: 'Memory Vault',
-          subtitle: 'Private notes + exports + delete.',
-          icon: Icons.lock_outline,
-          category: RoomCategory.tools,
-          builder: (_) => MemoryVaultScreen(),
         ),
         RoomItem(
           id: 'focus',
@@ -205,39 +129,7 @@ class RoomsCatalog {
           subtitle: 'Test Neura voice + live mic visemes.',
           icon: Icons.record_voice_over_outlined,
           category: RoomCategory.tools,
-          builder: (_) => VoiceLabScreen(),
-        ),
-        RoomItem(
-          id: 'coach',
-          title: 'Neura Coach',
-          subtitle: 'Reflections + Coach Timeline.',
-          icon: Icons.psychology_alt_outlined,
-          category: RoomCategory.tools,
-          builder: (_) => CoachSettingsScreen(),
-        ),
-        RoomItem(
-          id: 'persona_lab',
-          title: 'Persona Lab',
-          subtitle: 'Tune Neura’s style for you.',
-          icon: Icons.tune_outlined,
-          category: RoomCategory.tools,
-          builder: (_) => PersonaLabScreen(),
-        ),
-        RoomItem(
-          id: 'accessibility',
-          title: 'Accessibility',
-          subtitle: 'Text size, motion, and comfort.',
-          icon: Icons.accessibility_new_outlined,
-          category: RoomCategory.tools,
-          builder: (_) => AccessibilityScreen(),
-        ),
-        RoomItem(
-          id: 'themes',
-          title: 'Themes',
-          subtitle: 'Theme mode + contrast.',
-          icon: Icons.palette_outlined,
-          category: RoomCategory.tools,
-          builder: (_) => ThemeScreen(),
+          builder: (_) => const VoiceLabScreen(),
         ),
         RoomItem(
           id: 'settings',
