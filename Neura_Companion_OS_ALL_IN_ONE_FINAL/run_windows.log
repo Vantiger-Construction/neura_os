@@ -1,0 +1,20 @@
+Launching lib\main.dart on Windows in debug mode...
+Building Windows application...                                 
+CMake Deprecation Warning at C:/Users/KD/Downloads/Neura_Companion_OS_ALL_IN_ONE_FINAL/build/windows/x64/extracted/firebase_cpp_sdk_windows/CMakeLists.txt:17 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+CMake Error at C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/FindPackageHandleStandardArgs.cmake:1:
+  Parse error.  Expected "(", got unquoted argument with text "/d".
+Call Stack (most recent call first):
+  C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/FindPkgConfig.cmake:113 (include)
+  C:/Users/KD/Downloads/Neura_Companion_OS_ALL_IN_ONE_FINAL/build/windows/x64/extracted/firebase_cpp_sdk_windows/CMakeLists.txt:19 (include)
+
+
+Building Windows application...                                    416ms
+Error: Unable to generate build files

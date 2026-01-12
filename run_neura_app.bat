@@ -1,4 +1,5 @@
 @echo off
-cd /d "c:\neura \Neura_Companion_OS_FullMerged_vLatest"
+cd /d "C:\neura_os"
+flutter pub get
 flutter run -d windows
 pause

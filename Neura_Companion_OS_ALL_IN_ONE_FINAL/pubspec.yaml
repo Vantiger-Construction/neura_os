@@ -1,0 +1,67 @@
+name: neura_companion
+description: Neuro Companion App
+publish_to: "none"
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Firebase / auth
+  firebase_core: ^2.10.0
+  cloud_firestore: ^4.17.5
+  firebase_auth: ^4.6.3
+  firebase_storage: ^11.6.5
+  google_sign_in: ^6.1.0
+
+  # Observability
+  sentry_flutter: ^8.14.2
+
+  # Storage / security
+  flutter_secure_storage: ^10.0.0
+  shared_preferences: ^2.0.15
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  path_provider: ^2.0.11
+
+  # Device features
+  image_picker: ^0.8.7+4
+  local_auth: ^2.1.6
+  connectivity_plus: ^7.0.0
+  speech_to_text: ^6.6.2
+
+  # UI / export
+  fl_chart: ^0.60.0
+  csv: ^5.0.0
+  pdf: ^3.8.1
+  printing: ^5.9.0
+
+  # Env
+
+
+  # Avatar / animation layer
+  lottie: ^2.7.0
+  rive: ^0.12.4
+
+  meta: ^1.8.0
+  flutter_tts: ^4.2.5
+  flutter_riverpod: ^3.1.0
+  firebase_crashlytics: ^3.5.7
+  sign_in_with_apple: ^7.0.1
+  in_app_purchase: ^3.2.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  build_runner: ^2.4.4
+  hive_generator: ^2.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/animations/
+    - assets/rive/
+    - assets/sprites/
+    - assets/images/

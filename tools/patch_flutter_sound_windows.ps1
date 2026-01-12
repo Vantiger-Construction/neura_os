@@ -53,13 +53,7 @@ Set-Content -LiteralPath $shimHeader -Value $headerContent -Encoding UTF8
 
 # Patch the C API .cpp to also export the expected symbol.
 $cpp = Get-Content -LiteralPath $taudioCapiCpp -Raw
-if ($cpp -match 'FlutterSoundPluginCApiRegisterWithRegistrar') {
-  # If the symbol exists but isn't exported, fix it in-place.
-  $fixed = $cpp -replace 'extern\s+"C"\s+void\s+FlutterSoundPluginCApiRegisterWithRegistrar\s*\(', 'extern "C" FLUTTER_PLUGIN_EXPORT void FlutterSoundPluginCApiRegisterWithRegistrar('
-  if ($fixed -ne $cpp) {
-    Set-Content -LiteralPath $taudioCapiCpp -Value $fixed -Encoding UTF8
-  }
-} else {
+if ($cpp -notmatch 'FlutterSoundPluginCApiRegisterWithRegistrar') {
   $cpp += "`r`n`r`n// Added by tools/patch_flutter_sound_windows.ps1`r`n" +
           'extern "C" FLUTTER_PLUGIN_EXPORT void FlutterSoundPluginCApiRegisterWithRegistrar(FlutterDesktopPluginRegistrarRef registrar) {' + "`r`n" +
           '  TaudioPluginCApiRegisterWithRegistrar(registrar);' + "`r`n" +

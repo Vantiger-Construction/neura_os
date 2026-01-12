@@ -1,0 +1,10 @@
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    avoid_dynamic_calls: true
+    prefer_const_constructors: true
+    always_declare_return_types: true
+    annotate_overrides: true
+    implementation_imports: false
+    unnecessary_this: true
