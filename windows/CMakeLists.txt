@@ -2,6 +2,10 @@
 cmake_minimum_required(VERSION 3.14)
 project(neuro_companion LANGUAGES CXX)
 
+# Prefer project-local CMake modules (see windows/cmake) to avoid environment-
+# specific issues with toolchain-bundled CMake modules.
+list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
 set(BINARY_NAME "neuro_companion")
@@ -56,6 +60,20 @@ add_subdirectory("runner")
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
 include(flutter/generated_plugins.cmake)
+
+# --- Plugin target compatibility ---
+# Some plugin packages ship a Windows CMake target name that doesn't match what
+# Flutter's generated plugin glue expects. If the underlying target exists,
+# provide an ALIAS with the expected name.
+if(TARGET taudio_plugin AND NOT TARGET flutter_sound_plugin)
+  add_library(flutter_sound_plugin ALIAS taudio_plugin)
+endif()
+
+if(TARGET flutter_secure_storage_windows_plugin)
+  target_include_directories(flutter_secure_storage_windows_plugin PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/flutter/ephemeral/.plugin_symlinks/flutter_secure_storage_windows/windows"
+  )
+endif()
 
 
 # === Installation ===

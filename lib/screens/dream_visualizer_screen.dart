@@ -7,8 +7,8 @@ class DreamVisualizerScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     // TODO: show AI-generated dream images timeline
     return Scaffold(
-      appBar: AppBar(title: Text('Dream Visualizer')),
-      body: Center(child: Text('Dream Visualizer Screen')),
+      appBar: AppBar(title: const Text('Dream Visualizer')),
+      body: const Center(child: Text('Dream Visualizer Screen')),
     );
   }
 }

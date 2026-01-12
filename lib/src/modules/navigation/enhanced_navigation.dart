@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-
 import '../dashboard/dashboard.dart';
-import '../goals/goal_tracker.dart';
 import '../journal/journal.dart';
-import '../meditation/meditation.dart';
 import '../mood/mood_checkin.dart';
+import '../goals/goal_tracker.dart';
+import '../meditation/meditation.dart';
 import '../settings/settings.dart';
-import '../legacy/legacy_deadman_service.dart';
 
 class EnhancedNavigation extends StatefulWidget {
   const EnhancedNavigation({super.key});
@@ -26,14 +24,6 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     MeditationScreen(),
     SettingsScreen(),
   ];
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      LegacyDeadmanService.instance.maybePromptOnStartup(context);
-    });
-  }
 
   void _onItemTapped(int index) => setState(() => _selectedIndex = index);
 

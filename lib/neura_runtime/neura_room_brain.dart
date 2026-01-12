@@ -98,7 +98,6 @@ class NeuraVoiceProfile {
       case NeuraVoiceMode.multiverse:
         return 'to_tigger_vxxx3.wav';
       case NeuraVoiceMode.calm:
-      default:
         return 'Recording.wav';
     }
   }

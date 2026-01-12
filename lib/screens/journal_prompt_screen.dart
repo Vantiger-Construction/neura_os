@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-
 import '../services/journal_prompt_service.dart';
 
 class JournalPromptScreen extends StatefulWidget {
-  const JournalPromptScreen({super.key});
-
   @override
   _JournalPromptScreenState createState() => _JournalPromptScreenState();
 }

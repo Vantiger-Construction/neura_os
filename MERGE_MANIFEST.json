@@ -1,0 +1,21 @@
+{
+  "generated_at_utc": "2026-01-08T21:42:06.547186Z",
+  "project_root": "Neura_Companion_OS_ALL_IN_ONE_FINAL (merged)",
+  "important_files": [
+    {
+      "path": "pubspec.yaml",
+      "sha256": "9e8bfacdf6d446a6f648ff7be932006ed73a53fa30dfe0d70d9999d439ec356f",
+      "bytes": 1044
+    },
+    {
+      "path": "lib/main.dart",
+      "sha256": "4ba6a44900672fc9e183d9720f24ff74b65c1f561592aa819fd88bfc831ae3be",
+      "bytes": 3930
+    },
+    {
+      "path": "FINAL_MERGE_REPORT.md",
+      "sha256": "4d6f05d4f2d3484d43d73ad74f0d9d54b40b71e1191041a4281b803217766b99",
+      "bytes": 10422
+    }
+  ]
+}

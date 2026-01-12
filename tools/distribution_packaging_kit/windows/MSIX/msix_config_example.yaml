@@ -1,0 +1,12 @@
+# Paste under your Flutter project's pubspec.yaml
+msix_config:
+  display_name: Neura Companion
+  publisher_display_name: VanTiger
+  identity_name: com.vantiger.neura.companion
+  msix_version: 1.0.0.0
+  logo_path: assets/icon/icon.png
+  capabilities: internetClient
+  store: false
+  # Optional signing (recommended for distribution):
+  # certificate_path: C:\path\to\cert.pfx
+  # certificate_password: YOUR_PASSWORD

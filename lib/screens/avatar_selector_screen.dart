@@ -3,12 +3,14 @@ import '../models/ai_avatar.dart';
 import '../services/avatar_service.dart';
 
 class AvatarSelectorScreen extends StatefulWidget {
+  const AvatarSelectorScreen({super.key});
+
   @override
   _AvatarSelectorScreenState createState() => _AvatarSelectorScreenState();
 }
 
 class _AvatarSelectorScreenState extends State<AvatarSelectorScreen> {
-  final _service = AvatarService();
+  final _service = AvatarService.instance;
   late List<AIAvatar> _avatars;
   String _selectedId = '';
 

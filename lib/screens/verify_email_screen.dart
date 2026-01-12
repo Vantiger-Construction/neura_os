@@ -8,7 +8,6 @@ class VerifyEmailScreen extends StatefulWidget {
 
 class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
   bool _emailSent = false;
-  bool _isVerified = false;
 
   @override
   void initState() {
@@ -18,7 +17,6 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
 
   Future<void> _checkVerified() async {
     final verified = await AuthService().isEmailVerified();
-    setState(() => _isVerified = verified);
     if (verified) {
       Navigator.pushReplacementNamed(context, '/'); // main nav
     }
@@ -50,3 +48,4 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
     );
   }
 }
+

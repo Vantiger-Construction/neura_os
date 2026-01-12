@@ -35,7 +35,8 @@ class MemoryVaultStore {
     return seed;
   }
 
-  Future<SecretKey> _deriveKey({required String pin, required String seed}) async {
+  Future<SecretKey> _deriveKey(
+      {required String pin, required String seed}) async {
     // PBKDF2: derive a 256-bit key from the PIN with a per-device salt.
     final pbkdf2 = Pbkdf2(
       macAlgorithm: Hmac.sha256(),
@@ -107,21 +108,13 @@ class MemoryVaultStore {
     }
   }
 
-  String _obfuscate(String data, String pin) {
-    // Legacy XOR. Kept only for migration.
-    if (pin.trim().isEmpty) return base64UrlEncode(utf8.encode(data));
-    final bytes = utf8.encode(data);
-    final key = utf8.encode(pin);
-    final out = List<int>.generate(bytes.length, (i) => bytes[i] ^ key[i % key.length]);
-    return base64UrlEncode(out);
-  }
-
   String _deobfuscate(String obf, String pin) {
     // Legacy XOR. Kept only for migration.
     final raw = base64Url.decode(obf);
     if (pin.trim().isEmpty) return utf8.decode(raw);
     final key = utf8.encode(pin);
-    final out = List<int>.generate(raw.length, (i) => raw[i] ^ key[i % key.length]);
+    final out =
+        List<int>.generate(raw.length, (i) => raw[i] ^ key[i % key.length]);
     return utf8.decode(out);
   }
 
@@ -134,7 +127,8 @@ class MemoryVaultStore {
     if (legacyPin != null && legacyPin.trim().isNotEmpty) {
       await configurePin(legacyPin.trim());
       await sp.remove(_keyPinLegacy);
-      await AppLog.instance.info('vault_event', {'msg': 'Vault PIN migrated to verifier (no PIN stored).'});
+      await AppLog.instance.info('vault_event',
+          {'msg': 'Vault PIN migrated to verifier (no PIN stored).'});
     }
   }
 
@@ -181,7 +175,8 @@ class MemoryVaultStore {
         final enc = await _encryptJson(encodeVaultItems(items), pin: pin);
         await sp.setString(_keyData, enc);
         await sp.remove(_keyDataLegacy);
-        await AppLog.instance.info('vault_event', {'msg': 'Vault migrated to AES-GCM (v2).'});
+        await AppLog.instance
+            .info('vault_event', {'msg': 'Vault migrated to AES-GCM (v2).'});
         return items;
       }
 
@@ -199,7 +194,11 @@ class MemoryVaultStore {
     await sp.setString(_keyData, enc);
   }
 
-  Future<void> add({required String pin, required String title, required String body, List<String> tags = const []}) async {
+  Future<void> add(
+      {required String pin,
+      required String title,
+      required String body,
+      List<String> tags = const []}) async {
     final items = await getItems(pin: pin);
     final id = 'v_${DateTime.now().millisecondsSinceEpoch}';
     items.add(VaultItem(

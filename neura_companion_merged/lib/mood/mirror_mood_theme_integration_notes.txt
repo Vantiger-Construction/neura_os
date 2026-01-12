@@ -1,0 +1,131 @@
+Mirror Mode + Mood-driven Theme & Difficulty Integration
+========================================================
+
+This pack provides:
+
+- A persistent MoodState model + service
+- A visual style mapping from mood -> colors + difficulty multiplier
+- A mood-driven scaffold that adjusts background and accent colors
+- A Mirror Mood Check-in screen that lets the user update their state
+
+
+Files
+-----
+
+Mood core:
+- lib/mood/models/mood_state.dart
+- lib/mood/services/mood_state_service.dart
+
+Visual style:
+- lib/mood/models/mood_visual_style.dart
+- lib/mood/services/mood_visual_service.dart
+- lib/mood/widgets/mood_background_scaffold.dart
+
+Mirror:
+- lib/mirror/screens/mirror_mood_checkin_screen.dart
+
+Notes:
+- lib/mood/mirror_mood_theme_integration_notes.txt
+
+
+How to wire Mirror into your OS shell
+-------------------------------------
+
+From any navigation point (OS Shell room, dashboard tile, etc.):
+
+    import 'package:your_app/mirror/screens/mirror_mood_checkin_screen.dart';
+
+    ListTile(
+      leading: const Icon(Icons.face_retouching_natural),
+      title: const Text('Mirror Check-in'),
+      subtitle: const Text('Tell Neura how you're feeling.'),
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const MirrorMoodCheckinScreen()),
+        );
+      },
+    );
+
+The screen lets the user:
+
+- Set a 0–10 mood score with a slider
+- Add an optional note
+- Save, which updates MoodStateService and persists it
+
+
+How to use mood-driven background and accent colors
+---------------------------------------------------
+
+Wrap screens that should react to mood with MoodBackgroundScaffold:
+
+    import 'package:your_app/mood/widgets/mood_background_scaffold.dart';
+
+    class SomeNeuraScreen extends StatelessWidget {
+      const SomeNeuraScreen({Key? key}) : super(key: key);
+
+      @override
+      Widget build(BuildContext context) {
+        return MoodBackgroundScaffold(
+          appBar: AppBar(title: const Text('Neura Screen')),
+          body: Center(
+            child: Text('Content goes here'),
+          ),
+        );
+      }
+    }
+
+MoodBackgroundScaffold will:
+
+- Read the current MoodState from MoodStateService
+- Get a MoodVisualStyle from MoodVisualService
+- Paint a vertical gradient background
+- Adjust Theme colorScheme.primary/secondary to the mood accent
+
+
+How to adapt difficulty from mood
+---------------------------------
+
+Many parts of your app use a "difficulty" concept (e.g., gentle/normal/challenge
+for prompts, quests, goals). You can adapt it based on current mood:
+
+    import 'package:your_app/mood/services/mood_state_service.dart';
+    import 'package:your_app/mood/services/mood_visual_service.dart';
+
+    final mood = MoodStateService.instance.current;
+    final baseDifficulty = 'normal'; // from your module or persona
+    final effectiveDifficulty =
+        MoodVisualService.instance.adaptDifficulty(baseDifficulty, mood);
+
+The provided logic:
+
+- If mood score <= 3.5 -> always 'gentle'
+- If mood score >= 8.0 and base != 'gentle' -> 'challenge'
+- Otherwise -> base difficulty unchanged
+
+You can plug this into NeuraPromptBuilder or any module that uses difficulty.
+
+
+Dependencies
+------------
+
+This pack uses:
+
+- flutter/material.dart
+- shared_preferences (for persistence)
+
+Make sure your pubspec.yaml has:
+
+    dependencies:
+      shared_preferences: ^2.2.0
+
+
+Notes
+-----
+
+- MoodStateService is intentionally simple and local-only.
+- If you already have a more advanced mood tracking system, you can either:
+    * Replace this implementation with a wrapper around your existing one, or
+    * Use this as a per-device "current mood" snapshot on top of your history.
+
+- The color palette is just a starting point and can be tuned to your Neura
+  brand colors later.

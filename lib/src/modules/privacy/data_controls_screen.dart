@@ -23,6 +23,8 @@ class DataControlsScreen extends StatefulWidget {
 }
 
 class _DataControlsScreenState extends State<DataControlsScreen> {
+  static const double blockSize = 16.0;
+
   bool _busy = false;
 
   Future<void> _exportLifeData() async {
@@ -65,7 +67,7 @@ class _DataControlsScreenState extends State<DataControlsScreen> {
           .writeAsString(const JsonEncoder.withIndent('  ').convert(payload));
 
       await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'application/json')],
+        [XFile(file.path)],
         subject: 'Neura Life Data Export',
         text: 'Your Neura life data export (stored on-device).',
       );
@@ -266,7 +268,7 @@ class _DataControlsScreenState extends State<DataControlsScreen> {
             'Your data is yours. These tools let you export or delete what\'s stored on this device.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: blockSize),
           Card(
             child: Column(
               children: [

@@ -1,0 +1,49 @@
+Add / confirm these in your pubspec.yaml:
+
+dependencies:
+  shared_preferences: ^2.2.2
+
+(If you already added shared_preferences or url_launcher from earlier packs,
+you don't need to add them twice.)
+
+Folder drop:
+  Copy the following into your app's lib/ directory:
+    - lib/persona/...
+    - lib/dreams/...
+    - lib/weekly/...
+    - lib/mood/...
+
+Routing suggestions:
+
+  Persona tuning:
+    - Add a button somewhere in Settings:
+
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const PersonaTuningScreen()),
+        );
+
+  Dream Show 2.0:
+    - Add a tile on your OS shell / dashboard:
+
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const DreamShowScreen()),
+        );
+
+  Weekly Life Snapshot card:
+    - Drop this widget onto your home screen:
+
+        const WeeklyLifeSnapshotCard()
+
+  Mirror/Mood driving colors & difficulty:
+    - Wherever you want the background + accent to follow the current mood:
+
+        MoodAdaptiveContainer(
+          child: YourExistingScaffoldOrColumn(),
+        )
+
+    - From your Mirror Mode / mood check-in code, call:
+
+        await MoodStateService.instance.setMood('sad');      // or happy, calm, anxious, etc.
+
+      NeuraMoodTheme.difficulty tells you if UI should be "gentle", "normal", or "challenge"
+      for games, tasks, or rituals.

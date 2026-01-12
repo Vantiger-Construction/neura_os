@@ -4,7 +4,6 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 
 import '../neura_shell.dart';
-import '../neura_shell_state.dart';
 import 'neura_room_backdrop.dart';
 import 'neura_room_selector_sheet.dart';
 
@@ -78,8 +77,8 @@ class _FloatingNeuraAvatarState extends State<_FloatingNeuraAvatar>
         final dx = lerpDouble(-6, 8, p)!;
         final dy = lerpDouble(0, 10, sin(_t.value * pi * 2) * 0.5 + 0.5)!;
 
-        return Positioned(
-          right: 10 + dx,
+        return PositionedDirectional(
+          end: 10 + dx,
           bottom: 86 + dy,
           child: IgnorePointer(
             ignoring: true,

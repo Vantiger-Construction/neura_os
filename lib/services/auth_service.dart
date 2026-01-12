@@ -11,7 +11,7 @@ class AuthService {
       _auth.signInWithEmailAndPassword(email: email, password: pass);
 
   Future<void> signUp(String email, String pass) async {
-    final cred = await _auth.createUserWithEmailAndPassword(email: email, password: pass);
+    await _auth.createUserWithEmailAndPassword(email: email, password: pass);
     await sendEmailVerification();
   }
 
@@ -56,3 +56,5 @@ class AuthService {
     await _auth.signInWithCredential(authCredential);
   }
 }
+
+

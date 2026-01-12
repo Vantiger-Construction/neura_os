@@ -1,44 +1,22 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-
 import '../services/voice_journal_service.dart';
 
 class VoiceJournalScreen extends StatefulWidget {
   const VoiceJournalScreen({super.key});
 
   @override
-  State<VoiceJournalScreen> createState() => _VoiceJournalScreenState();
+  _VoiceJournalScreenState createState() => _VoiceJournalScreenState();
 }
 
 class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
-  final VoiceJournalService _service = VoiceJournalService();
-  StreamSubscription<String>? _sub;
-
+  final _service = VoiceJournalService();
   bool _recording = false;
   String _transcript = '';
 
-  @override
-  void initState() {
-    super.initState();
-    _sub = _service.transcriptStream.listen((t) {
-      if (!mounted) return;
-      setState(() => _transcript = t);
-    });
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    _service.dispose();
-    super.dispose();
-  }
-
-  Future<void> _toggleRecording() async {
+  void _toggleRecording() async {
     if (!_recording) {
-      final ok = await _service.startRecording();
-      if (!ok) return;
       setState(() => _recording = true);
+      await _service.startRecording();
     } else {
       final text = await _service.stopRecording();
       setState(() {
@@ -51,25 +29,17 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
   @override
   Widget build(BuildContext ctx) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Voice Journal')),
+      appBar: AppBar(title: Text('Voice Journal')),
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(16),
         child: Column(
           children: [
-            ElevatedButton.icon(
+            ElevatedButton(
               onPressed: _toggleRecording,
-              icon: Icon(_recording ? Icons.stop : Icons.mic_none),
-              label: Text(_recording ? 'Stop' : 'Start'),
+              child: Text(_recording ? 'Stop Recording' : 'Start Recording'),
             ),
             const SizedBox(height: 16),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Text(
-                  _transcript.isEmpty ? 'No transcript yet.' : _transcript,
-                  style: Theme.of(ctx).textTheme.bodyLarge,
-                ),
-              ),
-            ),
+            Text(_transcript.isEmpty ? 'No transcript yet.' : _transcript),
           ],
         ),
       ),

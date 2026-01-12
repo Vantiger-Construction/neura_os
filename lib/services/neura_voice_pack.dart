@@ -455,7 +455,7 @@ class NeuraMicVisemeEngine {
 }
 
 class NeuraMicDriver {
-  final FlutterSoundRecorder _rec = FlutterSoundRecorder();
+  FlutterSoundRecorder? _rec;
   final NeuraMicVisemeEngine engine;
 
   final StreamController<_MicFrame> _out = StreamController.broadcast();
@@ -477,11 +477,13 @@ class NeuraMicDriver {
       throw Exception('Microphone permission denied.');
     }
 
-    await _rec.openRecorder();
-    await _rec.setSubscriptionDuration(
+    _rec ??= FlutterSoundRecorder();
+
+    await _rec!.openRecorder();
+    await _rec!.setSubscriptionDuration(
         Duration(milliseconds: (1000 / engine.analysisHz).round()));
 
-    await _rec.startRecorder(
+    await _rec!.startRecorder(
       toStream: _pcmController.sink,
       codec: Codec.pcm16,
       sampleRate: engine.sampleRate,
@@ -496,8 +498,8 @@ class NeuraMicDriver {
 
   Future<void> stop() async {
     if (!_running) return;
-    await _rec.stopRecorder();
-    await _rec.closeRecorder();
+    await _rec!.stopRecorder();
+    await _rec!.closeRecorder();
     _running = false;
   }
 

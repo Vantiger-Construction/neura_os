@@ -1,0 +1,108 @@
+Neura Audience + Kids Safety Integration Notes
+=============================================
+
+What this pack adds
+-------------------
+- lib/persona/models/neura_audience.dart
+    Enum for which audience Neura is talking to: adult, teen, child.
+
+- lib/persona/models/neura_safety_profile.dart
+    Safety limits for each audience type:
+      * Whether heavy topics are allowed
+      * Swearing / dark humor flags (default: all false)
+      * Max depth / directness / difficulty
+
+- lib/persona/services/neura_prompt_builder.dart (UPDATED)
+    Same helper name, but now accepts:
+      - NeuraAudience audience
+    and automatically appends safety instructions to the system prompt.
+
+- lib/kids/screens/kids_neura_chat_stub_screen.dart
+    Small stub UI to demonstrate how a kids-safe chat entry would work.
+    It does NOT call an LLM; it only shows the systemMessage so you can
+    verify safety text before wiring your backend.
+
+
+How to use audience flag
+------------------------
+
+In any Neura chat / completion call, decide the audience:
+
+    import 'package:your_app/persona/models/neura_audience.dart';
+    import 'package:your_app/persona/services/neura_prompt_builder.dart';
+
+    final builder = NeuraPromptBuilder.instance;
+
+    // Adult example
+    final systemAdult = await builder.buildSystemMessage(
+      module: 'journal',
+      audience: NeuraAudience.adult,
+    );
+
+    // Teen example
+    final systemTeen = await builder.buildSystemMessage(
+      module: 'care_mode',
+      audience: NeuraAudience.teen,
+    );
+
+    // Child example (Kids Mode)
+    final systemChild = await builder.buildSystemMessage(
+      module: 'kids_mode',
+      audience: NeuraAudience.child,
+    );
+
+
+What changes for kids
+---------------------
+
+When audience == NeuraAudience.child, the system prompt gets extra rules:
+
+- Use simple, child-friendly language.
+- Do NOT discuss sex, self-harm methods, or graphic violence.
+- Avoid swearing and dark humor.
+- Focus on reassurance, simple coping ideas, and involving a trusted adult.
+- If the child seems in danger or talks about wanting to hurt themselves or others,
+  Neura should encourage talking to a trusted adult and seeking professional / emergency help.
+
+The depth, directness, and difficulty values are also capped by NeuraSafetyProfile.forAudience().
+That means even if the persona sliders are set to "maximum challenge", kids mode stays gentle.
+
+
+Connecting to Kids Mode screens
+-------------------------------
+
+From KidsModeHomeScreen, you might add a route to the kids chat:
+
+    import 'package:your_app/kids/screens/kids_neura_chat_stub_screen.dart';
+
+    // inside KidsModeHomeScreen build method, maybe another card/button:
+    ElevatedButton(
+      child: const Text('Open Neura Kids Chat'),
+      onPressed: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const KidsNeuraChatStubScreen()),
+        );
+      },
+    );
+
+Later, when you connect to your backend, you will:
+
+- Build systemMessage with audience: NeuraAudience.child
+- Send systemMessage + userText to your AI service
+- Render Neura's kids-safe replies in this screen instead of just showing the prompt.
+
+
+Important safety note
+---------------------
+
+This pack helps enforce boundaries in Neura's *instructions* to the AI,
+but it does not replace:
+- Real world parental controls on the device/OS
+- Human review for safety
+- Professional mental health care
+
+You should still:
+- Keep kids mode behind a parent toggle
+- Avoid giving any medical, diagnostic, or legal advice
+- Encourage offline support (trusted adults, professionals, emergency services)
+  whenever there is possible risk of harm.

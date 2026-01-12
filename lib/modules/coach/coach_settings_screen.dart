@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../human/human_prefs_controller.dart';
-import '../human/human_prefs.dart';
 import 'coach_store.dart';
 import 'coach_timeline_screen.dart';
 

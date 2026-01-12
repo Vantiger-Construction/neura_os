@@ -1,0 +1,4 @@
+@echo off
+cd /d "c:\neura \Neura_Companion_OS_FullMerged_vLatest"
+flutter run -d windows
+pause

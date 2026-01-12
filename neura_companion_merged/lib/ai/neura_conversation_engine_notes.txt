@@ -1,0 +1,99 @@
+Neura Conversation Engine Integration Notes
+===========================================
+
+New files:
+
+- lib/persona/services/neura_audience_service.dart
+    Stores a global audience preference in SharedPreferences:
+      * adult (default)
+      * teen
+      * child
+
+- lib/persona/screens/audience_settings_screen.dart
+    Simple settings screen that lets you choose the main audience for this device.
+
+- lib/ai/models/neura_chat_request.dart
+    Small data class containing:
+      * systemMessage
+      * userMessage
+      * metadata (tone, difficulty, audience, etc.)
+
+- lib/ai/services/neura_conversation_engine.dart
+    Facade that glues persona, mood, audience, and module hints into a single
+    NeuraChatRequest used to call your LLM backend.
+
+
+How to wire audience settings into your app
+-------------------------------------------
+
+1) Add a route or menu item to AudienceSettingsScreen,
+   for example in your Profile/Settings page:
+
+    import 'package:your_app/persona/screens/audience_settings_screen.dart';
+
+    ListTile(
+      leading: const Icon(Icons.shield),
+      title: const Text('Neura Audience & Safety'),
+      subtitle: const Text('Adult / Teen / Child'),
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AudienceSettingsScreen()),
+        );
+      },
+    );
+
+2) When the user selects an audience, it's saved via NeuraAudienceService and
+   used as the default in NeuraConversationEngine.
+
+
+How to send any Neura message through the engine
+------------------------------------------------
+
+Instead of manually calling NeuraPromptBuilder everywhere,
+you can centralize in NeuraConversationEngine:
+
+    import 'package:your_app/ai/services/neura_conversation_engine.dart';
+    import 'package:your_app/ai/models/neura_chat_request.dart';
+
+    Future<void> onSendChat(String userText) async {
+      final engine = NeuraConversationEngine.instance;
+
+      final NeuraChatRequest request = await engine.prepare(
+        userMessage: userText,
+        module: 'journal',  // or 'care_mode', 'dream_show', 'kids_mode', etc.
+      );
+
+      // Now call your backend LLM:
+      // final response = await myLlmClient.sendChat(
+      //   system: request.systemMessage,
+      //   user: request.userMessage,
+      //   metadata: request.metadata,
+      // );
+
+      // Then show the response in your UI.
+    }
+
+
+Kids Mode and overrides
+-----------------------
+
+When you're inside Kids Mode and want to be absolutely sure the audience is child,
+you can override explicitly:
+
+    final request = await NeuraConversationEngine.instance.prepare(
+      userMessage: userText,
+      module: 'kids_mode',
+      audienceOverride: NeuraAudience.child,
+    );
+
+In all other places, you can let the engine use the stored default audience.
+
+
+Notes
+-----
+
+- This engine does not contact any external services; it's just a prep layer.
+- You are responsible for actually sending systemMessage + userMessage to your
+  backend LLM and enforcing server-side safety policies as well.
+- The engine is designed to be simple to drop into your existing Flutter app
+  without breaking your current structure.

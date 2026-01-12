@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'modules/core/app_log.dart';
 import 'modules/core/error_handler.dart';
-import 'modules/human/human_prefs_controller.dart';
 import 'src/app.dart';
 import 'src/modules/focus/focus_controller.dart';
 import 'src/shell/shell_prefs.dart';
@@ -17,7 +16,6 @@ Future<void> main() async {
   // OS-level state
   await ShellPrefsController.instance.init();
   await FocusController.instance.init();
-  await HumanPrefsController.instance.init();
 
-  runApp(const NeuroCompanionApp());
+  runApp(const NeuraApp());
 }

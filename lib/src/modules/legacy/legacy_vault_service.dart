@@ -225,7 +225,6 @@ class LegacyVaultService {
     }
 
     final zipped = ZipEncoder().encode(archive);
-    if (zipped == null) throw StateError('Zip encoding failed.');
     await out.writeAsBytes(zipped, flush: true);
     return out;
   }
@@ -421,10 +420,8 @@ class LegacyVaultService {
 
     final temp = await getTemporaryDirectory();
     final outFile = File('${temp.path}/legacy_packet_${id}_${DateTime.now().millisecondsSinceEpoch}.zip');
+
     final encoded = ZipEncoder().encode(archive);
-    if (encoded == null) {
-      throw StateError('Failed to encode zip.');
-    }
     await outFile.writeAsBytes(encoded, flush: true);
     return outFile;
   }
@@ -514,3 +511,7 @@ class LegacyVaultService {
     );
   }
 }
+
+
+
+

@@ -1,0 +1,107 @@
+Neura OS Shell Integration Notes
+================================
+
+This pack assumes you already added:
+
+- After the Storm module:
+    lib/after_storm/models/storm_event.dart
+    lib/after_storm/services/after_storm_service.dart
+    lib/after_storm/screens/after_storm_screen.dart
+
+- Care Mode 2.0:
+    lib/care/...
+
+- Dream Show 2.0:
+    lib/dreams/...
+
+- Persona tuning + persona service:
+    lib/persona/...
+
+- Weekly Life Snapshot:
+    lib/weekly/...
+
+- Mood state + MoodAdaptiveContainer:
+    lib/mood/...
+
+
+New files provided in this pack:
+
+- lib/os_shell/widgets/neura_os_room_card.dart
+    Reusable card widget for each room tile.
+
+- lib/mirror/screens/mirror_mode_screen.dart
+    Minimal Mirror Mode screen that lets the user manually pick mood.
+    It just calls MoodStateService.setMood(mood) and shows a disclaimer.
+    Later you can plug camera + emotion detection here.
+
+- lib/kids/services/kids_game_library_service.dart
+    Stub service to store a small library of kids games/activities.
+    Right now it only supports neura:// internal routes as TODOs.
+    External app launching is intentionally left unimplemented and safe.
+
+- lib/kids/screens/kids_mode_home_screen.dart
+    Simple Kids Mode screen:
+      - Parent control toggle (lock vs edit)
+      - List of games from KidsGameLibraryService
+      - Tap -> tries to "launch" (stubbed) and shows SnackBar if unsupported.
+
+- lib/os_shell/screens/os_shell_home_screen.dart
+    Main OS Shell Rooms screen that:
+      - Wraps content in MoodAdaptiveContainer (mood-based gradient)
+      - Shows WeeklyLifeSnapshotCard at the top
+      - Provides room tiles for:
+          Reflection Bay  -> AfterStormScreen
+          Care Wing       -> CareModeHomeScreen
+          Dream Theater   -> DreamShowScreen
+          Mirror Mode     -> MirrorModeScreen
+          Persona Lab     -> PersonaTuningScreen
+          Kids Corner     -> KidsModeHomeScreen
+
+
+How to hook this into your app
+
+1. Copy folders from this pack into your lib/ directory:
+    lib/os_shell/...
+    lib/mirror/...
+    lib/kids/...
+
+2. Decide where to route into OsShellHomeScreen:
+
+    Example: from your main dashboard or nav drawer:
+
+      import 'package:your_app/os_shell/screens/os_shell_home_screen.dart';
+
+      ListTile(
+        leading: const Icon(Icons.hub),
+        title: const Text('Neura OS Shell'),
+        subtitle: const Text('Rooms view: reflection, care, dreams, kids, etc.'),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const OsShellHomeScreen()),
+          );
+        },
+      );
+
+3. If you want this as your main entry/home:
+
+    In main.dart (or your root MaterialApp):
+
+      home: const OsShellHomeScreen(),
+
+    or route your existing auth flow -> OsShellHomeScreen on successful sign-in.
+
+4. Kids Mode game integration (future):
+
+    - Extend KidsGameLibraryService to load parent-configured games
+      from SharedPreferences or a secure storage.
+    - For internal games, interpret neura://kids/... to navigate to internal
+      Flutter mini-games.
+    - For platform-level game launching:
+        * Android: use MethodChannel to call startActivity on package names
+        * iOS: deep link into whitelisted apps only
+        * Desktop: Process.start with validated paths
+      Do NOT auto-scan the whole system or bypass OS security.
+
+All stubs are written to fail safely and log nothing dangerous.
+You can ship this as-is; it will compile and run while you gradually
+wire in platform-specific extras.

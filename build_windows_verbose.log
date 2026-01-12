@@ -1,0 +1,594 @@
+[ +867 ms] Artifact Instance of 'MaterialFonts' is not required, skipping update.
+[        ] Artifact Instance of 'GradleWrapper' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterSdk' is not required, skipping update.
+[        ] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FontSubsetArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'PubDependencies' is not required, skipping update.
+[        ] executing: [I:\flutter\flutter/] git -c log.showSignature=false log HEAD -n 1 --pretty=format:%ad --date=iso
+[ +707 ms] Exit code 0 from: git -c log.showSignature=false log HEAD -n 1 --pretty=format:%ad --date=iso
+[        ] 2026-01-08 10:49:17 -0800
+[  +12 ms] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterEngineStamp' is not required, skipping update.
+[        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[   +1 ms] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[  +53 ms] Artifact Instance of 'MaterialFonts' is not required, skipping update.
+[        ] Artifact Instance of 'GradleWrapper' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterEngineStamp' is not required, skipping update.
+[        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterSdk' is not required, skipping update.
+[   +1 ms] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FontSubsetArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'PubDependencies' is not required, skipping update.
+[  +12 ms] Skipping pub get: version match.
+[  +68 ms] Found plugin speech_to_text at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\speech_to_text-7.3.0\
+[   +6 ms] Found plugin speech_to_text_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\speech_to_text_windows-1.0.0+beta.8\
+[   +9 ms] Found plugin sign_in_with_apple at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\sign_in_with_apple-6.1.4\
+[   +1 ms] Found plugin sign_in_with_apple_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\sign_in_with_apple_web-2.1.1\
+[   +3 ms] Found plugin shared_preferences at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences-2.5.4\
+[   +1 ms] Found plugin shared_preferences_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_windows-2.4.1\
+[   +2 ms] Found plugin path_provider_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[   +7 ms] Found plugin shared_preferences_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_web-2.4.3\
+[   +2 ms] Found plugin shared_preferences_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_linux-2.4.1\
+[   +2 ms] Found plugin path_provider_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[   +5 ms] Found plugin shared_preferences_foundation at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_foundation-2.5.6\
+[   +2 ms] Found plugin shared_preferences_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_android-2.4.18\
+[   +2 ms] Found plugin share_plus at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\share_plus-12.0.1\
+[   +7 ms] Found plugin url_launcher_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_windows-3.1.5\
+[   +3 ms] Found plugin url_launcher_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_web-2.4.1\
+[   +1 ms] Found plugin url_launcher_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_linux-3.2.2\
+[  +12 ms] Found plugin path_provider at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider-2.1.5\
+[   +3 ms] Found plugin path_provider_foundation at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_foundation-2.5.1\
+[   +2 ms] Found plugin path_provider_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_android-2.2.22\
+[   +5 ms] Found plugin rive_common at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\rive_common-0.4.15\
+[   +4 ms] Found plugin permission_handler at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler-12.0.1\
+[   +1 ms] Found plugin permission_handler_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_windows-0.2.1\
+[   +3 ms] Found plugin permission_handler_html at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_html-0.1.3+5\
+[   +2 ms] Found plugin permission_handler_apple at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_apple-9.4.7\
+[   +1 ms] Found plugin permission_handler_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_android-13.0.1\
+[  +14 ms] Found plugin local_auth at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\local_auth-2.3.0\
+[   +1 ms] Found plugin local_auth_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\local_auth_windows-1.0.11\
+[   +3 ms] Found plugin local_auth_darwin at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\local_auth_darwin-1.6.1\
+[   +2 ms] Found plugin local_auth_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\local_auth_android-1.0.56\
+[   +1 ms] Found plugin flutter_plugin_android_lifecycle at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_plugin_android_lifecycle-2.0.33\
+[   +1 ms] Found plugin in_app_purchase at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\in_app_purchase-3.2.3\
+[   +1 ms] Found plugin in_app_purchase_storekit at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\in_app_purchase_storekit-0.4.7\
+[   +2 ms] Found plugin in_app_purchase_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\in_app_purchase_android-0.4.0+8\
+[   +1 ms] Found plugin image_picker at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker-1.2.1\
+[   +1 ms] Found plugin image_picker_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_windows-0.2.2\
+[   +2 ms] Found plugin file_selector_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_windows-0.9.3+5\
+[   +2 ms] Found plugin image_picker_macos at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_macos-0.2.2+1\
+[   +1 ms] Found plugin file_selector_macos at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_macos-0.9.5\
+[   +1 ms] Found plugin image_picker_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_linux-0.2.2\
+[   +1 ms] Found plugin file_selector_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_linux-0.9.4\
+[   +1 ms] Found plugin image_picker_ios at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_ios-0.8.13+3\
+[   +1 ms] Found plugin image_picker_for_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_for_web-3.1.1\
+[   +1 ms] Found plugin image_picker_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_android-0.8.13+10\
+[   +3 ms] Found plugin google_sign_in at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in-6.3.0\
+[   +1 ms] Found plugin google_sign_in_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_web-0.12.4+4\
+[   +3 ms] Found plugin google_sign_in_ios at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_ios-5.9.0\
+[   +1 ms] Found plugin google_sign_in_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_android-6.2.1\
+[   +1 ms] Found plugin flutter_sound at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_sound-9.30.0\
+[   +3 ms] Found plugin flutter_sound_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_sound_web-9.30.0\
+[   +2 ms] Found plugin flutter_secure_storage at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_secure_storage-9.2.4\
+[   +1 ms] Found plugin flutter_secure_storage_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_secure_storage_windows-3.1.2\
+[   +2 ms] Found plugin flutter_secure_storage_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_secure_storage_web-1.2.1\
+[   +2 ms] Found plugin flutter_secure_storage_macos at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_secure_storage_macos-3.1.3\
+[   +1 ms] Found plugin flutter_secure_storage_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_secure_storage_linux-1.2.3\
+[   +4 ms] Found plugin firebase_storage at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_storage-12.4.10\
+[   +1 ms] Found plugin firebase_storage_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_storage_web-3.10.17\
+[   +2 ms] Found plugin firebase_core at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core-3.15.2\
+[   +1 ms] Found plugin firebase_core_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core_web-2.24.1\
+[   +3 ms] Found plugin firebase_auth at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth-5.7.0\
+[   +1 ms] Found plugin firebase_auth_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth_web-5.15.3\
+[   +2 ms] Found plugin file_picker at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\file_picker-10.3.8\
+[   +5 ms] Found plugin connectivity_plus at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\connectivity_plus-6.1.5\
+[   +3 ms] Found plugin cloud_firestore at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore-5.6.12\
+[   +1 ms] Found plugin cloud_firestore_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore_web-4.4.12\
+[   +3 ms] Found plugin audioplayers at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers-6.5.1\
+[   +1 ms] Found plugin audioplayers_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_windows-4.2.1\
+[   +2 ms] Found plugin audioplayers_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_web-5.1.1\
+[   +1 ms] Found plugin audioplayers_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_linux-4.2.1\
+[   +1 ms] Found plugin audioplayers_darwin at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_darwin-6.3.0\
+[   +1 ms] Found plugin audioplayers_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_android-5.2.1\
+[  +58 ms] Found plugin speech_to_text at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\speech_to_text-7.3.0\
+[   +2 ms] Found plugin speech_to_text_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\speech_to_text_windows-1.0.0+beta.8\
+[   +4 ms] Found plugin sign_in_with_apple at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\sign_in_with_apple-6.1.4\
+[   +1 ms] Found plugin sign_in_with_apple_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\sign_in_with_apple_web-2.1.1\
+[   +1 ms] Found plugin shared_preferences at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences-2.5.4\
+[   +1 ms] Found plugin shared_preferences_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_windows-2.4.1\
+[   +1 ms] Found plugin path_provider_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[   +4 ms] Found plugin shared_preferences_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_web-2.4.3\
+[   +1 ms] Found plugin shared_preferences_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_linux-2.4.1\
+[   +1 ms] Found plugin path_provider_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[   +2 ms] Found plugin shared_preferences_foundation at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_foundation-2.5.6\
+[   +1 ms] Found plugin shared_preferences_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_android-2.4.18\
+[   +1 ms] Found plugin share_plus at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\share_plus-12.0.1\
+[   +2 ms] Found plugin url_launcher_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_windows-3.1.5\
+[   +3 ms] Found plugin url_launcher_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_web-2.4.1\
+[   +1 ms] Found plugin url_launcher_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_linux-3.2.2\
+[   +6 ms] Found plugin path_provider at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider-2.1.5\
+[   +1 ms] Found plugin path_provider_foundation at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_foundation-2.5.1\
+[   +1 ms] Found plugin path_provider_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_android-2.2.22\
+[   +3 ms] Found plugin rive_common at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\rive_common-0.4.15\
+[   +3 ms] Found plugin permission_handler at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler-12.0.1\
+[   +1 ms] Found plugin permission_handler_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_windows-0.2.1\
+[   +2 ms] Found plugin permission_handler_html at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_html-0.1.3+5\
+[   +1 ms] Found plugin permission_handler_apple at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_apple-9.4.7\
+[   +1 ms] Found plugin permission_handler_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_android-13.0.1\
+[  +12 ms] Found plugin local_auth at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\local_auth-2.3.0\
+[   +1 ms] Found plugin local_auth_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\local_auth_windows-1.0.11\
+[   +2 ms] Found plugin local_auth_darwin at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\local_auth_darwin-1.6.1\
+[   +2 ms] Found plugin local_auth_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\local_auth_android-1.0.56\
+[   +1 ms] Found plugin flutter_plugin_android_lifecycle at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_plugin_android_lifecycle-2.0.33\
+[   +1 ms] Found plugin in_app_purchase at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\in_app_purchase-3.2.3\
+[   +1 ms] Found plugin in_app_purchase_storekit at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\in_app_purchase_storekit-0.4.7\
+[   +2 ms] Found plugin in_app_purchase_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\in_app_purchase_android-0.4.0+8\
+[   +1 ms] Found plugin image_picker at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker-1.2.1\
+[   +1 ms] Found plugin image_picker_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_windows-0.2.2\
+[   +2 ms] Found plugin file_selector_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_windows-0.9.3+5\
+[   +2 ms] Found plugin image_picker_macos at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_macos-0.2.2+1\
+[   +1 ms] Found plugin file_selector_macos at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_macos-0.9.5\
+[   +1 ms] Found plugin image_picker_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_linux-0.2.2\
+[   +1 ms] Found plugin file_selector_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_linux-0.9.4\
+[        ] Found plugin image_picker_ios at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_ios-0.8.13+3\
+[   +1 ms] Found plugin image_picker_for_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_for_web-3.1.1\
+[   +1 ms] Found plugin image_picker_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_android-0.8.13+10\
+[   +3 ms] Found plugin google_sign_in at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in-6.3.0\
+[   +1 ms] Found plugin google_sign_in_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_web-0.12.4+4\
+[   +3 ms] Found plugin google_sign_in_ios at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_ios-5.9.0\
+[   +1 ms] Found plugin google_sign_in_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_android-6.2.1\
+[   +1 ms] Found plugin flutter_sound at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_sound-9.30.0\
+[   +2 ms] Found plugin flutter_sound_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_sound_web-9.30.0\
+[   +1 ms] Found plugin flutter_secure_storage at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_secure_storage-9.2.4\
+[   +1 ms] Found plugin flutter_secure_storage_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_secure_storage_windows-3.1.2\
+[   +2 ms] Found plugin flutter_secure_storage_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_secure_storage_web-1.2.1\
+[   +2 ms] Found plugin flutter_secure_storage_macos at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_secure_storage_macos-3.1.3\
+[   +1 ms] Found plugin flutter_secure_storage_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_secure_storage_linux-1.2.3\
+[   +3 ms] Found plugin firebase_storage at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_storage-12.4.10\
+[   +1 ms] Found plugin firebase_storage_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_storage_web-3.10.17\
+[   +2 ms] Found plugin firebase_core at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core-3.15.2\
+[   +1 ms] Found plugin firebase_core_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core_web-2.24.1\
+[   +2 ms] Found plugin firebase_auth at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth-5.7.0\
+[   +1 ms] Found plugin firebase_auth_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth_web-5.15.3\
+[   +1 ms] Found plugin file_picker at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\file_picker-10.3.8\
+[   +3 ms] Found plugin connectivity_plus at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\connectivity_plus-6.1.5\
+[   +2 ms] Found plugin cloud_firestore at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore-5.6.12\
+[   +1 ms] Found plugin cloud_firestore_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore_web-4.4.12\
+[   +1 ms] Found plugin audioplayers at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers-6.5.1\
+[   +1 ms] Found plugin audioplayers_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_windows-4.2.1\
+[   +2 ms] Found plugin audioplayers_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_web-5.1.1\
+[        ] Found plugin audioplayers_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_linux-4.2.1\
+[   +1 ms] Found plugin audioplayers_darwin at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_darwin-6.3.0\
+[        ] Found plugin audioplayers_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_android-5.2.1\
+[  +10 ms] Skipping generating web_plugin_registrant.dart because it is up-to-date.
+[  +33 ms] Found plugin speech_to_text at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\speech_to_text-7.3.0\
+[   +2 ms] Found plugin speech_to_text_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\speech_to_text_windows-1.0.0+beta.8\
+[   +5 ms] Found plugin sign_in_with_apple at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\sign_in_with_apple-6.1.4\
+[   +1 ms] Found plugin sign_in_with_apple_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\sign_in_with_apple_web-2.1.1\
+[   +1 ms] Found plugin shared_preferences at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences-2.5.4\
+[   +1 ms] Found plugin shared_preferences_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_windows-2.4.1\
+[   +2 ms] Found plugin path_provider_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[   +3 ms] Found plugin shared_preferences_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_web-2.4.3\
+[        ] Found plugin shared_preferences_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_linux-2.4.1\
+[        ] Found plugin path_provider_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[   +1 ms] Found plugin shared_preferences_foundation at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_foundation-2.5.6\
+[        ] Found plugin shared_preferences_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_android-2.4.18\
+[   +1 ms] Found plugin share_plus at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\share_plus-12.0.1\
+[   +2 ms] Found plugin url_launcher_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_windows-3.1.5\
+[   +2 ms] Found plugin url_launcher_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_web-2.4.1\
+[   +1 ms] Found plugin url_launcher_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_linux-3.2.2\
+[   +5 ms] Found plugin path_provider at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider-2.1.5\
+[   +1 ms] Found plugin path_provider_foundation at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_foundation-2.5.1\
+[   +1 ms] Found plugin path_provider_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_android-2.2.22\
+[   +4 ms] Found plugin rive_common at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\rive_common-0.4.15\
+[   +4 ms] Found plugin permission_handler at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler-12.0.1\
+[   +1 ms] Found plugin permission_handler_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_windows-0.2.1\
+[   +1 ms] Found plugin permission_handler_html at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_html-0.1.3+5\
+[   +1 ms] Found plugin permission_handler_apple at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_apple-9.4.7\
+[   +1 ms] Found plugin permission_handler_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_android-13.0.1\
+[  +11 ms] Found plugin local_auth at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\local_auth-2.3.0\
+[   +1 ms] Found plugin local_auth_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\local_auth_windows-1.0.11\
+[   +1 ms] Found plugin local_auth_darwin at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\local_auth_darwin-1.6.1\
+[   +1 ms] Found plugin local_auth_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\local_auth_android-1.0.56\
+[   +1 ms] Found plugin flutter_plugin_android_lifecycle at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_plugin_android_lifecycle-2.0.33\
+[   +1 ms] Found plugin in_app_purchase at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\in_app_purchase-3.2.3\
+[   +1 ms] Found plugin in_app_purchase_storekit at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\in_app_purchase_storekit-0.4.7\
+[   +1 ms] Found plugin in_app_purchase_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\in_app_purchase_android-0.4.0+8\
+[   +1 ms] Found plugin image_picker at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker-1.2.1\
+[   +1 ms] Found plugin image_picker_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_windows-0.2.2\
+[   +2 ms] Found plugin file_selector_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_windows-0.9.3+5\
+[   +2 ms] Found plugin image_picker_macos at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_macos-0.2.2+1\
+[   +1 ms] Found plugin file_selector_macos at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_macos-0.9.5\
+[   +1 ms] Found plugin image_picker_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_linux-0.2.2\
+[   +1 ms] Found plugin file_selector_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_linux-0.9.4\
+[        ] Found plugin image_picker_ios at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_ios-0.8.13+3\
+[   +1 ms] Found plugin image_picker_for_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_for_web-3.1.1\
+[   +1 ms] Found plugin image_picker_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_android-0.8.13+10\
+[   +3 ms] Found plugin google_sign_in at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in-6.3.0\
+[   +1 ms] Found plugin google_sign_in_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_web-0.12.4+4\
+[   +3 ms] Found plugin google_sign_in_ios at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_ios-5.9.0\
+[   +1 ms] Found plugin google_sign_in_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_android-6.2.1\
+[   +1 ms] Found plugin flutter_sound at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_sound-9.30.0\
+[   +3 ms] Found plugin flutter_sound_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_sound_web-9.30.0\
+[   +2 ms] Found plugin flutter_secure_storage at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_secure_storage-9.2.4\
+[   +1 ms] Found plugin flutter_secure_storage_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_secure_storage_windows-3.1.2\
+[   +2 ms] Found plugin flutter_secure_storage_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_secure_storage_web-1.2.1\
+[   +2 ms] Found plugin flutter_secure_storage_macos at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_secure_storage_macos-3.1.3\
+[   +1 ms] Found plugin flutter_secure_storage_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_secure_storage_linux-1.2.3\
+[   +3 ms] Found plugin firebase_storage at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_storage-12.4.10\
+[   +1 ms] Found plugin firebase_storage_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_storage_web-3.10.17\
+[   +2 ms] Found plugin firebase_core at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core-3.15.2\
+[   +1 ms] Found plugin firebase_core_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core_web-2.24.1\
+[   +3 ms] Found plugin firebase_auth at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth-5.7.0\
+[   +1 ms] Found plugin firebase_auth_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth_web-5.15.3\
+[   +2 ms] Found plugin file_picker at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\file_picker-10.3.8\
+[   +4 ms] Found plugin connectivity_plus at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\connectivity_plus-6.1.5\
+[   +3 ms] Found plugin cloud_firestore at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore-5.6.12\
+[   +1 ms] Found plugin cloud_firestore_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore_web-4.4.12\
+[   +2 ms] Found plugin audioplayers at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers-6.5.1\
+[   +1 ms] Found plugin audioplayers_windows at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_windows-4.2.1\
+[   +1 ms] Found plugin audioplayers_web at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_web-5.1.1\
+[   +1 ms] Found plugin audioplayers_linux at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_linux-4.2.1\
+[   +1 ms] Found plugin audioplayers_darwin at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_darwin-6.3.0\
+[   +1 ms] Found plugin audioplayers_android at C:\Users\KD\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_android-5.2.1\
+[  +14 ms] Generating C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\android\app\src\main\java\io\flutter\plugins\GeneratedPluginRegistrant.java
+[   +1 ms] Skipping generating GeneratedPluginRegistrant.java because it is up-to-date.
+[   +5 ms] Skipping generating generated_plugin_registrant.h because it is up-to-date.
+[   +1 ms] Skipping generating generated_plugin_registrant.cc because it is up-to-date.
+[   +1 ms] Skipping generating generated_plugins.cmake because it is up-to-date.
+[   +2 ms] Skipping generating generated_plugin_registrant.h because it is up-to-date.
+[   +1 ms] Skipping generating generated_plugin_registrant.cc because it is up-to-date.
+[   +1 ms] Skipping generating generated_plugins.cmake because it is up-to-date.
+[   +2 ms] Skipping generating GeneratedPluginRegistrant.h because it is up-to-date.
+[   +1 ms] Skipping generating GeneratedPluginRegistrant.m because it is up-to-date.
+[   +1 ms] Skipping generating GeneratedPluginRegistrant.swift because it is up-to-date.
+[  +80 ms] executing: C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe -format json -products * -utf8 -latest -version 16 -requires Microsoft.VisualStudio.Workload.NativeDesktop Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.VC.CMake.Project
+[+1050 ms] Exit code 0 from: C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe -format json -products * -utf8 -latest -version 16 -requires Microsoft.VisualStudio.Workload.NativeDesktop Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.VC.CMake.Project
+[        ] [
+             {
+               "instanceId": "ac8ec151",
+               "installDate": "2025-05-01T20:02:31Z",
+               "installationName": "VisualStudio/17.14.20+36705.20",
+               "installationPath": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community",
+               "installationVersion": "17.14.36705.20",
+               "productId": "Microsoft.VisualStudio.Product.Community",
+               "productPath": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\devenv.exe",
+               "state": 4294967295,
+               "isComplete": true,
+               "isLaunchable": true,
+               "isPrerelease": false,
+               "isRebootRequired": false,
+               "displayName": "Visual Studio Community 2022",
+               "description": "Powerful IDE, free for students, open-source contributors, and individuals",
+               "channelId": "VisualStudio.17.Release",
+               "channelUri": "https://aka.ms/vs/17/release/channel",
+               "enginePath": "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\resources\\app\\ServiceHub\\Services\\Microsoft.VisualStudio.Setup.Service",
+               "installedChannelId": "VisualStudio.17.Release",
+               "installedChannelUri": "https://aka.ms/vs/17/release/channel",
+               "releaseNotes": "https://docs.microsoft.com/en-us/visualstudio/releases/2022/release-notes-v17.14#17.14.20",
+               "resolvedInstallationPath": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community",
+               "thirdPartyNotices": "https://go.microsoft.com/fwlink/?LinkId=661288",
+               "updateDate": "2025-12-12T14:04:11.4066576Z",
+               "catalog": {
+                 "buildBranch": "d17.14",
+                 "buildVersion": "17.14.36705.20",
+                 "id": "VisualStudio/17.14.20+36705.20",
+                 "localBuild": "build-lab",
+                 "manifestName": "VisualStudio",
+                 "manifestType": "installer",
+                 "productDisplayVersion": "17.14.20",
+                 "productLine": "Dev17",
+                 "productLineVersion": "2022",
+                 "productMilestone": "RTW",
+                 "productMilestoneIsPreRelease": "False",
+                 "productName": "Visual Studio",
+                 "productPatchVersion": "20",
+                 "productPreReleaseMilestoneSuffix": "1.0",
+                 "productSemanticVersion": "17.14.20+36705.20",
+                 "requiredEngineVersion": "3.14.2086.54749"
+               },
+               "properties": {
+                 "campaignId": "2030:63830adadbfd425a86b3f95f371de909",
+                 "channelManifestId": "VisualStudio.17.Release/17.14.20+36705.20",
+                 "includeRecommended": "1",
+                 "nickname": "",
+                 "setupEngineFilePath": "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\setup.exe"
+               }
+             }
+           ]
+[   +3 ms] Building Windows application...
+[   +3 ms] executing: C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe -S C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\windows -B C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64 -G Visual Studio 17 2022 -A x64 -DFLUTTER_TARGET_PLATFORM=windows-x64
+[+4785 ms] Feeds used:
+[        ]   C:\Users\KD\.nuget\packages\
+[        ]   https://api.nuget.org/v3/index.json
+[        ]   C:\Program Files (x86)\Microsoft SDKs\NuGetPackages\
+[ +154 ms] Package "Microsoft.Windows.ImplementationLibrary.1.0.210803.1" is already installed.
+[  +42 ms] -- Using cached Firebase SDK zip file
+[        ] -- Using cached extracted Firebase SDK
+[   +8 ms] CMake Deprecation Warning at C:/Users/KD/Downloads/Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)/neura_os/build/windows/x64/extracted/firebase_cpp_sdk_windows/CMakeLists.txt:17 (cmake_minimum_required):
+[   +1 ms]   Compatibility with CMake < 3.10 will be removed from a future version of
+[        ]   CMake.
+[        ]   Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+[        ]   to tell CMake that the project requires at least <min> but has been updated
+[        ]   to work with policies introduced by <max> or earlier.
+[+2736 ms] Feeds used:
+[        ]   C:\Users\KD\.nuget\packages\
+[        ]   https://api.nuget.org/v3/index.json
+[        ]   C:\Program Files (x86)\Microsoft SDKs\NuGetPackages\
+[ +273 ms] Package "Microsoft.Windows.ImplementationLibrary.1.0.220201.1" is already installed.
+[+4628 ms] Feeds used:
+[        ]   C:\Users\KD\.nuget\packages\
+[        ]   https://api.nuget.org/v3/index.json
+[        ]   C:\Program Files (x86)\Microsoft SDKs\NuGetPackages\
+[ +217 ms] Package "Microsoft.Windows.CppWinRT.2.0.220418.1" is already installed.
+[+8366 ms] Feeds used:
+[        ]   C:\Users\KD\.nuget\packages\
+[        ]   https://api.nuget.org/v3/index.json
+[        ]   C:\Program Files (x86)\Microsoft SDKs\NuGetPackages\
+[ +197 ms] Package "Microsoft.Windows.CppWinRT.2.0.210806.1" is already installed.
+[+2345 ms] -- Configuring done (21.8s)
+[+1032 ms] -- Generating done (1.0s)
+[   +4 ms] -- Build files have been written to: C:/Users/KD/Downloads/Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)/neura_os/build/windows/x64
+[  +21 ms] executing: C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64 --config Release --target INSTALL --verbose
+[ +995 ms] Change Dir: 'C:/Users/KD/Downloads/Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)/neura_os/build/windows/x64'
+[        ] Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/amd64/MSBuild.exe" INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
+[+5598 ms] MSBuild version 17.14.23+b0019275e for .NET Framework
+[ +571 ms] Build started 1/11/2026 11:12:54 AM.
+[ +544 ms] Project "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\INSTALL.vcxproj" on node 1 (default targets).
+[        ] Project "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\INSTALL.vcxproj" (1) is building "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\ZERO_CHECK.vcxproj" (2) on node 1 (default targets).
+[        ] PrepareForBuild:
+[        ]   Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+[   +5 ms] InitializeBuildStatus:
+[        ]   Creating "x64\Release\ZERO_CHECK\ZERO_CHECK.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+[        ]   Touching "x64\Release\ZERO_CHECK\ZERO_CHECK.tlog\unsuccessfulbuild".
+[  +32 ms] CustomBuild:
+[        ]   All outputs are up-to-date.
+[ +129 ms] FinalizeBuildStatus:
+[        ]   Deleting file "x64\Release\ZERO_CHECK\ZERO_CHECK.tlog\unsuccessfulbuild".
+[        ]   Touching "x64\Release\ZERO_CHECK\ZERO_CHECK.tlog\ZERO_CHECK.lastbuildstate".
+[   +2 ms] Done Building Project "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\ZERO_CHECK.vcxproj" (default targets).
+[ +148 ms] Project "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\INSTALL.vcxproj" (1) is building "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\ALL_BUILD.vcxproj" (3) on node 1 (default targets).
+[        ] Project "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\ALL_BUILD.vcxproj" (3) is building "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\plugins\audioplayers_windows\audioplayers_windows_plugin.vcxproj" (4) on node 1 (default targets).
+[        ] Project "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\plugins\audioplayers_windows\audioplayers_windows_plugin.vcxproj" (4) is building "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\flutter\flutter_assemble.vcxproj" (5) on node 1 (default targets).
+[        ] PrepareForBuild:
+[        ]   Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+[   +1 ms] InitializeBuildStatus:
+[        ]   Creating "x64\Release\flutter_assemble\flutter_assemble.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+[        ]   Touching "x64\Release\flutter_assemble\flutter_assemble.tlog\unsuccessfulbuild".
+[   +8 ms] CustomBuild:
+[        ]   "The build of 'C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\CMakeFiles\590d9e26325b14d529e879f6158d8e14\flutter_assemble.rule' depends on 'C:\USERS\KD\DOWNLOADS\NEURA_OS_COMPLETE_MERGED_V2_OPTION7_LIFETIMELINE_DATAHUB_SAFEMODE (1)\NEURA_OS\WINDOWS\FLUTTER\EPHEMERAL\FLUTTER_WINDOWS.DLL' which is produced by the build of 'C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\CMakeFiles\249224a0de6d1b013be7a991b5c76b85\flutter_windows.dll.rule'. The items cannot be built in parallel."
+[ +407 ms]   Generating C:/Users/KD/Downloads/Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)/neura_os/windows/flutter/ephemeral/flutter_windows.dll, C:/Users/KD/Downloads/Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)/neura_os/windows/flutter/ephemeral/flutter_export.h, C:/Users/KD/Downloads/Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)/neura_os/windows/flutter/ephemeral/flutter_windows.h, C:/Users/KD/Downloads/Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)/neura_os/windows/flutter/ephemeral/flutter_messenger.h, C:/Users/KD/Downloads/Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)/neura_os/windows/flutter/ephemeral/flutter_plugin_registrar.h, C:/Users/KD/Downloads/Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)/neura_os/windows/flutter/ephemeral/flutter_texture_registrar.h, C:/Users/KD/Downloads/Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)/neura_os/windows/flutter/ephemeral/cpp_client_wrapper/core_implementations.cc, C:/Users/KD/Downloads/Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)/neura_os/windows/flutter/ephemeral/cpp_client_wrapper/standard_codec.cc, C:/Users/KD/Downloads/Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)/neura_os/windows/flutter/ephemeral/cpp_client_wrapper/plugin_registrar.cc, C:/Users/KD/Downloads/Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)/neura_os/windows/flutter/ephemeral/cpp_client_wrapper/flutter_engine.cc, C:/Users/KD/Downloads/Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)/neura_os/windows/flutter/ephemeral/cpp_client_wrapper/flutter_view_controller.cc, _phony_
+[+12160 ms]   [ +319 ms] Artifact Instance of 'MaterialFonts' is not required, skipping update.
+[        ]   [   +1 ms] Artifact Instance of 'GradleWrapper' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'FlutterSdk' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'FontSubsetArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'PubDependencies' is not required, skipping update.
+[   +4 ms]   [  +11 ms] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'FlutterEngineStamp' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[   +2 ms]   [   +2 ms] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[  +55 ms]   [  +55 ms] Artifact Instance of 'MaterialFonts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'GradleWrapper' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'FlutterEngineStamp' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'FlutterSdk' is not required, skipping update.
+[        ]   [   +1 ms] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'FontSubsetArtifacts' is not required, skipping update.
+[        ]   [        ] Artifact Instance of 'PubDependencies' is not required, skipping update.
+[  +29 ms]   [  +29 ms] Initializing file store
+[  +20 ms]   [  +20 ms] Done initializing file store
+[  +94 ms]   [  +94 ms] Skipping target: dart_build
+[   +2 ms]   [   +3 ms] Skipping target: gen_dart_plugin_registrant
+[+1950 ms]   [+1950 ms] Skipping target: unpack_windows
+[        ]   [   +1 ms] Skipping target: install_code_assets
+[        ]   [        ] Skipping target: gen_localizations
+[+1520 ms]   [+1519 ms] Skipping target: kernel_snapshot_program
+[  +34 ms]   [  +34 ms] Skipping target: aot_elf_release
+[  +28 ms]   [  +28 ms] Skipping target: windows_aot_bundle
+[  +31 ms]   [  +31 ms] invalidated build due to missing files: C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\DOES_NOT_EXIST_RERUN_FOR_WILDCARD879851731
+[ +666 ms]   [ +666 ms] release_bundle_windows-x64_assets: Starting due to {InvalidatedReasonKind.inputMissing: The following inputs were missing: C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\DOES_NOT_EXIST_RERUN_FOR_WILDCARD879851731}
+[ +356 ms]   [ +356 ms] Manifest contained wildcard assets. Inserting missing file into build graph to force rerun. for more information see #56466.
+[  +27 ms]   [  +26 ms] shaderc command: [I:\flutter\flutter\bin\cache\artifacts\engine\windows-x64\impellerc.exe, --sksl, --runtime-stage-gles, --runtime-stage-gles3, --runtime-stage-vulkan, --iplr, --sl=C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\flutter_assets\shaders/ink_sparkle.frag, --spirv=C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\flutter_assets\shaders/ink_sparkle.frag.spirv, --input=I:\flutter\flutter\packages\flutter\lib\src\material\shaders\ink_sparkle.frag, --input-type=frag, --include=I:\flutter\flutter\packages\flutter\lib\src\material\shaders, --include=I:\flutter\flutter\bin\cache\artifacts\engine\windows-x64\shader_lib]
+[   +2 ms]   [   +2 ms] shaderc command: [I:\flutter\flutter\bin\cache\artifacts\engine\windows-x64\impellerc.exe, --sksl, --runtime-stage-gles, --runtime-stage-gles3, --runtime-stage-vulkan, --iplr, --sl=C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\flutter_assets\shaders/stretch_effect.frag, --spirv=C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\flutter_assets\shaders/stretch_effect.frag.spirv, --input=I:\flutter\flutter\packages\flutter\lib\src\material\shaders\stretch_effect.frag, --input-type=frag, --include=I:\flutter\flutter\packages\flutter\lib\src\material\shaders, --include=I:\flutter\flutter\bin\cache\artifacts\engine\windows-x64\shader_lib]
+[+1807 ms]   [+1807 ms] Persisting file store
+[  +15 ms]   [  +16 ms] Done persisting file store
+[  +22 ms]   [  +21 ms] Target release_bundle_windows-x64_assets failed: FileSystemException: Cannot copy file to 'C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\flutter_assets\assets/audio/neura/to_tigger_vxxx2.wav', path = 'C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\assets\audio\neura\to_tigger_vxxx2.wav' (OS Error: There is not enough space on the disk, errno = 112)
+[        ]              #0      _checkForErrorResponse (dart:io/common.dart:58:9)
+[        ]              #1      _File.copy.<anonymous closure> (dart:io/file_impl.dart:410:7)
+[        ]              #2      _rootRunUnary (dart:async/zone.dart:1538:47)
+[        ]              #3      _CustomZone.runUnary (dart:async/zone.dart:1429:19)
+[        ]              <asynchronous suspension>
+[        ]              #4      ForwardingFile.copy (package:file/src/forwarding/forwarding_file.dart:29:51)
+[        ]              <asynchronous suspension>
+[        ]              #5      ForwardingFile.copy (package:file/src/forwarding/forwarding_file.dart:29:51)
+[        ]              <asynchronous suspension>
+[        ]              #6      copyAssets.<anonymous closure> (package:flutter_tools/src/build_system/targets/assets.dart:164:13)
+[        ]              <asynchronous suspension>
+[        ]              #7      Future.wait.<anonymous closure> (dart:async/future.dart:546:21)
+[        ]              <asynchronous suspension>
+[        ]              #8      copyAssets (package:flutter_tools/src/build_system/targets/assets.dart:111:3)
+[        ]              <asynchronous suspension>
+[        ]              #9      BundleWindowsAssets.build (package:flutter_tools/src/build_system/targets/windows.dart:147:29)
+[        ]              <asynchronous suspension>
+[        ]   [   +1 ms] "flutter assemble" took 6,685ms.
+[        ]              #10     _BuildInstance._invokeInternal (package:flutter_tools/src/build_system/build_system.dart:895:9)
+[        ]              <asynchronous suspension>
+[        ]              #11     FlutterBuildSystem.build (package:flutter_tools/src/build_system/build_system.dart:653:16)
+[        ]              <asynchronous suspension>
+[        ]              #12     AssembleCommand.runCommand (package:flutter_tools/src/commands/assemble.dart:361:32)
+[        ]              <asynchronous suspension>
+[        ]              #13     FlutterCommand.run.<anonymous closure> (package:flutter_tools/src/runner/flutter_command.dart:1559:27)
+[        ]              <asynchronous suspension>
+[        ]              #14     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+[        ]              <asynchronous suspension>
+[        ]              #15     CommandRunner.runCommand (package:args/command_runner.dart:212:13)
+[        ]              <asynchronous suspension>
+[        ]              #16     FlutterCommandRunner.runCommand.<anonymous closure> (package:flutter_tools/src/runner/flutter_command_runner.dart:487:9)
+[        ]              <asynchronous suspension>
+[        ]              #17     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+[        ]              <asynchronous suspension>
+[        ]              #18     FlutterCommandRunner.runCommand (package:flutter_tools/src/runner/flutter_command_runner.dart:422:5)
+[        ]              <asynchronous suspension>
+[        ]              #19     run.<anonymous closure>.<anonymous closure> (package:flutter_tools/runner.dart:104:11)
+[        ]              <asynchronous suspension>
+[        ]              #20     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+[        ]              <asynchronous suspension>
+[        ]              #21     main (package:flutter_tools/executable.dart:103:3)
+[        ]              <asynchronous suspension>
+[ +202 ms]   [ +206 ms] 
+[        ]              #0      throwToolExit (package:flutter_tools/src/base/common.dart:34:3)
+[        ]              #1      AssembleCommand.runCommand (package:flutter_tools/src/commands/assemble.dart:379:7)
+[        ]              <asynchronous suspension>
+[        ]              #2      FlutterCommand.run.<anonymous closure> (package:flutter_tools/src/runner/flutter_command.dart:1559:27)
+[        ]              <asynchronous suspension>
+[        ]              #3      AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+[        ]              <asynchronous suspension>
+[        ]              #4      CommandRunner.runCommand (package:args/command_runner.dart:212:13)
+[        ]              <asynchronous suspension>
+[        ]              #5      FlutterCommandRunner.runCommand.<anonymous closure> (package:flutter_tools/src/runner/flutter_command_runner.dart:487:9)
+[        ]              <asynchronous suspension>
+[        ]              #6      AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+[        ]              <asynchronous suspension>
+[        ]              #7      FlutterCommandRunner.runCommand (package:flutter_tools/src/runner/flutter_command_runner.dart:422:5)
+[        ]              <asynchronous suspension>
+[        ]              #8      run.<anonymous closure>.<anonymous closure> (package:flutter_tools/runner.dart:104:11)
+[        ]              <asynchronous suspension>
+[        ]              #9      AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+[        ]              <asynchronous suspension>
+[        ]              #10     main (package:flutter_tools/executable.dart:103:3)
+[        ]              <asynchronous suspension>
+[        ]   [        ] Running 1 shutdown hook
+[        ]   [   +1 ms] Shutdown hooks complete
+[ +188 ms]   [ +189 ms] exiting with code 1
+[  +74 ms] C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Microsoft\VC\v170\Microsoft.CppCommon.targets(254,5): error MSB8066: Custom build for 'C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\CMakeFiles\249224a0de6d1b013be7a991b5c76b85\flutter_windows.dll.rule;C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\CMakeFiles\590d9e26325b14d529e879f6158d8e14\flutter_assemble.rule' exited with code 1. [C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\flutter\flutter_assemble.vcxproj]
+[   +4 ms] Done Building Project "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\flutter\flutter_assemble.vcxproj" (default targets) -- FAILED.
+[        ] Done Building Project "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\plugins\audioplayers_windows\audioplayers_windows_plugin.vcxproj" (default targets) -- FAILED.
+[ +725 ms] Done Building Project "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\ALL_BUILD.vcxproj" (default targets) -- FAILED.
+[        ] Done Building Project "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\INSTALL.vcxproj" (default targets) -- FAILED.
+[  +83 ms] Build FAILED.
+[        ] "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\INSTALL.vcxproj" (default target) (1) ->
+[        ] "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\ALL_BUILD.vcxproj" (default target) (3) ->
+[        ] "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\plugins\audioplayers_windows\audioplayers_windows_plugin.vcxproj" (default target) (4) ->
+[        ] "C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\flutter\flutter_assemble.vcxproj" (default target) (5) ->
+[        ] (CustomBuild target) -> 
+[        ]   C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Microsoft\VC\v170\Microsoft.CppCommon.targets(254,5): error MSB8066: Custom build for 'C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\CMakeFiles\249224a0de6d1b013be7a991b5c76b85\flutter_windows.dll.rule;C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\CMakeFiles\590d9e26325b14d529e879f6158d8e14\flutter_assemble.rule' exited with code 1. [C:\Users\KD\Downloads\Neura_OS_Complete_Merged_v2_Option7_LifeTimeline_DataHub_SafeMode (1)\neura_os\build\windows\x64\flutter\flutter_assemble.vcxproj]
+[        ]     0 Warning(s)
+[        ]     1 Error(s)
+[        ] Time Elapsed 00:00:21.41
+[  +26 ms] Building Windows application... (completed in 53.4s)
+[        ] "flutter windows" took 55,347ms.
+[ +348 ms] Build process failed.
+[        ] 
+           #0      throwToolExit (package:flutter_tools/src/base/common.dart:34:3)
+           #1      _runBuild (package:flutter_tools/src/windows/build_windows.dart:262:5)
+           <asynchronous suspension>
+           #2      buildWindows (package:flutter_tools/src/windows/build_windows.dart:118:5)
+           <asynchronous suspension>
+           #3      BuildWindowsCommand.runCommand (package:flutter_tools/src/commands/build_windows.dart:72:5)
+           <asynchronous suspension>
+           #4      FlutterCommand.run.<anonymous closure> (package:flutter_tools/src/runner/flutter_command.dart:1559:27)
+           <asynchronous suspension>
+           #5      AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+           <asynchronous suspension>
+           #6      CommandRunner.runCommand (package:args/command_runner.dart:212:13)
+           <asynchronous suspension>
+           #7      FlutterCommandRunner.runCommand.<anonymous closure> (package:flutter_tools/src/runner/flutter_command_runner.dart:487:9)
+           <asynchronous suspension>
+           #8      AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+           <asynchronous suspension>
+           #9      FlutterCommandRunner.runCommand (package:flutter_tools/src/runner/flutter_command_runner.dart:422:5)
+           <asynchronous suspension>
+           #10     run.<anonymous closure>.<anonymous closure> (package:flutter_tools/runner.dart:104:11)
+           <asynchronous suspension>
+           #11     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+           <asynchronous suspension>
+           #12     main (package:flutter_tools/executable.dart:103:3)
+           <asynchronous suspension>
+
+
+[        ] Running 1 shutdown hook
+[   +1 ms] Shutdown hooks complete
+[ +147 ms] exiting with code 1

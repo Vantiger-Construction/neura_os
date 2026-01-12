@@ -1,0 +1,115 @@
+Weekly Snapshot + Dream Show 2.0 Integration Notes
+==================================================
+
+This pack implements:
+
+- WeeklySnapshotService with 7-day summary
+- WeeklySnapshotScreen for deeper weekly reflection
+- DreamThemeService with simple recurring theme detection
+- DreamShow2Screen that surfaces those themes over time
+
+
+Files
+-----
+
+Weekly Snapshot:
+- lib/insights/models/weekly_snapshot_entry.dart
+- lib/insights/services/weekly_snapshot_service.dart
+- lib/insights/screens/weekly_snapshot_screen.dart
+
+Dreams:
+- lib/dreams/models/dream_entry.dart
+- lib/dreams/services/dream_theme_service.dart
+- lib/dreams/screens/dream_show2_screen.dart
+
+Notes:
+- lib/insights/weekly_snapshot_and_dreamshow2_integration_notes.txt
+
+
+How to log snapshots from your flows
+------------------------------------
+
+In your daily check-in / storm / ritual screens, call:
+
+    import 'package:your_app/insights/services/weekly_snapshot_service.dart';
+
+    Future<void> saveTodaySnapshot({
+      required double moodScore,
+      int stormsCount = 0,
+      int ritualsCompleted = 0,
+      bool usedCareMode = false,
+      String note = '',
+    }) async {
+      await WeeklySnapshotService.instance.logDay(
+        date: DateTime.now(),
+        moodScore: moodScore,
+        stormsCount: stormsCount,
+        ritualsCompleted: ritualsCompleted,
+        usedCareMode: usedCareMode,
+        note: note,
+      );
+    }
+
+Later, the Weekly Snapshot tile on your dashboard or OS shell can either
+use WeeklyLifeSnapshotCard (from previous pack) or push to:
+
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const WeeklySnapshotScreen()),
+    );
+
+
+How to log dreams and themes
+----------------------------
+
+Whenever a user saves a dream entry in your Dream Journal / Dream Mode, call:
+
+    import 'package:your_app/dreams/services/dream_theme_service.dart';
+
+    Future<void> onSaveDream(String text) async {
+      await DreamThemeService.instance.addDream(
+        date: DateTime.now(),
+        text: text,
+      );
+    }
+
+This will:
+- Detect basic themes (falling, flying, being chased, water, school, teeth,
+  lost, family, work, home, or "other")
+- Store the entry locally with its themes
+
+Then you can route your Dream OS room / Dream Mode to:
+
+    import 'package:your_app/dreams/screens/dream_show2_screen.dart';
+
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const DreamShow2Screen()),
+    );
+
+
+Dependencies
+------------
+
+This pack uses:
+- shared_preferences
+
+Make sure your pubspec.yaml already has it (many of your modules do):
+
+    dependencies:
+      shared_preferences: ^2.2.0
+
+Then run:
+
+    flutter pub get
+
+
+Safety notes
+------------
+
+- Weekly summaries are reflective and gentle, not diagnostic.
+- Dream Show 2.0 looks for patterns but does NOT claim to interpret or
+  diagnose anything about the user.
+- If users feel very distressed or unsafe from their dreams or mood,
+  the UI copy encourages reaching out to mental health professionals.
+
+This keeps the feature emotionally supportive while staying within
+safe boundaries.

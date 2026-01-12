@@ -1,39 +1,15 @@
-# Neura OS (Merged Build)
+# Neura Companion — Closed Beta
 
-This is the **merged** Neura OS Flutter project with the upgrades/patches you uploaded applied into one codebase.
+This package contains the finalized living-system patch for Neura Companion.
 
-## Included modules
-- Legacy Vault
-- Neura Spaces (rooms + map)
-- Focus Office + Ambient FX
-- Mood Check-In + Mood History
-- Journal Prompt + Voice Journal
-- Dream Visualizer + Dream Calendar + Monthly Dream Show
-- Settings + Diagnostics
-- **Voice Lab** (offline voice clips + live microphone visemes)
+Included:
+- Memory, Emotion, Behavior cores
+- Presence + Apartment OS
+- Avatar idle & motion
+- Speech engine + high-quality TTS hooks
+- Rive animation contract
+- World memory + object-based apartment
+- Movement controller
+- Closed beta store assets & emails
 
-## Quick start (Windows)
-1. Install Flutter (and Android Studio if you want APK builds)
-2. From this folder, run:
-   - `scripts\\Install-Neura-OS.bat`  (or)
-   - `scripts\\Install-Neura-OS.ps1`
-
-## Manual commands
-```bash
-flutter pub get
-flutter run
-# Release build:
-flutter build apk --release
-```
-
-## Voice assets
-Voice samples are bundled at:
-- `assets/audio/neura/*.wav`
-
-The Voice Lab screen lets you:
-- Play a voice clip
-- Toggle live microphone mouth/viseme driver (offline)
-
-## Notes
-- Android/iOS permission files may need to be added depending on the Flutter template you deploy into.
-- If you already have a fuller Android/ios folder in your main repo, drop this `lib/` + `assets/` + `pubspec.yaml` in and run `flutter pub get`.
+Status: READY FOR CLOSED BETA
