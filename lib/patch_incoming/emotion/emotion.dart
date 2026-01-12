@@ -1,2 +1,1 @@
-// emotion.dart
-// Full implementation provided in previous messages.
+export 'emotion_core.dart';

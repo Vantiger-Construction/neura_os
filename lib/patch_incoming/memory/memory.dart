@@ -1,2 +1,1 @@
-// memory.dart
-// Full implementation provided in previous messages.
+export 'memory_core.dart';
