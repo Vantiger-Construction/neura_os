@@ -1,2 +1,1 @@
-// behavior.dart
-// Full implementation provided in previous messages.
+export 'behavior_engine.dart';
