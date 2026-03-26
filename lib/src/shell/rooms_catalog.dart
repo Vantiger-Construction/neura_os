@@ -31,7 +31,7 @@ class RoomItem {
   final RoomCategory category;
   final WidgetBuilder builder;
 
-  const RoomItem({
+  RoomItem({
     required this.id,
     required this.title,
     required this.subtitle,
@@ -42,7 +42,7 @@ class RoomItem {
 }
 
 class RoomsCatalog {
-  static List<RoomItem> all() => const [
+  static List<RoomItem> all() => [
         RoomItem(
           id: 'chat',
           title: 'Neura (Chat)',
@@ -129,7 +129,7 @@ class RoomsCatalog {
           subtitle: 'Test Neura voice + live mic visemes.',
           icon: Icons.record_voice_over_outlined,
           category: RoomCategory.tools,
-          builder: (_) => const VoiceLabScreen(),
+          builder: (_) => VoiceLabScreen(),
         ),
         RoomItem(
           id: 'settings',
