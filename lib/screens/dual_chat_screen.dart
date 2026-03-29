@@ -4,6 +4,8 @@ import '../services/dual_chat_service.dart';
 import '../services/avatar_service.dart';
 
 class DualChatScreen extends StatefulWidget {
+  const DualChatScreen({super.key});
+
   @override
   _DualChatScreenState createState() => _DualChatScreenState();
 }
@@ -44,15 +46,16 @@ class _DualChatScreenState extends State<DualChatScreen> {
         actions: [
           PopupMenuButton<AIAvatar>(
             onSelected: (a) => setState(() => _current = a),
-            itemBuilder: (_) => _avatars.map((a) =>
-              PopupMenuItem(value: a, child: Text(a.name))
-            ).toList(),
+            itemBuilder: (_) => _avatars
+                .map((a) => PopupMenuItem(value: a, child: Text(a.name)))
+                .toList(),
           )
         ],
       ),
       body: Column(
         children: [
-          Expanded(child: ListView(
+          Expanded(
+              child: ListView(
             children: _messages.map((m) => ListTile(title: Text(m))).toList(),
           )),
           Divider(),

@@ -32,44 +32,49 @@ class ThemeScreen extends StatelessWidget {
                 title: Text('Theme mode'),
                 subtitle: Text('Choose what your eyes want today.'),
               ),
-              RadioListTile<ThemeMode>(
-                value: ThemeMode.system,
-                groupValue: themeMode,
-                onChanged: (_) => HumanPrefsController.instance.update(
-                  prefs.copyWith(theme: NeuraThemePref.system),
-                ),
-                title: const Text('System'),
-                secondary: const Icon(Icons.settings_brightness_outlined),
-              ),
-              RadioListTile<ThemeMode>(
-                value: ThemeMode.dark,
-                groupValue: themeMode,
-                onChanged: (_) => HumanPrefsController.instance.update(
-                  prefs.copyWith(theme: NeuraThemePref.dark),
-                ),
-                title: const Text('Dark'),
-                secondary: const Icon(Icons.dark_mode_outlined),
-              ),
-              RadioListTile<ThemeMode>(
-                value: ThemeMode.light,
-                groupValue: themeMode,
-                onChanged: (_) => HumanPrefsController.instance.update(
-                  prefs.copyWith(theme: NeuraThemePref.light),
-                ),
-                title: const Text('Light'),
-                secondary: const Icon(Icons.light_mode_outlined),
+              SegmentedButton<ThemeMode>(
+                segments: const [
+                  ButtonSegment(
+                    value: ThemeMode.system,
+                    label: Text('System'),
+                    icon: Icon(Icons.settings_brightness_outlined),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.dark,
+                    label: Text('Dark'),
+                    icon: Icon(Icons.dark_mode_outlined),
+                  ),
+                  ButtonSegment(
+                    value: ThemeMode.light,
+                    label: Text('Light'),
+                    icon: Icon(Icons.light_mode_outlined),
+                  ),
+                ],
+                selected: <ThemeMode>{themeMode},
+                onSelectionChanged: (selection) {
+                  final selected = selection.first;
+                  final pref = switch (selected) {
+                    ThemeMode.dark => NeuraThemePref.dark,
+                    ThemeMode.light => NeuraThemePref.light,
+                    _ => NeuraThemePref.system,
+                  };
+                  HumanPrefsController.instance
+                      .update(prefs.copyWith(theme: pref));
+                },
               ),
               const Divider(),
               SwitchListTile(
                 value: prefs.highContrast,
-                onChanged: (v) => HumanPrefsController.instance.update(prefs.copyWith(highContrast: v)),
+                onChanged: (v) => HumanPrefsController.instance
+                    .update(prefs.copyWith(highContrast: v)),
                 title: const Text('High contrast'),
                 subtitle: const Text('Sharper separation between UI elements.'),
                 secondary: const Icon(Icons.contrast_outlined),
               ),
               SwitchListTile(
                 value: prefs.lowStim,
-                onChanged: (v) => HumanPrefsController.instance.update(prefs.copyWith(lowStim: v)),
+                onChanged: (v) => HumanPrefsController.instance
+                    .update(prefs.copyWith(lowStim: v)),
                 title: const Text('Low-stimulation mode'),
                 subtitle: const Text('Turns down visual intensity and glow.'),
                 secondary: const Icon(Icons.nights_stay_outlined),

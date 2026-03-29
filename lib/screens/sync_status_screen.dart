@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../services/sync_service.dart';
 
 class SyncStatusScreen extends StatefulWidget {
+  const SyncStatusScreen({super.key});
+
   @override
   _SyncStatusScreenState createState() => _SyncStatusScreenState();
 }

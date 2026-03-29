@@ -7,9 +7,9 @@ class CareModeBridge {
   CareModeBridge._internal();
   static final CareModeBridge instance = CareModeBridge._internal();
 
-  Future<void> logStormEvent(StormEvent event) async {
-    // TODO: wire this into your real Care Mode / crisis tracking.
-    // Example idea:
+  void logStormEvent(StormEvent event) {
+    // Wire this into your real Care Mode / crisis tracking.
+    // Example implementation:
     // CareModeService.instance.recordStorm(
     //   id: event.id,
     //   when: event.timestamp,

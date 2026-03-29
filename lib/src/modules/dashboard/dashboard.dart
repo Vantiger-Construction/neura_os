@@ -30,7 +30,8 @@ class DashboardScreen extends StatelessWidget {
               subtitle: 'Fast travel',
               onTap: () {
                 final prefs = ShellPrefsController.instance.prefs.value;
-                PortalNav.push(context, const RoomsMapScreen(), enabled: prefs.portalFx);
+                PortalNav.push(context, const RoomsMapScreen(),
+                    enabled: prefs.portalFx);
               },
             ),
             _Tile(
@@ -39,7 +40,8 @@ class DashboardScreen extends StatelessWidget {
               subtitle: 'Set the vibe',
               onTap: () {
                 final prefs = ShellPrefsController.instance.prefs.value;
-                PortalNav.push(context, const FocusOfficeScreen(), enabled: prefs.portalFx);
+                PortalNav.push(context, const FocusOfficeScreen(),
+                    enabled: prefs.portalFx);
               },
             ),
             _Tile(
@@ -48,7 +50,8 @@ class DashboardScreen extends StatelessWidget {
               subtitle: 'Time capsules',
               onTap: () {
                 final prefs = ShellPrefsController.instance.prefs.value;
-                PortalNav.push(context, const LegacyHomeScreen(), enabled: prefs.portalFx);
+                PortalNav.push(context, LegacyHomeScreen(),
+                    enabled: prefs.portalFx);
               },
             ),
             _Tile(
@@ -57,7 +60,8 @@ class DashboardScreen extends StatelessWidget {
               subtitle: 'Prompt + entry',
               onTap: () {
                 final prefs = ShellPrefsController.instance.prefs.value;
-                PortalNav.push(context, const JournalPromptScreen(), enabled: prefs.portalFx);
+                PortalNav.push(context, JournalPromptScreen(),
+                    enabled: prefs.portalFx);
               },
             ),
             _Tile(
@@ -66,7 +70,8 @@ class DashboardScreen extends StatelessWidget {
               subtitle: 'Mood snapshot',
               onTap: () {
                 final prefs = ShellPrefsController.instance.prefs.value;
-                PortalNav.push(context, const MoodCheckInScreen(), enabled: prefs.portalFx);
+                PortalNav.push(context, MoodCheckInScreen(),
+                    enabled: prefs.portalFx);
               },
             ),
             _Tile(
@@ -75,7 +80,8 @@ class DashboardScreen extends StatelessWidget {
               subtitle: 'Visualizer',
               onTap: () {
                 final prefs = ShellPrefsController.instance.prefs.value;
-                PortalNav.push(context, const DreamVisualizerScreen(), enabled: prefs.portalFx);
+                PortalNav.push(context, DreamVisualizerScreen(),
+                    enabled: prefs.portalFx);
               },
             ),
             _Tile(
@@ -84,7 +90,8 @@ class DashboardScreen extends StatelessWidget {
               subtitle: 'Logs + self‑heal',
               onTap: () {
                 final prefs = ShellPrefsController.instance.prefs.value;
-                PortalNav.push(context, const DiagnosticsScreen(), enabled: prefs.portalFx);
+                PortalNav.push(context, const DiagnosticsScreen(),
+                    enabled: prefs.portalFx);
               },
             ),
           ],
@@ -100,7 +107,11 @@ class _Tile extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
 
-  const _Tile({required this.icon, required this.title, required this.subtitle, required this.onTap});
+  const _Tile(
+      {required this.icon,
+      required this.title,
+      required this.subtitle,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -110,7 +121,7 @@ class _Tile extends StatelessWidget {
       child: Ink(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          color: Colors.white.withOpacity(0.06),
+          color: Colors.white.withValues(alpha: 0.06),
           border: Border.all(color: Colors.white12),
         ),
         child: Padding(

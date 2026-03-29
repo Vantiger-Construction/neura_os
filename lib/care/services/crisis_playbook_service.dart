@@ -18,7 +18,7 @@ class CrisisPlaybookService {
             '3 things you can hear. This helps ground your nervous system.',
         'Write down everything on your mind in a quick brain dump. No editing.',
         'Circle or highlight just ONE tiny thing you could do in the next 10 minutes.',
-        'If nothing feels doable, that's okay. Your only task can be to rest '
+        "If nothing feels doable, that's okay. Your only task can be to rest "
             'or to reach out to someone you trust.',
       ],
       tags: ['overwhelmed', 'stress', 'grounding'],
@@ -34,7 +34,7 @@ class CrisisPlaybookService {
         'Try a simple breathing pattern: inhale for 4, exhale for 6, '
             'for about 1–3 minutes.',
         'Relax your jaw and unclench your shoulders and hands.',
-        'Name what you're worried about in one sentence. Keep it short.',
+        "Name what you're worried about in one sentence. Keep it short.",
         'Ask: "What is one thing I can do that is actually in my control right now?"',
         'If anxiety feels unmanageable or you feel unsafe, reach out to a '
             'trusted person or a professional for support.',

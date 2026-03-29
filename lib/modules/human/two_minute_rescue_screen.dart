@@ -85,6 +85,7 @@ class _TwoMinuteRescueScreenState extends State<TwoMinuteRescueScreen> {
       return;
     }
     await LearningStore.instance.markHelpful(id);
+    if (!mounted) return;
     await CoachHooks.afterRescueHelpful(context, actionId: id, latestMood: _latest);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

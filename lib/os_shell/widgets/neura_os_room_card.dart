@@ -7,12 +7,12 @@ class NeuraOsRoomCard extends StatelessWidget {
   final VoidCallback? onTap;
 
   const NeuraOsRoomCard({
-    Key? key,
+    super.key,
     required this.icon,
     required this.title,
     required this.subtitle,
     this.onTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +32,8 @@ class NeuraOsRoomCard extends StatelessWidget {
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Theme.of(context).colorScheme.secondary.withOpacity(0.15),
+                  color:
+                      Theme.of(context).colorScheme.secondary.withValues(alpha: 0.15),
                 ),
                 child: Icon(icon, size: 26),
               ),

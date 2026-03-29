@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/kids_game_library_service.dart';
 
 class KidsModeHomeScreen extends StatefulWidget {
-  const KidsModeHomeScreen({Key? key}) : super(key: key);
+  const KidsModeHomeScreen({super.key});
 
   @override
   State<KidsModeHomeScreen> createState() => _KidsModeHomeScreenState();
@@ -51,8 +51,7 @@ class _KidsModeHomeScreenState extends State<KidsModeHomeScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Kids Mode is for gentle, age-appropriate interactions.
-'
+              'Kids Mode is for gentle, age-appropriate interactions.\n'
               'Neura avoids heavy topics, hard language, and adult content here.',
               style: TextStyle(fontSize: 12, color: Colors.black54),
             ),
@@ -62,8 +61,7 @@ class _KidsModeHomeScreenState extends State<KidsModeHomeScreen> {
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             const SizedBox(height: 8),
-            if (games.isEmpty)
-              const Text('No games configured yet.'),
+            if (games.isEmpty) const Text('No games configured yet.'),
             if (games.isNotEmpty)
               Expanded(
                 child: ListView.builder(
@@ -77,9 +75,9 @@ class _KidsModeHomeScreenState extends State<KidsModeHomeScreen> {
                         trailing: const Icon(Icons.play_arrow),
                         onTap: () async {
                           final ok = await _games.launchGame(name);
-                          if (!mounted) return;
+                          if (!ctx.mounted) return;
                           if (!ok) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            ScaffoldMessenger.of(ctx).showSnackBar(
                               const SnackBar(
                                 content: Text(
                                   'Game launch is not wired yet for this platform.',

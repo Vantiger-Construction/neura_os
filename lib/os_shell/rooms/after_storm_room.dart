@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../after_storm/screens/after_storm_screen.dart';
 
 class AfterStormRoom extends StatelessWidget {
-  const AfterStormRoom({Key? key}) : super(key: key);
+  const AfterStormRoom({super.key});
 
   @override
   Widget build(BuildContext context) {

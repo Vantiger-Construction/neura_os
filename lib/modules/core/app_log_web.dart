@@ -18,19 +18,23 @@ class AppLog {
     await info('log_init', {'platform': 'web'});
   }
 
-  Future<void> info(String event, [Map<String, Object?> data = const {}]) async {
+  Future<void> info(String event,
+      [Map<String, Object?> data = const {}]) async {
     await _write('info', event, data);
   }
 
-  Future<void> warn(String event, [Map<String, Object?> data = const {}]) async {
+  Future<void> warn(String event,
+      [Map<String, Object?> data = const {}]) async {
     await _write('warn', event, data);
   }
 
-  Future<void> error(String event, [Map<String, Object?> data = const {}]) async {
+  Future<void> error(String event,
+      [Map<String, Object?> data = const {}]) async {
     await _write('error', event, data);
   }
 
-  Future<void> _write(String level, String event, Map<String, Object?> data) async {
+  Future<void> _write(
+      String level, String event, Map<String, Object?> data) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final current = prefs.getString(_key) ?? '';
@@ -40,12 +44,14 @@ class AppLog {
         'event': event,
         'data': data,
       };
-      final next = (current.isEmpty ? '' : current) + '${jsonEncode(payload)}\n';
+      final next = '${current.isEmpty ? '' : current}${jsonEncode(payload)}\n';
 
       // Keep last ~200 lines. Cheap and effective.
       final lines = const LineSplitter().convert(next);
-      final trimmed = lines.length <= 220 ? lines : lines.sublist(lines.length - 220);
-      await prefs.setString(_key, trimmed.join('\n') + (trimmed.isEmpty ? '' : '\n'));
+      final trimmed =
+          lines.length <= 220 ? lines : lines.sublist(lines.length - 220);
+      await prefs.setString(
+          _key, trimmed.join('\n') + (trimmed.isEmpty ? '' : '\n'));
     } catch (_) {
       // If logging fails, do not crash.
     }

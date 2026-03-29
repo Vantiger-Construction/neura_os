@@ -7,7 +7,7 @@ class NeuraFaultEvent {
   final String source; // e.g. "FlutterError", "PlatformDispatcher"
   final DateTime atUtc;
 
-  const NeuraFaultEvent({
+  NeuraFaultEvent({
     required this.message,
     required this.source,
     this.stack,

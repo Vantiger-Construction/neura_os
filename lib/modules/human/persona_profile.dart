@@ -54,28 +54,31 @@ class PersonaProfile {
       };
 
   static PersonaProfile fromJson(Map<String, dynamic> json) {
-    double _d(String k, double def) {
+    double d(String k, double def) {
       final v = json[k];
       if (v is num) return v.toDouble().clamp(0.0, 1.0);
       return def;
     }
 
-    List<String> _list(String k) {
+    List<String> list(String k) {
       final v = json[k];
       if (v is List) {
-        return v.map((e) => e.toString()).where((s) => s.trim().isNotEmpty).toList(growable: true);
+        return v
+            .map((e) => e.toString())
+            .where((s) => s.trim().isNotEmpty)
+            .toList(growable: true);
       }
       return <String>[];
     }
 
     return PersonaProfile(
-      directness: _d('directness', 0.55),
-      humor: _d('humor', 0.55),
-      energy: _d('energy', 0.45),
-      depth: _d('depth', 0.55),
-      pacing: _d('pacing', 0.55),
-      goals: _list('goals'),
-      values: _list('values'),
+      directness: d('directness', 0.55),
+      humor: d('humor', 0.55),
+      energy: d('energy', 0.45),
+      depth: d('depth', 0.55),
+      pacing: d('pacing', 0.55),
+      goals: list('goals'),
+      values: list('values'),
     );
   }
 

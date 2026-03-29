@@ -29,7 +29,7 @@ class AvatarView extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Theme.of(context).colorScheme.surfaceVariant,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
       child: Icon(Icons.android, size: size * 0.45),
     );
@@ -39,7 +39,10 @@ class AvatarView extends StatelessWidget {
     final p = path.toLowerCase();
     if (p.endsWith('.riv')) return AvatarFormat.rive;
     if (p.endsWith('.json')) return AvatarFormat.lottie;
-    if (p.endsWith('.png') || p.endsWith('.jpg') || p.endsWith('.jpeg') || p.endsWith('.webp')) {
+    if (p.endsWith('.png') ||
+        p.endsWith('.jpg') ||
+        p.endsWith('.jpeg') ||
+        p.endsWith('.webp')) {
       return AvatarFormat.image;
     }
     return spec.format;
@@ -78,7 +81,8 @@ class AvatarView extends StatelessWidget {
           return SizedBox(
             width: size,
             height: size,
-            child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            child:
+                const Center(child: CircularProgressIndicator(strokeWidth: 2)),
           );
         }
 
@@ -89,16 +93,18 @@ class AvatarView extends StatelessWidget {
 
         switch (format) {
           case AvatarFormat.rive:
-            final adjusted = (path == spec.assetPath) ? spec : AvatarSpec(
-              id: spec.id,
-              name: spec.name,
-              format: AvatarFormat.rive,
-              assetPath: path,
-              fallbackAssetPath: spec.fallbackAssetPath,
-              rive: spec.rive,
-              lottie: spec.lottie,
-              sprite: spec.sprite,
-            );
+            final adjusted = (path == spec.assetPath)
+                ? spec
+                : AvatarSpec(
+                    id: spec.id,
+                    name: spec.name,
+                    format: AvatarFormat.rive,
+                    assetPath: path,
+                    fallbackAssetPath: spec.fallbackAssetPath,
+                    rive: spec.rive,
+                    lottie: spec.lottie,
+                    sprite: spec.sprite,
+                  );
             return RiveAvatarView(
               spec: adjusted,
               controller: controller,
@@ -127,12 +133,14 @@ class AvatarView extends StatelessWidget {
               ),
             );
           case AvatarFormat.sprite:
-            return SpriteAvatarView(spec: spec, size: size, fit: fit, fallback: fallback);
+            return SpriteAvatarView(
+                spec: spec, size: size, fit: fit, fallback: fallback);
           case AvatarFormat.image:
             return SizedBox(
               width: size,
               height: size,
-              child: Image.asset(path, fit: fit, errorBuilder: (_, __, ___) => fallback),
+              child: Image.asset(path,
+                  fit: fit, errorBuilder: (_, __, ___) => fallback),
             );
         }
       },

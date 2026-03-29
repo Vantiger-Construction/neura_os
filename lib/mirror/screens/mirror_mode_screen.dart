@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../mood/services/mood_state_service.dart';
 
 class MirrorModeScreen extends StatefulWidget {
-  const MirrorModeScreen({Key? key}) : super(key: key);
+  const MirrorModeScreen({super.key});
 
   @override
   State<MirrorModeScreen> createState() => _MirrorModeScreenState();
@@ -36,7 +36,9 @@ class _MirrorModeScreenState extends State<MirrorModeScreen> {
       _currentMood = mood;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Mood set to "$mood". Neura will adjust tone and difficulty.')),
+      SnackBar(
+          content: Text(
+              'Mood set to "$mood". Neura will adjust tone and difficulty.')),
     );
   }
 
@@ -62,13 +64,9 @@ class _MirrorModeScreenState extends State<MirrorModeScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'This is a safe starter version of Mirror Mode.
-'
-                    'Later you can plug camera + emotion detection here.
-
-'
-                    'For now, tap the mood that best matches how you feel.
-'
+                    'This is a safe starter version of Mirror Mode.\n'
+                    'Later you can plug camera + emotion detection here.\n\n'
+                    'For now, tap the mood that best matches how you feel.\n'
                     'Neura will use this to change colors, tone, and difficulty.',
                   ),
                   const SizedBox(height: 16),
@@ -91,7 +89,7 @@ class _MirrorModeScreenState extends State<MirrorModeScreen> {
                   const Spacer(),
                   const Text(
                     'Note: Do not rely on Mirror Mode for any diagnosis. '
-                    'It's just here to help Neura respond more sensitively.',
+                    "It's just here to help Neura respond more sensitively.",
                     style: TextStyle(fontSize: 11, color: Colors.black54),
                   ),
                 ],

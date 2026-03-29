@@ -87,11 +87,9 @@ class WeeklySnapshotService {
     await load();
     if (_entries.isEmpty) return [];
     final now = DateTime.now();
-    final sevenDaysAgo =
-        DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
-    return _entries
-        .where((e) => !e.date.isBefore(sevenDaysAgo))
-        .toList()
+    final sevenDaysAgo = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 6));
+    return _entries.where((e) => !e.date.isBefore(sevenDaysAgo)).toList()
       ..sort((a, b) => a.date.compareTo(b.date));
   }
 
@@ -105,8 +103,9 @@ class WeeklySnapshotService {
     final avgMood =
         moods.isEmpty ? 0.0 : moods.reduce((a, b) => a + b) / moods.length;
 
-    final totalStorms =
-        last7.isEmpty ? 0 : last7.map((e) => e.stormsCount).reduce((a, b) => a + b);
+    final totalStorms = last7.isEmpty
+        ? 0
+        : last7.map((e) => e.stormsCount).reduce((a, b) => a + b);
     final totalRituals = last7.isEmpty
         ? 0
         : last7.map((e) => e.ritualsCompleted).reduce((a, b) => a + b);
@@ -120,6 +119,6 @@ class WeeklySnapshotService {
 
     return 'This week your mood has been $moodWord (average ${avgMood.toStringAsFixed(1)}/10). '
         'You logged $totalRituals rituals and weathered $totalStorms storms. '
-        '${careUsedCount > 0 ? 'You used Care Mode $careUsedCount time(s), which is a sign of taking your feelings seriously.' : 'You haven't used Care Mode this week—remember it's there when things feel heavy.'}';
+        '${careUsedCount > 0 ? "You used Care Mode $careUsedCount time(s), which is a sign of taking your feelings seriously." : "You haven't used Care Mode this week - remember it's there when things feel heavy."}';
   }
 }

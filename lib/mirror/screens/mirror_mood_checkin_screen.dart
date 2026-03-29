@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../mood/models/mood_state.dart';
 import '../../mood/services/mood_state_service.dart';
 
 class MirrorMoodCheckinScreen extends StatefulWidget {
-  const MirrorMoodCheckinScreen({Key? key}) : super(key: key);
+  const MirrorMoodCheckinScreen({super.key});
 
   @override
   State<MirrorMoodCheckinScreen> createState() =>
@@ -12,8 +11,18 @@ class MirrorMoodCheckinScreen extends StatefulWidget {
 }
 
 class _MirrorMoodCheckinScreenState extends State<MirrorMoodCheckinScreen> {
-  double _score = 5.0;
-  String _note = '';
+  static const List<String> _moods = <String>[
+    'sad',
+    'anxious',
+    'angry',
+    'tired',
+    'calm',
+    'happy',
+    'excited',
+    'neutral',
+  ];
+
+  String _mood = 'neutral';
   bool _loading = true;
 
   @override
@@ -24,30 +33,22 @@ class _MirrorMoodCheckinScreenState extends State<MirrorMoodCheckinScreen> {
 
   Future<void> _init() async {
     await MoodStateService.instance.load();
-    final current = MoodStateService.instance.current;
+    final current = MoodStateService.instance.currentMood;
     if (!mounted) return;
     setState(() {
-      _score = current.score;
-      _note = current.note;
+      _mood = current;
       _loading = false;
     });
   }
 
   Future<void> _save() async {
-    await MoodStateService.instance.setScore(_score, note: _note);
+    await MoodStateService.instance.setMood(_mood);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Mood updated. Neura will adjust accordingly.')),
+      const SnackBar(
+          content: Text('Mood updated. Neura will adjust accordingly.')),
     );
     Navigator.of(context).pop();
-  }
-
-  String _scoreLabel(double value) {
-    if (value <= 2.5) return 'Really rough';
-    if (value <= 4.0) return 'Pretty low';
-    if (value <= 6.0) return 'In the middle';
-    if (value <= 8.0) return 'Lifted';
-    return 'Energized';
   }
 
   @override
@@ -75,36 +76,18 @@ class _MirrorMoodCheckinScreenState extends State<MirrorMoodCheckinScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            Slider(
-              min: 0,
-              max: 10,
-              divisions: 20,
-              label: _score.toStringAsFixed(1),
-              value: _score,
-              onChanged: (v) {
-                setState(() {
-                  _score = v;
-                });
-              },
-            ),
-            Text(
-              '${_score.toStringAsFixed(1)}/10 · ${_scoreLabel(_score)}',
-              style: const TextStyle(fontSize: 14),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Anything you want Neura to know about this moment?',
-              style: TextStyle(fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: 'Optional note (e.g., "long day at work", "big win today")',
-              ),
-              maxLines: 3,
-              onChanged: (v) => _note = v,
-              controller: TextEditingController(text: _note),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _moods
+                  .map(
+                    (m) => ChoiceChip(
+                      selected: _mood == m,
+                      label: Text(m),
+                      onSelected: (_) => setState(() => _mood = m),
+                    ),
+                  )
+                  .toList(),
             ),
             const Spacer(),
             SizedBox(

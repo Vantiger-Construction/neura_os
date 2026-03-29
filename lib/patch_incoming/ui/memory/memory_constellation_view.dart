@@ -28,7 +28,7 @@ class MemoryConstellationView extends StatelessWidget {
               height: 12,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.blueAccent.withOpacity(0.7),
+                color: Colors.blueAccent.withValues(alpha: 0.7),
               ),
             ),
           ),

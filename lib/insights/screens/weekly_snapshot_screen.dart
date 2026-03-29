@@ -57,7 +57,7 @@ class _WeeklySnapshotScreenState extends State<WeeklySnapshotScreen> {
                   ),
                   const SizedBox(height: 16),
                   const Text(
-                    'This Week's Check-ins',
+                    "This Week's Check-ins",
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,

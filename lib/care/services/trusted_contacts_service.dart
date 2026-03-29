@@ -73,9 +73,9 @@ class TrustedContactsService {
   }
 
   TrustedContact? findById(String id) {
-    return _contacts.firstWhere(
-      (c) => c.id == id,
-      orElse: () => null as TrustedContact,
-    );
+    for (final c in _contacts) {
+      if (c.id == id) return c;
+    }
+    return null;
   }
 }

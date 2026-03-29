@@ -3,7 +3,7 @@ import '../services/neura_persona_service.dart';
 import '../models/persona_profile.dart';
 
 class PersonaTuningScreen extends StatefulWidget {
-  const PersonaTuningScreen({Key? key}) : super(key: key);
+  const PersonaTuningScreen({super.key});
 
   @override
   State<PersonaTuningScreen> createState() => _PersonaTuningScreenState();
@@ -41,7 +41,7 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
       _saving = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Neura's persona updated.')),
+      const SnackBar(content: Text("Neura's persona updated.")),
     );
   }
 
@@ -73,8 +73,7 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
             const SizedBox(height: 12),
             _buildSlider(
               label: 'Warmth',
-              description:
-                  'Cool and factual vs warm and emotionally present.',
+              description: 'Cool and factual vs warm and emotionally present.',
               value: _profile.warmth,
               onChanged: (v) => setState(
                 () => _profile = _profile.copyWith(warmth: v),
@@ -82,8 +81,7 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
             ),
             _buildSlider(
               label: 'Directness',
-              description:
-                  'Gentle hints vs straight-to-the-point truth.',
+              description: 'Gentle hints vs straight-to-the-point truth.',
               value: _profile.directness,
               onChanged: (v) => setState(
                 () => _profile = _profile.copyWith(directness: v),
@@ -107,8 +105,7 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
             ),
             _buildSlider(
               label: 'Depth',
-              description:
-                  'Quick tips vs deep reflective conversations.',
+              description: 'Quick tips vs deep reflective conversations.',
               value: _profile.depth,
               onChanged: (v) => setState(
                 () => _profile = _profile.copyWith(depth: v),

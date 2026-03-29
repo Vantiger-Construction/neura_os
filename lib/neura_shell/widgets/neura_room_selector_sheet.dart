@@ -11,7 +11,7 @@ class NeuraRoomSelectorSheet {
       context: context,
       showDragHandle: true,
       isScrollControlled: false,
-      backgroundColor: Colors.black.withOpacity(0.6),
+      backgroundColor: Colors.black.withValues(alpha: 0.6),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
@@ -119,7 +119,7 @@ class _RoomTile extends StatelessWidget {
             colors: room.gradient,
           ),
           border: Border.all(
-            color: selected ? Colors.white.withOpacity(0.8) : Colors.white.withOpacity(0.12),
+            color: selected ? Colors.white.withValues(alpha: 0.8) : Colors.white.withValues(alpha: 0.12),
             width: selected ? 2 : 1,
           ),
         ),

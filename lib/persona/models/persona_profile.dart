@@ -2,11 +2,11 @@ import 'package:flutter/foundation.dart';
 
 @immutable
 class PersonaProfile {
-  final double warmth;      // how caring / soft Neura sounds
-  final double directness;  // how blunt vs gentle
-  final double humor;       // how often she jokes
-  final double energy;      // calm vs hyped
-  final double depth;       // surface tips vs deep reflections;
+  final double warmth; // how caring / soft Neura sounds
+  final double directness; // how blunt vs gentle
+  final double humor; // how often she jokes
+  final double energy; // calm vs hyped
+  final double depth; // surface tips vs deep reflections;
 
   const PersonaProfile({
     required this.warmth,
@@ -51,18 +51,18 @@ class PersonaProfile {
       };
 
   factory PersonaProfile.fromMap(Map<String, dynamic> map) {
-    double _d(String key, double fallback) {
+    double d(String key, double fallback) {
       final v = map[key];
       if (v is num) return v.toDouble();
       return fallback;
     }
 
     return PersonaProfile(
-      warmth: _d('warmth', 0.6),
-      directness: _d('directness', 0.5),
-      humor: _d('humor', 0.5),
-      energy: _d('energy', 0.5),
-      depth: _d('depth', 0.5),
+      warmth: d('warmth', 0.6),
+      directness: d('directness', 0.5),
+      humor: d('humor', 0.5),
+      energy: d('energy', 0.5),
+      depth: d('depth', 0.5),
     );
   }
 }

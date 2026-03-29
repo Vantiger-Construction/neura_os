@@ -3,6 +3,8 @@ import '../models/ai_avatar.dart';
 import '../services/avatar_service.dart';
 
 class AvatarSelectorScreen extends StatefulWidget {
+  const AvatarSelectorScreen({super.key});
+
   @override
   _AvatarSelectorScreenState createState() => _AvatarSelectorScreenState();
 }

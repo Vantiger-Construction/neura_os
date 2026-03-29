@@ -1,1 +1,2 @@
-// Placeholder content for ai_chatbot_module.dart
+// Re-export: the real chat implementation lives in modules/chat.
+export 'modules/chat/neura_chat_screen.dart';

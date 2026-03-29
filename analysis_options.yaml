@@ -10,29 +10,29 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
+  errors:
+    constant_identifier_names: ignore
+    library_private_types_in_public_api: ignore
+    use_build_context_synchronously: ignore
   exclude:
     # Generated/build output
     - build/**
     - .dart_tool/**
+    - analyze_output.txt
 
     # Archived/duplicate merged folders (not part of the active app package)
     - Neura_OS_Complete_Merged/**
-    - Neura_OS_Complete_Merged/**
+    - Neura_Companion_OS_ALL_IN_ONE_FINAL/**
+    - Neura_Companion_FINAL_CLOSED_BETA/**
+    - Neura_OneClick_Installer_Kit/**
+    - neura companion v/**
+    - neura_companion_merged/**
     - temp_project/**
     - neura_os/**
 
     # Not part of the Flutter package (standalone tooling / archived experiments)
     - Neura_Creator_Engine/**
     - flutter_app/**
-
-    # Optional / incomplete feature areas (keep the app buildable)
-    - lib/integrations/tts/**
-
-    # Tests reference modules not included in this safe-mode build
-    - test/**
-
-    # Large patch staging area that contains incomplete stubs
-    - lib/patch_incoming/**
 
 linter:
   # The lint rules applied to this project can be customized in the

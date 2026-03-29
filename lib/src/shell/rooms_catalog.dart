@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../modules/chat/neura_chat_screen.dart';
 import '../../modules/diagnostics/diagnostics_screen.dart';
-import '../../modules/voice/voice_lab_screen.dart';
+import '../modules/voice/voice_lab_screen.dart';
 import '../../modules/mood/mood_checkin_screen.dart';
 import '../../modules/mood/mood_history_screen.dart';
 import '../../screens/dream_journal_calendar_screen.dart';

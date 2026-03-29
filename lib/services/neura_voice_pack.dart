@@ -15,7 +15,7 @@ import 'package:permission_handler/permission_handler.dart';
 /// Features:
 /// - Play bundled WAV assets (assets/audio/neura/*.wav)
 /// - Emit talkLevel (0..1) from a precomputed envelope JSON if present
-/// - Optional viseme timeline JSON sampling (assets/audio/neura/visemes/<stem>.json)
+/// - Optional viseme timeline JSON sampling (assets/audio/neura/visemes/STEM.json)
 /// - Live mic visemes (RMS + ZCR) when no clip is playing
 ///
 /// This is designed to be used by your Rive avatar driver:
@@ -35,7 +35,8 @@ class NeuraVoiceFrame {
     required this.mm,
   });
 
-  static const idle = NeuraVoiceFrame(talkLevel: 0, rest: 0.88, aa: 0, ee: 0, oo: 0, ff: 0, mm: 0.12);
+  static const idle = NeuraVoiceFrame(
+      talkLevel: 0, rest: 0.88, aa: 0, ee: 0, oo: 0, ff: 0, mm: 0.12);
 }
 
 class NeuraVoicePack {
@@ -185,7 +186,9 @@ class NeuraEnvelopeLoader {
       final s = await rootBundle.loadString(path);
       final obj = json.decode(s) as Map<String, dynamic>;
       final fps = (obj['fps'] as num?)?.toInt() ?? 30;
-      final levels = (obj['levels'] as List<dynamic>? ?? const []).map((e) => (e as num).toDouble()).toList();
+      final levels = (obj['levels'] as List<dynamic>? ?? const [])
+          .map((e) => (e as num).toDouble())
+          .toList();
       return NeuraEnvelope(fps: fps, levels: levels);
     } catch (_) {
       return null;
@@ -223,7 +226,9 @@ class NeuraVisemeWeights {
     w.oo = numv('oo');
     w.ff = numv('ff');
     w.mm = numv('mm');
-    w.rest = (m.containsKey('rest')) ? numv('rest') : (1.0 - (w.aa + w.ee + w.oo + w.ff + w.mm)).clamp(0.0, 1.0);
+    w.rest = (m.containsKey('rest'))
+        ? numv('rest')
+        : (1.0 - (w.aa + w.ee + w.oo + w.ff + w.mm)).clamp(0.0, 1.0);
     w.normalize();
     return w;
   }
@@ -258,7 +263,8 @@ class NeuraVisemeTimeline {
     base.oo *= (0.35 + 0.65 * t);
     base.ff *= (0.50 + 0.50 * t);
     base.mm *= (0.70 + 0.30 * (1.0 - t));
-    base.rest = (1.0 - (base.aa + base.ee + base.oo + base.ff + base.mm)).clamp(0.0, 1.0);
+    base.rest = (1.0 - (base.aa + base.ee + base.oo + base.ff + base.mm))
+        .clamp(0.0, 1.0);
     base.normalize();
     return base;
   }
@@ -266,7 +272,9 @@ class NeuraVisemeTimeline {
   static NeuraVisemeTimeline fromFramesJson(Map<String, dynamic> obj) {
     final fps = (obj['fps'] as num?)?.toInt() ?? 30;
     final list = (obj['frames'] as List<dynamic>? ?? const []);
-    final frames = list.map((e) => NeuraVisemeWeights.fromMap(e as Map<String, dynamic>)).toList(growable: false);
+    final frames = list
+        .map((e) => NeuraVisemeWeights.fromMap(e as Map<String, dynamic>))
+        .toList(growable: false);
     return NeuraVisemeTimeline(fps: fps, frames: frames);
   }
 }
@@ -278,7 +286,9 @@ class NeuraVisemeTimelineLoader {
     try {
       final s = await rootBundle.loadString(path);
       final obj = json.decode(s) as Map<String, dynamic>;
-      if (obj.containsKey('frames')) return NeuraVisemeTimeline.fromFramesJson(obj);
+      if (obj.containsKey('frames')) {
+        return NeuraVisemeTimeline.fromFramesJson(obj);
+      }
       return null;
     } catch (_) {
       return null;
@@ -291,7 +301,7 @@ class NeuraVisemeTimelineLoader {
 /// =========================
 class NeuraVisemeFallback {
   double _phase = 0;
-  NeuraVisemeWeights _w = NeuraVisemeWeights();
+  final NeuraVisemeWeights _w = NeuraVisemeWeights();
 
   NeuraVisemeWeights tick({required double talkLevel, required double dt}) {
     final t = talkLevel.clamp(0.0, 1.0);
@@ -324,7 +334,9 @@ class NeuraVisemeFallback {
     final targetEe = vowelEnergy * (vE / sumV) * 1.00;
     final targetOo = vowelEnergy * (vO / sumV) * 1.05;
 
-    final targetRest = (1.0 - (targetAa + targetEe + targetOo + targetFf + targetMm)).clamp(0.0, 1.0);
+    final targetRest =
+        (1.0 - (targetAa + targetEe + targetOo + targetFf + targetMm))
+            .clamp(0.0, 1.0);
 
     _w.mm = _lerp(_w.mm, targetMm, dt);
     _w.ff = _lerp(_w.ff, targetFf, dt);
@@ -349,7 +361,8 @@ class NeuraVisemeFallback {
 class _MicFrame {
   final double talkLevel;
   final double rest, aa, ee, oo, ff, mm;
-  const _MicFrame(this.talkLevel, this.rest, this.aa, this.ee, this.oo, this.ff, this.mm);
+  const _MicFrame(
+      this.talkLevel, this.rest, this.aa, this.ee, this.oo, this.ff, this.mm);
 }
 
 class NeuraMicVisemeEngine {
@@ -445,13 +458,17 @@ class NeuraMicVisemeEngine {
 class NeuraMicDriver {
   final FlutterSoundRecorder _rec = FlutterSoundRecorder();
   final NeuraMicVisemeEngine engine;
+  final StreamController<Uint8List> _pcmStream =
+      StreamController<Uint8List>.broadcast();
+  StreamSubscription<Uint8List>? _pcmSub;
 
   final StreamController<_MicFrame> _out = StreamController.broadcast();
   Stream<_MicFrame> get stream => _out.stream;
 
   bool _running = false;
 
-  NeuraMicDriver({NeuraMicVisemeEngine? engine}) : engine = engine ?? NeuraMicVisemeEngine();
+  NeuraMicDriver({NeuraMicVisemeEngine? engine})
+      : engine = engine ?? NeuraMicVisemeEngine();
 
   Future<void> start() async {
     if (_running) return;
@@ -462,10 +479,13 @@ class NeuraMicDriver {
     }
 
     await _rec.openRecorder();
-    await _rec.setSubscriptionDuration(Duration(milliseconds: (1000 / engine.analysisHz).round()));
+    await _rec.setSubscriptionDuration(
+        Duration(milliseconds: (1000 / engine.analysisHz).round()));
+
+    _pcmSub ??= _pcmStream.stream.listen(_pcmSink);
 
     await _rec.startRecorder(
-      toStream: _pcmSink,
+      toStream: _pcmStream.sink,
       codec: Codec.pcm16,
       sampleRate: engine.sampleRate,
       numChannels: 1,
@@ -479,17 +499,19 @@ class NeuraMicDriver {
     if (!_running) return;
     await _rec.stopRecorder();
     await _rec.closeRecorder();
+    await _pcmSub?.cancel();
+    _pcmSub = null;
     _running = false;
   }
 
-  void dispose() {
+  Future<void> dispose() async {
+    await _pcmSub?.cancel();
+    _pcmSub = null;
+    await _pcmStream.close();
     _out.close();
   }
 
-  void _pcmSink(dynamic data) {
-    if (data is! Uint8List) return;
-    final bytes = data;
-
+  void _pcmSink(Uint8List bytes) {
     final bd = ByteData.sublistView(bytes);
     final n = bytes.length ~/ 2;
     final pcm = Int16List(n);

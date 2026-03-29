@@ -7,8 +7,7 @@ class WeeklyLifeSnapshotCard extends StatefulWidget {
   const WeeklyLifeSnapshotCard({Key? key}) : super(key: key);
 
   @override
-  State<WeeklyLifeSnapshotCard> createState() =>
-      _WeeklyLifeSnapshotCardState();
+  State<WeeklyLifeSnapshotCard> createState() => _WeeklyLifeSnapshotCardState();
 }
 
 class _WeeklyLifeSnapshotCardState extends State<WeeklyLifeSnapshotCard> {
@@ -54,14 +53,13 @@ class _WeeklyLifeSnapshotCardState extends State<WeeklyLifeSnapshotCard> {
                   height: 60,
                   child: Center(
                     child: CircularProgressIndicator(
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(Colors.white),
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   ),
                 )
               : summary == null
                   ? const Text(
-                      'Neura doesn't have enough data yet for this week.',
+                      "Neura doesn't have enough data yet for this week.",
                       style: TextStyle(color: Colors.white),
                     )
                   : Column(

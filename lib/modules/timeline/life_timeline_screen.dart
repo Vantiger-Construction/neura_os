@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:cross_file/cross_file.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -44,7 +43,8 @@ class _LifeTimelineScreenState extends State<LifeTimelineScreen> {
         'count': events.length,
         'events': events.map((e) => e.toJson()).toList(growable: false),
       };
-      await file.writeAsString(const JsonEncoder.withIndent('  ').convert(payload));
+      await file
+          .writeAsString(const JsonEncoder.withIndent('  ').convert(payload));
       await Share.shareXFiles(
         [XFile(file.path, mimeType: 'application/json')],
         subject: 'Neura Life Timeline Export',
@@ -63,7 +63,9 @@ class _LifeTimelineScreenState extends State<LifeTimelineScreen> {
     return all.where((e) {
       if (_typeFilter != 'all' && e.type != _typeFilter) return false;
       if (q.isEmpty) return true;
-      return e.title.toLowerCase().contains(q) || e.subtitle.toLowerCase().contains(q) || e.type.toLowerCase().contains(q);
+      return e.title.toLowerCase().contains(q) ||
+          e.subtitle.toLowerCase().contains(q) ||
+          e.type.toLowerCase().contains(q);
     }).toList(growable: false);
   }
 
@@ -115,12 +117,14 @@ class _LifeTimelineScreenState extends State<LifeTimelineScreen> {
             actions: [
               IconButton(
                 tooltip: 'Refresh',
-                onPressed: () => setState(() => _future = LifeTimelineService.instance.build()),
+                onPressed: () => setState(
+                    () => _future = LifeTimelineService.instance.build()),
                 icon: const Icon(Icons.refresh),
               ),
               IconButton(
                 tooltip: 'Export JSON',
-                onPressed: filtered.isEmpty ? null : () => _export(context, filtered),
+                onPressed:
+                    filtered.isEmpty ? null : () => _export(context, filtered),
                 icon: const Icon(Icons.ios_share),
               ),
             ],
@@ -154,7 +158,8 @@ class _LifeTimelineScreenState extends State<LifeTimelineScreen> {
                 ),
                 const SizedBox(height: 10),
                 if (snap.connectionState == ConnectionState.waiting)
-                  const Expanded(child: Center(child: CircularProgressIndicator()))
+                  const Expanded(
+                      child: Center(child: CircularProgressIndicator()))
                 else if (filtered.isEmpty)
                   Expanded(
                     child: Center(
@@ -179,7 +184,8 @@ class _LifeTimelineScreenState extends State<LifeTimelineScreen> {
                           child: ListTile(
                             leading: Icon(_iconFor(e.type)),
                             title: Text(e.title),
-                            subtitle: Text('${_niceType(e.type)} • $ts\n${e.subtitle}'),
+                            subtitle: Text(
+                                '${_niceType(e.type)} • $ts\n${e.subtitle}'),
                             isThreeLine: true,
                           ),
                         );

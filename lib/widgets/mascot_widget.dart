@@ -66,7 +66,7 @@ class _MascotWidgetState extends State<MascotWidget> {
               height: widget.size,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.black.withOpacity(0.35),
+                color: Colors.black.withValues(alpha: 0.35),
               ),
               alignment: Alignment.center,
               child: Text(

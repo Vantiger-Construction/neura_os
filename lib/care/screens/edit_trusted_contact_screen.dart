@@ -7,7 +7,7 @@ import '../services/trusted_contacts_service.dart';
 class EditTrustedContactScreen extends StatefulWidget {
   final TrustedContact? existing;
 
-  const EditTrustedContactScreen({Key? key, this.existing}) : super(key: key);
+  const EditTrustedContactScreen({super.key, this.existing});
 
   @override
   State<EditTrustedContactScreen> createState() =>
@@ -83,10 +83,9 @@ class _EditTrustedContactScreenState extends State<EditTrustedContactScreen> {
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(labelText: 'Name'),
-                validator: (value) =>
-                    (value == null || value.trim().isEmpty)
-                        ? 'Please enter a name.'
-                        : null,
+                validator: (value) => (value == null || value.trim().isEmpty)
+                    ? 'Please enter a name.'
+                    : null,
               ),
               TextFormField(
                 controller: _relationshipController,
@@ -99,7 +98,8 @@ class _EditTrustedContactScreenState extends State<EditTrustedContactScreen> {
               ),
               TextFormField(
                 controller: _notesController,
-                decoration: const InputDecoration(labelText: 'Notes (optional)'),
+                decoration:
+                    const InputDecoration(labelText: 'Notes (optional)'),
                 maxLines: 3,
               ),
               const SizedBox(height: 16),

@@ -44,8 +44,6 @@ class _GlobalAvatarHostState extends State<GlobalAvatarHost> {
   @override
   void initState() {
     super.initState();
-    // Ensure preferences are loaded.
-    widget.avatarService.init();
   }
 
   @override

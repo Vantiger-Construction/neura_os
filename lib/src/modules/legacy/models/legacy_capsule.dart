@@ -148,17 +148,17 @@ class LegacyCapsule {
   }
 
   factory LegacyCapsule.fromMap(Map<String, dynamic> map) {
-    List<String> _list(dynamic v) {
+    List<String> list(dynamic v) {
       if (v is List) return v.map((e) => e.toString()).toList();
       return const [];
     }
 
-    DateTime? _date(dynamic v) {
+    DateTime? date(dynamic v) {
       if (v == null) return null;
       return DateTime.tryParse(v.toString());
     }
 
-    String _str(dynamic v, String fallback) {
+    String str(dynamic v, String fallback) {
       if (v == null) return fallback;
       final s = v.toString();
       return s.isEmpty ? fallback : s;
@@ -168,22 +168,24 @@ class LegacyCapsule {
       id: map['id']?.toString() ?? '',
       title: map['title']?.toString() ?? '',
       body: map['body']?.toString() ?? '',
-      createdAt: DateTime.tryParse(map['createdAt']?.toString() ?? '') ?? DateTime.now(),
-      updatedAt: DateTime.tryParse(map['updatedAt']?.toString() ?? '') ?? DateTime.now(),
-      recipients: _list(map['recipients']),
-      tags: _list(map['tags']),
-      unlockAt: _date(map['unlockAt']),
+      createdAt: DateTime.tryParse(map['createdAt']?.toString() ?? '') ??
+          DateTime.now(),
+      updatedAt: DateTime.tryParse(map['updatedAt']?.toString() ?? '') ??
+          DateTime.now(),
+      recipients: list(map['recipients']),
+      tags: list(map['tags']),
+      unlockAt: date(map['unlockAt']),
       isSealed: map['isSealed'] == true,
       isEncrypted: map['isEncrypted'] == true,
       cipherTextB64: map['cipherTextB64']?.toString(),
       nonceB64: map['nonceB64']?.toString(),
       macB64: map['macB64']?.toString(),
       saltB64: map['saltB64']?.toString(),
-      attachments: _list(map['attachments']),
+      attachments: list(map['attachments']),
       deliveryEnabled: map['deliveryEnabled'] == true,
-      deliveryTrigger: _str(map['deliveryTrigger'], 'manual'),
-      deliveryFormat: _str(map['deliveryFormat'], 'zip'),
-      deliveryContactIds: _list(map['deliveryContactIds']),
+      deliveryTrigger: str(map['deliveryTrigger'], 'manual'),
+      deliveryFormat: str(map['deliveryFormat'], 'zip'),
+      deliveryContactIds: list(map['deliveryContactIds']),
     );
   }
 

@@ -27,7 +27,6 @@ class NeuraFaultSystem {
     _installed = true;
 
     // 1) Friendly error widget (replaces red screen)
-    final oldBuilder = ErrorWidget.builder;
     ErrorWidget.builder = (FlutterErrorDetails details) {
       return _NeuraFriendlyError(
         details: details,
@@ -60,8 +59,7 @@ class NeuraFaultSystem {
       return true; // we handled it
     };
 
-    // Restore builder on hot restart? Not needed, but keep it stable.
-    // oldBuilder is intentionally unused to avoid dead code warnings in some builds.
+    // Restore builder on hot restart? Not needed; builder stays active for this process.
     unawaited(Future<void>.value());
   }
 
@@ -116,13 +114,15 @@ class _NeuraFriendlyError extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: DefaultTextStyle(
-            style: theme.textTheme.bodyMedium ?? const TextStyle(color: Colors.white),
+            style: theme.textTheme.bodyMedium ??
+                const TextStyle(color: Colors.white),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Neura Recovery Mode',
-                  style: (theme.textTheme.headlineSmall ?? const TextStyle(fontSize: 20))
+                  style: (theme.textTheme.headlineSmall ??
+                          const TextStyle(fontSize: 20))
                       .copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 12),
@@ -169,7 +169,9 @@ class _NeuraFriendlyError extends StatelessWidget {
                         final p = await NeuraErrorVault.getVaultPath();
                         if (!context.mounted) return;
                         final snack = SnackBar(
-                          content: Text(p == null ? 'Vault not available on this platform.' : 'Vault: $p'),
+                          content: Text(p == null
+                              ? 'Vault not available on this platform.'
+                              : 'Vault: $p'),
                         );
                         ScaffoldMessenger.of(context).showSnackBar(snack);
                       },

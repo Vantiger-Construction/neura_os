@@ -54,8 +54,8 @@ class _FocusBanner extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            color: Colors.black.withOpacity(0.35),
-            border: Border.all(color: accent.withOpacity(0.35)),
+            color: Colors.black.withValues(alpha: 0.35),
+            border: Border.all(color: accent.withValues(alpha: 0.35)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -72,7 +72,7 @@ class _FocusBanner extends StatelessWidget {
                 onTap: () => FocusController.instance.setMode(FocusMode.off),
                 child: Padding(
                   padding: const EdgeInsets.all(4),
-                  child: Icon(Icons.close, size: 18, color: Colors.white.withOpacity(0.75)),
+                  child: Icon(Icons.close, size: 18, color: Colors.white.withValues(alpha: 0.75)),
                 ),
               )
             ],

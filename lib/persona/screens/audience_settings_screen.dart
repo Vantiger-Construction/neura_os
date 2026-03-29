@@ -4,7 +4,7 @@ import '../models/neura_audience.dart';
 import '../services/neura_audience_service.dart';
 
 class AudienceSettingsScreen extends StatefulWidget {
-  const AudienceSettingsScreen({Key? key}) : super(key: key);
+  const AudienceSettingsScreen({super.key});
 
   @override
   State<AudienceSettingsScreen> createState() => _AudienceSettingsScreenState();
@@ -69,38 +69,30 @@ class _AudienceSettingsScreenState extends State<AudienceSettingsScreen> {
                     style: TextStyle(fontSize: 12, color: Colors.black54),
                   ),
                   const SizedBox(height: 16),
-                  RadioListTile<NeuraAudience>(
-                    value: NeuraAudience.adult,
-                    groupValue: _audience,
-                    title: const Text('Adult'),
-                    subtitle: const Text(
-                      'Full depth and directness (still with safety rules).',
-                    ),
-                    onChanged: (v) {
-                      if (v != null) _updateAudience(v);
+                  SegmentedButton<NeuraAudience>(
+                    segments: const [
+                      ButtonSegment(
+                        value: NeuraAudience.adult,
+                        label: Text('Adult'),
+                      ),
+                      ButtonSegment(
+                        value: NeuraAudience.teen,
+                        label: Text('Teen'),
+                      ),
+                      ButtonSegment(
+                        value: NeuraAudience.child,
+                        label: Text('Child'),
+                      ),
+                    ],
+                    selected: <NeuraAudience>{_audience},
+                    onSelectionChanged: (selection) {
+                      _updateAudience(selection.first);
                     },
                   ),
-                  RadioListTile<NeuraAudience>(
-                    value: NeuraAudience.teen,
-                    groupValue: _audience,
-                    title: const Text('Teen'),
-                    subtitle: const Text(
-                      'Supportive, clear language without explicit content.',
-                    ),
-                    onChanged: (v) {
-                      if (v != null) _updateAudience(v);
-                    },
-                  ),
-                  RadioListTile<NeuraAudience>(
-                    value: NeuraAudience.child,
-                    groupValue: _audience,
-                    title: const Text('Child'),
-                    subtitle: const Text(
-                      'Very gentle, child-friendly language with strong topic limits.',
-                    ),
-                    onChanged: (v) {
-                      if (v != null) _updateAudience(v);
-                    },
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Adult: full depth. Teen: clear, supportive language. Child: very gentle mode.',
+                    style: TextStyle(fontSize: 12, color: Colors.black54),
                   ),
                   const SizedBox(height: 16),
                   const Text(

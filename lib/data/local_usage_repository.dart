@@ -1,5 +1,5 @@
 import 'package:hive/hive.dart';
-import 'package:neura_companion/models/usage_entry.dart';
+import 'package:neuro_companion/models/usage_entry.dart';
 
 class LocalUsageRepository {
   static const String _boxName = 'usage_entries';

@@ -8,6 +8,7 @@
 import 'package:flutter_tts/flutter_tts.dart';
 
 import '../../core/neura_event_bus.dart';
+import '../../core/neura_events.dart';
 import '../../core/neura_events_extra.dart';
 import '../../avatar/viseme/neura_viseme_engine.dart';
 
@@ -61,7 +62,10 @@ class NeuraFlutterTtsVisemeBridge {
         } else if (word.isNotEmpty) {
           frag = word;
         } else {
-          frag = text.isEmpty ? '' : text.substring(safeStart, (safeStart + 1).clamp(0, text.length));
+          frag = text.isEmpty
+              ? ''
+              : text.substring(
+                  safeStart, (safeStart + 1).clamp(0, text.length));
         }
 
         final v = NeuraVisemeEngine.inferFromFragment(frag);

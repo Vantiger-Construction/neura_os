@@ -11,7 +11,7 @@ class AuthService {
       _auth.signInWithEmailAndPassword(email: email, password: pass);
 
   Future<void> signUp(String email, String pass) async {
-    final cred = await _auth.createUserWithEmailAndPassword(email: email, password: pass);
+    await _auth.createUserWithEmailAndPassword(email: email, password: pass);
     await sendEmailVerification();
   }
 
@@ -39,14 +39,17 @@ class AuthService {
     if (googleUser == null) return; // User cancelled
     final googleAuth = await googleUser.authentication;
     final credential = GoogleAuthProvider.credential(
-      idToken: googleAuth.idToken, accessToken: googleAuth.accessToken);
+        idToken: googleAuth.idToken, accessToken: googleAuth.accessToken);
     await _auth.signInWithCredential(credential);
   }
 
   /// Apple Sign-In
   Future<void> signInWithApple() async {
     final credential = await SignInWithApple.getAppleIDCredential(
-      scopes: [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
+      scopes: [
+        AppleIDAuthorizationScopes.email,
+        AppleIDAuthorizationScopes.fullName
+      ],
     );
     final oAuthProvider = OAuthProvider("apple.com");
     final authCredential = oAuthProvider.credential(

@@ -13,7 +13,7 @@ class VoiceLabScreen extends StatefulWidget {
 
 class _VoiceLabScreenState extends State<VoiceLabScreen> {
   StreamSubscription? _sub;
-  NeuraVisemeFrame _last = const NeuraVisemeFrame(
+  NeuraVoiceFrame _last = const NeuraVoiceFrame(
     talkLevel: 0,
     rest: 1,
     aa: 0,
@@ -21,8 +21,6 @@ class _VoiceLabScreenState extends State<VoiceLabScreen> {
     oo: 0,
     ff: 0,
     mm: 0,
-    rms: 0,
-    zcr: 0,
   );
 
   bool _micOn = false;
@@ -30,7 +28,7 @@ class _VoiceLabScreenState extends State<VoiceLabScreen> {
   @override
   void initState() {
     super.initState();
-    _sub = NeuraVoicePack.I.visemes.listen((f) {
+    _sub = NeuraVoicePack.I.stream.listen((f) {
       setState(() => _last = f);
     });
   }
@@ -110,23 +108,23 @@ class _VoiceLabScreenState extends State<VoiceLabScreen> {
           const SizedBox(height: 8),
           _Btn(
             label: 'Recording.wav',
-            onTap: () => _play('assets/audio/neura/Recording.wav'),
+            onTap: () => _play('Recording.wav'),
           ),
           _Btn(
             label: 'Recording_upbeat.wav',
-            onTap: () => _play('assets/audio/neura/Recording_upbeat.wav'),
+            onTap: () => _play('Recording_upbeat.wav'),
           ),
           _Btn(
             label: 'to_tigger_vxxx1.wav',
-            onTap: () => _play('assets/audio/neura/to_tigger_vxxx1.wav'),
+            onTap: () => _play('to_tigger_vxxx1.wav'),
           ),
           _Btn(
             label: 'to_tigger_vxxx2.wav',
-            onTap: () => _play('assets/audio/neura/to_tigger_vxxx2.wav'),
+            onTap: () => _play('to_tigger_vxxx2.wav'),
           ),
           _Btn(
             label: 'to_tigger_vxxx3.wav',
-            onTap: () => _play('assets/audio/neura/to_tigger_vxxx3.wav'),
+            onTap: () => _play('to_tigger_vxxx3.wav'),
           ),
         ],
       ),
@@ -182,7 +180,8 @@ class _ChipBar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('$label ${v.toStringAsFixed(2)}', style: Theme.of(context).textTheme.labelMedium),
+          Text('$label ${v.toStringAsFixed(2)}',
+              style: Theme.of(context).textTheme.labelMedium),
           const SizedBox(height: 4),
           LinearProgressIndicator(value: v.clamp(0, 1)),
         ],

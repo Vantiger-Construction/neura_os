@@ -51,14 +51,14 @@ class _GoodwillStreakBadgeState extends State<GoodwillStreakBadge> with SingleTi
               padding: EdgeInsets.symmetric(horizontal: widget.compact ? 8 : 12, vertical: widget.compact ? 4 : 8),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(999),
-                color: active ? Colors.white.withOpacity(0.10) : Colors.white.withOpacity(0.06),
+                color: active ? Colors.white.withValues(alpha: 0.10) : Colors.white.withValues(alpha: 0.06),
                 border: Border.all(color: active ? Colors.white24 : Colors.white12),
                 boxShadow: active
                     ? [
                         BoxShadow(
                           blurRadius: glow,
                           spreadRadius: 0.5,
-                          color: Colors.white.withOpacity(0.10 + 0.12 * t),
+                          color: Colors.white.withValues(alpha: 0.10 + 0.12 * t),
                         ),
                       ]
                     : const [],
@@ -137,7 +137,7 @@ class _GoodwillCelebrationDialogState extends State<_GoodwillCelebrationDialog> 
                 height: 72,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.08),
+                  color: Colors.white.withValues(alpha: 0.08),
                   border: Border.all(color: Colors.white24),
                 ),
                 child: const Center(

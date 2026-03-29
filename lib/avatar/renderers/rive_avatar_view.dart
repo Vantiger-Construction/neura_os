@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:rive/rive.dart';
@@ -75,7 +73,8 @@ class _RiveAvatarViewState extends State<RiveAvatarView> {
   Future<_RiveLoaded> _load() async {
     final data = await rootBundle.load(widget.spec.assetPath);
     final bytes = data.buffer.asUint8List();
-    final file = RiveFile.import(ByteData.sublistView(Uint8List.fromList(bytes)));
+    final file =
+        RiveFile.import(ByteData.sublistView(Uint8List.fromList(bytes)));
 
     final cfg = widget.spec.rive;
     final Artboard artboard = (cfg?.artboard != null)
@@ -156,7 +155,8 @@ class _RiveAvatarViewState extends State<RiveAvatarView> {
             return widget.fallback;
           }
           if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+            return const Center(
+                child: CircularProgressIndicator(strokeWidth: 2));
           }
 
           final loaded = snap.data!;

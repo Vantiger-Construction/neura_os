@@ -38,12 +38,15 @@ class NeuraWindowsBridge {
     }
 
     _sock!
+        .cast<List<int>>()
         .transform(utf8.decoder)
         .transform(const LineSplitter())
         .listen((line) {
       try {
         final msg = jsonDecode(line) as Map<String, dynamic>;
-        for (final cb in _listeners) cb(msg);
+        for (final cb in _listeners) {
+          cb(msg);
+        }
       } catch (_) {
         // ignore junk lines
       }

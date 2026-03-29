@@ -4,7 +4,7 @@ import 'package:local_auth/local_auth.dart';
 class AuthGuard extends StatelessWidget {
   final Widget child;
 
-  AuthGuard({required this.child});
+  AuthGuard({super.key, required this.child});
 
   final LocalAuthentication _auth = LocalAuthentication();
 
@@ -12,7 +12,7 @@ class AuthGuard extends StatelessWidget {
     try {
       return await _auth.authenticate(
         localizedReason: 'Please authenticate to continue',
-        biometricOnly: true,
+        options: const AuthenticationOptions(biometricOnly: true),
       );
     } catch (e) {
       return false;

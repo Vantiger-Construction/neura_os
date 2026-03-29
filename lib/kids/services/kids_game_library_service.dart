@@ -1,11 +1,10 @@
-import 'dart:io';
-
 /// Placeholder/stub for a cross-platform kids-game launcher.
 /// In practice, auto-detecting installed games is platform-specific and often restricted,
 /// so this service starts as a simple manual list + TODO hooks.
 class KidsGameLibraryService {
   KidsGameLibraryService._internal();
-  static final KidsGameLibraryService instance = KidsGameLibraryService._internal();
+  static final KidsGameLibraryService instance =
+      KidsGameLibraryService._internal();
 
   /// For now, a simple map of "game name" -> "launch command / URL".
   /// Parents can configure paths or URLs in a future settings screen.

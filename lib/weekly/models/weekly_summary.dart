@@ -27,5 +27,5 @@ class WeeklySummary {
         dreamsCount = 0,
         topStormFeeling = 'unknown',
         topDreamTheme = 'unknown',
-        vibeSentence = 'Neura doesn't have enough data yet for this week.';
+        vibeSentence = "Neura doesn't have enough data yet for this week.";
 }

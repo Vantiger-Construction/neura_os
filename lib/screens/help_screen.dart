@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class HelpScreen extends StatelessWidget {
+  const HelpScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -11,7 +13,8 @@ class HelpScreen extends StatelessWidget {
         padding: EdgeInsets.all(16),
         child: ListView(
           children: const [
-            Text('Welcome to Neura Companion!', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text('Welcome to Neura Companion!',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             SizedBox(height: 12),
             Text('1. Log in or create an account to get started.'),
             Text('2. Record and track your daily rituals in Analytics.'),
@@ -22,7 +25,9 @@ class HelpScreen extends StatelessWidget {
             Text('7. Sync your data offline and back online seamlessly.'),
             Text('8. Manage subscriptions in the Profile tab.'),
             SizedBox(height: 20),
-            Text('Enjoy your journey to better habits and wellness with Neura & Neuro!', style: TextStyle(fontStyle: FontStyle.italic)),
+            Text(
+                'Enjoy your journey to better habits and wellness with Neura & Neuro!',
+                style: TextStyle(fontStyle: FontStyle.italic)),
           ],
         ),
       ),

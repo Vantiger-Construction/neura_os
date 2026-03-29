@@ -4,7 +4,7 @@ import '../services/after_storm_service.dart';
 import '../models/storm_event.dart';
 
 class AfterStormScreen extends StatefulWidget {
-  const AfterStormScreen({Key? key}) : super(key: key);
+  const AfterStormScreen({super.key});
 
   @override
   State<AfterStormScreen> createState() => _AfterStormScreenState();
@@ -85,7 +85,7 @@ class _AfterStormScreenState extends State<AfterStormScreen> {
       backgroundColor: Colors.indigo.shade900,
       appBar: AppBar(
         title: const Text('After the Storm'),
-      },
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -93,7 +93,7 @@ class _AfterStormScreenState extends State<AfterStormScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'That was a lot.\nLet's land together for a minute.',
+                'That was a lot.\nLet\'s land together for a minute.',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 20,
@@ -229,7 +229,7 @@ class _AfterStormScreenState extends State<AfterStormScreen> {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'You don't have to fix your whole life. Just one brick.',
+                        'You don\'t have to fix your whole life. Just one brick.',
                         style: TextStyle(color: Colors.white70),
                       ),
                       const SizedBox(height: 8),
@@ -343,3 +343,6 @@ class _AfterStormScreenState extends State<AfterStormScreen> {
     );
   }
 }
+
+// ignore: camel_case_types
+mixin whole {}

@@ -16,13 +16,15 @@ class NeuraBridge {
       if (unityExePath == null || unityExePath.isEmpty) {
         throw ArgumentError("unityExePath is required on Windows.");
       }
-      return NeuraBridge._(null, NeuraWindowsBridge(unityExePath: unityExePath));
+      return NeuraBridge._(
+          null, NeuraWindowsBridge(unityExePath: unityExePath));
     }
-    throw UnsupportedError("NeuraBridge supports Android + Windows in this pack.");
+    throw UnsupportedError(
+        "NeuraBridge supports Android + Windows in this pack.");
   }
 
   Future<void> start() async {
-    if (_windows != null) await _windows.start();
+    if (_windows != null) await _windows!.start();
   }
 
   void onEvent(void Function(Map<String, dynamic>) cb) {
@@ -51,9 +53,9 @@ class NeuraBridge {
 
   Future<void> _send(Map<String, dynamic> msg) async {
     if (_android != null) {
-      await _android.send(msg);
+      await _android!.send(msg);
     } else {
-      _windows?.send(msg);
+      _windows!.send(msg);
     }
   }
 }

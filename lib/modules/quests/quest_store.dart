@@ -75,8 +75,9 @@ class QuestStore {
   Future<void> markDoneToday(String questId) async {
     final done = await getDone();
     final today = normalizeDay(DateTime.now());
-    if (done.any((d) => d.questId == questId && normalizeDay(d.day) == today))
+    if (done.any((d) => d.questId == questId && normalizeDay(d.day) == today)) {
       return;
+    }
     done.add(QuestDone(questId: questId, day: today));
     // keep bounded
     if (done.length > 5000) {

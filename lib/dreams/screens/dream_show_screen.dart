@@ -4,6 +4,8 @@ import '../services/dream_service.dart';
 import '../services/dream_theme_service.dart';
 import '../models/dream_entry.dart';
 
+// DreamThemeSummary is exported from dream_theme_service.dart
+
 class DreamShowScreen extends StatefulWidget {
   const DreamShowScreen({Key? key}) : super(key: key);
 
@@ -101,8 +103,7 @@ class _DreamShowScreenState extends State<DreamShowScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                if (summary != null)
-                  _buildSummaryCard(summary),
+                if (summary != null) _buildSummaryCard(summary),
                 const SizedBox(height: 8),
                 Expanded(
                   child: _entries.isEmpty
@@ -110,11 +111,8 @@ class _DreamShowScreenState extends State<DreamShowScreen> {
                           child: Padding(
                             padding: EdgeInsets.all(16),
                             child: Text(
-                              'No dreams recorded yet.
-
-'
-                              'When you wake up, drop a quick note here.
-'
+                              'No dreams recorded yet.\n\n'
+                              'When you wake up, drop a quick note here.\n'
                               'Neura will start spotting recurring themes.',
                               textAlign: TextAlign.center,
                             ),

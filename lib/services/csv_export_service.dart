@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
-import 'package:neura_companion/repositories/usage_repository.dart';
+import 'package:neuro_companion/repositories/usage_repository.dart';
 
 class CsvExportService {
   final UsageRepository repository;
@@ -8,9 +8,10 @@ class CsvExportService {
   CsvExportService(this.repository);
 
   Future<String> exportAllEntries() async {
-    final entries = await repository.getAllEntries();
+    final entries = repository.getAllEntries();
     final directory = await getTemporaryDirectory();
-    final fileName = 'usage_entries_${DateTime.now().millisecondsSinceEpoch}.csv';
+    final fileName =
+        'usage_entries_${DateTime.now().millisecondsSinceEpoch}.csv';
     final file = File('${directory.path}/$fileName');
 
     final buffer = StringBuffer();

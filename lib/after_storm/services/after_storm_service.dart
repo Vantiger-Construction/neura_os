@@ -50,7 +50,7 @@ class AfterStormService {
 
     // Fan-out to other systems
     await _weekly.logStormEvent(event);
-    await _care.logStormEvent(event);
+    _care.logStormEvent(event);
   }
 
   Future<StormSummary> computeSummary({int days = 7}) async {
@@ -66,8 +66,7 @@ class AfterStormService {
     int safetyCount = 0;
 
     for (final e in recent) {
-      intensityCounts[e.intensity] =
-          (intensityCounts[e.intensity] ?? 0) + 1;
+      intensityCounts[e.intensity] = (intensityCounts[e.intensity] ?? 0) + 1;
       feelingCounts[e.primaryFeeling] =
           (feelingCounts[e.primaryFeeling] ?? 0) + 1;
       if (e.safetyRisk) safetyCount++;

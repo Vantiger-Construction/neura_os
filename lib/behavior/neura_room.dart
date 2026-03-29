@@ -1,2 +1,2 @@
-// neura_room.dart
-// Full implementation provided in previous messages.
+/// Rooms/zones in the Neura virtual apartment.
+enum NeuraRoom { journalDesk, dreamWindow, calmLounge, reflectionBay }

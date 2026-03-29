@@ -1,13 +1,12 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:neura_companion/models/usage_entry.dart';
-import 'package:neura_companion/services/pdf_report_service.dart';
-import 'package:neura_companion/repositories/usage_repository.dart';
+import 'package:neuro_companion/models/usage_entry.dart';
+import 'package:neuro_companion/services/pdf_report_service.dart';
+import 'package:neuro_companion/repositories/usage_repository.dart';
 
-class FakeRepo implements UsageRepository {
-  @override
-  Future<List<UsageEntry>> getAllEntries() async {
-    return [
+class FakeRepo extends UsageRepository {
+  FakeRepo() : super() {
+    addEntry(
       UsageEntry(
         id: 'a',
         timestamp: DateTime.utc(2025, 1, 1),
@@ -15,10 +14,8 @@ class FakeRepo implements UsageRepository {
         source: 's1',
         moodTag: 'm1',
       ),
-    ];
+    );
   }
-  @override
-  Future<void> saveEntry(UsageEntry entry) => throw UnimplementedError();
 }
 
 void main() {

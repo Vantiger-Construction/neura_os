@@ -19,11 +19,9 @@ class WeeklySnapshotService {
     final recentStorms =
         storms.where((e) => e.timestamp.isAfter(cutoff)).toList();
 
-    final dreamThemeSummary =
-        await _dreamThemes.computeSummary(days: days);
+    final dreamThemeSummary = await _dreamThemes.computeSummary(days: days);
     final dreams = await _dreams.loadDreams();
-    final recentDreams =
-        dreams.where((d) => d.date.isAfter(cutoff)).toList();
+    final recentDreams = dreams.where((d) => d.date.isAfter(cutoff)).toList();
 
     if (recentStorms.isEmpty && recentDreams.isEmpty) {
       return const WeeklySummary.empty();
@@ -88,7 +86,7 @@ class WeeklySnapshotService {
       return 'Stormy but resilient: lots of emotional weather, but you kept yourself safe through all of it.';
     }
     if (storms.length >= 3 && safetyStorms > 0) {
-      return 'It's been an intense stretch. Neura suggests extra softness and reaching out to trusted people when you can.';
+      return "It's been an intense stretch. Neura suggests extra softness and reaching out to trusted people when you can.";
     }
     if (storms.length <= 2 && dreamsCount <= 2) {
       return 'Relatively gentle week. Small waves, small dreams, still worth celebrating that stability.';

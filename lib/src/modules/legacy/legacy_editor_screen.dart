@@ -79,16 +79,19 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
       _didPromptDecrypt = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
-        final pass = await _promptPassphrase(title: 'Passphrase to edit this capsule');
+        final pass =
+            await _promptPassphrase(title: 'Passphrase to edit this capsule');
         if (pass == null || pass.trim().isEmpty) return;
         try {
-          final body = await LegacyVaultService.instance.decryptBody(capsule: c, passphrase: pass);
+          final body = await LegacyVaultService.instance
+              .decryptBody(capsule: c, passphrase: pass);
           if (!mounted) return;
           setState(() => _body.text = body);
         } catch (_) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Passphrase incorrect (or capsule corrupted).')),
+            const SnackBar(
+                content: Text('Passphrase incorrect (or capsule corrupted).')),
           );
         }
       });
@@ -112,7 +115,8 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
     if (time == null) return;
 
     setState(() {
-      _unlockAt = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+      _unlockAt =
+          DateTime(date.year, date.month, date.day, time.hour, time.minute);
     });
   }
 
@@ -129,8 +133,12 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Add')),
         ],
       ),
     );
@@ -149,7 +157,8 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
 
     if (contacts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No trusted contacts yet. Add some first.')),
+        const SnackBar(
+            content: Text('No trusted contacts yet. Add some first.')),
       );
       return;
     }
@@ -162,9 +171,11 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
     if (picked == null || picked.isEmpty) return;
 
     setState(() {
-      final asRecipients = picked.map((c) => '${c.displayName} <${c.address}>').toList();
+      final asRecipients =
+          picked.map((c) => '${c.displayName} <${c.address}>').toList();
       _recipients = {..._recipients, ...asRecipients}.toList();
-      _deliveryContactIds = {..._deliveryContactIds, ...picked.map((c) => c.id)}.toList();
+      _deliveryContactIds =
+          {..._deliveryContactIds, ...picked.map((c) => c.id)}.toList();
     });
   }
 
@@ -179,8 +190,12 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
           decoration: const InputDecoration(labelText: 'Tag'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Add')),
         ],
       ),
     );
@@ -239,7 +254,8 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
           setState(() => _loading = false);
           return;
         }
-        capsule = await LegacyVaultService.instance.saveCapsule(capsule, passphrase: pass);
+        capsule = await LegacyVaultService.instance
+            .saveCapsule(capsule, passphrase: pass);
       } else {
         capsule = await LegacyVaultService.instance.saveCapsule(capsule);
       }
@@ -256,7 +272,8 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
     }
   }
 
-  Future<String?> _promptPassphrase({String title = 'Encryption passphrase'}) async {
+  Future<String?> _promptPassphrase(
+      {String title = 'Encryption passphrase'}) async {
     final controller = TextEditingController();
     return showDialog<String>(
       context: context,
@@ -268,8 +285,12 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
           decoration: const InputDecoration(labelText: 'Passphrase'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Encrypt')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: const Text('Encrypt')),
         ],
       ),
     );
@@ -306,22 +327,25 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                   maxLines: 8,
                 ),
                 const SizedBox(height: 12),
-
                 SwitchListTile(
                   value: _encrypted,
                   onChanged: (v) => setState(() => _encrypted = v),
                   title: const Text('Encrypt this capsule'),
-                  subtitle: const Text('Protects the message text. Attachments are stored locally; share packets carefully.'),
+                  subtitle: const Text(
+                      'Protects the message text. Attachments are stored locally; share packets carefully.'),
                 ),
                 SwitchListTile(
                   value: _sealed,
                   onChanged: (v) => setState(() => _sealed = v),
                   title: const Text('Seal (read‑only)'),
-                  subtitle: const Text('Sealed capsules can’t be edited — duplicate to change.'),
+                  subtitle: const Text(
+                      'Sealed capsules can’t be edited — duplicate to change.'),
                 ),
                 ListTile(
                   title: const Text('Time‑lock'),
-                  subtitle: Text(_unlockAt == null ? 'None' : _unlockAt!.toLocal().toString()),
+                  subtitle: Text(_unlockAt == null
+                      ? 'None'
+                      : _unlockAt!.toLocal().toString()),
                   trailing: Wrap(
                     spacing: 8,
                     children: [
@@ -339,7 +363,6 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 12),
                 Card(
                   child: Padding(
@@ -349,7 +372,8 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                       children: [
                         Row(
                           children: [
-                            Text('Recipients', style: Theme.of(context).textTheme.titleMedium),
+                            Text('Recipients',
+                                style: Theme.of(context).textTheme.titleMedium),
                             const Spacer(),
                             IconButton(
                               tooltip: 'Add from trusted',
@@ -372,7 +396,10 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                                 .map(
                                   (r) => InputChip(
                                     label: Text(r),
-                                    onDeleted: () => setState(() => _recipients = _recipients.where((x) => x != r).toList()),
+                                    onDeleted: () => setState(() =>
+                                        _recipients = _recipients
+                                            .where((x) => x != r)
+                                            .toList()),
                                   ),
                                 )
                                 .toList(),
@@ -381,7 +408,6 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 12),
                 Card(
                   child: Padding(
@@ -391,9 +417,13 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                       children: [
                         Row(
                           children: [
-                            Text('Tags', style: Theme.of(context).textTheme.titleMedium),
+                            Text('Tags',
+                                style: Theme.of(context).textTheme.titleMedium),
                             const Spacer(),
-                            IconButton(tooltip: 'Add', onPressed: _addTag, icon: const Icon(Icons.add)),
+                            IconButton(
+                                tooltip: 'Add',
+                                onPressed: _addTag,
+                                icon: const Icon(Icons.add)),
                           ],
                         ),
                         if (_tags.isEmpty)
@@ -405,7 +435,8 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                                 .map(
                                   (t) => InputChip(
                                     label: Text(t),
-                                    onDeleted: () => setState(() => _tags = _tags.where((x) => x != t).toList()),
+                                    onDeleted: () => setState(() => _tags =
+                                        _tags.where((x) => x != t).toList()),
                                   ),
                                 )
                                 .toList(),
@@ -414,7 +445,6 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 12),
                 Card(
                   child: Padding(
@@ -424,9 +454,13 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                       children: [
                         Row(
                           children: [
-                            Text('Attachments', style: Theme.of(context).textTheme.titleMedium),
+                            Text('Attachments',
+                                style: Theme.of(context).textTheme.titleMedium),
                             const Spacer(),
-                            IconButton(tooltip: 'Add file', onPressed: _importAttachment, icon: const Icon(Icons.attach_file)),
+                            IconButton(
+                                tooltip: 'Add file',
+                                onPressed: _importAttachment,
+                                icon: const Icon(Icons.attach_file)),
                           ],
                         ),
                         if (_attachmentsRel.isEmpty)
@@ -436,13 +470,17 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                             (p) => ListTile(
                               dense: true,
                               contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.insert_drive_file_outlined),
+                              leading:
+                                  const Icon(Icons.insert_drive_file_outlined),
                               title: Text(p.split('/').last),
                               subtitle: Text(p),
                               trailing: IconButton(
                                 tooltip: 'Remove',
                                 icon: const Icon(Icons.delete_outline),
-                                onPressed: () => setState(() => _attachmentsRel = _attachmentsRel.where((x) => x != p).toList()),
+                                onPressed: () => setState(() =>
+                                    _attachmentsRel = _attachmentsRel
+                                        .where((x) => x != p)
+                                        .toList()),
                               ),
                             ),
                           ),
@@ -450,7 +488,6 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 12),
                 Card(
                   child: Padding(
@@ -460,11 +497,13 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                       children: [
                         Row(
                           children: [
-                            Text('Delivery', style: Theme.of(context).textTheme.titleMedium),
+                            Text('Delivery',
+                                style: Theme.of(context).textTheme.titleMedium),
                             const Spacer(),
                             Switch(
                               value: _deliveryEnabled,
-                              onChanged: (v) => setState(() => _deliveryEnabled = v),
+                              onChanged: (v) =>
+                                  setState(() => _deliveryEnabled = v),
                             ),
                           ],
                         ),
@@ -476,25 +515,37 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                         const SizedBox(height: 12),
                         if (_deliveryEnabled) ...[
                           DropdownButtonFormField<String>(
-                            value: _deliveryTrigger,
-                            decoration: const InputDecoration(labelText: 'Trigger'),
+                            initialValue: _deliveryTrigger,
+                            decoration:
+                                const InputDecoration(labelText: 'Trigger'),
                             items: const [
-                              DropdownMenuItem(value: 'manual', child: Text('Manual')),
-                              DropdownMenuItem(value: 'unlock', child: Text('After time‑lock')),
-                              DropdownMenuItem(value: 'deadman', child: Text('Legacy Guard')),
+                              DropdownMenuItem(
+                                  value: 'manual', child: Text('Manual')),
+                              DropdownMenuItem(
+                                  value: 'unlock',
+                                  child: Text('After time‑lock')),
+                              DropdownMenuItem(
+                                  value: 'deadman',
+                                  child: Text('Legacy Guard')),
                             ],
-                            onChanged: (v) => setState(() => _deliveryTrigger = v ?? 'manual'),
+                            onChanged: (v) => setState(
+                                () => _deliveryTrigger = v ?? 'manual'),
                           ),
                           const SizedBox(height: 8),
                           DropdownButtonFormField<String>(
-                            value: _deliveryFormat,
-                            decoration: const InputDecoration(labelText: 'Preferred format'),
+                            initialValue: _deliveryFormat,
+                            decoration: const InputDecoration(
+                                labelText: 'Preferred format'),
                             items: const [
-                              DropdownMenuItem(value: 'zip', child: Text('ZIP packet')),
-                              DropdownMenuItem(value: 'pdf', child: Text('PDF letter')),
-                              DropdownMenuItem(value: 'json', child: Text('Raw JSON')),
+                              DropdownMenuItem(
+                                  value: 'zip', child: Text('ZIP packet')),
+                              DropdownMenuItem(
+                                  value: 'pdf', child: Text('PDF letter')),
+                              DropdownMenuItem(
+                                  value: 'json', child: Text('Raw JSON')),
                             ],
-                            onChanged: (v) => setState(() => _deliveryFormat = v ?? 'zip'),
+                            onChanged: (v) =>
+                                setState(() => _deliveryFormat = v ?? 'zip'),
                           ),
                           const SizedBox(height: 8),
                           Text(
@@ -508,7 +559,6 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 24),
                 ElevatedButton.icon(
                   onPressed: _loading ? null : _save,
@@ -526,10 +576,12 @@ class _TrustedContactPickerDialog extends StatefulWidget {
   const _TrustedContactPickerDialog({required this.contacts});
 
   @override
-  State<_TrustedContactPickerDialog> createState() => _TrustedContactPickerDialogState();
+  State<_TrustedContactPickerDialog> createState() =>
+      _TrustedContactPickerDialogState();
 }
 
-class _TrustedContactPickerDialogState extends State<_TrustedContactPickerDialog> {
+class _TrustedContactPickerDialogState
+    extends State<_TrustedContactPickerDialog> {
   final Set<String> _selectedIds = {};
 
   @override
@@ -560,10 +612,14 @@ class _TrustedContactPickerDialogState extends State<_TrustedContactPickerDialog
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel')),
         ElevatedButton(
           onPressed: () {
-            final picked = widget.contacts.where((c) => _selectedIds.contains(c.id)).toList();
+            final picked = widget.contacts
+                .where((c) => _selectedIds.contains(c.id))
+                .toList();
             Navigator.pop(context, picked);
           },
           child: const Text('Use'),

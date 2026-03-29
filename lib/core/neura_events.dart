@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 @immutable
-sealed class NeuraEvent {
+class NeuraEvent {
   const NeuraEvent();
 }
 

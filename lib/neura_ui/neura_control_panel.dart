@@ -49,7 +49,7 @@ class _NeuraControlPanelState extends State<NeuraControlPanel> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: room,
+                    initialValue: room,
                     items: rooms
                         .map((r) => DropdownMenuItem(value: r, child: Text(r)))
                         .toList(),
@@ -60,7 +60,7 @@ class _NeuraControlPanelState extends State<NeuraControlPanel> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: mood,
+                    initialValue: mood,
                     items: moods
                         .map((m) => DropdownMenuItem(value: m, child: Text(m)))
                         .toList(),
@@ -90,8 +90,10 @@ class _NeuraControlPanelState extends State<NeuraControlPanel> {
               children: [
                 ElevatedButton(
                   onPressed: () async {
-                    await bridge.sendSetState(mood: mood, energy: energy, room: room);
-                    _push("SEND SET_STATE mood=$mood energy=$energy room=$room");
+                    await bridge.sendSetState(
+                        mood: mood, energy: energy, room: room);
+                    _push(
+                        "SEND SET_STATE mood=$mood energy=$energy room=$room");
                   },
                   child: const Text("Apply State"),
                 ),
@@ -121,7 +123,8 @@ class _NeuraControlPanelState extends State<NeuraControlPanel> {
             const SizedBox(height: 16),
             const Align(
               alignment: Alignment.centerLeft,
-              child: Text("Bridge Log", style: TextStyle(fontWeight: FontWeight.bold)),
+              child: Text("Bridge Log",
+                  style: TextStyle(fontWeight: FontWeight.bold)),
             ),
             const SizedBox(height: 8),
             Expanded(

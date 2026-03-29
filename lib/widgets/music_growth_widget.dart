@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class MusicGrowthWidget extends StatelessWidget {
+  const MusicGrowthWidget({super.key});
+
   @override
   Widget build(BuildContext context) {
     // TODO: visualize musical learning progress, e.g., notes or simple animations

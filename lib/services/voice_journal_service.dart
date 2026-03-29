@@ -9,7 +9,8 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 /// - On desktop/web support depends on platform capabilities.
 class VoiceJournalService {
   final stt.SpeechToText _stt = stt.SpeechToText();
-  final StreamController<String> _transcriptStream = StreamController.broadcast();
+  final StreamController<String> _transcriptStream =
+      StreamController.broadcast();
 
   String _current = '';
   bool _listening = false;
@@ -36,9 +37,11 @@ class VoiceJournalService {
         _current = r.recognizedWords;
         _transcriptStream.add(_current);
       },
-      listenMode: stt.ListenMode.dictation,
-      partialResults: true,
-      cancelOnError: true,
+      listenOptions: stt.SpeechListenOptions(
+        listenMode: stt.ListenMode.dictation,
+        partialResults: true,
+        cancelOnError: true,
+      ),
     );
 
     return true;

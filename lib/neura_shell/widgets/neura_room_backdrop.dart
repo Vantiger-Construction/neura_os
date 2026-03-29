@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 
@@ -109,7 +110,7 @@ class _SparkFieldPainter extends CustomPainter {
     for (final s in sparks) {
       final dy = (s.y + progress * s.speed) % 1.0;
       final p = Offset(s.x * size.width, dy * size.height);
-      paint.color = Colors.white.withOpacity(s.alpha);
+      paint.color = Colors.white.withValues(alpha: s.alpha);
       canvas.drawCircle(p, s.r, paint);
     }
 
@@ -118,7 +119,7 @@ class _SparkFieldPainter extends CustomPainter {
       ..shader = RadialGradient(
         colors: [
           Colors.transparent,
-          Colors.black.withOpacity(0.45),
+          Colors.black.withValues(alpha: 0.45),
         ],
         stops: const [0.55, 1.0],
       ).createShader(Offset(size.width / 2, size.height / 2) & size);

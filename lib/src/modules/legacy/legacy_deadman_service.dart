@@ -22,7 +22,8 @@ class LegacyDeadmanSettings {
     required this.capsuleIdsToRelease,
   });
 
-  DateTime get lastCheckInAt => DateTime.fromMillisecondsSinceEpoch(lastCheckInEpochMs);
+  DateTime get lastCheckInAt =>
+      DateTime.fromMillisecondsSinceEpoch(lastCheckInEpochMs);
 
   LegacyDeadmanSettings copyWith({
     bool? enabled,
@@ -49,7 +50,7 @@ class LegacyDeadmanSettings {
       };
 
   factory LegacyDeadmanSettings.fromMap(Map<String, dynamic> map) {
-    List<String> _list(dynamic v) {
+    List<String> list(dynamic v) {
       if (v is List) return v.map((e) => e.toString()).toList();
       return const [];
     }
@@ -57,10 +58,12 @@ class LegacyDeadmanSettings {
     final now = DateTime.now().millisecondsSinceEpoch;
     return LegacyDeadmanSettings(
       enabled: map['enabled'] == true,
-      checkInIntervalDays: int.tryParse(map['checkInIntervalDays']?.toString() ?? '') ?? 30,
+      checkInIntervalDays:
+          int.tryParse(map['checkInIntervalDays']?.toString() ?? '') ?? 30,
       graceDays: int.tryParse(map['graceDays']?.toString() ?? '') ?? 7,
-      lastCheckInEpochMs: int.tryParse(map['lastCheckInEpochMs']?.toString() ?? '') ?? now,
-      capsuleIdsToRelease: _list(map['capsuleIdsToRelease']),
+      lastCheckInEpochMs:
+          int.tryParse(map['lastCheckInEpochMs']?.toString() ?? '') ?? now,
+      capsuleIdsToRelease: list(map['capsuleIdsToRelease']),
     );
   }
 
@@ -86,7 +89,9 @@ class LegacyDeadmanService {
   Future<LegacyDeadmanSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_kKey);
-    if (raw == null || raw.trim().isEmpty) return LegacyDeadmanSettings.defaults();
+    if (raw == null || raw.trim().isEmpty) {
+      return LegacyDeadmanSettings.defaults();
+    }
 
     try {
       final decoded = jsonDecode(raw);
@@ -104,7 +109,8 @@ class LegacyDeadmanService {
 
   Future<void> markCheckedInNow() async {
     final s = await load();
-    await save(s.copyWith(lastCheckInEpochMs: DateTime.now().millisecondsSinceEpoch));
+    await save(
+        s.copyWith(lastCheckInEpochMs: DateTime.now().millisecondsSinceEpoch));
   }
 
   /// Returns true if the user is overdue.
@@ -112,7 +118,8 @@ class LegacyDeadmanService {
     final s = await load();
     if (!s.enabled) return false;
 
-    final nextDue = s.lastCheckInAt.add(Duration(days: s.checkInIntervalDays + s.graceDays));
+    final nextDue = s.lastCheckInAt
+        .add(Duration(days: s.checkInIntervalDays + s.graceDays));
     return DateTime.now().isAfter(nextDue);
   }
 
@@ -121,15 +128,17 @@ class LegacyDeadmanService {
     final s = await load();
     if (!s.enabled) return;
 
-    final dueAt = s.lastCheckInAt.add(Duration(days: s.checkInIntervalDays + s.graceDays));
+    final dueAt = s.lastCheckInAt
+        .add(Duration(days: s.checkInIntervalDays + s.graceDays));
     if (DateTime.now().isBefore(dueAt)) return;
 
     // Build a quick preview list of capsules.
     final all = await LegacyVaultService.instance.listCapsules();
     final selected = s.capsuleIdsToRelease.isEmpty
-        ? all.where((c) => c.deliveryEnabled && c.deliveryTrigger == 'deadman').toList()
+        ? all
+            .where((c) => c.deliveryEnabled && c.deliveryTrigger == 'deadman')
+            .toList()
         : all.where((c) => s.capsuleIdsToRelease.contains(c.id)).toList();
-
 
     final action = await showDialog<String>(
       context: context,
@@ -143,8 +152,12 @@ class LegacyDeadmanService {
           'Capsules queued: ${selected.length}.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, 'alive'), child: const Text('I’m Alive')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, 'release'), child: const Text('Prepare Packets')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, 'alive'),
+              child: const Text('I’m Alive')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, 'release'),
+              child: const Text('Prepare Packets')),
         ],
       ),
     );
@@ -159,10 +172,12 @@ class LegacyDeadmanService {
     }
   }
 
-  Future<void> _preparePacketsFlow(BuildContext context, List<LegacyCapsule> capsules) async {
+  Future<void> _preparePacketsFlow(
+      BuildContext context, List<LegacyCapsule> capsules) async {
     if (capsules.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No capsules selected for Legacy Guard release.')),
+        const SnackBar(
+            content: Text('No capsules selected for Legacy Guard release.')),
       );
       return;
     }
@@ -176,8 +191,12 @@ class LegacyDeadmanService {
           'If you don’t decrypt, Neura will export encrypted packets (still safe; needs passphrase later).',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep Encrypted')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Decrypt Now')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Keep Encrypted')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Decrypt Now')),
         ],
       ),
     );
@@ -200,7 +219,9 @@ class LegacyDeadmanService {
 
     if (packets.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No packets created (passphrase failures or missing data).')),
+        const SnackBar(
+            content: Text(
+                'No packets created (passphrase failures or missing data).')),
       );
       return;
     }

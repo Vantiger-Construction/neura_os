@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +10,8 @@ import 'app_log.dart';
 /// - shows a friendly (and slightly comedic) snackbar
 class ErrorHandler {
   static final _snackKey = GlobalKey<ScaffoldMessengerState>();
-  static GlobalKey<ScaffoldMessengerState> get scaffoldMessengerKey => _snackKey;
+  static GlobalKey<ScaffoldMessengerState> get scaffoldMessengerKey =>
+      _snackKey;
 
   static void install() {
     FlutterError.onError = (FlutterErrorDetails details) {
@@ -35,7 +35,8 @@ class ErrorHandler {
     if (messenger == null) return;
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 3)));
+      ..showSnackBar(
+          SnackBar(content: Text(msg), duration: const Duration(seconds: 3)));
   }
 
   static Future<void> _logFlutterError(FlutterErrorDetails details) async {

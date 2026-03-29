@@ -5,8 +5,7 @@ import '../models/crisis_playbook.dart';
 class CrisisPlaybookDetailScreen extends StatelessWidget {
   final CrisisPlaybook playbook;
 
-  const CrisisPlaybookDetailScreen({Key? key, required this.playbook})
-      : super(key: key);
+  const CrisisPlaybookDetailScreen({super.key, required this.playbook});
 
   @override
   Widget build(BuildContext context) {

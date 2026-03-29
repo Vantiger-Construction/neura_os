@@ -11,7 +11,7 @@ import '../../mirror/screens/mirror_mode_screen.dart';
 import '../widgets/neura_os_room_card.dart';
 
 class OsShellHomeScreen extends StatelessWidget {
-  const OsShellHomeScreen({Key? key}) : super(key: key);
+  const OsShellHomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +20,7 @@ class OsShellHomeScreen extends StatelessWidget {
         backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: const Text('Neura OS Shell'),
-          backgroundColor: Colors.black.withOpacity(0.4),
+          backgroundColor: Colors.black.withValues(alpha: 0.4),
           elevation: 0,
         ),
         body: SafeArea(

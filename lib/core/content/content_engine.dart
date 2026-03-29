@@ -2,6 +2,7 @@
 ///
 /// This module is intentionally conservative: it generates *options* not commands.
 /// It should be fed by MemoryGraph patterns later.
+library;
 
 class ContentEngine {
   List<String> ritualsFor(String intent) {

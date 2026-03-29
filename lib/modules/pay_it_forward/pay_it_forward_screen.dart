@@ -35,10 +35,13 @@ class _PayItForwardScreenState extends State<PayItForwardScreen> {
     if (!mounted) return;
 
     if (increased) {
-      await showGoodwillCelebrationDialog(context, newStreak: GoodwillController.instance.streak.value);
+      await showGoodwillCelebrationDialog(context,
+          newStreak: GoodwillController.instance.streak.value);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Logged. Kindness has been recorded by the universe.')),
+        const SnackBar(
+            content:
+                Text('Logged. Kindness has been recorded by the universe.')),
       );
     }
   }
@@ -76,10 +79,15 @@ class _PayItForwardScreenState extends State<PayItForwardScreen> {
                 context: context,
                 builder: (ctx) => AlertDialog(
                   title: const Text('Wipe kindness history?'),
-                  content: const Text('This deletes all Pay It Forward entries stored on this device.'),
+                  content: const Text(
+                      'This deletes all Pay It Forward entries stored on this device.'),
                   actions: [
-                    TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-                    FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Wipe')),
+                    TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(false),
+                        child: const Text('Cancel')),
+                    FilledButton(
+                        onPressed: () => Navigator.of(ctx).pop(true),
+                        child: const Text('Wipe')),
                   ],
                 ),
               );
@@ -116,12 +124,14 @@ class _PayItForwardScreenState extends State<PayItForwardScreen> {
                         const SizedBox(height: 14),
                         Row(
                           children: [
-                            Text('Recent acts', style: Theme.of(context).textTheme.titleMedium),
+                            Text('Recent acts',
+                                style: Theme.of(context).textTheme.titleMedium),
                             const Spacer(),
                             WhyChip(
                               spec: const NeuraExplainSpec(
                                 title: 'Why am I seeing this list?',
-                                body: 'This is your local history of kindness acts. Neura uses it to show streaks and to suggest low-effort ways to do good when you feel stuck.',
+                                body:
+                                    'This is your local history of kindness acts. Neura uses it to show streaks and to suggest low-effort ways to do good when you feel stuck.',
                                 bullets: [
                                   'Stored on-device using SharedPreferences.',
                                   'You can delete individual acts or wipe everything.',
@@ -134,7 +144,9 @@ class _PayItForwardScreenState extends State<PayItForwardScreen> {
                         if (recent.isEmpty)
                           const Padding(
                             padding: EdgeInsets.all(18),
-                            child: Center(child: Text('No acts logged yet. Start with something small.')),
+                            child: Center(
+                                child: Text(
+                                    'No acts logged yet. Start with something small.')),
                           )
                         else
                           ...recent.take(60).map((a) {
@@ -147,7 +159,8 @@ class _PayItForwardScreenState extends State<PayItForwardScreen> {
                               child: ListTile(
                                 leading: const Icon(Icons.favorite),
                                 title: Text('${a.category} • $when'),
-                                subtitle: a.note.trim().isEmpty ? null : Text(a.note),
+                                subtitle:
+                                    a.note.trim().isEmpty ? null : Text(a.note),
                                 trailing: IconButton(
                                   tooltip: 'Delete',
                                   icon: const Icon(Icons.delete_outline),
@@ -156,16 +169,24 @@ class _PayItForwardScreenState extends State<PayItForwardScreen> {
                                       context: context,
                                       builder: (dctx) => AlertDialog(
                                         title: const Text('Delete act?'),
-                                        content: const Text('This removes it from your local history.'),
+                                        content: const Text(
+                                            'This removes it from your local history.'),
                                         actions: [
-                                          TextButton(onPressed: () => Navigator.of(dctx).pop(false), child: const Text('Cancel')),
-                                          FilledButton(onPressed: () => Navigator.of(dctx).pop(true), child: const Text('Delete')),
+                                          TextButton(
+                                              onPressed: () =>
+                                                  Navigator.of(dctx).pop(false),
+                                              child: const Text('Cancel')),
+                                          FilledButton(
+                                              onPressed: () =>
+                                                  Navigator.of(dctx).pop(true),
+                                              child: const Text('Delete')),
                                         ],
                                       ),
                                     );
                                     if (ok != true) return;
 
-                                    await GoodwillController.instance.deleteAct(a);
+                                    await GoodwillController.instance
+                                        .deleteAct(a);
                                   },
                                 ),
                               ),
@@ -199,13 +220,18 @@ class _KindnessActDialog {
                 valueListenable: category,
                 builder: (ctx, v, _) {
                   return DropdownButtonFormField<String>(
-                    value: v,
+                    initialValue: v,
                     decoration: const InputDecoration(labelText: 'Category'),
                     items: const [
-                      DropdownMenuItem(value: 'kind text', child: Text('Kind text')),
-                      DropdownMenuItem(value: 'helped someone', child: Text('Helped someone')),
-                      DropdownMenuItem(value: 'donated', child: Text('Donated')),
-                      DropdownMenuItem(value: 'volunteered', child: Text('Volunteered')),
+                      DropdownMenuItem(
+                          value: 'kind text', child: Text('Kind text')),
+                      DropdownMenuItem(
+                          value: 'helped someone',
+                          child: Text('Helped someone')),
+                      DropdownMenuItem(
+                          value: 'donated', child: Text('Donated')),
+                      DropdownMenuItem(
+                          value: 'volunteered', child: Text('Volunteered')),
                       DropdownMenuItem(value: 'other', child: Text('Other')),
                     ],
                     onChanged: (nv) {
@@ -232,7 +258,9 @@ class _KindnessActDialog {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(null), child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(null),
+                child: const Text('Cancel')),
             FilledButton(
               onPressed: () {
                 Navigator.of(ctx).pop(

@@ -1,4 +1,4 @@
-import 'package:neura_companion/models/usage_entry.dart';
+import 'package:neuro_companion/models/usage_entry.dart';
 
 class UsageRepository {
   // Simulated data store (replace with actual database/API logic as needed)

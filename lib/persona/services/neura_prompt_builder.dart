@@ -1,4 +1,5 @@
 import '../../mood/services/mood_state_service.dart';
+import '../models/neura_audience.dart';
 import '../services/neura_persona_service.dart';
 import '../services/neura_behavior_adapter.dart';
 import '../models/neura_response_style.dart';
@@ -15,6 +16,7 @@ class NeuraPromptBuilder {
   /// Loads persona + mood and computes the current response style.
   Future<NeuraResponseStyle> resolveStyle({
     String module = 'general',
+    NeuraAudience? audience,
   }) async {
     await _personaService.load();
     await _moodState.load();
@@ -32,8 +34,9 @@ class NeuraPromptBuilder {
   /// Build a suggested system message string for your LLM client.
   Future<String> buildSystemMessage({
     String module = 'general',
+    NeuraAudience? audience,
   }) async {
-    final style = await resolveStyle(module: module);
+    final style = await resolveStyle(module: module, audience: audience);
     return style.systemPromptSnippet;
   }
 }

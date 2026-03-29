@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/mood_state.dart';
 import '../services/mood_state_service.dart';
 import '../services/mood_visual_service.dart';
 
@@ -11,16 +12,16 @@ class MoodBackgroundScaffold extends StatelessWidget {
   final Widget? floatingActionButton;
 
   const MoodBackgroundScaffold({
-    Key? key,
+    super.key,
     this.appBar,
     required this.body,
     this.floatingActionButton,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
-    final mood = MoodStateService.instance.current;
-    final style = MoodVisualService.instance.styleFor(mood);
+    final mood = MoodStateService.instance.currentMood;
+    final style = MoodVisualService.instance.styleFor(_toMoodState(mood));
 
     return Container(
       decoration: BoxDecoration(
@@ -47,6 +48,39 @@ class MoodBackgroundScaffold extends StatelessWidget {
           body: body,
         ),
       ),
+    );
+  }
+
+  MoodState _toMoodState(String mood) {
+    final normalized = mood.toLowerCase();
+    double score;
+    switch (normalized) {
+      case 'sad':
+      case 'anxious':
+      case 'angry':
+        score = 2.5;
+        break;
+      case 'tired':
+        score = 4.0;
+        break;
+      case 'calm':
+      case 'neutral':
+        score = 5.0;
+        break;
+      case 'happy':
+        score = 7.5;
+        break;
+      case 'excited':
+        score = 9.0;
+        break;
+      default:
+        score = 5.0;
+    }
+    return MoodState(
+      date: DateTime.now(),
+      score: score,
+      label: MoodLabel.neutral,
+      note: '',
     );
   }
 }

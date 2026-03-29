@@ -7,7 +7,7 @@ import 'trusted_contacts_screen.dart';
 import 'crisis_playbook_detail_screen.dart';
 
 class CareModeHomeScreen extends StatefulWidget {
-  const CareModeHomeScreen({Key? key}) : super(key: key);
+  const CareModeHomeScreen({super.key});
 
   @override
   State<CareModeHomeScreen> createState() => _CareModeHomeScreenState();
@@ -109,7 +109,8 @@ class _CareModeHomeScreenState extends State<CareModeHomeScreen> {
                         children: emergencyContacts
                             .map(
                               (c) => Chip(
-                                avatar: const Icon(Icons.warning_amber, size: 16),
+                                avatar:
+                                    const Icon(Icons.warning_amber, size: 16),
                                 label: Text(c.name),
                               ),
                             )

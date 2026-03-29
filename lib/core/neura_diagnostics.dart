@@ -1,6 +1,3 @@
-import 'dart:async';
-import 'dart:ui';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -39,7 +36,8 @@ class NeuraDiagnostics {
     // Platform / zone errors (outside Flutter framework)
     PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
       try {
-        onErrorEvent(NeuraErrorEvent(error, stack: stack, hint: 'PlatformDispatcher.onError'));
+        onErrorEvent(NeuraErrorEvent(error,
+            stack: stack, hint: 'PlatformDispatcher.onError'));
       } catch (_) {}
       // Return true = handled (prevents hard crash)
       return true;

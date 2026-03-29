@@ -86,7 +86,7 @@ class _AmbientPainter extends CustomPainter {
         radius: 1.2,
         colors: [
           Colors.transparent,
-          Colors.black.withOpacity(0.55),
+          Colors.black.withValues(alpha: 0.55),
         ],
       ).createShader(Offset(size.width / 2, size.height / 2) & size);
     canvas.drawRect(Offset.zero & size, bg);
@@ -98,8 +98,8 @@ class _AmbientPainter extends CustomPainter {
       final core = Paint()
         ..shader = RadialGradient(
           colors: [
-            Colors.cyanAccent.withOpacity(0.05),
-            Colors.deepPurpleAccent.withOpacity(0.03),
+            Colors.cyanAccent.withValues(alpha: 0.05),
+            Colors.deepPurpleAccent.withValues(alpha: 0.03),
             Colors.transparent,
           ],
           stops: const [0.0, 0.35, 1.0],

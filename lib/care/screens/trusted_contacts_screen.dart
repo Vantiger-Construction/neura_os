@@ -5,7 +5,7 @@ import '../services/trusted_contacts_service.dart';
 import 'edit_trusted_contact_screen.dart';
 
 class TrustedContactsScreen extends StatefulWidget {
-  const TrustedContactsScreen({Key? key}) : super(key: key);
+  const TrustedContactsScreen({super.key});
 
   @override
   State<TrustedContactsScreen> createState() => _TrustedContactsScreenState();

@@ -7,18 +7,18 @@ class ConflictResolutionScreen extends StatefulWidget {
   final JournalEntry remote;
 
   const ConflictResolutionScreen({
-    Key? key,
+    super.key,
     required this.local,
     required this.remote,
-  }) : super(key: key);
+  });
 
   @override
-  _ConflictResolutionScreenState createState() => _ConflictResolutionScreenState();
+  _ConflictResolutionScreenState createState() =>
+      _ConflictResolutionScreenState();
 }
 
 class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
   final _resolver = ConflictResolutionService();
-  JournalEntry? _chosen;
 
   @override
   Widget build(BuildContext ctx) {
@@ -34,16 +34,16 @@ class _ConflictResolutionScreenState extends State<ConflictResolutionScreen> {
             SizedBox(height: 32),
             ElevatedButton(
               onPressed: () async {
-                final choice = await _resolver.resolve(widget.local, widget.remote);
-                setState(() => _chosen = choice);
+                final choice =
+                    await _resolver.resolve(widget.local, widget.remote);
                 Navigator.pop(ctx, choice);
               },
               child: Text('Keep Local'),
             ),
             ElevatedButton(
               onPressed: () async {
-                final choice = await _resolver.resolve(widget.local, widget.remote);
-                setState(() => _chosen = choice);
+                final choice =
+                    await _resolver.resolve(widget.local, widget.remote);
                 Navigator.pop(ctx, choice);
               },
               child: Text('Keep Remote'),

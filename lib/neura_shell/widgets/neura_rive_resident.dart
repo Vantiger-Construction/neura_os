@@ -3,7 +3,7 @@ import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:rive/rive.dart';
+import 'package:rive/rive.dart' hide Image;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/neura_voice_pack.dart';
@@ -45,7 +45,6 @@ class _NeuraRiveResidentState extends State<NeuraRiveResident>
   bool _riveAvailable = false;
 
   // Rive
-  StateMachineController? _sm;
   SMIInput<bool>? _isWalking;
   SMIInput<double>? _talkLevel;
   SMIInput<double>? _rest;
@@ -60,7 +59,8 @@ class _NeuraRiveResidentState extends State<NeuraRiveResident>
   @override
   void initState() {
     super.initState();
-    _move = AnimationController(vsync: this, duration: const Duration(milliseconds: 650));
+    _move = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 650));
     _move.addListener(() {
       final t = Curves.easeInOutCubic.transform(_move.value);
       setState(() {
@@ -194,7 +194,6 @@ class _NeuraRiveResidentState extends State<NeuraRiveResident>
     if (sm == null) return;
 
     artboard.addController(sm);
-    _sm = sm;
 
     // Input names (update to match your .riv).
     SMIInput<T>? input<T>(String name) => sm.findInput<T>(name);
@@ -302,7 +301,10 @@ class _NeuraRiveResidentState extends State<NeuraRiveResident>
               return Center(
                 child: Text(
                   'NEURA',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900),
+                  style: Theme.of(context)
+                      .textTheme
+                      .headlineMedium
+                      ?.copyWith(fontWeight: FontWeight.w900),
                 ),
               );
             },
@@ -316,7 +318,7 @@ class _NeuraRiveResidentState extends State<NeuraRiveResident>
                   BoxShadow(
                     blurRadius: 40,
                     spreadRadius: 6,
-                    color: Colors.white.withOpacity(0.06),
+                    color: Colors.white.withValues(alpha: 0.06),
                   ),
                 ],
               ),

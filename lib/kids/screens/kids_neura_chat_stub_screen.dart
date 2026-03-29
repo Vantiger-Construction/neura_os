@@ -6,10 +6,11 @@ import '../../persona/services/neura_prompt_builder.dart';
 /// Simple stub for a Neura "kids chat" screen. This does NOT call a real LLM;
 /// it just shows the prompt that would be sent so you can wire your backend.
 class KidsNeuraChatStubScreen extends StatefulWidget {
-  const KidsNeuraChatStubScreen({Key? key}) : super(key: key);
+  const KidsNeuraChatStubScreen({super.key});
 
   @override
-  State<KidsNeuraChatStubScreen> createState() => _KidsNeuraChatStubScreenState();
+  State<KidsNeuraChatStubScreen> createState() =>
+      _KidsNeuraChatStubScreenState();
 }
 
 class _KidsNeuraChatStubScreenState extends State<KidsNeuraChatStubScreen> {

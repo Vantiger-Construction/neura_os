@@ -5,7 +5,8 @@ class SubscriptionCard extends StatelessWidget {
   final ProductDetails product;
   final VoidCallback onBuy;
 
-  const SubscriptionCard({required this.product, required this.onBuy});
+  const SubscriptionCard(
+      {super.key, required this.product, required this.onBuy});
 
   @override
   Widget build(BuildContext context) {

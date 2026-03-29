@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 class DreamVisualizerScreen extends StatelessWidget {
+  const DreamVisualizerScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     // TODO: show AI-generated dream images timeline

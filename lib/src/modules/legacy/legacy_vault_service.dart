@@ -15,8 +15,8 @@ import 'models/legacy_capsule.dart';
 ///
 /// Storage layout (app documents):
 ///   neura_legacy_vault/
-///     capsule_<id>.json
-///     capsule_<id>/attachments/*
+///     capsule_ID.json
+///     capsule_ID/attachments/*
 class LegacyVaultService {
   LegacyVaultService._();
 
@@ -111,7 +111,8 @@ class LegacyVaultService {
       if (passphrase == null || passphrase.trim().isEmpty) {
         throw StateError('Passphrase required for encrypted capsules.');
       }
-      final enc = await _encrypt(passphrase: passphrase, plaintext: capsule.body);
+      final enc =
+          await _encrypt(passphrase: passphrase, plaintext: capsule.body);
       toWrite = toWrite.copyWith(
         body: '',
         cipherTextB64: enc['cipherTextB64'] as String,
@@ -159,7 +160,8 @@ class LegacyVaultService {
     await src.copy(out.path);
 
     final vault = await _vaultDir();
-    final rel = out.path.replaceFirst('${vault.path}${Platform.pathSeparator}', '');
+    final rel =
+        out.path.replaceFirst('${vault.path}${Platform.pathSeparator}', '');
     return rel;
   }
 
@@ -167,7 +169,8 @@ class LegacyVaultService {
     required String attachmentRelPath,
   }) async {
     final vault = await _vaultDir();
-    final file = File('${vault.path}/${attachmentRelPath.replaceAll('\\', '/')}');
+    final file =
+        File('${vault.path}/${attachmentRelPath.replaceAll('\\', '/')}');
     if (await file.exists()) {
       await file.delete();
     }
@@ -183,7 +186,8 @@ class LegacyVaultService {
     bool decryptEncrypted = false,
   }) async {
     final temp = await getTemporaryDirectory();
-    final out = File('${temp.path}/neura_legacy_vault_export_${DateTime.now().millisecondsSinceEpoch}.zip');
+    final out = File(
+        '${temp.path}/neura_legacy_vault_export_${DateTime.now().millisecondsSinceEpoch}.zip');
 
     final vault = await _vaultDir();
     final archive = Archive();
@@ -193,7 +197,8 @@ class LegacyVaultService {
       LegacyCapsule toWrite = c;
       if (decryptEncrypted && c.isEncrypted) {
         if (passphrase == null || passphrase.trim().isEmpty) {
-          throw StateError('Passphrase required to decrypt encrypted capsules.');
+          throw StateError(
+              'Passphrase required to decrypt encrypted capsules.');
         }
         try {
           final body = await decryptBody(capsule: c, passphrase: passphrase);
@@ -212,7 +217,8 @@ class LegacyVaultService {
       }
 
       final jsonBytes = utf8.encode(toWrite.toJson());
-      archive.addFile(ArchiveFile('capsules/capsule_${c.id}.json', jsonBytes.length, jsonBytes));
+      archive.addFile(ArchiveFile(
+          'capsules/capsule_${c.id}.json', jsonBytes.length, jsonBytes));
 
       // Attachments
       for (final rel in c.attachments) {
@@ -220,12 +226,14 @@ class LegacyVaultService {
         final f = File(p);
         if (!await f.exists()) continue;
         final bytes = await f.readAsBytes();
-        archive.addFile(ArchiveFile('attachments/${c.id}/${f.uri.pathSegments.last}', bytes.length, bytes));
+        archive.addFile(ArchiveFile(
+            'attachments/${c.id}/${f.uri.pathSegments.last}',
+            bytes.length,
+            bytes));
       }
     }
 
     final zipped = ZipEncoder().encode(archive);
-    if (zipped == null) throw StateError('Zip encoding failed.');
     await out.writeAsBytes(zipped, flush: true);
     return out;
   }
@@ -256,7 +264,9 @@ class LegacyVaultService {
     // First pass: capsules JSON.
     for (final f in decoded.files) {
       if (!f.isFile) continue;
-      if (!f.name.startsWith('capsules/') || !f.name.endsWith('.json')) continue;
+      if (!f.name.startsWith('capsules/') || !f.name.endsWith('.json')) {
+        continue;
+      }
 
       final raw = utf8.decode(f.content as List<int>);
       final capsule = LegacyCapsule.fromJson(raw);
@@ -366,7 +376,8 @@ class LegacyVaultService {
         throw StateError('Passphrase required to export decrypted capsule.');
       }
       try {
-        final body = await decryptBody(capsule: capsule, passphrase: passphrase);
+        final body =
+            await decryptBody(capsule: capsule, passphrase: passphrase);
         out = capsule.copyWith(
           body: body,
           isEncrypted: false,
@@ -384,7 +395,8 @@ class LegacyVaultService {
     final archive = Archive();
 
     final capsuleBytes = utf8.encode(out.toJson());
-    archive.addFile(ArchiveFile('capsule.json', capsuleBytes.length, capsuleBytes));
+    archive.addFile(
+        ArchiveFile('capsule.json', capsuleBytes.length, capsuleBytes));
 
     final readme = 'Neura Companion — Legacy Delivery Packet\n'
         '------------------------------------------------\n\n'
@@ -420,11 +432,9 @@ class LegacyVaultService {
     }
 
     final temp = await getTemporaryDirectory();
-    final outFile = File('${temp.path}/legacy_packet_${id}_${DateTime.now().millisecondsSinceEpoch}.zip');
+    final outFile = File(
+        '${temp.path}/legacy_packet_${id}_${DateTime.now().millisecondsSinceEpoch}.zip');
     final encoded = ZipEncoder().encode(archive);
-    if (encoded == null) {
-      throw StateError('Failed to encode zip.');
-    }
     await outFile.writeAsBytes(encoded, flush: true);
     return outFile;
   }
@@ -455,7 +465,8 @@ class LegacyVaultService {
         final outFile = File('${attachDir.path}/${stamp}_$baseName');
         await srcFile.copy(outFile.path);
 
-        final relOut = outFile.path.replaceFirst('${vault.path}${Platform.pathSeparator}', '');
+        final relOut = outFile.path
+            .replaceFirst('${vault.path}${Platform.pathSeparator}', '');
         newAttachments.add(relOut);
       } catch (_) {
         // best-effort
@@ -474,7 +485,6 @@ class LegacyVaultService {
     await f.writeAsString(dup.toJson(), flush: true);
     return dup;
   }
-
 
   Future<Map<String, Object>> _encrypt({
     required String passphrase,

@@ -1,5 +1,5 @@
 import 'package:hive/hive.dart';
-import 'package:neura_companion/models/usage_entry.dart';
+import 'package:neuro_companion/models/usage_entry.dart';
 
 class HiveUsageEntryAdapter extends TypeAdapter<UsageEntry> {
   @override

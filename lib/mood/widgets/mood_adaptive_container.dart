@@ -6,12 +6,10 @@ import '../services/mood_theme_service.dart';
 class MoodAdaptiveContainer extends StatefulWidget {
   final Widget child;
 
-  const MoodAdaptiveContainer({Key? key, required this.child})
-      : super(key: key);
+  const MoodAdaptiveContainer({super.key, required this.child});
 
   @override
-  State<MoodAdaptiveContainer> createState() =>
-      _MoodAdaptiveContainerState();
+  State<MoodAdaptiveContainer> createState() => _MoodAdaptiveContainerState();
 }
 
 class _MoodAdaptiveContainerState extends State<MoodAdaptiveContainer> {

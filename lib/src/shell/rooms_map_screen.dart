@@ -160,7 +160,7 @@ class _RoomCardState extends State<_RoomCard> with SingleTickerProviderStateMixi
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white12),
-          color: Colors.white.withOpacity(0.04),
+          color: Colors.white.withValues(alpha: 0.04),
         ),
         child: Stack(
           children: [
@@ -174,7 +174,7 @@ class _RoomCardState extends State<_RoomCard> with SingleTickerProviderStateMixi
                     height: 46,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.06),
+                      color: Colors.white.withValues(alpha: 0.06),
                     ),
                     child: Icon(room.icon),
                   ),
@@ -236,7 +236,7 @@ class _LinePainter extends CustomPainter {
         end: Alignment.centerRight,
         colors: [
           Colors.transparent,
-          Colors.cyanAccent.withOpacity(0.18),
+          Colors.cyanAccent.withValues(alpha: 0.18),
           Colors.transparent,
         ],
         stops: const [0.0, 0.5, 1.0],
