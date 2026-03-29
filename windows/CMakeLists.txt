@@ -2,6 +2,9 @@
 cmake_minimum_required(VERSION 3.14)
 project(neuro_companion LANGUAGES CXX)
 
+# Suppress deprecation warnings from third-party dependencies (e.g., Firebase SDK)
+set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "Suppress CMake deprecation warnings")
+
 # Prefer project-local CMake modules (see windows/cmake) to avoid environment-
 # specific issues with toolchain-bundled CMake modules.
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
