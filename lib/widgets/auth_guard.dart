@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 
@@ -10,9 +11,11 @@ class AuthGuard extends StatelessWidget {
 
   Future<bool> _authenticate() async {
     try {
+      final biometricOnly =
+          !kIsWeb && defaultTargetPlatform != TargetPlatform.windows;
       return await _auth.authenticate(
         localizedReason: 'Please authenticate to continue',
-        options: const AuthenticationOptions(biometricOnly: true),
+        options: AuthenticationOptions(biometricOnly: biometricOnly),
       );
     } catch (e) {
       return false;

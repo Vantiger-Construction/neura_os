@@ -5,8 +5,6 @@ import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:flutter_sound/flutter_sound.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 /// =========================
 ///  Neura Voice Pack (Offline)
@@ -455,72 +453,21 @@ class NeuraMicVisemeEngine {
   double _lerp(double a, double b, double t) => a + (b - a) * t;
 }
 
+// Mic recording stubbed for beta Windows build — flutter_sound requires a
+// platform-specific C++ plugin that conflicts with VS Build Tools 2026.
+// Live mic visemes resume when flutter_sound is re-enabled post-beta.
 class NeuraMicDriver {
-  final FlutterSoundRecorder _rec = FlutterSoundRecorder();
   final NeuraMicVisemeEngine engine;
-  final StreamController<Uint8List> _pcmStream =
-      StreamController<Uint8List>.broadcast();
-  StreamSubscription<Uint8List>? _pcmSub;
-
   final StreamController<_MicFrame> _out = StreamController.broadcast();
   Stream<_MicFrame> get stream => _out.stream;
-
-  bool _running = false;
 
   NeuraMicDriver({NeuraMicVisemeEngine? engine})
       : engine = engine ?? NeuraMicVisemeEngine();
 
-  Future<void> start() async {
-    if (_running) return;
-
-    final perm = await Permission.microphone.request();
-    if (!perm.isGranted) {
-      throw Exception('Microphone permission denied.');
-    }
-
-    await _rec.openRecorder();
-    await _rec.setSubscriptionDuration(
-        Duration(milliseconds: (1000 / engine.analysisHz).round()));
-
-    _pcmSub ??= _pcmStream.stream.listen(_pcmSink);
-
-    await _rec.startRecorder(
-      toStream: _pcmStream.sink,
-      codec: Codec.pcm16,
-      sampleRate: engine.sampleRate,
-      numChannels: 1,
-      bitRate: engine.sampleRate * 16,
-    );
-
-    _running = true;
-  }
-
-  Future<void> stop() async {
-    if (!_running) return;
-    await _rec.stopRecorder();
-    await _rec.closeRecorder();
-    await _pcmSub?.cancel();
-    _pcmSub = null;
-    _running = false;
-  }
-
+  Future<void> start() async {}
+  Future<void> stop() async {}
   Future<void> dispose() async {
-    await _pcmSub?.cancel();
-    _pcmSub = null;
-    await _pcmStream.close();
-    _out.close();
-  }
-
-  void _pcmSink(Uint8List bytes) {
-    final bd = ByteData.sublistView(bytes);
-    final n = bytes.length ~/ 2;
-    final pcm = Int16List(n);
-    for (int i = 0; i < n; i++) {
-      pcm[i] = bd.getInt16(i * 2, Endian.little);
-    }
-
-    final frame = engine.processPcm16(pcm);
-    _out.add(frame);
+    await _out.close();
   }
 }
 

@@ -39,53 +39,30 @@ class _SignInScreenState extends State<SignInScreen> {
     }
   }
 
-  Future<void> _googleSignIn() async {
-    await AuthService().signInWithGoogle();
-    if (!(await AuthService().isEmailVerified())) {
-      Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => VerifyEmailScreen()));
-    }
-  }
-
-  Future<void> _appleSignIn() async {
-    await AuthService().signInWithApple();
-    if (!(await AuthService().isEmailVerified())) {
-      Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => VerifyEmailScreen()));
-    }
-  }
-
   @override
   Widget build(BuildContext ctx) {
     return Scaffold(
       appBar: AppBar(title: const Text('Sign In')),
       body: Padding(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             if (_error != null)
-              Text(_error!, style: TextStyle(color: Colors.red)),
+              Text(_error!, style: const TextStyle(color: Colors.red)),
             TextField(
                 controller: _email,
-                decoration: InputDecoration(labelText: 'Email')),
+                decoration: const InputDecoration(labelText: 'Email')),
             TextField(
                 controller: _pass,
-                decoration: InputDecoration(labelText: 'Password'),
+                decoration: const InputDecoration(labelText: 'Password'),
                 obscureText: true),
             const SizedBox(height: 16),
             ElevatedButton(
                 onPressed: _loading ? null : _submit,
-                child:
-                    _loading ? CircularProgressIndicator() : Text('Sign In')),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-                onPressed: _googleSignIn,
-                icon: Icon(Icons.login),
-                label: Text('Sign in with Google')),
-            ElevatedButton.icon(
-                onPressed: _appleSignIn,
-                icon: Icon(Icons.apple),
-                label: Text('Sign in with Apple')),
+                child: _loading
+                    ? const CircularProgressIndicator()
+                    : const Text('Sign In')),
+            const SizedBox(height: 8),
             TextButton(
                 onPressed: () => Navigator.push(
                     ctx, MaterialPageRoute(builder: (_) => SignUpScreen())),

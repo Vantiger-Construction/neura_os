@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'config/supabase_config.dart';
 import 'modules/core/app_log.dart';
 import 'modules/core/error_handler.dart';
 import 'src/app.dart';
@@ -9,6 +11,11 @@ import 'services/neura_voice_pack.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await Supabase.initialize(
+    url: SupabaseConfig.url,
+    publishableKey: SupabaseConfig.anonKey,
+  );
 
   // Don't let logging crash startup.
   await AppLog.instance.init();

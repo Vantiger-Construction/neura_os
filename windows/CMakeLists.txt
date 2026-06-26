@@ -39,6 +39,11 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
 
+# Suppress MSVC 14.51+ hard-error on <experimental/coroutine> in third-party plugins.
+# audioplayers_windows, local_auth_windows, and permission_handler_windows still
+# use the deprecated header; this define is the Microsoft-recommended suppression.
+add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by
@@ -64,10 +69,8 @@ add_subdirectory("runner")
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
-# --- Plugin target compatibility ---
-# Some plugin packages ship a Windows CMake target name that doesn't match what
-# Flutter's generated plugin glue expects. If the underlying target exists,
-# provide an ALIAS with the expected name.
+# flutter_sound is not in pubspec (stubbed for beta); this alias is kept as a
+# no-op guard in case the package is re-added later.
 if(TARGET taudio_plugin AND NOT TARGET flutter_sound_plugin)
   add_library(flutter_sound_plugin ALIAS taudio_plugin)
 endif()
@@ -83,12 +86,22 @@ endif()
 # Support files are copied into place next to the executable, so that it can
 # run in place. This is done instead of making a separate bundle (as on Linux)
 # so that building and running from within Visual Studio will work.
-set(BUILD_BUNDLE_DIR "$<TARGET_FILE_DIR:${BINARY_NAME}>")
+#
+# The Flutter template uses $<TARGET_FILE_DIR:...> here, but that generator
+# expression is not evaluated when cmake runs "cmake -P cmake_install.cmake"
+# (the -P script mode does not expand build-system generator expressions).
+# For a Visual Studio (multi-config) generator the expansion produces an empty
+# string, causing cmake_install.cmake to fall back to C:/Program Files/...
+# which requires elevation and is wrong.  Use an explicit non-genex path instead.
+get_property(_MULTI GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(_MULTI)
+  set(BUILD_BUNDLE_DIR "${CMAKE_CURRENT_BINARY_DIR}/runner/Release")
+else()
+  set(BUILD_BUNDLE_DIR "${CMAKE_CURRENT_BINARY_DIR}/runner/${CMAKE_BUILD_TYPE}")
+endif()
 # Make the "install" step default, as it's required to run.
 set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD 1)
-if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-  set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "..." FORCE)
-endif()
+set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "" FORCE)
 
 set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
