@@ -278,7 +278,7 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
-                  initialValue: _selectedContactId,
+                  value: _selectedContactId,
                   decoration: const InputDecoration(
                       labelText: 'Trusted contact (optional)'),
                   items: [
@@ -296,7 +296,7 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
-                  initialValue: _selectedTemplateId,
+                  value: _selectedTemplateId,
                   decoration:
                       const InputDecoration(labelText: 'Message template'),
                   items: _templates
@@ -319,7 +319,7 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  initialValue: _format,
+                  value: _format,
                   decoration: const InputDecoration(labelText: 'Packet format'),
                   items: const [
                     DropdownMenuItem(
