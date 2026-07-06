@@ -23,8 +23,14 @@ class _DualChatScreenState extends State<DualChatScreen> {
     super.initState();
     _avatars = _avatarService.getAvailableAvatars();
     _avatarService.getSelectedAvatar().then((a) {
-      setState(() => _current = a);
+      if (mounted) setState(() => _current = a);
     });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   void _send() async {

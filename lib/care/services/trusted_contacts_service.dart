@@ -1,8 +1,6 @@
-import 'dart:convert';
-
-import 'package:shared_preferences/shared_preferences.dart';
-
+﻿import 'dart:convert';
 import '../models/trusted_contact.dart';
+import '../../startup/neura_prefs_cache.dart';
 
 class TrustedContactsService {
   TrustedContactsService._internal();
@@ -24,7 +22,7 @@ class TrustedContactsService {
 
   Future<void> load() async {
     if (_loaded) return;
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final raw = prefs.getString(_keyContacts);
     if (raw == null) {
       _contacts = [];
@@ -50,7 +48,7 @@ class TrustedContactsService {
   }
 
   Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final list = _contacts.map((c) => c.toMap()).toList();
     await prefs.setString(_keyContacts, json.encode(list));
   }

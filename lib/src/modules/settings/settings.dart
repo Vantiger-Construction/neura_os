@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../../modules/human/theme_screen.dart';
+import '../../../../screens/avatar_selector_screen.dart';
+import '../../../../screens/help_screen.dart';
 import '../../shell/portal_route.dart';
 import '../../shell/rooms_map_screen.dart';
 import '../../shell/shell_prefs.dart';
@@ -58,10 +61,21 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.palette_outlined),
             title: const Text('Themes & Avatars'),
-            subtitle: const Text('Coming soon: mood-adaptive skins and Neura expressions.'),
+            subtitle: const Text('Appearance, theme mode, and your Neura avatar.'),
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Theme controls stub.')),
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ThemeScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.person_outline),
+            title: const Text('Choose Avatar'),
+            subtitle: const Text('Pick which Neura companion represents you.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AvatarSelectorScreen()),
               );
             },
           ),
@@ -69,10 +83,10 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.help_outline),
             title: const Text('Help'),
-            subtitle: const Text('Troubleshooting and tips.'),
+            subtitle: const Text('Getting started, tips, and troubleshooting.'),
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Help screen stub.')),
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const HelpScreen()),
               );
             },
           ),

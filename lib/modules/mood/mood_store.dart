@@ -1,6 +1,5 @@
-import 'package:shared_preferences/shared_preferences.dart';
-
-import 'mood_models.dart';
+﻿import 'mood_models.dart';
+import '../../startup/neura_prefs_cache.dart';
 
 class MoodStore {
   MoodStore._();
@@ -9,7 +8,7 @@ class MoodStore {
   static const _key = 'neura_mood_entries_v1';
 
   Future<List<MoodEntry>> getAll() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final raw = prefs.getString(_key) ?? '';
     return MoodEntry.decodeList(raw);
   }
@@ -21,7 +20,7 @@ class MoodStore {
     if (items.length > 2000) {
       items.removeRange(0, items.length - 2000);
     }
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     await prefs.setString(_key, MoodEntry.encodeList(items));
   }
 

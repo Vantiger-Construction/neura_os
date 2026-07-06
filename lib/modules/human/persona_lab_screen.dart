@@ -14,21 +14,26 @@ class PersonaLabScreen extends StatelessWidget {
     required ValueChanged<List<String>> onChanged,
   }) async {
     final c = TextEditingController();
-    final next = await showDialog<String>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: c,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Type and hit Add'),
+    final String? next;
+    try {
+      next = await showDialog<String>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(title),
+          content: TextField(
+            controller: c,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'Type and hit Add'),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, c.text.trim()), child: const Text('Add')),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, c.text.trim()), child: const Text('Add')),
-        ],
-      ),
-    );
+      );
+    } finally {
+      c.dispose();
+    }
     if (next == null || next.trim().isEmpty) return;
     final updated = [...current, next.trim()];
     onChanged(updated);

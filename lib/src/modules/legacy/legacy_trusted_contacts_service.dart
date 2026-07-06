@@ -1,8 +1,6 @@
-import 'dart:convert';
-
-import 'package:shared_preferences/shared_preferences.dart';
-
+﻿import 'dart:convert';
 import 'models/trusted_contact.dart';
+import '../../../startup/neura_prefs_cache.dart';
 
 class LegacyTrustedContactsService {
   LegacyTrustedContactsService._();
@@ -12,7 +10,7 @@ class LegacyTrustedContactsService {
   static const String _kKey = 'neura_legacy_trusted_contacts_v1';
 
   Future<List<TrustedContact>> listContacts() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final raw = prefs.getString(_kKey);
     if (raw == null || raw.trim().isEmpty) return const [];
 
@@ -30,7 +28,7 @@ class LegacyTrustedContactsService {
   }
 
   Future<void> saveContacts(List<TrustedContact> contacts) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final list = contacts.map((c) => c.toMap()).toList();
     await prefs.setString(_kKey, jsonEncode(list));
   }

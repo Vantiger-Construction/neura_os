@@ -1,8 +1,6 @@
-import 'dart:convert';
-
-import 'package:shared_preferences/shared_preferences.dart';
-
+﻿import 'dart:convert';
 import '../models/weekly_snapshot_entry.dart';
+import '../../startup/neura_prefs_cache.dart';
 
 class WeeklySnapshotService {
   WeeklySnapshotService._internal();
@@ -19,7 +17,7 @@ class WeeklySnapshotService {
 
   Future<void> load() async {
     if (_loaded) return;
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final raw = prefs.getString(_keySnapshots);
     if (raw == null) {
       _entries = [];
@@ -40,14 +38,14 @@ class WeeklySnapshotService {
     } catch (e) {
       // Self-heal: if JSON is corrupted, clear and start fresh.
       _entries = [];
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = NeuraPrefsCache.prefs;
       await prefs.remove(_keySnapshots);
     }
     _loaded = true;
   }
 
   Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final list = _entries.map((e) => e.toMap()).toList();
     await prefs.setString(_keySnapshots, json.encode(list));
   }

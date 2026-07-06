@@ -1,10 +1,8 @@
-import 'dart:convert';
-
+﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../models/persona_profile.dart';
 import '../../shared/services/self_heal_service.dart';
+import '../../startup/neura_prefs_cache.dart';
 
 class NeuraPersonaService extends ChangeNotifier {
   NeuraPersonaService._internal();
@@ -19,7 +17,7 @@ class NeuraPersonaService extends ChangeNotifier {
 
   Future<void> load() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = NeuraPrefsCache.prefs;
       final raw = prefs.getString(_keyPersona);
       if (raw == null) {
         _current = PersonaProfile.neutral();
@@ -38,7 +36,7 @@ class NeuraPersonaService extends ChangeNotifier {
     _current = profile;
     notifyListeners();
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = NeuraPrefsCache.prefs;
       await prefs.setString(
         _keyPersona,
         jsonEncode(profile.toMap()),

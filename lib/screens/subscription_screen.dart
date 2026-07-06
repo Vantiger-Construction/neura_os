@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/neura_env.dart';
 import '../services/billing_service.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
@@ -17,7 +18,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   @override
   void initState() {
     super.initState();
-    _initBilling();
+    if (kIapEnabled) _initBilling();
   }
 
   Future<void> _initBilling() async {
@@ -36,13 +37,27 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   @override
   Widget build(BuildContext ctx) {
+    if (!kIapEnabled) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Subscriptions')),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Subscriptions are not available in this beta.\nThey will be enabled in the public release.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
     if (_loading) {
       return Scaffold(
-          appBar: AppBar(title: Text('Subscriptions')),
-          body: Center(child: CircularProgressIndicator()));
+          appBar: AppBar(title: const Text('Subscriptions')),
+          body: const Center(child: CircularProgressIndicator()));
     }
     return Scaffold(
-      appBar: AppBar(title: Text('Subscriptions')),
+      appBar: AppBar(title: const Text('Subscriptions')),
       body: ListView(
         children: _products
             .map((p) => ListTile(
@@ -50,7 +65,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   subtitle: Text(p.price),
                   trailing: ElevatedButton(
                     onPressed: () => _buy(p),
-                    child: Text('Buy'),
+                    child: const Text('Buy'),
                   ),
                 ))
             .toList(),

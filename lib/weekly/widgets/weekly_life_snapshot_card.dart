@@ -4,7 +4,7 @@ import '../services/weekly_snapshot_service.dart';
 import '../models/weekly_summary.dart';
 
 class WeeklyLifeSnapshotCard extends StatefulWidget {
-  const WeeklyLifeSnapshotCard({Key? key}) : super(key: key);
+  const WeeklyLifeSnapshotCard({super.key});
 
   @override
   State<WeeklyLifeSnapshotCard> createState() => _WeeklyLifeSnapshotCardState();

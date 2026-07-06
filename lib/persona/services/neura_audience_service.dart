@@ -1,6 +1,5 @@
-import 'package:shared_preferences/shared_preferences.dart';
-
-import '../models/neura_audience.dart';
+﻿import '../models/neura_audience.dart';
+import '../../startup/neura_prefs_cache.dart';
 
 class NeuraAudienceService {
   NeuraAudienceService._internal();
@@ -15,7 +14,7 @@ class NeuraAudienceService {
 
   Future<void> load() async {
     if (_loaded) return;
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final label = prefs.getString(_keyAudience);
     if (label != null) {
       _currentAudience = _parse(label);
@@ -25,7 +24,7 @@ class NeuraAudienceService {
 
   Future<void> setAudience(NeuraAudience audience) async {
     _currentAudience = audience;
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     await prefs.setString(_keyAudience, audience.label);
   }
 

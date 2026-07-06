@@ -1,7 +1,7 @@
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
-
+﻿import 'dart:convert';
 /// A reward/badge earned through consistent use.
+import 'startup/neura_prefs_cache.dart';
+
 class NeuraReward {
   final String id;
   final String title;
@@ -42,7 +42,7 @@ class GamificationRewardsService {
   List<NeuraReward> get rewards => List.unmodifiable(_rewards);
 
   Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final raw = prefs.getString(_key);
     if (raw == null) return;
     try {
@@ -57,7 +57,7 @@ class GamificationRewardsService {
   }
 
   Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     await prefs.setString(
         _key, jsonEncode(_rewards.map((r) => r.toJson()).toList()));
   }

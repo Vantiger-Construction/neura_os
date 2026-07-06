@@ -1,8 +1,6 @@
-import 'dart:math';
-
-import 'package:shared_preferences/shared_preferences.dart';
-
+﻿import 'dart:math';
 import 'support_models.dart';
+import '../../startup/neura_prefs_cache.dart';
 
 class SupportStore {
   SupportStore._();
@@ -13,12 +11,12 @@ class SupportStore {
   String _id() => 'c_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(1<<32)}';
 
   Future<List<TrustedContact>> getAll() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     return decodeContacts(sp.getString(_key) ?? '');
   }
 
   Future<void> _write(List<TrustedContact> list) async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     await sp.setString(_key, encodeContacts(list));
   }
 
@@ -35,7 +33,7 @@ class SupportStore {
   }
 
   Future<void> wipe() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     await sp.remove(_key);
   }
 }

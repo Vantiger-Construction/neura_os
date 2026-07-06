@@ -122,26 +122,31 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
 
   Future<void> _addRecipient() async {
     final controller = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Add recipient'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Name / email / handle',
+    final bool? ok;
+    try {
+      ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Add recipient'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              labelText: 'Name / email / handle',
+            ),
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel')),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Add')),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Add')),
-        ],
-      ),
-    );
+      );
+    } finally {
+      controller.dispose();
+    }
 
     if (ok != true) return;
     final v = controller.text.trim();
@@ -181,24 +186,29 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
 
   Future<void> _addTag() async {
     final controller = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Add tag'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: 'Tag'),
+    final bool? ok;
+    try {
+      ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Add tag'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(labelText: 'Tag'),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel')),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Add')),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Add')),
-        ],
-      ),
-    );
+      );
+    } finally {
+      controller.dispose();
+    }
     if (ok != true) return;
     final v = controller.text.trim();
     if (v.isEmpty) return;
@@ -275,25 +285,36 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
   Future<String?> _promptPassphrase(
       {String title = 'Encryption passphrase'}) async {
     final controller = TextEditingController();
-    return showDialog<String>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          obscureText: true,
-          decoration: const InputDecoration(labelText: 'Passphrase'),
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(title),
+          content: TextField(
+            controller: controller,
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'Passphrase'),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(context, controller.text),
+                child: const Text('Encrypt')),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(context, controller.text),
-              child: const Text('Encrypt')),
-        ],
-      ),
-    );
+      );
+    } finally {
+      controller.dispose();
+    }
+  }
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _body.dispose();
+    super.dispose();
   }
 
   @override

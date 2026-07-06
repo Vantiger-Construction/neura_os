@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/neura_env.dart';
 import '../screens/subscription_screen.dart';
 
 class PurchaseButton extends StatelessWidget {
@@ -6,11 +7,12 @@ class PurchaseButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext ctx) {
+    if (!kIapEnabled) return const SizedBox.shrink();
     return IconButton(
-      icon: Icon(Icons.attach_money),
+      icon: const Icon(Icons.attach_money),
       onPressed: () {
         Navigator.push(
-            ctx, MaterialPageRoute(builder: (_) => SubscriptionScreen()));
+            ctx, MaterialPageRoute(builder: (_) => const SubscriptionScreen()));
       },
     );
   }

@@ -1,6 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../services/kids_game_library_service.dart';
+import 'breathing_game_screen.dart';
+import 'gratitude_stars_screen.dart';
 
 class KidsModeHomeScreen extends StatefulWidget {
   const KidsModeHomeScreen({super.key});
@@ -71,7 +73,7 @@ class _KidsModeHomeScreenState extends State<KidsModeHomeScreen> {
                     return Card(
                       child: ListTile(
                         title: Text(name),
-                        subtitle: const Text('Tap to open (if supported).'),
+                        subtitle: const Text('Tap to open.'),
                         trailing: const Icon(Icons.play_arrow),
                         onTap: () async {
                           final ok = await _games.launchGame(name);
@@ -80,13 +82,23 @@ class _KidsModeHomeScreenState extends State<KidsModeHomeScreen> {
                             ScaffoldMessenger.of(ctx).showSnackBar(
                               const SnackBar(
                                 content: Text(
-                                  'Game launch is not wired yet for this platform.',
+                                  'Game launch is not supported on this platform yet.',
                                 ),
                               ),
                             );
                           } else {
-                            // In a real build, route to internal mini-games
-                            // based on neura:// URL extracted in KidsGameLibraryService.
+                            // Route internal neura:// mini-games.
+                            final target = _games.getLaunchTarget(name);
+                            if (!ctx.mounted) return;
+                            if (target == 'neura://kids/breathing') {
+                              Navigator.of(ctx).push(MaterialPageRoute(
+                                builder: (_) => const BreathingGameScreen(),
+                              ));
+                            } else if (target == 'neura://kids/gratitude') {
+                              Navigator.of(ctx).push(MaterialPageRoute(
+                                builder: (_) => const GratitudeStarsScreen(),
+                              ));
+                            }
                           }
                         },
                       ),

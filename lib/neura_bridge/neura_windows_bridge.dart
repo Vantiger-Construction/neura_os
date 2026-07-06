@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -7,6 +8,7 @@ class NeuraWindowsBridge {
 
   Process? _proc;
   Socket? _sock;
+  StreamSubscription<String>? _sockSub;
 
   final List<void Function(Map<String, dynamic>)> _listeners = [];
 
@@ -37,7 +39,7 @@ class NeuraWindowsBridge {
       throw Exception("Couldn't connect to Unity on 127.0.0.1:$port");
     }
 
-    _sock!
+    _sockSub = _sock!
         .cast<List<int>>()
         .transform(utf8.decoder)
         .transform(const LineSplitter())
@@ -59,6 +61,8 @@ class NeuraWindowsBridge {
   }
 
   Future<void> stop() async {
+    await _sockSub?.cancel();
+    _sockSub = null;
     await _sock?.close();
     _sock = null;
     // Unity stays running if detached; you can add a QUIT action later.

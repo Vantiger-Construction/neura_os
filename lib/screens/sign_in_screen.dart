@@ -40,6 +40,13 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   @override
+  void dispose() {
+    _email.dispose();
+    _pass.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext ctx) {
     return Scaffold(
       appBar: AppBar(title: const Text('Sign In')),

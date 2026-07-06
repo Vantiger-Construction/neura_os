@@ -1,10 +1,9 @@
-import 'dart:convert';
-
-import 'package:shared_preferences/shared_preferences.dart';
-
+﻿import 'dart:convert';
 /// Tiny local “what worked for me” store.
 ///
 /// This is *not* surveillance and it never leaves the device.
+import '../../startup/neura_prefs_cache.dart';
+
 class LearningStore {
   LearningStore._();
   static final LearningStore instance = LearningStore._();
@@ -12,7 +11,7 @@ class LearningStore {
   static const _key = 'neura.human.learning.v1';
 
   Future<Map<String, int>> _read() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     final raw = sp.getString(_key);
     if (raw == null || raw.trim().isEmpty) return <String, int>{};
     try {
@@ -32,7 +31,7 @@ class LearningStore {
   }
 
   Future<void> _write(Map<String, int> m) async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     await sp.setString(_key, jsonEncode(m));
   }
 
@@ -51,7 +50,7 @@ class LearningStore {
   }
 
   Future<void> clear() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     await sp.remove(_key);
   }
 }

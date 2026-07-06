@@ -1,9 +1,7 @@
-import 'dart:convert';
-
-import 'package:shared_preferences/shared_preferences.dart';
-
+﻿import 'dart:convert';
 import '../models/dream_entry.dart';
 import '../../shared/services/self_heal_service.dart';
+import '../../startup/neura_prefs_cache.dart';
 
 class DreamService {
   DreamService._internal();
@@ -14,7 +12,7 @@ class DreamService {
   final _selfHeal = SelfHealService.instance;
 
   Future<List<DreamEntry>> loadDreams() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final raw = prefs.getString(_keyDreams);
     if (raw == null) return [];
     try {
@@ -35,7 +33,7 @@ class DreamService {
   }
 
   Future<void> _saveDreams(List<DreamEntry> dreams) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final list = dreams.map((d) => d.toMap()).toList();
     await prefs.setString(_keyDreams, jsonEncode(list));
   }

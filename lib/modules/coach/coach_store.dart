@@ -1,10 +1,8 @@
-import 'dart:math';
-
+﻿import 'dart:math';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../core/app_log.dart';
 import 'coach_models.dart';
+import '../../startup/neura_prefs_cache.dart';
 
 class CoachStore {
   CoachStore._();
@@ -25,7 +23,7 @@ class CoachStore {
 
   Future<List<CoachNote>> getAll() async {
     try {
-      final sp = await SharedPreferences.getInstance();
+      final sp = NeuraPrefsCache.prefs;
       final raw = sp.getString(_keyTimeline);
       if (raw == null || raw.trim().isEmpty) return <CoachNote>[];
       return decodeCoachNotes(raw);
@@ -37,7 +35,7 @@ class CoachStore {
 
   Future<void> _write(List<CoachNote> notes) async {
     try {
-      final sp = await SharedPreferences.getInstance();
+      final sp = NeuraPrefsCache.prefs;
       await sp.setString(_keyTimeline, encodeCoachNotes(notes));
     } catch (e) {
       await AppLog.instance.warn('CoachStore._write failed: $e');
@@ -86,7 +84,7 @@ class CoachStore {
 
   Future<void> clear() async {
     try {
-      final sp = await SharedPreferences.getInstance();
+      final sp = NeuraPrefsCache.prefs;
       await sp.remove(_keyTimeline);
     } catch (e) {
       await AppLog.instance.warn('CoachStore.clear failed: $e');

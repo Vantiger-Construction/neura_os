@@ -4,7 +4,7 @@ import '../services/weekly_snapshot_service.dart';
 import '../models/weekly_snapshot_entry.dart';
 
 class WeeklySnapshotScreen extends StatefulWidget {
-  const WeeklySnapshotScreen({Key? key}) : super(key: key);
+  const WeeklySnapshotScreen({super.key});
 
   @override
   State<WeeklySnapshotScreen> createState() => _WeeklySnapshotScreenState();

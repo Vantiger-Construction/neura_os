@@ -1,7 +1,7 @@
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
-
+﻿import 'dart:convert';
 /// A single sleep log entry.
+import 'startup/neura_prefs_cache.dart';
+
 class SleepEntry {
   final DateTime bedtime;
   final DateTime wakeTime;
@@ -45,7 +45,7 @@ class SleepTrackerService {
   List<SleepEntry> get entries => List.unmodifiable(_entries);
 
   Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final raw = prefs.getString(_key);
     if (raw == null) return;
     try {
@@ -61,7 +61,7 @@ class SleepTrackerService {
   }
 
   Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     await prefs.setString(
         _key, jsonEncode(_entries.map((e) => e.toJson()).toList()));
   }

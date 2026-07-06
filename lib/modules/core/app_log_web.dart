@@ -1,10 +1,9 @@
-import 'dart:convert';
-
-import 'package:shared_preferences/shared_preferences.dart';
-
+﻿import 'dart:convert';
 /// Web-safe AppLog implementation using SharedPreferences.
 ///
 /// Stores NDJSON inside a single key. We keep a bounded tail so storage doesn't balloon.
+import '../../startup/neura_prefs_cache.dart';
+
 class AppLog {
   AppLog._();
   static final AppLog instance = AppLog._();
@@ -36,7 +35,7 @@ class AppLog {
   Future<void> _write(
       String level, String event, Map<String, Object?> data) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = NeuraPrefsCache.prefs;
       final current = prefs.getString(_key) ?? '';
       final payload = <String, Object?>{
         'ts': DateTime.now().toUtc().toIso8601String(),
@@ -59,7 +58,7 @@ class AppLog {
 
   Future<List<String>> tail({int maxLines = 200}) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = NeuraPrefsCache.prefs;
       final current = prefs.getString(_key) ?? '';
       if (current.trim().isEmpty) return const [];
       final lines = const LineSplitter().convert(current.trimRight());
@@ -72,7 +71,7 @@ class AppLog {
 
   Future<void> clear() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = NeuraPrefsCache.prefs;
       await prefs.remove(_key);
     } catch (_) {
       // shrug

@@ -7,7 +7,7 @@ import '../models/dream_entry.dart';
 // DreamThemeSummary is exported from dream_theme_service.dart
 
 class DreamShowScreen extends StatefulWidget {
-  const DreamShowScreen({Key? key}) : super(key: key);
+  const DreamShowScreen({super.key});
 
   @override
   State<DreamShowScreen> createState() => _DreamShowScreenState();

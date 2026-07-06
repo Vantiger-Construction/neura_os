@@ -79,6 +79,7 @@ class _LegacyTemplatesScreenState extends State<LegacyTemplatesScreen> {
         .copyWith(name: name, bodyTemplate: body, updatedAt: now);
 
     await LegacyTemplatesService.instance.upsertTemplate(template);
+    if (!mounted) return;
     await _reload();
   }
 
@@ -102,6 +103,7 @@ class _LegacyTemplatesScreenState extends State<LegacyTemplatesScreen> {
     );
     if (ok != true) return;
     await LegacyTemplatesService.instance.deleteTemplate(t.id);
+    if (!mounted) return;
     await _reload();
   }
 
@@ -119,6 +121,7 @@ class _LegacyTemplatesScreenState extends State<LegacyTemplatesScreen> {
     );
     if (ok != true) return;
     await LegacyTemplatesService.instance.resetToDefaults();
+    if (!mounted) return;
     await _reload();
   }
 
