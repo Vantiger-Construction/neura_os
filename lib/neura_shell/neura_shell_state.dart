@@ -1,8 +1,16 @@
-import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
+﻿import 'package:flutter/widgets.dart';
+import '../neura_runtime/neura_bus.dart';
 import 'models/neura_room.dart';
 import 'services/neura_ambient_audio_service.dart';
+import '../startup/neura_prefs_cache.dart';
+
+/// Concrete [InheritedNotifier] subclass so [NeuraShell.of] can look it up
+/// with `dependOnInheritedWidgetOfExactType`, which matches by exact runtime
+/// type (the abstract `InheritedNotifier<NeuraShellState>` itself would never
+/// match here).
+class NeuraShellScope extends InheritedNotifier<NeuraShellState> {
+  const NeuraShellScope({super.key, required super.notifier, required super.child});
+}
 
 class NeuraShellState extends ChangeNotifier {
   static const _kRoomId = 'neura_shell.room_id';
@@ -29,7 +37,8 @@ class NeuraShellState extends ChangeNotifier {
   bool get autoRoomSync => _autoRoomSync;
 
   Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
+    await NeuraPrefsCache.init();
+    final prefs = NeuraPrefsCache.prefs;
     _room = NeuraRoom.fromId(prefs.getString(_kRoomId));
     _showAvatar = prefs.getBool(_kShowAvatar) ?? true;
     _ambientEnabled = prefs.getBool(_kAmbientEnabled) ?? false;
@@ -45,25 +54,57 @@ class NeuraShellState extends ChangeNotifier {
 
     _loaded = true;
     notifyListeners();
+
+    // Tell the runtime which room we're starting in.
+    _emitRoomEnter(_room);
   }
 
   Future<void> setRoom(NeuraRoom room) async {
     _room = room;
     notifyListeners();
 
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     await prefs.setString(_kRoomId, room.id);
 
     final asset = room.ambientSoundAsset;
     if (_ambientEnabled && asset != null) {
       await _audio.playLoop(asset);
     }
+
+    _emitRoomEnter(room);
+  }
+
+  /// Maps a [NeuraRoom] to the corresponding [NeuraRoomKey] and emits a
+  /// [roomEnter] event so [NeuraRuntimeController] can react.
+  void _emitRoomEnter(NeuraRoom room) {
+    final key = _toRoomKey(room);
+    NeuraBus.I.currentRoom = key;
+    NeuraBus.I.emit(NeuraEvent(NeuraEventType.roomEnter, room: key));
+  }
+
+  static NeuraRoomKey _toRoomKey(NeuraRoom room) {
+    switch (room.id) {
+      case 'reflection_bay':
+        return NeuraRoomKey.reflectionBay;
+      case 'joy_lounge':
+        return NeuraRoomKey.joyLounge;
+      case 'mood_den':
+        return NeuraRoomKey.moodDen;
+      case 'dream_atrium':
+        return NeuraRoomKey.dreamAtrium;
+      case 'legacy_vault':
+        return NeuraRoomKey.legacyVault;
+      case 'settings':
+        return NeuraRoomKey.settings;
+      default:
+        return NeuraRoomKey.penthouse;
+    }
   }
 
   Future<void> setShowAvatar(bool value) async {
     _showAvatar = value;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     await prefs.setBool(_kShowAvatar, value);
   }
 
@@ -71,7 +112,7 @@ class NeuraShellState extends ChangeNotifier {
     _ambientEnabled = enabled;
     notifyListeners();
 
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     await prefs.setBool(_kAmbientEnabled, enabled);
 
     await _audio.setEnabled(enabled);
@@ -85,7 +126,7 @@ class NeuraShellState extends ChangeNotifier {
     _ambientVolume = volume.clamp(0.0, 1.0);
     notifyListeners();
 
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     await prefs.setDouble(_kAmbientVolume, _ambientVolume);
 
     await _audio.setVolume(_ambientVolume);
@@ -94,7 +135,7 @@ class NeuraShellState extends ChangeNotifier {
   Future<void> setAutoRoomSync(bool value) async {
     _autoRoomSync = value;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     await prefs.setBool(_kAutoRoomSync, value);
   }
 

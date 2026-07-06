@@ -34,13 +34,9 @@ class _NeuraShellRootState extends State<NeuraShellRoot> {
 
   @override
   Widget build(BuildContext context) {
-    return _NeuraShellScope(
+    return NeuraShellScope(
       notifier: _state,
       child: NeuraShellOverlay(child: widget.child),
     );
   }
-}
-
-class _NeuraShellScope extends InheritedNotifier<NeuraShellState> {
-  const _NeuraShellScope({required super.notifier, required super.child});
 }
