@@ -81,13 +81,16 @@ class WeeklySnapshotService {
   }
 
   /// Returns entries for the last 7 days (including today).
-  Future<List<WeeklySnapshotEntry>> last7Days() async {
+  Future<List<WeeklySnapshotEntry>> last7Days() => lastNDays(7);
+
+  /// Returns entries for the last [days] days (including today).
+  Future<List<WeeklySnapshotEntry>> lastNDays(int days) async {
     await load();
     if (_entries.isEmpty) return [];
     final now = DateTime.now();
-    final sevenDaysAgo = DateTime(now.year, now.month, now.day)
-        .subtract(const Duration(days: 6));
-    return _entries.where((e) => !e.date.isBefore(sevenDaysAgo)).toList()
+    final cutoff = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: days - 1));
+    return _entries.where((e) => !e.date.isBefore(cutoff)).toList()
       ..sort((a, b) => a.date.compareTo(b.date));
   }
 

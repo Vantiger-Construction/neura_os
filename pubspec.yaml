@@ -30,6 +30,8 @@ dependencies:
   flutter_riverpod: ^2.0.0
   record: ^6.0.0
   uuid: ^4.5.3
+  fl_chart: ^0.69.0
+  printing: ^5.13.4
 
 dev_dependencies:
   flutter_test:
