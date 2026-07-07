@@ -3,6 +3,7 @@ import '../../neura_shell/neura_shell.dart';
 import '../../neura_shell/models/neura_room.dart';
 
 
+import '../../insights/screens/weekly_snapshot_screen.dart';
 import '../../modules/mood/mood_checkin_screen.dart';
 import '../../modules/mood/mood_history_screen.dart';
 import '../../screens/dream_journal_calendar_screen.dart';
@@ -140,6 +141,12 @@ class _Dashboard extends StatelessWidget {
               title: 'Mood History',
               subtitle: 'Your emotional weather.',
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MoodHistoryScreen())),
+            ),
+            _Tile(
+              icon: Icons.insights,
+              title: 'Weekly Snapshot',
+              subtitle: 'Mood trend, rituals, and export.',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WeeklySnapshotScreen())),
             ),
             _Tile(
               icon: Icons.edit_note,
