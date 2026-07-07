@@ -18,6 +18,7 @@ import '../../screens/dream_show_screen.dart';
 import '../../screens/dream_visualizer_screen.dart';
 import '../../screens/journal_prompt_screen.dart';
 import '../../screens/voice_journal_screen.dart';
+import '../../src/modules/legacy/legacy_deadman_service.dart';
 import '../../src/modules/legacy/legacy_home_screen.dart';
 import '../../src/modules/settings/settings.dart';
 import '../chat/neura_chat_screen.dart';
@@ -32,6 +33,18 @@ class EnhancedNavigation extends StatefulWidget {
 
 class _EnhancedNavigationState extends State<EnhancedNavigation> {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Legacy Guard (dead-man's-switch) can be enabled from Legacy Vault ->
+    // Legacy Guard; this is the startup check that actually detects an
+    // overdue check-in and offers to release capsules. No-ops if disabled.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      LegacyDeadmanService.instance.maybePromptOnStartup(context);
+    });
+  }
 
   void _openChat() {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NeuraChatScreen()));
