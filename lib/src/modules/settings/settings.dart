@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../../../config/supabase_config.dart';
 import '../../../../modules/coach/coach_settings_screen.dart';
 import '../../../../modules/human/theme_screen.dart';
 import '../../../../screens/avatar_selector_screen.dart';
 import '../../../../screens/help_screen.dart';
+import '../../../../screens/profile_screen.dart';
 import '../../shell/portal_route.dart';
 import '../../shell/rooms_map_screen.dart';
 import '../../shell/shell_prefs.dart';
@@ -21,6 +23,19 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
+          if (SupabaseConfig.isConfigured) ...[
+            ListTile(
+              leading: const Icon(Icons.account_circle_outlined),
+              title: const Text('Profile & Account'),
+              subtitle: const Text('Display name, email, and sign out.'),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                );
+              },
+            ),
+            const Divider(),
+          ],
           ListTile(
             leading: const Icon(Icons.dashboard_customize_outlined),
             title: const Text('Rooms Map'),

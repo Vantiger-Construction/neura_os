@@ -103,8 +103,7 @@ class NeuraStartupCoordinator {
   }
 
   Future<void> _initSupabase() async {
-    if (SupabaseConfig.url.startsWith('YOUR_') ||
-        SupabaseConfig.anonKey.startsWith('YOUR_')) {
+    if (!SupabaseConfig.isConfigured) {
       debugPrint(
         '[NeuraStartup] Supabase skipped — placeholder credentials detected. '
         'Add real values in lib/config/supabase_config.dart.',

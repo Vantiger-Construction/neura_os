@@ -1,12 +1,17 @@
 ﻿import 'package:flutter/material.dart';
 
+import '../config/supabase_config.dart';
 import '../modules/navigation/enhanced_navigation.dart';
+import '../screens/sign_in_screen.dart';
+import '../services/auth_service.dart';
 import 'neura_startup_coordinator.dart';
 
 /// Animated splash screen shown while [NeuraStartupCoordinator] runs.
 ///
 /// Immediately kicks off [NeuraStartupCoordinator.boot] on first build,
-/// then replaces itself with [EnhancedNavigation] once [ready] fires.
+/// then replaces itself with [EnhancedNavigation] once [ready] fires —
+/// or [SignInScreen] first, if Supabase is configured and no one is
+/// signed in yet.
 ///
 /// The screen is intentionally lightweight — no heavy widgets, no async
 /// awaits of its own — so it appears on screen within a single frame of
@@ -56,12 +61,18 @@ class _NeuraBootScreenState extends State<NeuraBootScreen>
   void _onReady() {
     if (!_coordinator.ready.value) return;
     if (!mounted) return;
+    // Only ask for sign-in once Supabase is actually configured — with
+    // placeholder keys, Supabase.initialize() was skipped, so touching
+    // Supabase.instance (AuthService included) would throw.
+    final needsSignIn =
+        SupabaseConfig.isConfigured && AuthService.currentUser == null;
     // Short pause so "Ready!" is readable, then replace the whole route stack.
     Future<void>.delayed(const Duration(milliseconds: 350), () {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         PageRouteBuilder<void>(
-          pageBuilder: (_, __, ___) => const EnhancedNavigation(),
+          pageBuilder: (_, __, ___) =>
+              needsSignIn ? const SignInScreen() : const EnhancedNavigation(),
           transitionsBuilder: (_, animation, __, child) {
             return FadeTransition(
               opacity: CurvedAnimation(
