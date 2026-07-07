@@ -12,6 +12,8 @@ import '../../../../screens/avatar_selector_screen.dart';
 import '../../../../screens/help_screen.dart';
 import '../../../../screens/profile_screen.dart';
 import '../../../../screens/purchase_history_screen.dart';
+import '../../../../screens/subscription_screen.dart';
+import '../../../../screens/sync_status_screen.dart';
 import '../../shell/portal_route.dart';
 import '../../shell/rooms_map_screen.dart';
 import '../../shell/shell_prefs.dart';
@@ -37,6 +39,17 @@ class SettingsScreen extends StatelessWidget {
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                );
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.sync_outlined),
+              title: const Text('Sync Status'),
+              subtitle: const Text('Push and pull your journal entries manually.'),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SyncStatusScreen()),
                 );
               },
             ),
@@ -157,6 +170,17 @@ class SettingsScreen extends StatelessWidget {
             },
           ),
           if (kIapEnabled) ...[
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.workspace_premium_outlined),
+              title: const Text('Subscriptions'),
+              subtitle: const Text('Monthly, yearly, or lifetime Neura plans.'),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
+                );
+              },
+            ),
             const Divider(),
             ListTile(
               leading: const Icon(Icons.receipt_long_outlined),
