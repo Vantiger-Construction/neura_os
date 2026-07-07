@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../../../../config/supabase_config.dart';
+import '../../../../core/neura_env.dart';
 import '../../../../modules/coach/coach_settings_screen.dart';
+import '../../../../modules/human/accessibility_screen.dart';
+import '../../../../modules/human/life_snapshot_screen.dart';
+import '../../../../modules/human/persona_lab_screen.dart';
 import '../../../../modules/human/theme_screen.dart';
+import '../../../../persona/screens/audience_settings_screen.dart';
 import '../../../../screens/avatar_selector_screen.dart';
 import '../../../../screens/help_screen.dart';
 import '../../../../screens/profile_screen.dart';
+import '../../../../screens/purchase_history_screen.dart';
 import '../../shell/portal_route.dart';
 import '../../shell/rooms_map_screen.dart';
 import '../../shell/shell_prefs.dart';
@@ -106,6 +112,63 @@ class SettingsScreen extends StatelessWidget {
               );
             },
           ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.tune),
+            title: const Text('Persona Lab'),
+            subtitle: const Text('Tune how Neura talks to you — tone, humor, and depth.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PersonaLabScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.groups_outlined),
+            title: const Text('Audience Settings'),
+            subtitle: const Text('Choose who Neura is talking to, for safer tone and depth.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AudienceSettingsScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.accessibility_new_outlined),
+            title: const Text('Accessibility'),
+            subtitle: const Text('Motion, contrast, and text-size controls, plus Safe Mode.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AccessibilityScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.bar_chart_outlined),
+            title: const Text('Life Snapshot'),
+            subtitle: const Text('A quick on-device snapshot of your mood and habits.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LifeSnapshotScreen()),
+              );
+            },
+          ),
+          if (kIapEnabled) ...[
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.receipt_long_outlined),
+              title: const Text('Purchase History'),
+              subtitle: const Text('Review past purchases and restore them if needed.'),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const PurchaseHistoryScreen()),
+                );
+              },
+            ),
+          ],
           const Divider(),
           ListTile(
             leading: const Icon(Icons.help_outline),

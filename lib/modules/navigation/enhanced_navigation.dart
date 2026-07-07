@@ -3,9 +3,15 @@ import '../../neura_shell/neura_shell.dart';
 import '../../neura_shell/models/neura_room.dart';
 
 
+import '../../dreams/screens/dream_show2_screen.dart';
 import '../../insights/screens/weekly_snapshot_screen.dart';
 import '../../modules/mood/mood_checkin_screen.dart';
 import '../../modules/mood/mood_history_screen.dart';
+import '../../modules/pay_it_forward/pay_it_forward_screen.dart';
+import '../../modules/quests/quest_mode_screen.dart';
+import '../../modules/support/support_center_screen.dart';
+import '../../modules/timeline/life_timeline_screen.dart';
+import '../../modules/vault/memory_vault_screen.dart';
 import '../review/weekly_review_screen.dart';
 import '../../screens/dream_journal_calendar_screen.dart';
 import '../../screens/dream_show_screen.dart';
@@ -211,6 +217,36 @@ class _Dashboard extends StatelessWidget {
               subtitle: 'Logs + Dimensional Sync.',
               onTap: openDiagnostics,
             ),
+            _Tile(
+              icon: Icons.lock_outline,
+              title: 'Memory Vault',
+              subtitle: 'Encrypted notes for the stuff that matters.',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MemoryVaultScreen())),
+            ),
+            _Tile(
+              icon: Icons.history_edu_outlined,
+              title: 'Life Timeline',
+              subtitle: 'Your life, one event at a time.',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LifeTimelineScreen())),
+            ),
+            _Tile(
+              icon: Icons.health_and_safety_outlined,
+              title: 'Support Center',
+              subtitle: 'Grounding tools and people to reach out to.',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SupportCenterScreen())),
+            ),
+            _Tile(
+              icon: Icons.volunteer_activism_outlined,
+              title: 'Pay It Forward',
+              subtitle: 'Track kind acts. Build a streak.',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PayItForwardScreen())),
+            ),
+            _Tile(
+              icon: Icons.flag_outlined,
+              title: 'Quest Mode',
+              subtitle: 'Tiny missions to build momentum.',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const QuestModeScreen())),
+            ),
           ],
         ),
         const SizedBox(height: 24),
@@ -351,6 +387,14 @@ class _DreamHub extends StatelessWidget {
               title: const Text('Monthly Dream Show'),
               subtitle: const Text('Auto-compiled highlight reel.'),
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DreamShowScreen())),
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.category_outlined),
+              title: const Text('Dream Themes'),
+              subtitle: const Text('Recurring themes across your dream log.'),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DreamShow2Screen())),
             ),
           ),
         ],
