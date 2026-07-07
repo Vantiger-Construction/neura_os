@@ -6,6 +6,7 @@ import '../../neura_shell/models/neura_room.dart';
 import '../../insights/screens/weekly_snapshot_screen.dart';
 import '../../modules/mood/mood_checkin_screen.dart';
 import '../../modules/mood/mood_history_screen.dart';
+import '../review/weekly_review_screen.dart';
 import '../../screens/dream_journal_calendar_screen.dart';
 import '../../screens/dream_show_screen.dart';
 import '../../screens/dream_visualizer_screen.dart';
@@ -147,6 +148,12 @@ class _Dashboard extends StatelessWidget {
               title: 'Weekly Snapshot',
               subtitle: 'Mood trend, rituals, and export.',
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WeeklySnapshotScreen())),
+            ),
+            _Tile(
+              icon: Icons.auto_awesome_outlined,
+              title: 'Weekly Review',
+              subtitle: 'Full history, notes, and coach commentary.',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WeeklyReviewScreen())),
             ),
             _Tile(
               icon: Icons.edit_note,
