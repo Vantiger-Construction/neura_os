@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../modules/coach/coach_settings_screen.dart';
 import '../../../../modules/human/theme_screen.dart';
 import '../../../../screens/avatar_selector_screen.dart';
 import '../../../../screens/help_screen.dart';
@@ -76,6 +77,17 @@ class SettingsScreen extends StatelessWidget {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const AvatarSelectorScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.psychology_alt_outlined),
+            title: const Text('Neura Coach'),
+            subtitle: const Text('Enable reflections, and browse your Coach Timeline.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CoachSettingsScreen()),
               );
             },
           ),
