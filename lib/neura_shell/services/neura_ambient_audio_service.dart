@@ -32,11 +32,13 @@ class NeuraAmbientAudioService {
     _currentAsset = assetPath;
     if (!_enabled) return;
 
-    // Restart cleanly.
-    await _player.stop();
-    await _player.setReleaseMode(ReleaseMode.loop);
-    await _player.setVolume(_volume);
-    await _player.play(AssetSource(assetPath.replaceFirst('assets/', '')));
+    // Restart cleanly. Wrapped in try/catch so stub/missing assets never crash.
+    try {
+      await _player.stop();
+      await _player.setReleaseMode(ReleaseMode.loop);
+      await _player.setVolume(_volume);
+      await _player.play(AssetSource(assetPath.replaceFirst('assets/', '')));
+    } catch (_) {}
   }
 
   Future<void> stop() async {

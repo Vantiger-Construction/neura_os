@@ -1,17 +1,7 @@
 import 'package:neuro_companion/models/usage_entry.dart';
 
 class UsageRepository {
-  // Simulated data store (replace with actual database/API logic as needed)
-  final List<UsageEntry> _entries = [
-    // Example entries; remove or replace with real data
-    UsageEntry(
-      id: '1',
-      timestamp: DateTime.now(),
-      type: 'example_type',
-      source: 'example_source',
-      moodTag: 'neutral',
-    ),
-  ];
+  final List<UsageEntry> _entries = [];
 
   // Get all usage entries
   List<UsageEntry> getAllEntries() {

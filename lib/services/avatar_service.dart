@@ -1,10 +1,14 @@
+﻿import 'package:flutter/foundation.dart';
 import '../models/ai_avatar.dart';
-import 'package:flutter/foundation.dart';
+import '../startup/neura_prefs_cache.dart';
 
 class AvatarService {
   AvatarService();
 
   static final AvatarService instance = AvatarService();
+
+  static const _kSelectedKey = 'avatar_selected_id';
+
   final ValueNotifier<String> selectedAvatarId = ValueNotifier<String>('neura');
 
   Future<void> init() async {
@@ -13,30 +17,28 @@ class AvatarService {
   }
 
   /// Returns available AI Avatars.
-  ///
-  /// NOTE: We keep this offline‑friendly. If/when you add Lottie/Rive again,
-  /// just swap the assetPath to your animation file.
   List<AIAvatar> getAvailableAvatars() {
     return const [
-      AIAvatar(
-          id: 'neura', name: 'Neura', assetPath: 'assets/images/ai_avatar.png'),
-      AIAvatar(
-          id: 'neuro', name: 'Neuro', assetPath: 'assets/images/ai_avatar.png'),
+      AIAvatar(id: 'neura', name: 'Neura', assetPath: 'assets/images/ai_avatar.png'),
+      AIAvatar(id: 'neuro', name: 'Neuro', assetPath: 'assets/images/ai_avatar.png'),
     ];
   }
 
-  /// Persist selected avatar ID
+  /// Persists selected avatar ID to shared preferences.
   Future<void> selectAvatar(String id) async {
     selectedAvatarId.value = id;
-    // TODO: save to storage
+    final prefs = NeuraPrefsCache.prefs;
+    await prefs.setString(_kSelectedKey, id);
   }
 
-  /// Load selected avatar
+  /// Loads selected avatar from shared preferences, defaulting to Neura.
   Future<AIAvatar> getSelectedAvatar() async {
-    // TODO: fetch from storage, default to Neura
+    final prefs = NeuraPrefsCache.prefs;
+    final id = prefs.getString(_kSelectedKey) ?? 'neura';
+    selectedAvatarId.value = id;
     final all = getAvailableAvatars();
     return all.firstWhere(
-      (a) => a.id == selectedAvatarId.value,
+      (a) => a.id == id,
       orElse: () => all.first,
     );
   }

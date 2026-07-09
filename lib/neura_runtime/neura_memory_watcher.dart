@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'neura_bus.dart';
 import 'neura_room_memory.dart';
 
@@ -7,6 +9,7 @@ class NeuraMemoryWatcher {
   static final NeuraMemoryWatcher I = NeuraMemoryWatcher._();
 
   bool _started = false;
+  StreamSubscription<NeuraEvent>? _sub;
 
   Future<void> start() async {
     if (_started) return;
@@ -14,7 +17,7 @@ class NeuraMemoryWatcher {
 
     await NeuraRoomMemory.I.load();
 
-    NeuraBus.I.stream.listen((e) async {
+    _sub = NeuraBus.I.stream.listen((e) async {
       final room = e.room ?? NeuraBus.I.currentRoom;
       switch (e.type) {
         case NeuraEventType.error:
@@ -45,5 +48,11 @@ class NeuraMemoryWatcher {
           break;
       }
     });
+  }
+
+  Future<void> stop() async {
+    await _sub?.cancel();
+    _sub = null;
+    _started = false;
   }
 }

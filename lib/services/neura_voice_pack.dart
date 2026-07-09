@@ -1,10 +1,11 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:record/record.dart';
 
 /// =========================
 ///  Neura Voice Pack (Offline)
@@ -54,11 +55,15 @@ class NeuraVoicePack {
   Timer? _tick;
 
   // Mic
-  final NeuraMicDriver _mic = NeuraMicDriver();
+  final _VoicePackMicDriver _mic = _VoicePackMicDriver();
   StreamSubscription? _micSub;
   bool _micEnabled = false;
+  bool _initialized = false;
 
   Future<void> init({bool enableMic = true}) async {
+    if (_initialized) return;
+    _initialized = true;
+
     // Clip complete handler
     _player.onPlayerComplete.listen((_) {
       _stopClip();
@@ -453,21 +458,47 @@ class NeuraMicVisemeEngine {
   double _lerp(double a, double b, double t) => a + (b - a) * t;
 }
 
-// Mic recording stubbed for beta Windows build — flutter_sound requires a
-// platform-specific C++ plugin that conflicts with VS Build Tools 2026.
-// Live mic visemes resume when flutter_sound is re-enabled post-beta.
-class NeuraMicDriver {
+// Live mic driver: streams PCM16 audio through NeuraMicVisemeEngine.
+class _VoicePackMicDriver {
   final NeuraMicVisemeEngine engine;
   final StreamController<_MicFrame> _out = StreamController.broadcast();
   Stream<_MicFrame> get stream => _out.stream;
 
-  NeuraMicDriver({NeuraMicVisemeEngine? engine})
+  final AudioRecorder _recorder = AudioRecorder();
+  StreamSubscription<Uint8List>? _audioSub;
+
+  _VoicePackMicDriver({NeuraMicVisemeEngine? engine})
       : engine = engine ?? NeuraMicVisemeEngine();
 
-  Future<void> start() async {}
-  Future<void> stop() async {}
+  Future<void> start() async {
+    if (!await _recorder.hasPermission()) return;
+    final audioStream = await _recorder.startStream(
+      const RecordConfig(
+        encoder: AudioEncoder.pcm16bits,
+        sampleRate: 16000,
+        numChannels: 1,
+      ),
+    );
+    _audioSub = audioStream.listen((bytes) {
+      if (_out.isClosed) return;
+      final pcm = Int16List.view(
+          bytes.buffer, bytes.offsetInBytes, bytes.lengthInBytes ~/ 2);
+      _out.add(engine.processPcm16(pcm));
+    });
+  }
+
+  Future<void> stop() async {
+    await _audioSub?.cancel();
+    _audioSub = null;
+    try {
+      await _recorder.stop();
+    } catch (_) {}
+  }
+
   Future<void> dispose() async {
-    await _out.close();
+    await stop();
+    _recorder.dispose();
+    if (!_out.isClosed) await _out.close();
   }
 }
 
@@ -477,3 +508,5 @@ String _stem(String filename) {
   if (dot != -1) s = s.substring(0, dot);
   return s;
 }
+
+

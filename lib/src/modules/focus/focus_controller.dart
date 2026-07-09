@@ -1,10 +1,8 @@
-import 'dart:convert';
-
+﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../../../modules/core/app_log.dart';
 import 'focus_mode.dart';
+import '../../../startup/neura_prefs_cache.dart';
 
 class FocusState {
   final FocusMode mode;
@@ -45,7 +43,7 @@ class FocusController {
 
   Future<void> init() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = NeuraPrefsCache.prefs;
       final raw = prefs.getString(_prefsKey);
       if (raw == null || raw.trim().isEmpty) return;
       final decoded = jsonDecode(raw);
@@ -61,7 +59,7 @@ class FocusController {
     final next = FocusState(mode: mode, startedAt: DateTime.now());
     state.value = next;
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = NeuraPrefsCache.prefs;
       await prefs.setString(_prefsKey, jsonEncode(next.toJson()));
     } catch (e) {
       await AppLog.instance.warn('FocusController.setMode failed: $e');

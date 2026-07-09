@@ -21,7 +21,7 @@ class NeuraRuntimeController {
     if (_started) return;
     _started = true;
 
-    await NeuraVoicePack.I.init(enableMic: true);
+    // NeuraVoicePack is initialised in main() before start() is called.
     await NeuraMemoryWatcher.I.start();
 
     _sub = NeuraBus.I.stream.listen((e) async {

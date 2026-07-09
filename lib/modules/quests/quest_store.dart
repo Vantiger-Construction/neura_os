@@ -1,8 +1,6 @@
-import 'dart:math';
-
-import 'package:shared_preferences/shared_preferences.dart';
-
+﻿import 'dart:math';
 import 'quest_models.dart';
+import '../../startup/neura_prefs_cache.dart';
 
 class QuestStore {
   QuestStore._();
@@ -17,22 +15,22 @@ class QuestStore {
   }
 
   Future<List<Quest>> getQuests() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     return decodeQuestList(sp.getString(_questsKey) ?? '');
   }
 
   Future<List<QuestDone>> getDone() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     return decodeDoneList(sp.getString(_doneKey) ?? '');
   }
 
   Future<void> _writeQuests(List<Quest> list) async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     await sp.setString(_questsKey, encodeQuestList(list));
   }
 
   Future<void> _writeDone(List<QuestDone> list) async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     await sp.setString(_doneKey, encodeDoneList(list));
   }
 
@@ -120,7 +118,7 @@ class QuestStore {
   }
 
   Future<void> wipe() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     await sp.remove(_questsKey);
     await sp.remove(_doneKey);
   }

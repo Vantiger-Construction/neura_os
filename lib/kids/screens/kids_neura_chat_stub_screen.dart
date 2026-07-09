@@ -18,6 +18,12 @@ class _KidsNeuraChatStubScreenState extends State<KidsNeuraChatStubScreen> {
   String _lastPrompt = '';
   bool _loading = false;
 
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
   Future<void> _onSend() async {
     final userText = _controller.text.trim();
     if (userText.isEmpty) return;

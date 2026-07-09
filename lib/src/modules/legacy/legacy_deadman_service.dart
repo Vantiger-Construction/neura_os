@@ -1,11 +1,9 @@
-import 'dart:convert';
-
+﻿import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import 'legacy_delivery_service.dart';
 import 'legacy_vault_service.dart';
 import 'models/legacy_capsule.dart';
+import '../../../startup/neura_prefs_cache.dart';
 
 class LegacyDeadmanSettings {
   final bool enabled;
@@ -87,7 +85,7 @@ class LegacyDeadmanService {
   static const String _kKey = 'neura_legacy_deadman_settings_v1';
 
   Future<LegacyDeadmanSettings> load() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final raw = prefs.getString(_kKey);
     if (raw == null || raw.trim().isEmpty) {
       return LegacyDeadmanSettings.defaults();
@@ -103,7 +101,7 @@ class LegacyDeadmanService {
   }
 
   Future<void> save(LegacyDeadmanSettings settings) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     await prefs.setString(_kKey, jsonEncode(settings.toMap()));
   }
 

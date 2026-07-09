@@ -1,9 +1,10 @@
-import '../models/journal_entry.dart';
+﻿import '../models/journal_entry.dart';
 
 class ConflictResolutionService {
-  /// Presents conflict data and resolves based on user choice.
+  /// Resolves a sync conflict between [local] and [remote] entries with the
+  /// same ID by returning whichever has the more recent timestamp.
+  /// Both entries have equal standing — this is a last-write-wins policy.
   Future<JournalEntry> resolve(JournalEntry local, JournalEntry remote) async {
-    // TODO: present UI to choose local vs remote or merge
-    return local; // default to local
+    return remote.timestamp.isAfter(local.timestamp) ? remote : local;
   }
 }

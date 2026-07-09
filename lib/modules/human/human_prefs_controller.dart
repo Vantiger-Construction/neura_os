@@ -1,8 +1,7 @@
-import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
+﻿import 'package:flutter/foundation.dart';
 import '../core/app_log.dart';
 import 'human_prefs.dart';
+import '../../startup/neura_prefs_cache.dart';
 
 class HumanPrefsController {
   HumanPrefsController._();
@@ -14,7 +13,7 @@ class HumanPrefsController {
 
   Future<void> init() async {
     try {
-      final sp = await SharedPreferences.getInstance();
+      final sp = NeuraPrefsCache.prefs;
       final raw = sp.getString(_key);
       if (raw == null || raw.trim().isEmpty) return;
       prefs.value = HumanPrefs.fromJsonString(raw);
@@ -26,7 +25,7 @@ class HumanPrefsController {
   Future<void> update(HumanPrefs next) async {
     prefs.value = next;
     try {
-      final sp = await SharedPreferences.getInstance();
+      final sp = NeuraPrefsCache.prefs;
       await sp.setString(_key, next.toJsonString());
     } catch (e) {
       await AppLog.instance.warn('HumanPrefsController.update failed: $e');

@@ -54,80 +54,88 @@ class VaultSession {
 
   static Future<String?> _promptEnterPin(BuildContext context) async {
     final ctrl = TextEditingController();
-    return showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Unlock Memory Vault'),
-          content: TextField(
-            controller: ctrl,
-            obscureText: true,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'PIN',
-              hintText: 'Enter your vault PIN',
+    try {
+      return await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          return AlertDialog(
+            title: const Text('Unlock Memory Vault'),
+            content: TextField(
+              controller: ctrl,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'PIN',
+                hintText: 'Enter your vault PIN',
+              ),
+              autofocus: true,
+              onSubmitted: (_) => Navigator.of(ctx).pop(ctrl.text.trim()),
             ),
-            autofocus: true,
-            onSubmitted: (_) => Navigator.of(ctx).pop(ctrl.text.trim()),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(null), child: const Text('Cancel')),
-            ElevatedButton(onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()), child: const Text('Unlock')),
-          ],
-        );
-      },
-    );
+            actions: [
+              TextButton(onPressed: () => Navigator.of(ctx).pop(null), child: const Text('Cancel')),
+              ElevatedButton(onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()), child: const Text('Unlock')),
+            ],
+          );
+        },
+      );
+    } finally {
+      ctrl.dispose();
+    }
   }
 
   static Future<String?> _promptCreatePin(BuildContext context) async {
     final a = TextEditingController();
     final b = TextEditingController();
-
-    return showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Create a Vault PIN'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('This PIN is never stored. You will enter it once per session to unlock the vault.'),
-              const SizedBox(height: 12),
-              TextField(
-                controller: a,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'PIN'),
-              ),
-              TextField(
-                controller: b,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Confirm PIN'),
+    try {
+      return await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          return AlertDialog(
+            title: const Text('Create a Vault PIN'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('This PIN is never stored. You will enter it once per session to unlock the vault.'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: a,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'PIN'),
+                ),
+                TextField(
+                  controller: b,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Confirm PIN'),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(ctx).pop(null), child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () {
+                  final p1 = a.text.trim();
+                  final p2 = b.text.trim();
+                  if (p1.length < 4 || p1 != p2) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(content: Text('PINs must match and be at least 4 digits.')),
+                    );
+                    return;
+                  }
+                  Navigator.of(ctx).pop(p1);
+                },
+                child: const Text('Set PIN'),
               ),
             ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(null), child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: () {
-                final p1 = a.text.trim();
-                final p2 = b.text.trim();
-                if (p1.length < 4 || p1 != p2) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(content: Text('PINs must match and be at least 4 digits.')),
-                  );
-                  return;
-                }
-                Navigator.of(ctx).pop(p1);
-              },
-              child: const Text('Set PIN'),
-            ),
-          ],
-        );
-      },
-    );
+          );
+        },
+      );
+    } finally {
+      a.dispose();
+      b.dispose();
+    }
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/models/usage_entry.dart';
 import 'package:neuro_companion/services/pdf_report_service.dart';
 import 'package:neuro_companion/repositories/usage_repository.dart';
+import 'helpers/mock_path_provider.dart';
 
 class FakeRepo extends UsageRepository {
   FakeRepo() : super() {
@@ -19,6 +20,11 @@ class FakeRepo extends UsageRepository {
 }
 
 void main() {
+  setUpAll(() {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    registerMockPathProvider();
+  });
+
   test('generateReport produces a PDF file', () async {
     final repo = FakeRepo();
     final service = PdfReportService(repo);

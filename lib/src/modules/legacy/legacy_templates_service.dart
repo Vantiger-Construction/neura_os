@@ -1,8 +1,7 @@
-import 'dart:convert';
-
+﻿import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-
 import 'models/legacy_message_template.dart';
+import '../../../startup/neura_prefs_cache.dart';
 
 class LegacyTemplatesService {
   LegacyTemplatesService._();
@@ -53,7 +52,7 @@ class LegacyTemplatesService {
   }
 
   Future<List<LegacyMessageTemplate>> listTemplates() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final raw = prefs.getString(_kKey);
     if (raw == null || raw.trim().isEmpty) {
       final defaults = _defaults();
@@ -113,12 +112,12 @@ class LegacyTemplatesService {
   }
 
   Future<void> resetToDefaults() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     await prefs.remove(_kKey);
   }
 
   Future<void> _save(List<LegacyMessageTemplate> list) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     await _saveRaw(prefs, list);
   }
 

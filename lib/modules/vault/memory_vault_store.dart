@@ -1,12 +1,10 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
-
 import 'package:cryptography/cryptography.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../core/app_log.dart';
 import 'memory_vault_models.dart';
+import '../../startup/neura_prefs_cache.dart';
 
 class MemoryVaultStore {
   MemoryVaultStore._();
@@ -25,7 +23,7 @@ class MemoryVaultStore {
   static const _verifierPlain = '{"neura":"vault_ok"}';
 
   Future<String> _getOrCreateSeed() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     var seed = sp.getString(_keySeed);
     if (seed != null && seed.trim().isNotEmpty) return seed;
     final r = Random.secure();
@@ -119,7 +117,7 @@ class MemoryVaultStore {
   }
 
   Future<void> _migrateLegacyPinIfNeeded() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     final verifier = sp.getString(_keyPinVerifier);
     if (verifier != null && verifier.trim().isNotEmpty) return;
 
@@ -134,20 +132,20 @@ class MemoryVaultStore {
 
   Future<bool> hasPinConfigured() async {
     await _migrateLegacyPinIfNeeded();
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     final verifier = sp.getString(_keyPinVerifier);
     return verifier != null && verifier.trim().isNotEmpty;
   }
 
   Future<void> configurePin(String pin) async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     final enc = await _encryptJson(_verifierPlain, pin: pin.trim());
     await sp.setString(_keyPinVerifier, enc);
   }
 
   Future<bool> validatePin(String pin) async {
     await _migrateLegacyPinIfNeeded();
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     final verifier = sp.getString(_keyPinVerifier);
     if (verifier == null || verifier.trim().isEmpty) return false;
     final clear = await _decryptJson(verifier, pin: pin.trim());
@@ -156,7 +154,7 @@ class MemoryVaultStore {
 
   Future<List<VaultItem>> getItems({required String pin}) async {
     try {
-      final sp = await SharedPreferences.getInstance();
+      final sp = NeuraPrefsCache.prefs;
 
       // Prefer v2.
       final blobV2 = sp.getString(_keyData);
@@ -188,7 +186,7 @@ class MemoryVaultStore {
   }
 
   Future<void> _save(List<VaultItem> items, {required String pin}) async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     final json = encodeVaultItems(items);
     final enc = await _encryptJson(json, pin: pin);
     await sp.setString(_keyData, enc);
@@ -218,7 +216,7 @@ class MemoryVaultStore {
   }
 
   Future<void> wipe() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     await sp.remove(_keyData);
     await sp.remove(_keyDataLegacy);
     await sp.remove(_keyPinVerifier);

@@ -1,10 +1,9 @@
-import 'package:shared_preferences/shared_preferences.dart';
-
-import '../human/learning_store.dart';
+﻿import '../human/learning_store.dart';
 import '../mood/mood_store.dart';
 import '../pay_it_forward/goodwill_store.dart';
 import '../quests/quest_store.dart';
 import 'weekly_review_models.dart';
+import '../../startup/neura_prefs_cache.dart';
 
 class WeeklyReviewStore {
   WeeklyReviewStore._();
@@ -13,12 +12,12 @@ class WeeklyReviewStore {
   static const _key = 'neura.weekly_reviews.v1';
 
   Future<List<WeeklyReview>> getAll() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     return decodeWeeklyReviews(sp.getString(_key) ?? '');
   }
 
   Future<void> _write(List<WeeklyReview> list) async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     await sp.setString(_key, encodeWeeklyReviews(list));
   }
 
@@ -94,7 +93,7 @@ class WeeklyReviewStore {
   }
 
   Future<void> wipe() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     await sp.remove(_key);
   }
 }

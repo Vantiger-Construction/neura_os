@@ -1,21 +1,14 @@
-import '../../after_storm/models/storm_event.dart';
+﻿import '../../after_storm/models/storm_event.dart';
+import '../../after_storm/services/after_storm_service.dart';
 
-/// Bridge so AfterStormService can talk to your real Weekly Snapshot system
-/// without knowing its internal classes.
-///
-/// Replace the TODO sections with your actual WeeklySnapshotService calls.
+/// Bridge so external modules can log storm events into the weekly snapshot
+/// system without importing AfterStormService directly.
 class WeeklySnapshotBridge {
   WeeklySnapshotBridge._internal();
-  static final WeeklySnapshotBridge instance =
-      WeeklySnapshotBridge._internal();
+  static final WeeklySnapshotBridge instance = WeeklySnapshotBridge._internal();
 
+  /// Logs [event] via AfterStormService so it appears in the weekly snapshot.
   Future<void> logStormEvent(StormEvent event) async {
-    // TODO: wire this into your real Weekly Snapshot / Life Summary logic.
-    // Example idea:
-    // WeeklySnapshotService.instance.logStorm(
-    //   date: event.timestamp,
-    //   intensity: event.intensity,
-    //   feeling: event.primaryFeeling,
-    // );
+    await AfterStormService.instance.logEvent(event);
   }
 }

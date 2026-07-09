@@ -1,5 +1,19 @@
 import 'package:flutter/material.dart';
 
+import '../../../../config/supabase_config.dart';
+import '../../../../core/neura_env.dart';
+import '../../../../modules/coach/coach_settings_screen.dart';
+import '../../../../modules/human/accessibility_screen.dart';
+import '../../../../modules/human/life_snapshot_screen.dart';
+import '../../../../modules/human/persona_lab_screen.dart';
+import '../../../../modules/human/theme_screen.dart';
+import '../../../../persona/screens/audience_settings_screen.dart';
+import '../../../../screens/avatar_selector_screen.dart';
+import '../../../../screens/help_screen.dart';
+import '../../../../screens/profile_screen.dart';
+import '../../../../screens/purchase_history_screen.dart';
+import '../../../../screens/subscription_screen.dart';
+import '../../../../screens/sync_status_screen.dart';
 import '../../shell/portal_route.dart';
 import '../../shell/rooms_map_screen.dart';
 import '../../shell/shell_prefs.dart';
@@ -17,6 +31,30 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
+          if (SupabaseConfig.isConfigured) ...[
+            ListTile(
+              leading: const Icon(Icons.account_circle_outlined),
+              title: const Text('Profile & Account'),
+              subtitle: const Text('Display name, email, and sign out.'),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                );
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.sync_outlined),
+              title: const Text('Sync Status'),
+              subtitle: const Text('Push and pull your journal entries manually.'),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SyncStatusScreen()),
+                );
+              },
+            ),
+            const Divider(),
+          ],
           ListTile(
             leading: const Icon(Icons.dashboard_customize_outlined),
             title: const Text('Rooms Map'),
@@ -58,21 +96,111 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.palette_outlined),
             title: const Text('Themes & Avatars'),
-            subtitle: const Text('Coming soon: mood-adaptive skins and Neura expressions.'),
+            subtitle: const Text('Appearance, theme mode, and your Neura avatar.'),
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Theme controls stub.')),
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ThemeScreen()),
               );
             },
           ),
           const Divider(),
           ListTile(
+            leading: const Icon(Icons.person_outline),
+            title: const Text('Choose Avatar'),
+            subtitle: const Text('Pick which Neura companion represents you.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AvatarSelectorScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.psychology_alt_outlined),
+            title: const Text('Neura Coach'),
+            subtitle: const Text('Enable reflections, and browse your Coach Timeline.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CoachSettingsScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.tune),
+            title: const Text('Persona Lab'),
+            subtitle: const Text('Tune how Neura talks to you — tone, humor, and depth.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PersonaLabScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.groups_outlined),
+            title: const Text('Audience Settings'),
+            subtitle: const Text('Choose who Neura is talking to, for safer tone and depth.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AudienceSettingsScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.accessibility_new_outlined),
+            title: const Text('Accessibility'),
+            subtitle: const Text('Motion, contrast, and text-size controls, plus Safe Mode.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AccessibilityScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.bar_chart_outlined),
+            title: const Text('Life Snapshot'),
+            subtitle: const Text('A quick on-device snapshot of your mood and habits.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LifeSnapshotScreen()),
+              );
+            },
+          ),
+          if (kIapEnabled) ...[
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.workspace_premium_outlined),
+              title: const Text('Subscriptions'),
+              subtitle: const Text('Monthly, yearly, or lifetime Neura plans.'),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
+                );
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.receipt_long_outlined),
+              title: const Text('Purchase History'),
+              subtitle: const Text('Review past purchases and restore them if needed.'),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const PurchaseHistoryScreen()),
+                );
+              },
+            ),
+          ],
+          const Divider(),
+          ListTile(
             leading: const Icon(Icons.help_outline),
             title: const Text('Help'),
-            subtitle: const Text('Troubleshooting and tips.'),
+            subtitle: const Text('Getting started, tips, and troubleshooting.'),
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Help screen stub.')),
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const HelpScreen()),
               );
             },
           ),

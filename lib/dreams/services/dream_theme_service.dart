@@ -1,10 +1,8 @@
-import 'dart:convert';
-
-import 'package:shared_preferences/shared_preferences.dart';
-
+﻿import 'dart:convert';
 import '../models/dream_entry.dart';
-
 /// Summary of dream themes over a time window.
+import '../../startup/neura_prefs_cache.dart';
+
 class DreamThemeSummary {
   final int dreamCount;
   final List<String> topTags;
@@ -39,7 +37,7 @@ class DreamThemeService {
 
   Future<void> load() async {
     if (_loaded) return;
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final raw = prefs.getString(_keyDreams);
     if (raw == null) {
       _entries = [];
@@ -59,14 +57,14 @@ class DreamThemeService {
     } catch (e) {
       // Self-heal: corrupted JSON -> clear and restart.
       _entries = [];
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = NeuraPrefsCache.prefs;
       await prefs.remove(_keyDreams);
     }
     _loaded = true;
   }
 
   Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final list = _entries.map((e) => e.toMap()).toList();
     await prefs.setString(_keyDreams, json.encode(list));
   }

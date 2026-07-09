@@ -14,6 +14,7 @@ Future<void> wireVisemesExample(FlutterTts tts) async {
   await NeuraFlutterTtsVisemeBridge.attach(tts);
 
   // 2) Drive the avatar from those events:
+  // ignore: unused_local_variable
   final visemeWiring = AvatarVisemeWiring(
     controller: AvatarGlobals.controller,
     bus: NeuraEventBus.I,

@@ -50,43 +50,50 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
     final body = TextEditingController();
     final tags = TextEditingController();
 
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('New Vault Entry'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                    controller: title,
-                    decoration: const InputDecoration(labelText: 'Title')),
-                TextField(
-                  controller: body,
-                  decoration: const InputDecoration(labelText: 'Body'),
-                  minLines: 3,
-                  maxLines: 6,
-                ),
-                TextField(
-                  controller: tags,
-                  decoration: const InputDecoration(
-                      labelText: 'Tags (comma separated)'),
-                ),
-              ],
+    final bool? ok;
+    try {
+      ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) {
+          return AlertDialog(
+            title: const Text('New Vault Entry'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                      controller: title,
+                      decoration: const InputDecoration(labelText: 'Title')),
+                  TextField(
+                    controller: body,
+                    decoration: const InputDecoration(labelText: 'Body'),
+                    minLines: 3,
+                    maxLines: 6,
+                  ),
+                  TextField(
+                    controller: tags,
+                    decoration: const InputDecoration(
+                        labelText: 'Tags (comma separated)'),
+                  ),
+                ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('Cancel')),
-            ElevatedButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                child: const Text('Save')),
-          ],
-        );
-      },
-    );
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(false),
+                  child: const Text('Cancel')),
+              ElevatedButton(
+                  onPressed: () => Navigator.of(ctx).pop(true),
+                  child: const Text('Save')),
+            ],
+          );
+        },
+      );
+    } finally {
+      title.dispose();
+      body.dispose();
+      tags.dispose();
+    }
 
     if (ok != true) return;
     await MemoryVaultStore.instance.add(

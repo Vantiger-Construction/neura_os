@@ -4,7 +4,7 @@ import '../services/dream_theme_service.dart';
 import '../models/dream_entry.dart';
 
 class DreamShow2Screen extends StatefulWidget {
-  const DreamShow2Screen({Key? key}) : super(key: key);
+  const DreamShow2Screen({super.key});
 
   @override
   State<DreamShow2Screen> createState() => _DreamShow2ScreenState();

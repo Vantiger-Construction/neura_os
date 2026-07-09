@@ -1,9 +1,7 @@
-import 'dart:convert';
-
+﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../../modules/core/app_log.dart';
+import '../../startup/neura_prefs_cache.dart';
 
 class ShellPrefs {
   final bool ambientFx;
@@ -48,7 +46,7 @@ class ShellPrefsController {
 
   Future<void> init() async {
     try {
-      final sp = await SharedPreferences.getInstance();
+      final sp = NeuraPrefsCache.prefs;
       final raw = sp.getString(_prefsKey);
       if (raw == null || raw.trim().isEmpty) return;
       final decoded = jsonDecode(raw);
@@ -63,7 +61,7 @@ class ShellPrefsController {
   Future<void> update(ShellPrefs next) async {
     prefs.value = next;
     try {
-      final sp = await SharedPreferences.getInstance();
+      final sp = NeuraPrefsCache.prefs;
       await sp.setString(_prefsKey, jsonEncode(next.toJson()));
     } catch (e) {
       await AppLog.instance.warn('ShellPrefsController.update failed: $e');

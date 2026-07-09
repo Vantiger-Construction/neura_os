@@ -1,13 +1,13 @@
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+﻿import 'dart:convert';
 import 'emotion_state.dart';
-
 /// Persists emotion snapshots to SharedPreferences.
+import '../../startup/neura_prefs_cache.dart';
+
 class EmotionStore {
   static const _key = 'neura_emotion_history_v1';
 
   Future<List<EmotionState>> load() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final raw = prefs.getString(_key);
     if (raw == null) return [];
     try {
@@ -22,7 +22,7 @@ class EmotionStore {
   }
 
   Future<void> save(List<EmotionState> states) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final list = states.map((s) => s.toMap()).toList();
     await prefs.setString(_key, json.encode(list));
   }

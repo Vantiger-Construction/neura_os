@@ -1,13 +1,13 @@
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+﻿import 'dart:convert';
 import 'memory_models.dart';
-
 /// Persists memory nodes to SharedPreferences.
+import '../../startup/neura_prefs_cache.dart';
+
 class MemoryStore {
   static const _key = 'neura_memory_nodes_v1';
 
   Future<List<MemoryNode>> load() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final raw = prefs.getString(_key);
     if (raw == null) return [];
     try {
@@ -22,7 +22,7 @@ class MemoryStore {
   }
 
   Future<void> save(List<MemoryNode> nodes) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = NeuraPrefsCache.prefs;
     final list = nodes.map((n) => n.toMap()).toList();
     await prefs.setString(_key, json.encode(list));
   }

@@ -1,9 +1,14 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../avatar/avatar_controller_viseme_ext.dart';
+import '../../avatar/avatar_globals.dart';
+import '../../avatar/neura_mic_driver.dart';
+import '../../core/neura_event_bus.dart';
+import '../../core/neura_events.dart';
 import '../../services/neura_voice_pack.dart';
 import '../models/neura_room.dart';
 
@@ -35,6 +40,11 @@ class _NeuraRiveResidentState extends State<NeuraRiveResident>
 
   bool _pinned = false;
   StreamSubscription? _voiceSub;
+  Timer? _silenceTimer;
+  Timer? _thinkingTimer;
+
+  static const _kSilenceDelay = Duration(milliseconds: 500);
+  static const _kThinkingDelay = Duration(milliseconds: 1500);
 
   @override
   void initState() {
@@ -54,13 +64,50 @@ class _NeuraRiveResidentState extends State<NeuraRiveResident>
   }
 
   Future<void> _bootstrap() async {
-    try {
-      await NeuraVoicePack.I.init(enableMic: true);
-    } catch (_) {}
+    // NeuraVoicePack is initialised in main() before the widget tree builds.
     await _loadPosition();
     _voiceSub?.cancel();
-    _voiceSub = NeuraVoicePack.I.stream.listen((_) {});
+    _voiceSub = NeuraVoicePack.I.stream.listen((f) {
+      // Talking state -> event bus so AvatarOrchestrator and other listeners react.
+      NeuraEventBus.I.emit(NeuraTalkingEvent(f.talkLevel > 0.05));
+      // Mouth-open is per-frame; goes direct to avoid bus overhead.
+      AvatarGlobals.controller.setMouthOpen(f.talkLevel);
+      // mic_level drives sub-animations in Rive (e.g. glow intensity).
+      AvatarGlobals.controller.setNumberInput('mic_level', f.talkLevel);
+      // Listening / thinking state machine (idle -> listening -> thinking -> idle).
+      if (f.talkLevel > NeuraMicDriver.kListenThreshold) {
+        _onVoiceDetected();
+      } else {
+        _onSilenceDetected();
+      }
+    });
     if (mounted) setState(() {});
+  }
+
+  void _onVoiceDetected() {
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
+    _thinkingTimer?.cancel();
+    _thinkingTimer = null;
+    NeuraEventBus.I.emit(const NeuraListeningEvent(true));
+    NeuraEventBus.I.emit(const NeuraThinkingEvent(false));
+  }
+
+  void _onSilenceDetected() {
+    if (!AvatarGlobals.controller.signals.isListening) return;
+    _silenceTimer ??= Timer(_kSilenceDelay, () {
+      // Voice ended -> thinking state.
+      NeuraEventBus.I.emit(const NeuraListeningEvent(false));
+      NeuraEventBus.I.emit(const NeuraThinkingEvent(true));
+      _thinkingTimer = Timer(_kThinkingDelay, () {
+        // Thinking window elapsed -> back to idle (unless TTS started externally).
+        if (!AvatarGlobals.controller.signals.isTalking) {
+          NeuraEventBus.I.emit(const NeuraThinkingEvent(false));
+        }
+        _thinkingTimer = null;
+      });
+      _silenceTimer = null;
+    });
   }
 
   @override
@@ -134,6 +181,8 @@ class _NeuraRiveResidentState extends State<NeuraRiveResident>
 
   @override
   void dispose() {
+    _silenceTimer?.cancel();
+    _thinkingTimer?.cancel();
     _voiceSub?.cancel();
     _move.dispose();
     super.dispose();
@@ -190,7 +239,7 @@ class _NeuraRiveResidentState extends State<NeuraRiveResident>
       children: [
         Positioned.fill(
           child: Image.asset(
-            'assets/images/ai_avatar.png',
+            'assets/images/neura_fullbody.png',
             fit: BoxFit.contain,
             errorBuilder: (_, __, ___) => Center(
               child: Text(

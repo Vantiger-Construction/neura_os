@@ -1,8 +1,6 @@
-import 'dart:convert';
-
-import 'package:shared_preferences/shared_preferences.dart';
-
+﻿import 'dart:convert';
 import 'neura_bus.dart';
+import '../startup/neura_prefs_cache.dart';
 
 class NeuraRoomMemoryItem {
   final DateTime at;
@@ -48,7 +46,7 @@ class NeuraRoomMemory {
 
   Future<void> load() async {
     if (_loaded) return;
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     final raw = sp.getString(_kKey);
     if (raw != null && raw.trim().isNotEmpty) {
       final obj = json.decode(raw) as Map<String, dynamic>;
@@ -64,7 +62,7 @@ class NeuraRoomMemory {
   }
 
   Future<void> save() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = NeuraPrefsCache.prefs;
     final obj = <String, dynamic>{};
     _byRoom.forEach((room, items) {
       obj[room] = items.map((e) => e.toJson()).toList();

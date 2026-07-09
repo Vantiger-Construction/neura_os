@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../modules/core/error_handler.dart';
-import '../modules/navigation/enhanced_navigation.dart';
+import '../startup/neura_boot_screen.dart';
 import 'shell/neura_shell.dart';
 import '../neura_shell/neura_shell_root.dart';
 
@@ -19,7 +19,8 @@ class NeuroCompanionApp extends StatelessWidget {
           child: NeuraShell(child: child ?? const SizedBox.shrink()),
         );
       },
-      home: const EnhancedNavigation(),
+      // NeuraBootScreen owns startup sequencing and fades into EnhancedNavigation.
+      home: const NeuraBootScreen(),
     );
   }
 }
