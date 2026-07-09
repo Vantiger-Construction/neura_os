@@ -77,9 +77,14 @@ class _AmbientPainter extends CustomPainter {
 
   _AmbientPainter({required this.t, required this.orbs});
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    // Slight vignette.
+  // The vignette doesn't depend on `t`, only on canvas size — recreating its
+  // shader every frame (was happening on every repaint at 60Hz) was pure
+  // waste, so cache it and only rebuild when the size actually changes.
+  static Size? _cachedSize;
+  static Paint? _cachedBg;
+
+  Paint _bgFor(Size size) {
+    if (_cachedSize == size && _cachedBg != null) return _cachedBg!;
     final bg = Paint()
       ..shader = RadialGradient(
         center: Alignment.center,
@@ -89,7 +94,14 @@ class _AmbientPainter extends CustomPainter {
           Colors.black.withValues(alpha: 0.55),
         ],
       ).createShader(Offset(size.width / 2, size.height / 2) & size);
-    canvas.drawRect(Offset.zero & size, bg);
+    _cachedSize = size;
+    _cachedBg = bg;
+    return bg;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, _bgFor(size));
 
     for (final o in orbs) {
       final dx = (o.x * size.width) + sin((t * 2 * pi * o.speed) + o.phase) * 60;

@@ -103,6 +103,27 @@ class _SparkFieldPainter extends CustomPainter {
 
   _SparkFieldPainter({required this.progress, required this.sparks});
 
+  // The vignette doesn't depend on `progress`, only on canvas size —
+  // recreating its shader every frame (was happening on every repaint at
+  // 60Hz) was pure waste, so cache it and only rebuild when size changes.
+  static Size? _cachedSize;
+  static Paint? _cachedVignette;
+
+  Paint _vignetteFor(Size size) {
+    if (_cachedSize == size && _cachedVignette != null) return _cachedVignette!;
+    final vignette = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          Colors.transparent,
+          Colors.black.withValues(alpha: 0.45),
+        ],
+        stops: const [0.55, 1.0],
+      ).createShader(Offset(size.width / 2, size.height / 2) & size);
+    _cachedSize = size;
+    _cachedVignette = vignette;
+    return vignette;
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..style = PaintingStyle.fill;
@@ -114,17 +135,7 @@ class _SparkFieldPainter extends CustomPainter {
       canvas.drawCircle(p, s.r, paint);
     }
 
-    // Vignette for legibility.
-    final vignette = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          Colors.transparent,
-          Colors.black.withValues(alpha: 0.45),
-        ],
-        stops: const [0.55, 1.0],
-      ).createShader(Offset(size.width / 2, size.height / 2) & size);
-
-    canvas.drawRect(Offset.zero & size, vignette);
+    canvas.drawRect(Offset.zero & size, _vignetteFor(size));
   }
 
   @override

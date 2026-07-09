@@ -71,9 +71,10 @@ class NeuraStartupCoordinator {
     _emit('Waking Neura avatar…', 0.50);
     _startAvatarRuntime();
 
-    // 6 – Voice / mic (audio hardware – may be slow or permission-denied)
-    _emit('Connecting microphone…', 0.65);
-    await _safe(() => NeuraVoicePack.I.init(enableMic: true), 'VoicePack');
+    // 6 – Voice (mic capture is started lazily by whichever screen needs it,
+    // e.g. VoiceLabScreen's mic toggle — not held open continuously from boot).
+    _emit('Preparing voice…', 0.65);
+    await _safe(() => NeuraVoicePack.I.init(enableMic: false), 'VoicePack');
 
     // 7 – Room / memory runtime
     _emit('Loading memory…', 0.80);
