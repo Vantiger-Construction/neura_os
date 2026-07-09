@@ -198,37 +198,43 @@ class _NeuraRiveResidentState extends State<NeuraRiveResident>
         final neuraH = neuraW * 2.05;
         final left = (w * _posFrac.dx) - neuraW / 2;
         final top = (h * _posFrac.dy) - neuraH;
+        final maxLeft = w > neuraW ? w - neuraW : 0.0;
+        final maxTop = h > neuraH ? h - neuraH : 0.0;
 
-        return Positioned(
-          left: left.clamp(0.0, w - neuraW),
-          top: top.clamp(0.0, h - neuraH),
-          width: neuraW,
-          height: neuraH,
-          child: GestureDetector(
-            onPanStart: (_) => _pinned = true,
-            onPanUpdate: (d) {
-              final next = Offset(
-                (_posFrac.dx + d.delta.dx / w).clamp(0.05, 0.95),
-                (_posFrac.dy + d.delta.dy / h).clamp(0.35, 0.95),
-              );
-              setState(() => _posFrac = next);
-            },
-            onPanEnd: (_) async {
-              await _savePosition(_posFrac, pinned: true);
-            },
-            onDoubleTap: () {
-              _pinned = false;
-              final anchor = _defaultAnchor(widget.room);
-              _from = _posFrac;
-              _to = anchor;
-              _move.forward(from: 0);
-              _savePosition(anchor, pinned: false);
-            },
-            child: Opacity(
-              opacity: 0.95,
-              child: _fallbackImage(context),
+        return Stack(
+          children: [
+            Positioned(
+              left: left.clamp(0.0, maxLeft),
+              top: top.clamp(0.0, maxTop),
+              width: neuraW,
+              height: neuraH,
+              child: GestureDetector(
+                onPanStart: (_) => _pinned = true,
+                onPanUpdate: (d) {
+                  final next = Offset(
+                    (_posFrac.dx + d.delta.dx / w).clamp(0.05, 0.95),
+                    (_posFrac.dy + d.delta.dy / h).clamp(0.35, 0.95),
+                  );
+                  setState(() => _posFrac = next);
+                },
+                onPanEnd: (_) async {
+                  await _savePosition(_posFrac, pinned: true);
+                },
+                onDoubleTap: () {
+                  _pinned = false;
+                  final anchor = _defaultAnchor(widget.room);
+                  _from = _posFrac;
+                  _to = anchor;
+                  _move.forward(from: 0);
+                  _savePosition(anchor, pinned: false);
+                },
+                child: Opacity(
+                  opacity: 0.95,
+                  child: _fallbackImage(context),
+                ),
+              ),
             ),
-          ),
+          ],
         );
       },
     );
