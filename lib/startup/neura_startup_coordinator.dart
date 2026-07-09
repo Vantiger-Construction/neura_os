@@ -7,6 +7,7 @@ import '../config/supabase_config.dart';
 import '../core/neura_event_bus.dart';
 import '../modules/core/app_log.dart';
 import '../modules/core/error_handler.dart';
+import '../modules/human/human_prefs_controller.dart';
 import '../neura_runtime/neura_runtime_controller.dart';
 import '../services/neura_voice_pack.dart';
 import '../src/modules/focus/focus_controller.dart';
@@ -64,6 +65,7 @@ class NeuraStartupCoordinator {
     _emit('Loading shell settings…', 0.30);
     await _safe(ShellPrefsController.instance.init, 'ShellPrefs');
     await _safe(FocusController.instance.init, 'FocusController');
+    await _safe(HumanPrefsController.instance.init, 'HumanPrefs');
 
     // 5 – Avatar runtime (in-memory, essentially instant)
     _emit('Waking Neura avatar…', 0.50);
