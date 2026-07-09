@@ -220,7 +220,7 @@ class _KindnessActDialog {
                 valueListenable: category,
                 builder: (ctx, v, _) {
                   return DropdownButtonFormField<String>(
-                    value: v,
+                    initialValue: v,
                     decoration: const InputDecoration(labelText: 'Category'),
                     items: const [
                       DropdownMenuItem(

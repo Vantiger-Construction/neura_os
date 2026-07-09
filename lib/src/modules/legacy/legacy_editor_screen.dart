@@ -536,7 +536,7 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                         const SizedBox(height: 12),
                         if (_deliveryEnabled) ...[
                           DropdownButtonFormField<String>(
-                            value: _deliveryTrigger,
+                            initialValue: _deliveryTrigger,
                             decoration:
                                 const InputDecoration(labelText: 'Trigger'),
                             items: const [
@@ -554,7 +554,7 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                           ),
                           const SizedBox(height: 8),
                           DropdownButtonFormField<String>(
-                            value: _deliveryFormat,
+                            initialValue: _deliveryFormat,
                             decoration: const InputDecoration(
                                 labelText: 'Preferred format'),
                             items: const [

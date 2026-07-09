@@ -49,7 +49,7 @@ class _NeuraControlPanelState extends State<NeuraControlPanel> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: room,
+                    initialValue: room,
                     items: rooms
                         .map((r) => DropdownMenuItem(value: r, child: Text(r)))
                         .toList(),
@@ -60,7 +60,7 @@ class _NeuraControlPanelState extends State<NeuraControlPanel> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: mood,
+                    initialValue: mood,
                     items: moods
                         .map((m) => DropdownMenuItem(value: m, child: Text(m)))
                         .toList(),
