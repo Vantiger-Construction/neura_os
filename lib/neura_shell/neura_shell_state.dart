@@ -1,8 +1,12 @@
-﻿import 'package:flutter/widgets.dart';
+﻿import 'dart:async';
+
+import 'package:flutter/widgets.dart';
+import '../mascot/mascot_window_service.dart';
 import '../neura_runtime/neura_bus.dart';
 import 'models/neura_room.dart';
 import 'services/neura_ambient_audio_service.dart';
 import '../startup/neura_prefs_cache.dart';
+import '../startup/neura_startup_coordinator.dart';
 
 /// Concrete [InheritedNotifier] subclass so [NeuraShell.of] can look it up
 /// with `dependOnInheritedWidgetOfExactType`, which matches by exact runtime
@@ -57,6 +61,31 @@ class NeuraShellState extends ChangeNotifier {
 
     // Tell the runtime which room we're starting in.
     _emitRoomEnter(_room);
+
+    // The avatar now lives in its own floating always-on-top window rather
+    // than an in-app overlay (see neura_shell_overlay.dart) — spawn/show it
+    // to match the persisted preference. Deferred until NeuraStartupCoordinator
+    // finishes booting: spinning up a second native window/engine concurrently
+    // with the main window's own boot (audioplayers channel setup in
+    // particular) caused an intermittent MissingPluginException race.
+    unawaited(_spawnMascotWhenReady());
+  }
+
+  Future<void> _spawnMascotWhenReady() async {
+    final ready = NeuraStartupCoordinator.instance.ready;
+    if (!ready.value) {
+      final completer = Completer<void>();
+      void listener() {
+        if (ready.value) {
+          ready.removeListener(listener);
+          completer.complete();
+        }
+      }
+
+      ready.addListener(listener);
+      await completer.future;
+    }
+    await MascotWindowService.I.init(visible: _showAvatar);
   }
 
   Future<void> setRoom(NeuraRoom room) async {
@@ -106,6 +135,7 @@ class NeuraShellState extends ChangeNotifier {
     notifyListeners();
     final prefs = NeuraPrefsCache.prefs;
     await prefs.setBool(_kShowAvatar, value);
+    await MascotWindowService.I.setVisible(value);
   }
 
   Future<void> setAmbientEnabled(bool enabled) async {

@@ -5,6 +5,8 @@
 #include "flutter_window.h"
 #include "utils.h"
 
+#include "window_manager_plus/window_manager_plus_plugin.h"
+
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
   // Attach to console when present (e.g., 'flutter run') or create a
@@ -31,6 +33,26 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
+
+  // window_manager_plus (used for the floating avatar window) creates
+  // additional windows by re-invoking this same entrypoint's Dart side with
+  // a fresh engine; this callback does the native-side window creation for
+  // each one. Sub-windows don't quit the app when closed.
+  WindowManagerPlusPluginSetWindowCreatedCallback(
+      [](std::vector<std::string> command_line_arguments) {
+        flutter::DartProject sub_project(L"data");
+        sub_project.set_dart_entrypoint_arguments(
+            std::move(command_line_arguments));
+
+        auto sub_window = std::make_shared<FlutterWindow>(sub_project);
+        Win32Window::Point sub_origin(10, 10);
+        Win32Window::Size sub_size(1280, 720);
+        if (sub_window->Create(L"neuro_companion", sub_origin, sub_size)) {
+          sub_window->Show();
+          sub_window->SetQuitOnClose(false);
+        }
+        return sub_window;
+      });
 
   ::MSG msg;
   while (::GetMessage(&msg, nullptr, 0, 0)) {

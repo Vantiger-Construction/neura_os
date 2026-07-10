@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import '../neura_shell.dart';
 import 'neura_room_backdrop.dart';
 import 'neura_room_selector_sheet.dart';
-import 'neura_rive_resident.dart';
 
-/// Global background + avatar overlay.
+/// Global background overlay.
+///
+/// The avatar previously overlaid here (NeuraRiveResident) now lives in its
+/// own floating always-on-top OS window instead — see
+/// lib/mascot/mascot_window_app.dart and NeuraShellState's showAvatar wiring.
 ///
 /// This wraps the Navigator via MaterialApp.builder so it affects all screens.
 class NeuraShellOverlay extends StatelessWidget {
@@ -31,11 +34,6 @@ class NeuraShellOverlay extends StatelessWidget {
                 child: child,
               ),
             ),
-            if (state.showAvatar)
-              NeuraRiveResident(
-                key: ValueKey('neura_rive_resident_${state.room.id}'),
-                room: state.room,
-              ),
           ],
         );
       },
