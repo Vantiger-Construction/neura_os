@@ -12,6 +12,7 @@ import '../../modules/quests/quest_mode_screen.dart';
 import '../../modules/support/support_center_screen.dart';
 import '../../modules/timeline/life_timeline_screen.dart';
 import '../../modules/vault/memory_vault_screen.dart';
+import '../../os_shell/screens/os_shell_home_screen.dart';
 import '../review/weekly_review_screen.dart';
 import '../../screens/dream_journal_calendar_screen.dart';
 import '../../screens/dream_show_screen.dart';
@@ -259,6 +260,12 @@ class _Dashboard extends StatelessWidget {
               title: 'Quest Mode',
               subtitle: 'Tiny missions to build momentum.',
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const QuestModeScreen())),
+            ),
+            _Tile(
+              icon: Icons.holiday_village_outlined,
+              title: 'Rooms',
+              subtitle: 'Reflection, Care, Dreams, Mirror, Persona, Kids.',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OsShellHomeScreen())),
             ),
           ],
         ),
