@@ -1,6 +1,25 @@
 cmake_minimum_required(VERSION 3.14)
 project(runner LANGUAGES CXX)
 
+if(POLICY CMP0153)
+  cmake_policy(SET CMP0153 NEW)
+endif()
+
+# neura_speech_recognizer.cpp uses WinRT (Windows.Media.SpeechRecognition),
+# which needs the C++/WinRT projection headers. Fetched the same way
+# flutter_tts's own windows plugin fetches them for SpeechSynthesis.
+find_program(NUGET_EXE NAMES nuget)
+if(NOT NUGET_EXE)
+    message(FATAL_ERROR "nuget.exe not found. Please install it.")
+endif()
+
+execute_process(
+        COMMAND ${NUGET_EXE} install Microsoft.Windows.CppWinRT
+        -Version 2.0.210503.1
+        -ExcludeVersion
+        -OutputDirectory ${CMAKE_BINARY_DIR}/packages
+)
+
 # Define the application target. To change its name, change BINARY_NAME in the
 # top-level CMakeLists.txt, not the value here, or `flutter run` will no longer
 # work.
@@ -9,6 +28,7 @@ project(runner LANGUAGES CXX)
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
   "main.cpp"
+  "neura_speech_recognizer.cpp"
   "utils.cpp"
   "win32_window.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
@@ -19,6 +39,16 @@ add_executable(${BINARY_NAME} WIN32
 # Apply the standard set of build settings. This can be removed for applications
 # that need different build settings.
 apply_standard_settings(${BINARY_NAME})
+
+# neura_speech_recognizer.cpp needs C++/WinRT coroutine support (co_await).
+target_compile_features(${BINARY_NAME} PUBLIC cxx_std_20)
+
+set_target_properties(${BINARY_NAME} PROPERTIES VS_PROJECT_IMPORT
+        "${CMAKE_BINARY_DIR}/packages/Microsoft.Windows.CppWinRT/build/native/Microsoft.Windows.CppWinRT.props"
+)
+target_link_libraries(${BINARY_NAME} PRIVATE
+        "${CMAKE_BINARY_DIR}/packages/Microsoft.Windows.CppWinRT/build/native/Microsoft.Windows.CppWinRT.targets"
+)
 
 # Add preprocessor definitions for the build version.
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION=\"${FLUTTER_VERSION}\"")
