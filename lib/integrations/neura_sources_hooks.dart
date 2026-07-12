@@ -2,7 +2,7 @@ import '../core/neura_event_bus.dart';
 import '../core/neura_events.dart';
 import 'neura_work_tracker.dart';
 
-/// Dependency-free “real sources” hooks.
+/// Dependency-free "real sources" hooks.
 ///
 /// You call these from your STT/TTS/services.
 /// They emit typed NeuraEvents that AvatarOrchestrator already understands.
@@ -24,7 +24,7 @@ class NeuraSourcesHooks {
     onActiveChanged: (active) => _bus.emit(NeuraListeningEvent(active)),
   );
 
-  // Convenience single-tokens for “start/stop” style integrations.
+  // Convenience single-tokens for "start/stop" style integrations.
   // If you have overlapping operations (multiple parallel calls),
   // prefer the token-returning begin() methods or track* wrappers.
   static NeuraWorkToken? _sttToken;
@@ -64,7 +64,7 @@ class NeuraSourcesHooks {
     return _talkingTracker.trackFn(fn);
   }
 
-  /// --- “Thinking” / work ---
+  /// --- "Thinking" / work ---
   static NeuraWorkToken thinkingBegin({String? hint}) {
     return _thinkingTracker.begin();
   }

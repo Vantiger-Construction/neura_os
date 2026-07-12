@@ -5,7 +5,7 @@ import '../core/neura_events.dart';
 import 'avatar_controller.dart';
 
 /// Listens to NeuraEventBus and drives AvatarController signals.
-/// This is the “nervous system” glue: events in → expressions out.
+/// This is the "nervous system" glue: events in → expressions out.
 class AvatarOrchestrator {
   final AvatarController controller;
   final NeuraEventBus bus;
@@ -49,7 +49,7 @@ class AvatarOrchestrator {
         controller.pulseBlink();
         break;
       case NeuraErrorEvent():
-        // “Dimensional Sync” behavior:
+        // "Dimensional Sync" behavior:
         // flip to error briefly, then recover.
         controller.setError(true);
         controller.setThinking(false);

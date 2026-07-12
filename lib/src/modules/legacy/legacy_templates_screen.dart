@@ -86,7 +86,7 @@ class _LegacyTemplatesScreenState extends State<LegacyTemplatesScreen> {
   Future<void> _delete(LegacyMessageTemplate t) async {
     if (t.isBuiltIn) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Built‑in templates can’t be deleted.')),
+        const SnackBar(content: Text("Built‑in templates can't be deleted.")),
       );
       return;
     }
@@ -94,7 +94,7 @@ class _LegacyTemplatesScreenState extends State<LegacyTemplatesScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Delete template?'),
-        content: Text('“${t.name}”'),
+        content: Text('"${t.name}"'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
@@ -112,7 +112,7 @@ class _LegacyTemplatesScreenState extends State<LegacyTemplatesScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Reset templates?'),
-        content: const Text('This will restore Neura’s default templates. Your custom templates will be removed.'),
+        content: const Text("This will restore Neura's default templates. Your custom templates will be removed."),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Reset')),

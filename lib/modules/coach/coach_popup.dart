@@ -86,7 +86,7 @@ class CoachPopup {
         .toList();
     if (lines.isEmpty) return '';
 
-    // Skip the vibe line if it starts with “Neura says:”.
+    // Skip the vibe line if it starts with "Neura says:".
     final first =
         lines.first.toLowerCase().startsWith('neura says:') && lines.length > 1
             ? lines[1]

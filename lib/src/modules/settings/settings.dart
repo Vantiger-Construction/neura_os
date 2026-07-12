@@ -10,6 +10,7 @@ import '../../../../modules/human/theme_screen.dart';
 import '../../../../persona/screens/audience_settings_screen.dart';
 import '../../../../screens/avatar_selector_screen.dart';
 import '../../../../screens/help_screen.dart';
+import '../../../../screens/neura_voice_settings_screen.dart';
 import '../../../../screens/profile_screen.dart';
 import '../../../../screens/purchase_history_screen.dart';
 import '../../../../screens/subscription_screen.dart';
@@ -87,7 +88,7 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.auto_stories),
             title: const Text('Legacy Vault'),
-            subtitle: const Text('Time capsules, messages, and “future-you” archives.'),
+            subtitle: const Text('Time capsules, messages, and "future-you" archives.'),
             onTap: () {
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LegacyHomeScreen()));
             },
@@ -111,6 +112,17 @@ class SettingsScreen extends StatelessWidget {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const AvatarSelectorScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.record_voice_over_outlined),
+            title: const Text("Neura's Voice"),
+            subtitle: const Text('Pick which system voice Neura speaks with.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const NeuraVoiceSettingsScreen()),
               );
             },
           ),
@@ -241,7 +253,7 @@ class _ShellToggles extends StatelessWidget {
               value: prefs.walkingShimmer,
               onChanged: (v) => ShellPrefsController.instance.update(prefs.copyWith(walkingShimmer: v)),
               title: const Text('Walking Path Shimmer'),
-              subtitle: const Text('A tiny animated “path” accent in the Rooms Map.'),
+              subtitle: const Text('A tiny animated "path" accent in the Rooms Map.'),
               secondary: const Icon(Icons.linear_scale_outlined),
             ),
           ],

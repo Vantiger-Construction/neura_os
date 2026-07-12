@@ -28,7 +28,7 @@ class NeuraErrorEvent extends NeuraEvent {
   const NeuraErrorEvent(this.error, {this.stack, this.hint});
 }
 
-/// Mood/energy ranges are intentionally “soft”:
+/// Mood/energy ranges are intentionally "soft":
 /// - mood: -1..1
 /// - energy: 0..1
 class NeuraMoodEvent extends NeuraEvent {

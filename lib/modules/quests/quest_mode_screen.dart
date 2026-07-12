@@ -137,7 +137,7 @@ Future<void> _maybeCoachQuest(Quest quest) async {
 
     if (goals.isNotEmpty) {
       final g = goals.first;
-      title = 'Take one step toward “$g”';
+      title = 'Take one step toward "$g"';
       details = 'Make it tiny. 5–15 minutes. Done beats perfect.';
     } else {
       title = 'Do one tiny win';
@@ -169,7 +169,7 @@ Future<void> _maybeCoachQuest(Quest quest) async {
         'Mark one done per day to build a streak.',
         'Neura can suggest quests based on your goals + recent mood.',
       ],
-      footer: 'Not medical advice. If you’re in danger or in crisis, use the Support Center or local emergency services.',
+      footer: "Not medical advice. If you're in danger or in crisis, use the Support Center or local emergency services.",
     );
 
     final active = _quests.where((q) => !q.archived).toList().reversed.toList();

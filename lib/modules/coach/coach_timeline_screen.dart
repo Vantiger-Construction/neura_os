@@ -54,7 +54,7 @@ class _CoachTimelineScreenState extends State<CoachTimelineScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'Nothing here yet.\n\nDo a Mood Check‑In, finish a Quest, or run a Two‑Minute Rescue — then I’ll leave you breadcrumbs.',
+                  "Nothing here yet.\n\nDo a Mood Check‑In, finish a Quest, or run a Two‑Minute Rescue — then I'll leave you breadcrumbs.",
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),

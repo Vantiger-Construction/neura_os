@@ -92,13 +92,13 @@ class _SupportCenterScreenState extends State<SupportCenterScreen> {
   Widget build(BuildContext context) {
     final explain = NeuraExplainSpec(
       title: 'Support Center',
-      body: 'A calm, no-drama space for grounding tools and “reach out” helpers.',
+      body: 'A calm, no-drama space for grounding tools and "reach out" helpers.',
       bullets: const [
         'Calm Protocol: a 60–120 second reset you can do anywhere.',
         'Trusted Contacts are stored locally only.',
-        'This is not emergency services; call local emergency numbers if you’re in danger.',
+        "This is not emergency services; call local emergency numbers if you're in danger.",
       ],
-      footer: 'If you’re feeling unsafe or in crisis, contact local emergency services or a crisis hotline in your country.',
+      footer: "If you're feeling unsafe or in crisis, contact local emergency services or a crisis hotline in your country.",
     );
 
     return Scaffold(
@@ -130,7 +130,7 @@ class _SupportCenterScreenState extends State<SupportCenterScreen> {
                         Text('Trusted Contacts', style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 8),
                         if (_contacts.isEmpty)
-                          const Text('Add someone you trust. Neura will prep a “reach out” message you can copy.')
+                          const Text('Add someone you trust. Neura will prep a "reach out" message you can copy.')
                         else
                           ..._contacts.map((c) => _ContactTile(
                                 contact: c,
@@ -173,7 +173,7 @@ class _ContactTile extends StatelessWidget {
               }
             }
             if (v == 'copy_text') {
-              final msg = 'Hey ${contact.name}, I could use a little support right now. If you’re free, can we talk?';
+              final msg = "Hey ${contact.name}, I could use a little support right now. If you're free, can we talk?";
               await Clipboard.setData(ClipboardData(text: msg));
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Message copied.')));
@@ -242,7 +242,7 @@ class _CalmProtocolCardState extends State<_CalmProtocolCard> {
               ],
             ),
             const SizedBox(height: 8),
-            const Text('60 seconds of “my nervous system is not the boss of me.”'),
+            const Text('60 seconds of "my nervous system is not the boss of me."'),
             const SizedBox(height: 10),
             Wrap(
               spacing: 10,

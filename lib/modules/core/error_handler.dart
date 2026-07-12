@@ -17,7 +17,7 @@ class ErrorHandler {
     FlutterError.onError = (FlutterErrorDetails details) {
       FlutterError.presentError(details);
       _logFlutterError(details);
-      _toast('Neura caught a glitch and filed it under “Cosmic Weirdness.”');
+      _toast('Neura caught a glitch and filed it under "Cosmic Weirdness."');
     };
 
     PlatformDispatcher.instance.onError = (error, stack) {

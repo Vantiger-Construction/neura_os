@@ -30,13 +30,13 @@ class NeuraCoachEngine {
 
     final why = depth < 0.35
         ? 'One completed action reduces mental friction.'
-        : 'One completed action is a vote for the person you’re becoming.';
+        : "One completed action is a vote for the person you're becoming.";
 
-    final title = direct > 0.7 ? 'Quest complete. Don’t overthink it.' : 'Nice. Quest complete.';
+    final title = direct > 0.7 ? "Quest complete. Don't overthink it." : 'Nice. Quest complete.';
 
     final body = [
       vibe,
-      'You finished: “${quest.title}”.',
+      'You finished: "${quest.title}".',
       if (quest.details.trim().isNotEmpty) 'Details: ${quest.details.trim()}',
       streakLine,
       if (moodLine.isNotEmpty) moodLine,
@@ -100,7 +100,7 @@ class NeuraCoachEngine {
 
     final meaning = depth < 0.35
         ? 'Log it. Move on. Consistency beats intensity.'
-        : 'The point isn’t a “good mood.” It’s pattern awareness + gentle steering.';
+        : "The point isn't a \"good mood.\" It's pattern awareness + gentle steering.";
 
     final title = direct > 0.7 ? 'Mood logged. Keep moving.' : 'Mood check‑in saved.';
 
@@ -154,7 +154,7 @@ class NeuraCoachEngine {
       vibe,
       'You marked this helpful: $actionId',
       if (moodLine.isNotEmpty) moodLine,
-      humor > 0.6 ? 'We shall feed this fact to the gremlins that run habits.' : 'I’ll suggest this again when it fits.',
+      humor > 0.6 ? 'We shall feed this fact to the gremlins that run habits.' : "I'll suggest this again when it fits.",
     ].where((s) => s.trim().isNotEmpty).join('\n');
 
     return CoachDraft(title: title, body: body, tags: ['rescue', 'learned']);

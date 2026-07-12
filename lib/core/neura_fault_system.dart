@@ -15,7 +15,7 @@ class NeuraFaultSystem {
   static bool _installed = false;
 
   static const String defaultUserFacingMessage =
-      "Dimensional Sync engaged. Your multiversal twin already debugged this. You’re welcome.";
+      "Dimensional Sync engaged. Your multiversal twin already debugged this. You're welcome.";
 
   static void install({
     required NeuraEventBus bus,

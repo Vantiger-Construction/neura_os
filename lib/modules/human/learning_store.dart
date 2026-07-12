@@ -1,5 +1,5 @@
-﻿import 'dart:convert';
-/// Tiny local “what worked for me” store.
+import 'dart:convert';
+/// Tiny local "what worked for me" store.
 ///
 /// This is *not* surveillance and it never leaves the device.
 import '../../startup/neura_prefs_cache.dart';

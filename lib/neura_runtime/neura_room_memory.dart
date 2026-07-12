@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'neura_bus.dart';
 import '../startup/neura_prefs_cache.dart';
 
@@ -124,9 +124,9 @@ class NeuraRoomMemory {
       case 'mood_checkin':
         return 'Mood Den again — last check‑in is logged. Want a quick update?';
       case 'error':
-        return 'We had a hiccup last time. I’ve got my multiverse wrench ready.';
+        return "We had a hiccup last time. I've got my multiverse wrench ready.";
       case 'success':
-        return 'Nice — last time you made progress here. Let’s keep it moving.';
+        return "Nice — last time you made progress here. Let's keep it moving.";
       default:
         return 'Welcome back — I remember what we were doing here.';
     }

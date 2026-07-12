@@ -28,7 +28,7 @@ class LegacyDeliveryService {
     if (decryptIfPossible && capsule.isEncrypted && (pass == null || pass.trim().isEmpty) && context != null) {
       pass = await _promptPassphrase(
         context,
-        title: 'Passphrase to decrypt “${capsule.title.isEmpty ? 'capsule' : capsule.title}”',
+        title: 'Passphrase to decrypt "${capsule.title.isEmpty ? 'capsule' : capsule.title}"',
       );
       if (pass == null || pass.trim().isEmpty) {
         // User cancelled. Fall back to encrypted export.

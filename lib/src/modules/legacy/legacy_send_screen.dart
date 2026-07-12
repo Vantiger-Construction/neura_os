@@ -361,7 +361,7 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
                         'Copies a safe note about passphrases (without the actual passphrase).'),
                     onTap: () async {
                       const note =
-                          'Reminder: If the Legacy Packet is encrypted, you’ll need the passphrase I gave you separately.';
+                          "Reminder: If the Legacy Packet is encrypted, you'll need the passphrase I gave you separately.";
                       await Clipboard.setData(const ClipboardData(text: note));
                       if (!mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(

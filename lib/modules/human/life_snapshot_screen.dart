@@ -109,7 +109,7 @@ class _LifeSnapshotScreenState extends State<LifeSnapshotScreen> {
             const Card(
               child: ListTile(
                 leading: Icon(Icons.info_outline),
-                title: Text('No “helpful” signals yet.'),
+                title: Text('No "helpful" signals yet.'),
                 subtitle: Text(
                     'In Two‑Minute Rescue, tap the thumbs-up on anything that helps.'),
               ),

@@ -43,7 +43,7 @@ class _LegacyTrustedContactsScreenState extends State<LegacyTrustedContactsScree
                 controller: name,
                 decoration: const InputDecoration(
                   labelText: 'Name',
-                  hintText: 'e.g., “Aunt Sarah”',
+                  hintText: 'e.g., "Aunt Sarah"',
                 ),
               ),
               const SizedBox(height: 8),
@@ -105,7 +105,7 @@ class _LegacyTrustedContactsScreenState extends State<LegacyTrustedContactsScree
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Remove trusted contact?'),
-        content: Text('Remove “${c.displayName}” from your trusted list?'),
+        content: Text('Remove "${c.displayName}" from your trusted list?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove')),
@@ -147,7 +147,7 @@ class _LegacyTrustedContactsScreenState extends State<LegacyTrustedContactsScree
                   child: Padding(
                     padding: EdgeInsets.all(24),
                     child: Text(
-                      'No trusted contacts yet.\n\nAdd people you’d want to receive a Legacy Packet.',
+                      "No trusted contacts yet.\n\nAdd people you'd want to receive a Legacy Packet.",
                       textAlign: TextAlign.center,
                     ),
                   ),

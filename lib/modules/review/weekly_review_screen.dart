@@ -123,12 +123,12 @@ class _WeeklyReviewScreenState extends State<WeeklyReviewScreen> {
   Widget build(BuildContext context) {
     final explain = NeuraExplainSpec(
       title: 'Weekly Review',
-      body: 'This is a local-only snapshot of your last 7 days. It’s meant to be kind, not judgmental.',
+      body: "This is a local-only snapshot of your last 7 days. It's meant to be kind, not judgmental.",
       bullets: const [
         'Mood stats come from your Mood Check‑Ins.',
         'Kindness comes from Pay It Forward.',
         'Quest momentum comes from Quest Mode.',
-        'Helpful actions come from your local “Learning” taps.',
+        'Helpful actions come from your local "Learning" taps.',
       ],
       footer: 'You can export by copying JSON. This is not medical advice or diagnosis.',
     );

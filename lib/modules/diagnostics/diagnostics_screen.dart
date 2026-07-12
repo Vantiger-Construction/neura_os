@@ -36,12 +36,12 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   }
 
   void _dimensionalSync() {
-    // A gag feature: we log a “multiverse fix” event.
+    // A gag feature: we log a "multiverse fix" event.
     AppLog.instance.info('dimensional_sync', {
-      'message': 'Your multiversal twin already debugged this. You’re welcome.',
+      'message': "Your multiversal twin already debugged this. You're welcome.",
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Dimensional Sync: multiverse patch retrieved. (It’s mostly vibes, but it’s logged.)')),
+      const SnackBar(content: Text("Dimensional Sync: multiverse patch retrieved. (It's mostly vibes, but it's logged.)")),
     );
     _load();
   }

@@ -360,7 +360,7 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                   onChanged: (v) => setState(() => _sealed = v),
                   title: const Text('Seal (read‑only)'),
                   subtitle: const Text(
-                      'Sealed capsules can’t be edited — duplicate to change.'),
+                      "Sealed capsules can't be edited — duplicate to change."),
                 ),
                 ListTile(
                   title: const Text('Time‑lock'),
@@ -530,7 +530,7 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Mark this capsule as “deliverable” so it can be bundled into Legacy Packets (manual, time‑lock, or Legacy Guard).',
+                          'Mark this capsule as "deliverable" so it can be bundled into Legacy Packets (manual, time‑lock, or Legacy Guard).',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                         const SizedBox(height: 12),

@@ -42,7 +42,7 @@ class NeuraSpeechToTextBridge {
         // Stop listening when final result lands.
         if (res.finalResult) {
           NeuraSourcesHooks.sttStop();
-          // Tiny “alive” touch: blink when user finishes speaking.
+          // Tiny "alive" touch: blink when user finishes speaking.
           NeuraSourcesHooks.pulseBlink();
         }
       },

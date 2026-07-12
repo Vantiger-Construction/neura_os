@@ -1,6 +1,6 @@
 import 'dart:async';
 
-/// A tiny ref-count tracker so overlapping jobs don’t flicker.
+/// A tiny ref-count tracker so overlapping jobs don't flicker.
 ///
 /// Example:
 ///   final token = tracker.begin();
@@ -14,7 +14,7 @@ class NeuraWorkTracker {
   int _count = 0;
   bool get isActive => _count > 0;
 
-  /// Debounce end transitions slightly to prevent “blink” during chained Futures.
+  /// Debounce end transitions slightly to prevent "blink" during chained Futures.
   final Duration settleDelay = const Duration(milliseconds: 120);
   Timer? _settle;
 
@@ -54,7 +54,7 @@ class NeuraWorkTracker {
     }
   }
 
-  /// Track a Stream so “active” remains true until the stream completes or is cancelled.
+  /// Track a Stream so "active" remains true until the stream completes or is cancelled.
   Stream<T> trackStream<T>(Stream<T> stream) {
     final token = begin();
     late final StreamSubscription<T> sub;

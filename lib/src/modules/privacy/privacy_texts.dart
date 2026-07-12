@@ -28,7 +28,7 @@ By using Neura Companion / Neura OS, you agree that:
 
 - The app provides general information and coaching prompts and is **not medical, legal, or financial advice**.
 - You are responsible for how you use the app and for any data you choose to export or share.
-- The app is provided “as is” without warranties.
+- The app is provided "as is" without warranties.
 
 If you are in immediate danger or considering self-harm, contact local emergency services or a crisis hotline in your region.
 ''';

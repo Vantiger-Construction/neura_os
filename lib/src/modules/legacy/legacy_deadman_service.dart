@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'legacy_delivery_service.dart';
 import 'legacy_vault_service.dart';
@@ -144,15 +144,15 @@ class LegacyDeadmanService {
       builder: (_) => AlertDialog(
         title: const Text('Legacy Guard Check‑In'),
         content: Text(
-          'It’s been a while since your last check‑in (last: ${s.lastCheckInAt.toLocal().toString().substring(0, 16)}).\n\n'
-          'If you’re here: tap “I’m Alive”.\n'
+          "It's been a while since your last check‑in (last: ${s.lastCheckInAt.toLocal().toString().substring(0, 16)}).\n\n"
+          "If you're here: tap \"I'm Alive\".\n"
           'If you want: Neura can prepare delivery packets for your selected capsules.\n\n'
           'Capsules queued: ${selected.length}.',
         ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, 'alive'),
-              child: const Text('I’m Alive')),
+              child: const Text("I'm Alive")),
           ElevatedButton(
               onPressed: () => Navigator.pop(context, 'release'),
               child: const Text('Prepare Packets')),
@@ -186,7 +186,7 @@ class LegacyDeadmanService {
         title: const Text('Decrypt encrypted capsules?'),
         content: const Text(
           'If you decrypt, recipients can read without needing your passphrase — but you must enter passphrases now.\n\n'
-          'If you don’t decrypt, Neura will export encrypted packets (still safe; needs passphrase later).',
+          "If you don't decrypt, Neura will export encrypted packets (still safe; needs passphrase later).",
         ),
         actions: [
           TextButton(

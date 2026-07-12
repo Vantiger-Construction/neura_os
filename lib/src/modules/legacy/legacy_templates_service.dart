@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'models/legacy_message_template.dart';
 import '../../../startup/neura_prefs_cache.dart';
@@ -21,9 +21,9 @@ class LegacyTemplatesService {
         updatedAt: now,
         bodyTemplate:
             'Hi {contactName},\n\n'
-            'This is a “Legacy Packet” from me, created in Neura Companion. '
+            'This is a "Legacy Packet" from me, created in Neura Companion. '
             'It contains a message and any attachments I included.\n\n'
-            'Packet name: “{capsuleTitle}”\n'
+            'Packet name: "{capsuleTitle}"\n'
             'Date: {date}\n\n'
             'Love you. ❤️\n',
       ),
@@ -35,10 +35,10 @@ class LegacyTemplatesService {
         updatedAt: now,
         bodyTemplate:
             'Hello {contactName},\n\n'
-            'I’m sharing a Legacy Packet titled “{capsuleTitle}”. '
+            'I\'m sharing a Legacy Packet titled "{capsuleTitle}". '
             'It was generated on {date}.\n\n'
             'Open the ZIP and read the README first. '
-            'If anything is encrypted, you’ll need the passphrase I gave you separately.\n',
+            'If anything is encrypted, you\'ll need the passphrase I gave you separately.\n',
       ),
       LegacyMessageTemplate(
         id: 'tpl_short',
@@ -46,7 +46,7 @@ class LegacyTemplatesService {
         isBuiltIn: true,
         createdAt: now,
         updatedAt: now,
-        bodyTemplate: 'Legacy Packet: “{capsuleTitle}” ({date})',
+        bodyTemplate: 'Legacy Packet: "{capsuleTitle}" ({date})',
       ),
     ];
   }

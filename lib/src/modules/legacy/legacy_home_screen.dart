@@ -103,7 +103,7 @@ class _LegacyHomeScreenState extends State<LegacyHomeScreen> {
                     ListTile(
                       leading: const Icon(Icons.message_outlined),
                       title: const Text('Message Templates'),
-                      subtitle: const Text('Quick “send to grandma” style messages for sharing packets.'),
+                      subtitle: const Text('Quick "send to grandma" style messages for sharing packets.'),
                       onTap: _openTemplates,
                     ),
                     const Divider(height: 1),

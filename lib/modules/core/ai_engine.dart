@@ -1,4 +1,4 @@
-/// A tiny local “AI core” so the app behaves intelligently even without network.
+/// A tiny local "AI core" so the app behaves intelligently even without network.
 ///
 /// This is not a real LLM. It's a pragmatic rule-based brain with a sense of humor.
 class NeuraAICore {
@@ -14,7 +14,7 @@ class NeuraAICore {
     }
 
     if (m.contains('sad') || m.contains('down') || m.contains('depress')) {
-      return 'I’m here. Want a gentle plan: 1) water 2) sunlight 3) text one safe human. Small wins count.';
+      return "I'm here. Want a gentle plan: 1) water 2) sunlight 3) text one safe human. Small wins count.";
     }
 
     if (m.contains('angry') || m.contains('mad') || m.contains('furious')) {
@@ -30,6 +30,6 @@ class NeuraAICore {
     }
 
     // Default: reflect + nudge.
-    return 'Got it. What’s the *one* outcome you want from this — clarity, relief, or a plan?';
+    return "Got it. What's the *one* outcome you want from this — clarity, relief, or a plan?";
   }
 }

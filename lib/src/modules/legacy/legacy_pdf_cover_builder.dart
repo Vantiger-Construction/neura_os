@@ -54,7 +54,7 @@ class LegacyPdfCoverBuilder {
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('What’s inside', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+                    pw.Text("What's inside", style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: 8),
                     pw.Bullet(text: 'capsule.json (message + metadata)'),
                     pw.Bullet(text: 'attachments/ (optional files)'),

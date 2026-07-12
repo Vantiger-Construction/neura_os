@@ -95,8 +95,8 @@ class _LegacyDetailScreenState extends State<LegacyDetailScreen> {
         final add = await showDialog<bool>(
           context: context,
           builder: (_) => AlertDialog(
-            title: const Text('No “Grandma” contact yet'),
-            content: const Text('Add a trusted contact named “Grandma” (or Nana/Granny) to enable one‑tap sending.'),
+            title: const Text('No "Grandma" contact yet'),
+            content: const Text('Add a trusted contact named "Grandma" (or Nana/Granny) to enable one‑tap sending.'),
             actions: [
               TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Not now')),
               ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add contact')),
@@ -269,7 +269,7 @@ Future<void> _shareDeliveryPacket(LegacyCapsule c) async {
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Text(
-                      'This capsule is time‑locked. You can still edit metadata unless it’s sealed.',
+                      "This capsule is time‑locked. You can still edit metadata unless it's sealed.",
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ),

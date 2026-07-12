@@ -379,7 +379,7 @@ class _DreamHub extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text('Dream hub: visualizer, calendar, and monthly “show” compilation.'),
+          const Text('Dream hub: visualizer, calendar, and monthly "show" compilation.'),
           const SizedBox(height: 12),
           Card(
             child: ListTile(
