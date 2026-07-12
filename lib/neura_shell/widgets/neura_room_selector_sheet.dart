@@ -1,14 +1,23 @@
 import 'package:flutter/material.dart';
 
+import '../../src/app.dart';
 import '../models/neura_room.dart';
 import '../neura_shell.dart';
 
 class NeuraRoomSelectorSheet {
+  /// Ignores the passed-in [context] for navigation purposes — callers like
+  /// NeuraShellOverlay live above MaterialApp's Navigator (see
+  /// NeuroCompanionApp.navigatorKey), so their context can never resolve
+  /// Navigator.of(context). NeuraShellScope lookup still works fine from
+  /// either context since it wraps the Navigator, but showModalBottomSheet
+  /// needs one that's actually inside it.
   static Future<void> open(BuildContext context) async {
-    final state = NeuraShell.of(context);
+    final navContext = NeuroCompanionApp.navigatorKey.currentContext;
+    if (navContext == null) return;
+    final state = NeuraShell.of(navContext);
 
     await showModalBottomSheet<void>(
-      context: context,
+      context: navContext,
       showDragHandle: true,
       isScrollControlled: false,
       backgroundColor: Colors.black.withValues(alpha: 0.6),

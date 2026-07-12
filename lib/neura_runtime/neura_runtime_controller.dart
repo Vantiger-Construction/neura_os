@@ -3,7 +3,6 @@ import 'dart:async';
 import '../services/neura_voice_pack.dart';
 import 'neura_bus.dart';
 import 'neura_memory_watcher.dart';
-import 'neura_room_brain.dart';
 import 'neura_room_memory.dart';
 
 /// Boots Neura's cross-app runtime:
@@ -51,15 +50,9 @@ class NeuraRuntimeController {
       NeuraBus.I.emit(NeuraEvent(NeuraEventType.prompt, room: room, message: line));
     }
 
-    // Optional: play the room's default voice clip *sometimes*.
-    // This avoids the OS shouting at you every click.
-    final now = DateTime.now();
-    final shouldPlay = (now.second % 3 == 0); // cheap throttle, deterministic
-    if (shouldPlay) {
-      final profile = NeuraRoomBrain.get(room);
-      final asset = NeuraVoiceProfile.pick(profile.defaultVoice);
-      await NeuraVoicePack.I.playAsset(asset);
-    }
+    // Room-entry voice clips are disabled: Neura's real synthesized voice
+    // (chat + NeuraTtsService) now handles all speech, and this old canned
+    // clip playback would randomly interrupt live chat/mic use.
   }
 
   String? _fileForMode(String? mode) {
