@@ -8,6 +8,9 @@ import '../../after_storm/screens/after_storm_screen.dart';
 import '../../persona/screens/persona_tuning_screen.dart';
 import '../../kids/screens/kids_mode_home_screen.dart';
 import '../../mirror/screens/mirror_mode_screen.dart';
+import '../../joy_engine/joy_screen.dart';
+import '../../relationships/screens/relationship_list_screen.dart';
+import '../../relationships/screens/promises_list_screen.dart';
 import '../widgets/neura_os_room_card.dart';
 
 class OsShellHomeScreen extends StatelessWidget {
@@ -107,6 +110,42 @@ class OsShellHomeScreen extends StatelessWidget {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => const KidsModeHomeScreen(),
+                      ),
+                    );
+                  },
+                ),
+                NeuraOsRoomCard(
+                  icon: Icons.emoji_emotions_outlined,
+                  title: 'Joy Lounge',
+                  subtitle: 'A short, mood-aware Joy Moment. Always skippable.',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const NeuraJoyScreen(),
+                      ),
+                    );
+                  },
+                ),
+                NeuraOsRoomCard(
+                  icon: Icons.people_alt_outlined,
+                  title: 'Relationships',
+                  subtitle: 'People, care scores, and interaction history.',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const RelationshipListScreen(),
+                      ),
+                    );
+                  },
+                ),
+                NeuraOsRoomCard(
+                  icon: Icons.checklist_rounded,
+                  title: 'Promises',
+                  subtitle: 'Things you said you\'d do, tracked gently.',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const PromisesListScreen(),
                       ),
                     );
                   },
