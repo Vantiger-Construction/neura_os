@@ -141,11 +141,24 @@ class _RoomCard extends StatefulWidget {
 }
 
 class _RoomCardState extends State<_RoomCard> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
+  AnimationController? _c;
+
+  AnimationController _ensureController() {
+    return _c ??= AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _RoomCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.walkingShimmer && _c != null) {
+      _c!.dispose();
+      _c = null;
+    }
+  }
 
   @override
   void dispose() {
-    _c.dispose();
+    _c?.dispose();
     super.dispose();
   }
 
@@ -164,7 +177,7 @@ class _RoomCardState extends State<_RoomCard> with SingleTickerProviderStateMixi
         ),
         child: Stack(
           children: [
-            if (widget.walkingShimmer) Positioned.fill(child: _ShimmerLine(animation: _c)),
+            if (widget.walkingShimmer) Positioned.fill(child: _ShimmerLine(animation: _ensureController())),
             Padding(
               padding: const EdgeInsets.all(14),
               child: Row(
@@ -222,27 +235,31 @@ class _LinePainter extends CustomPainter {
   final double t;
   _LinePainter(this.t);
 
+  static const Rect _shaderRect = Rect.fromLTWH(0, 0, 120, 4);
+
+  static final Paint _paint = Paint()
+    ..shader = LinearGradient(
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
+      colors: [
+        Colors.transparent,
+        Colors.cyanAccent.withValues(alpha: 0.18),
+        Colors.transparent,
+      ],
+      stops: const [0.0, 0.5, 1.0],
+    ).createShader(_shaderRect);
+
   @override
   void paint(Canvas canvas, Size size) {
     final y = size.height - 8;
     final dx = (size.width + 120) * t - 120;
     final rect = Rect.fromLTWH(0, y - 2, size.width, 4);
 
+    canvas.save();
     canvas.clipRect(rect);
-
-    final p = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-        colors: [
-          Colors.transparent,
-          Colors.cyanAccent.withValues(alpha: 0.18),
-          Colors.transparent,
-        ],
-        stops: const [0.0, 0.5, 1.0],
-      ).createShader(Rect.fromLTWH(dx, y - 2, 120, 4));
-
-    canvas.drawRect(Rect.fromLTWH(dx, y - 2, 120, 4), p);
+    canvas.translate(dx, y - 2);
+    canvas.drawRect(_shaderRect, _paint);
+    canvas.restore();
   }
 
   @override

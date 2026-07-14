@@ -18,7 +18,20 @@ class _GoodwillStreakBadgeState extends State<GoodwillStreakBadge> with SingleTi
   @override
   void initState() {
     super.initState();
-    _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat(reverse: true);
+    _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400));
+    if (widget.streak > 0) _pulse.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant GoodwillStreakBadge oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final wasActive = oldWidget.streak > 0;
+    final isActive = widget.streak > 0;
+    if (isActive && !wasActive) {
+      _pulse.repeat(reverse: true);
+    } else if (!isActive && wasActive) {
+      _pulse.stop();
+    }
   }
 
   @override

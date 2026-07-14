@@ -42,7 +42,9 @@ class RoomItem {
 }
 
 class RoomsCatalog {
-  static List<RoomItem> all() => [
+  static List<RoomItem> all() => _all;
+
+  static final List<RoomItem> _all = [
         RoomItem(
           id: 'chat',
           title: 'Neura (Chat)',

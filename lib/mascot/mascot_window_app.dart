@@ -108,6 +108,8 @@ class _MascotHomeState extends State<_MascotHome> with WindowListener {
         child: Image.asset(
           'assets/images/neura_fullbody.png',
           fit: BoxFit.contain,
+          cacheWidth: (_kWindowWidth * MediaQuery.devicePixelRatioOf(context)).round(),
+          cacheHeight: (_kWindowHeight * MediaQuery.devicePixelRatioOf(context)).round(),
           errorBuilder: (_, __, ___) => const Center(
             child: Text(
               'NEURA',
