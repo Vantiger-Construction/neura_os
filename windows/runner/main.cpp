@@ -2,6 +2,8 @@
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
+#include <string>
+
 #include "flutter_window.h"
 #include "utils.h"
 
@@ -26,7 +28,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
-  FlutterWindow window(project);
+  FlutterWindow window(project, /*window_id=*/0, /*is_mascot=*/false);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
   if (!window.Create(L"neuro_companion", origin, size)) {
@@ -38,13 +40,31 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // additional windows by re-invoking this same entrypoint's Dart side with
   // a fresh engine; this callback does the native-side window creation for
   // each one. Sub-windows don't quit the app when closed.
+  //
+  // command_line_arguments (["<windowId>", "neura_mascot"], built natively
+  // by window_manager_plus) is still forwarded via
+  // set_dart_entrypoint_arguments for completeness, but the Dart side does
+  // NOT rely on it: dart_entrypoint_arguments do not reliably reach a
+  // secondary engine created in the same process on this Flutter build
+  // (confirmed empty via diagnostic logging even though this vector is
+  // correctly populated here). The window id and mascot flag are instead
+  // parsed here, natively, and handed to Dart over the dedicated
+  // "neura/window_role" channel -- see neura_window_role.h.
   WindowManagerPlusPluginSetWindowCreatedCallback(
       [](std::vector<std::string> command_line_arguments) {
         flutter::DartProject sub_project(L"data");
-        sub_project.set_dart_entrypoint_arguments(
-            std::move(command_line_arguments));
+        sub_project.set_dart_entrypoint_arguments(command_line_arguments);
 
-        auto sub_window = std::make_shared<FlutterWindow>(sub_project);
+        int sub_window_id = 0;
+        if (!command_line_arguments.empty()) {
+          try {
+            sub_window_id = std::stoi(command_line_arguments[0]);
+          } catch (...) {
+          }
+        }
+
+        auto sub_window = std::make_shared<FlutterWindow>(
+            sub_project, sub_window_id, /*is_mascot=*/true);
         Win32Window::Point sub_origin(10, 10);
         Win32Window::Size sub_size(1280, 720);
         if (sub_window->Create(L"neuro_companion", sub_origin, sub_size)) {

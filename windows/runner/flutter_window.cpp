@@ -4,8 +4,9 @@
 
 #include "flutter/generated_plugin_registrant.h"
 
-FlutterWindow::FlutterWindow(const flutter::DartProject& project)
-    : project_(project) {}
+FlutterWindow::FlutterWindow(const flutter::DartProject& project,
+                             int window_id, bool is_mascot)
+    : project_(project), window_id_(window_id), is_mascot_(is_mascot) {}
 
 FlutterWindow::~FlutterWindow() {}
 
@@ -27,6 +28,8 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   speech_recognizer_ = std::make_unique<NeuraSpeechRecognizer>(
       flutter_controller_->engine()->messenger());
+  window_role_ = std::make_unique<NeuraWindowRole>(
+      flutter_controller_->engine()->messenger(), window_id_, is_mascot_);
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {

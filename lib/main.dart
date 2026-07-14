@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:window_manager_plus/window_manager_plus.dart';
 
 import 'mascot/mascot_window_app.dart';
-import 'mascot/mascot_window_service.dart';
+import 'mascot/neura_window_role.dart';
 import 'src/app.dart';
 
 /// Entry point.
@@ -14,17 +14,17 @@ import 'src/app.dart';
 /// concurrently with the first UI frame.
 ///
 /// window_manager_plus (used for the floating avatar window) re-enters this
-/// same entrypoint for every window it creates, passing the window's id as
-/// `args[0]` and any custom payload (see [MascotWindowService]) after that.
-/// The main window is launched natively with no such args, so it defaults to
-/// id 0 and an empty payload.
+/// same entrypoint for every window it creates, running a fresh engine in
+/// the same process. Which window this is (main app vs. the floating
+/// mascot) and its real window id come from [NeuraWindowRole], not from
+/// `args` -- see that class for why.
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final windowId = args.isEmpty ? 0 : int.tryParse(args[0]) ?? 0;
-  await WindowManagerPlus.ensureInitialized(windowId);
+  final role = await NeuraWindowRole.get();
+  await WindowManagerPlus.ensureInitialized(role.windowId);
 
-  if (args.length > 1 && args[1] == kMascotWindowArgument) {
+  if (role.isMascot) {
     runApp(const MascotWindowApp());
     return;
   }
