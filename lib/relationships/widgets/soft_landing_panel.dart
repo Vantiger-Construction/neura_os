@@ -1,6 +1,9 @@
 
 import 'package:flutter/material.dart';
 import '../services/distress_detector.dart';
+import '../../care/screens/crisis_playbook_detail_screen.dart';
+import '../../care/services/crisis_playbook_service.dart';
+import '../../src/modules/focus/focus_office_screen.dart';
 
 class SoftLandingPanel extends StatelessWidget {
   final DistressSignal signal;
@@ -41,13 +44,25 @@ class SoftLandingPanel extends StatelessWidget {
               children: [
                 ElevatedButton(
                   onPressed: () {
-                    // Route to a 2-minute grounding ritual
+                    final playbook =
+                        CrisisPlaybookService.instance.findById('overwhelmed');
+                    if (playbook == null) return;
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            CrisisPlaybookDetailScreen(playbook: playbook),
+                      ),
+                    );
                   },
                   child: const Text('Ground me for 2 minutes'),
                 ),
                 OutlinedButton(
                   onPressed: () {
-                    // Route to a tiny "1-hour plan" screen
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const FocusOfficeScreen(),
+                      ),
+                    );
                   },
                   child: const Text('Plan just the next hour'),
                 ),

@@ -8,13 +8,36 @@ import '../../after_storm/screens/after_storm_screen.dart';
 import '../../persona/screens/persona_tuning_screen.dart';
 import '../../kids/screens/kids_mode_home_screen.dart';
 import '../../mirror/screens/mirror_mode_screen.dart';
+import '../../joy_engine/joy_engine.dart';
 import '../../joy_engine/joy_screen.dart';
+import '../../joy_engine/joy_types.dart';
+import '../../mood/services/mood_state_service.dart';
 import '../../relationships/screens/relationship_list_screen.dart';
 import '../../relationships/screens/promises_list_screen.dart';
 import '../widgets/neura_os_room_card.dart';
 
 class OsShellHomeScreen extends StatelessWidget {
   const OsShellHomeScreen({super.key});
+
+  static NeuraMood _mapMood(String raw) {
+    switch (raw) {
+      case 'anxious':
+      case 'scared':
+      case 'angry':
+        return NeuraMood.stressed;
+      case 'happy':
+      case 'excited':
+        return NeuraMood.energized;
+      case 'sad':
+        return NeuraMood.sad;
+      case 'tired':
+        return NeuraMood.tired;
+      case 'calm':
+        return NeuraMood.calm;
+      default:
+        return NeuraMood.neutral;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -118,10 +141,15 @@ class OsShellHomeScreen extends StatelessWidget {
                   icon: Icons.emoji_emotions_outlined,
                   title: 'Joy Lounge',
                   subtitle: 'A short, mood-aware Joy Moment. Always skippable.',
-                  onTap: () {
+                  onTap: () async {
+                    await MoodStateService.instance.load();
+                    final mood = _mapMood(MoodStateService.instance.currentMood);
+                    final moment = JoyEngine().pickMoment(mood);
+                    if (!context.mounted) return;
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => const NeuraJoyScreen(),
+                        settings: RouteSettings(arguments: moment),
                       ),
                     );
                   },

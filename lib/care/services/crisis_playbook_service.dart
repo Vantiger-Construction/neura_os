@@ -61,6 +61,34 @@ class CrisisPlaybookService {
       ],
       tags: ['safety', 'danger', 'crisis'],
     ),
+    const CrisisPlaybook(
+      id: 'messed_up_work',
+      title: 'I Messed Up at Work',
+      description:
+          'For when a mistake at work is looping in your head and you need '
+          'to separate the mistake from your worth.',
+      steps: [
+        'Pause. Name the mistake without attacking yourself.',
+        'Separate "what happened" from "what it means about you".',
+        'List 1-2 concrete repair steps.',
+        "Decide what you'll do in the next 24 hours, not for the rest of your career.",
+      ],
+      tags: ['work', 'mistake', 'failed'],
+    ),
+    const CrisisPlaybook(
+      id: 'scared_to_text',
+      title: "I'm Scared to Text This Person",
+      description:
+          'For when you have a message you need to send but fear is keeping '
+          'you from sending it.',
+      steps: [
+        "Write the message you'd send if you weren't scared.",
+        'Remove anything that tries to over-explain or apologize too much.',
+        'Add one honest sentence about how you feel.',
+        'Decide: send it, schedule it, or rewrite tomorrow.',
+      ],
+      tags: ['text', 'message'],
+    ),
   ];
 
   List<CrisisPlaybook> get playbooks => List.unmodifiable(_playbooks);
@@ -71,5 +99,21 @@ class CrisisPlaybookService {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Word-boundary keyword match against each playbook's [CrisisPlaybook.tags]
+  /// -- not a plain substring `.contains()`, which would false-positive on
+  /// unrelated words like "context"/"textbook" for a tag like "text".
+  CrisisPlaybook? findByKeyword(String text) {
+    for (final p in _playbooks) {
+      for (final tag in p.tags) {
+        final pattern = RegExp(
+          r'\b' + RegExp.escape(tag.replaceAll('_', ' ')) + r'\b',
+          caseSensitive: false,
+        );
+        if (pattern.hasMatch(text)) return p;
+      }
+    }
+    return null;
   }
 }

@@ -2,8 +2,20 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
 
+import '../after_storm/models/storm_event.dart';
+import '../care/services/care_mode_bridge.dart';
+import '../guardrails/guardrails.dart';
+import '../guardrails/guardrails_types.dart';
+import '../guardrails/support_resources.dart';
+import '../modules/mood/mood_store.dart';
+import '../persona/models/neura_audience.dart';
+import '../persona/services/neura_audience_service.dart';
 import '../persona/services/neura_prompt_builder.dart';
+import '../relationships/services/distress_detector.dart';
+import '../src/modules/focus/focus_controller.dart';
+import '../src/modules/focus/focus_mode.dart';
 
 /// One turn in the conversation, in the shape the Messages API expects.
 class NeuraChatTurn {
@@ -40,6 +52,12 @@ class NeuraAiService {
   Stream<String> streamReply(List<NeuraChatTurn> history) async* {
     if (!isConfigured) {
       throw StateError('ANTHROPIC_API_KEY was not set at build time.');
+    }
+
+    final blocked = await _checkGuardrails(history);
+    if (blocked != null) {
+      yield blocked;
+      return;
     }
 
     final systemPrompt = await NeuraPromptBuilder.instance.buildSystemMessage();
@@ -88,6 +106,73 @@ class NeuraAiService {
         }
       }
     }
+  }
+
+  /// Runs the outgoing user message through Guardrails before it reaches the
+  /// LLM. Returns a safe-alternative message to show instead if blocked, or
+  /// null to proceed normally -- true for the overwhelming majority of
+  /// messages; only real distress or exclusive/manipulative language trips
+  /// the hard-block branches in guardrails_rules.dart.
+  Future<String?> _checkGuardrails(List<NeuraChatTurn> history) async {
+    if (history.isEmpty) return null;
+    final lastMessage = history.last.text;
+
+    final moodEntries = await MoodStore.instance.getAll();
+    final recentEntries = moodEntries.length > 10
+        ? moodEntries.sublist(moodEntries.length - 10)
+        : moodEntries;
+    final recentMoods = recentEntries
+        .map((e) => ((e.mood0to10 - 5) / 2.5).round().clamp(-2, 2))
+        .toList();
+    final signal = DistressDetector().detect(
+      recentMoods: recentMoods,
+      appOpensLastHour: 0,
+      lotsOfNegativeWords: false,
+    );
+
+    await NeuraAudienceService.instance.load();
+    final isMinor =
+        NeuraAudienceService.instance.currentAudience != NeuraAudience.adult;
+
+    final snapshot = NeuraContextSnapshot(
+      now: DateTime.now(),
+      userInFocusMode: FocusController.instance.state.value.mode != FocusMode.off,
+      isMinor: isMinor,
+      distressScore: signal.active ? 0.9 : 0.1,
+    );
+
+    final proposal = NeuraProposal(
+      type: ProposalType.prompt,
+      id: 'chat_message',
+      message: lastMessage,
+      options: const ['send', 'no_thanks'],
+    );
+
+    final decision = Guardrails().evaluate(context: snapshot, proposal: proposal);
+    if (decision.allow) return null;
+
+    if (signal.active) {
+      await CareModeBridge.instance.logStormEvent(
+        StormEvent(
+          id: const Uuid().v4(),
+          timestamp: DateTime.now(),
+          intensity: 'medium',
+          primaryFeeling: 'distressed',
+          shortSummary: 'Distress detected during a chat conversation.',
+          needNow: 'support',
+          safetyRisk: true,
+          meta: {'source': 'chat_guardrail', 'reasons': signal.reasons},
+        ),
+      );
+    }
+
+    var message = decision.safeAlternative?.message ?? decision.reason;
+    final reasonLower = decision.reason.toLowerCase();
+    if (reasonLower.contains('distress') || reasonLower.contains('support')) {
+      message += '\n\nIf you need immediate help: '
+          '${SupportResources.us['988']}. ${SupportResources.us['911']}.';
+    }
+    return message;
   }
 }
 
