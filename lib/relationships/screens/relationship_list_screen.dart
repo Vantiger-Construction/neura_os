@@ -4,10 +4,12 @@ import '../services/relationship_profile_service.dart';
 import '../services/promise_service.dart';
 import '../services/distress_detector.dart';
 import '../models/relationship_profile.dart';
+import '../models/relationship_suggestion.dart';
 import '../widgets/promises_summary_tile.dart';
 import '../widgets/one_good_move_tile.dart';
 import '../widgets/soft_landing_panel.dart';
 import '../../modules/mood/mood_store.dart';
+import 'promises_list_screen.dart';
 import 'relationship_detail_screen.dart';
 
 class RelationshipListScreen extends StatefulWidget {
@@ -102,6 +104,62 @@ class _RelationshipListScreenState extends State<RelationshipListScreen> {
     _load();
   }
 
+  /// The tile's suggestions aren't tagged with a type, only a title/label --
+  /// route by title. "Follow-through time" is the one promise-specific
+  /// suggestion; everything else is some flavor of "reach out to someone",
+  /// and this app has no messaging feature, so the honest destination is
+  /// picking who it's about and opening their profile.
+  void _handleOneGoodMoveAction(RelationshipSuggestion suggestion) {
+    if (suggestion.title == 'Follow-through time') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const PromisesListScreen()),
+      ).then((_) => _load());
+      return;
+    }
+
+    if (_profiles.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Add someone first, then you can act on this.'),
+        ),
+      );
+      return;
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Who is this about?',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            ..._profiles.map(
+              (p) => ListTile(
+                title: Text(p.name),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => RelationshipDetailScreen(profile: p),
+                    ),
+                  ).then((_) => _load());
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -129,6 +187,7 @@ class _RelationshipListScreenState extends State<RelationshipListScreen> {
                         recentMoods: _recentMoods,
                         promisesOutstanding: _promisesOutstanding,
                         daysSinceLastContact: _daysSinceLastContact,
+                        onAction: _handleOneGoodMoveAction,
                       ),
                     ],
                   ),

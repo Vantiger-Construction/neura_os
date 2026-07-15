@@ -2,17 +2,20 @@
 import 'package:flutter/material.dart';
 import '../services/relationship_insight_service.dart';
 import '../services/feedback_service.dart';
+import '../models/relationship_suggestion.dart';
 
 class OneGoodMoveTile extends StatefulWidget {
   final List<int> recentMoods;
   final bool promisesOutstanding;
   final int? daysSinceLastContact;
+  final void Function(RelationshipSuggestion suggestion) onAction;
 
   const OneGoodMoveTile({
     super.key,
     required this.recentMoods,
     required this.promisesOutstanding,
     this.daysSinceLastContact,
+    required this.onAction,
   });
 
   @override
@@ -56,9 +59,7 @@ class _OneGoodMoveTileState extends State<OneGoodMoveTile> {
                   child: Text(_showWhy ? 'Hide why' : 'Why this?'),
                 ),
                 ElevatedButton(
-                  onPressed: () {
-                    // TODO: route to relevant screen (promises, contacts, etc.)
-                  },
+                  onPressed: () => widget.onAction(suggestion),
                   child: Text(suggestion.actionLabel),
                 ),
               ],
