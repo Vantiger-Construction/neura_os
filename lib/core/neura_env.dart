@@ -21,6 +21,16 @@ class NeuraEnv {
 
   static bool get isConfigured =>
       supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
+
+  /// URL of the deployed `verify-purchase` Supabase Edge Function (see
+  /// supabase/functions/verify-purchase/index.ts), used by
+  /// WindowsLicenseService to confirm a Stripe purchase. Not secret --
+  /// safe to bake into the build via --dart-define like the values above.
+  /// Deliberately NOT read from SupabaseConfig / the supabase_flutter SDK:
+  /// this is called over plain HTTP so enabling it never triggers
+  /// Supabase.initialize() or the auth-gated boot path.
+  static const String verifyPurchaseUrl =
+      String.fromEnvironment('VERIFY_PURCHASE_URL', defaultValue: '');
 }
 
 /// Beta gating. IAP / purchases must be gated behind this.

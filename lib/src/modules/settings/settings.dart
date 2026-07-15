@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../../config/supabase_config.dart';
-import '../../../../core/neura_env.dart';
 import '../../../../modules/coach/coach_settings_screen.dart';
 import '../../../../modules/human/accessibility_screen.dart';
 import '../../../../modules/human/life_snapshot_screen.dart';
@@ -12,7 +11,6 @@ import '../../../../screens/avatar_selector_screen.dart';
 import '../../../../screens/help_screen.dart';
 import '../../../../screens/neura_voice_settings_screen.dart';
 import '../../../../screens/profile_screen.dart';
-import '../../../../screens/purchase_history_screen.dart';
 import '../../../../screens/subscription_screen.dart';
 import '../../../../screens/sync_status_screen.dart';
 import '../../shell/shell_prefs.dart';
@@ -180,30 +178,17 @@ class SettingsScreen extends StatelessWidget {
               );
             },
           ),
-          if (kIapEnabled) ...[
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.workspace_premium_outlined),
-              title: const Text('Subscriptions'),
-              subtitle: const Text('Monthly, yearly, or lifetime Neura plans.'),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
-                );
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.receipt_long_outlined),
-              title: const Text('Purchase History'),
-              subtitle: const Text('Review past purchases and restore them if needed.'),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const PurchaseHistoryScreen()),
-                );
-              },
-            ),
-          ],
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.workspace_premium_outlined),
+            title: const Text('Premium'),
+            subtitle: const Text('Unlock Neura Premium with a one-time purchase.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
+              );
+            },
+          ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.help_outline),
