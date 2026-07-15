@@ -6,14 +6,14 @@ import '../models/dream_entry.dart';
 
 // DreamThemeSummary is exported from dream_theme_service.dart
 
-class DreamShowScreen extends StatefulWidget {
-  const DreamShowScreen({super.key});
+class DreamTheaterScreen extends StatefulWidget {
+  const DreamTheaterScreen({super.key});
 
   @override
-  State<DreamShowScreen> createState() => _DreamShowScreenState();
+  State<DreamTheaterScreen> createState() => _DreamTheaterScreenState();
 }
 
-class _DreamShowScreenState extends State<DreamShowScreen> {
+class _DreamTheaterScreenState extends State<DreamTheaterScreen> {
   final _dreams = DreamService.instance;
   final _themes = DreamThemeService.instance;
 

@@ -15,12 +15,11 @@ import '../../../../screens/profile_screen.dart';
 import '../../../../screens/purchase_history_screen.dart';
 import '../../../../screens/subscription_screen.dart';
 import '../../../../screens/sync_status_screen.dart';
-import '../../shell/portal_route.dart';
-import '../../shell/rooms_map_screen.dart';
 import '../../shell/shell_prefs.dart';
 import '../focus/focus_office_screen.dart';
 import '../legacy/legacy_home_screen.dart';
 import '../privacy/privacy_home_screen.dart';
+import '../voice/voice_lab_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -57,11 +56,11 @@ class SettingsScreen extends StatelessWidget {
             const Divider(),
           ],
           ListTile(
-            leading: const Icon(Icons.dashboard_customize_outlined),
-            title: const Text('Rooms Map'),
-            subtitle: const Text('Quick-launch any module with portal transitions.'),
+            leading: const Icon(Icons.record_voice_over_outlined),
+            title: const Text('Voice Lab'),
+            subtitle: const Text('Test Neura voice + live mic visemes.'),
             onTap: () {
-              PortalNav.push(context, const RoomsMapScreen(), enabled: true);
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const VoiceLabScreen()));
             },
           ),
           const Divider(),

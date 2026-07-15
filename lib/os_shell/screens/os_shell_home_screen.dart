@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../mood/widgets/mood_adaptive_container.dart';
 import '../../weekly/widgets/weekly_life_snapshot_card.dart';
-import '../../dreams/screens/dream_show_screen.dart';
+import '../../dreams/screens/dream_theater_screen.dart';
 import '../../care/screens/care_mode_home_screen.dart';
 import '../../after_storm/screens/after_storm_screen.dart';
 import '../../persona/screens/persona_tuning_screen.dart';
@@ -73,7 +73,7 @@ class OsShellHomeScreen extends StatelessWidget {
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => const DreamShowScreen(),
+                        builder: (_) => const DreamTheaterScreen(),
                       ),
                     );
                   },

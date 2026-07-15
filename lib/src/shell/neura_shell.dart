@@ -12,9 +12,9 @@ import 'shell_prefs.dart';
 /// - Focus Mode banner
 ///
 /// It wraps the MaterialApp's navigator via `MaterialApp.builder`.
-class NeuraShell extends StatelessWidget {
+class NeuraAmbientShell extends StatelessWidget {
   final Widget child;
-  const NeuraShell({super.key, required this.child});
+  const NeuraAmbientShell({super.key, required this.child});
 
   @override
   Widget build(BuildContext context) {

@@ -15,7 +15,7 @@ import '../../modules/vault/memory_vault_screen.dart';
 import '../../os_shell/screens/os_shell_home_screen.dart';
 import '../review/weekly_review_screen.dart';
 import '../../screens/dream_journal_calendar_screen.dart';
-import '../../screens/dream_show_screen.dart';
+import '../../screens/monthly_dream_show_screen.dart';
 import '../../screens/dream_visualizer_screen.dart';
 import '../../screens/journal_prompt_screen.dart';
 import '../../screens/voice_journal_screen.dart';
@@ -406,7 +406,7 @@ class _DreamHub extends StatelessWidget {
               leading: const Icon(Icons.movie_filter_outlined),
               title: const Text('Monthly Dream Show'),
               subtitle: const Text('Auto-compiled highlight reel.'),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DreamShowScreen())),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => MonthlyDreamShowScreen())),
             ),
           ),
           Card(

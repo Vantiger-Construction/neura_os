@@ -24,7 +24,7 @@ class NeuroCompanionApp extends StatelessWidget {
       scaffoldMessengerKey: ErrorHandler.scaffoldMessengerKey,
       builder: (context, child) {
         return NeuraShellRoot(
-          child: NeuraShell(child: child ?? const SizedBox.shrink()),
+          child: NeuraAmbientShell(child: child ?? const SizedBox.shrink()),
         );
       },
       // NeuraBootScreen owns startup sequencing and fades into EnhancedNavigation.

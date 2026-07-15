@@ -25,14 +25,14 @@ const _themeVisuals = <String, ({IconData icon, Color color})>{
     _themeVisuals[theme] ??
     (icon: Icons.nights_stay, color: const Color(0xFF90CAF9));
 
-class DreamShowScreen extends StatefulWidget {
-  const DreamShowScreen({super.key});
+class MonthlyDreamShowScreen extends StatefulWidget {
+  const MonthlyDreamShowScreen({super.key});
 
   @override
-  State<DreamShowScreen> createState() => _DreamShowScreenState();
+  State<MonthlyDreamShowScreen> createState() => _MonthlyDreamShowScreenState();
 }
 
-class _DreamShowScreenState extends State<DreamShowScreen>
+class _MonthlyDreamShowScreenState extends State<MonthlyDreamShowScreen>
     with TickerProviderStateMixin {
   final _themeService = DreamThemeService.instance;
 
