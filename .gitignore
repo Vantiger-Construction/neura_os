@@ -8,5 +8,6 @@
 **/android/app/*.keystore
 **/.idea/
 **/.vscode/
+**/.vs/
 **/scripts/
 **/.github/
