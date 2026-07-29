@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/build-neura-downloads-20260729
+  pull_request:
+    branches:
+      - Neura
   workflow_dispatch:
 
 permissions:
