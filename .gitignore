@@ -11,3 +11,10 @@
 **/.vs/
 **/scripts/
 **/.github/
+
+# Neura repair/build diagnostics and generated installer output
+**/.neura_repair/
+**/.neura_fix_backup_*/
+**/_quote_backup_*/
+**/analyze_*.txt
+tools/neura_dart_repair/installer/output/
