@@ -1,0 +1,39 @@
+name: Neura Local Runner Check
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'analysis_options.yaml'
+      - 'tools/Neura-FastCheck.ps1'
+      - '.github/workflows/neura-fast-check.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: neura-local-runner-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    # Uses the owner's Windows computer instead of paid GitHub-hosted minutes.
+    runs-on: [self-hosted, Windows, X64, neura]
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Verify local tools
+        shell: pwsh
+        run: |
+          flutter --version
+          dart --version
+          git --version
+
+      - name: Run optimized validation
+        shell: pwsh
+        run: ./tools/Neura-FastCheck.ps1 -Root . -BuildWindows
