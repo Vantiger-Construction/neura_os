@@ -1,4 +1,4 @@
-name: Neura Fast Check
+name: Neura Local Runner Check
 
 on:
   pull_request:
@@ -14,34 +14,26 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: neura-fast-check-${{ github.ref }}
+  group: neura-local-runner-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   validate:
-    runs-on: windows-latest
-    timeout-minutes: 30
+    # Uses the owner's Windows computer instead of paid GitHub-hosted minutes.
+    runs-on: [self-hosted, Windows, X64, neura]
+    timeout-minutes: 45
 
     steps:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Cache Dart build metadata
-        uses: actions/cache@v4
-        with:
-          path: |
-            .dart_tool
-            ${{ env.LOCALAPPDATA }}\Pub\Cache
-          key: neura-${{ runner.os }}-dart-${{ hashFiles('pubspec.lock', 'pubspec.yaml') }}
-          restore-keys: |
-            neura-${{ runner.os }}-dart-
+      - name: Verify local tools
+        shell: pwsh
+        run: |
+          flutter --version
+          dart --version
+          git --version
 
       - name: Run optimized validation
         shell: pwsh
-        run: ./tools/Neura-FastCheck.ps1 -Root .
+        run: ./tools/Neura-FastCheck.ps1 -Root . -BuildWindows
