@@ -1,0 +1,11 @@
+{
+  "appName": "Neura Companion",
+  "apiBaseUrl": "http://127.0.0.1:8000",
+  "advancedDashboardUrl": "http://127.0.0.1:8799",
+  "preferredUnityVersion": "2022.3",
+  "buildConfiguration": "Release",
+  "allowNetworkInstalls": false,
+  "enableFlutterBuild": true,
+  "enableUnityBuild": true,
+  "enableApiChecks": true
+}
