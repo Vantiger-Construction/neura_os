@@ -26,7 +26,7 @@ class SyncService {
       await _pushLocal(userId);
       await _pullRemote(userId);
     } catch (e) {
-      debugPrint('SyncService: error during sync — ');
+      debugPrint('SyncService: error during sync — $e');
     }
   }
 

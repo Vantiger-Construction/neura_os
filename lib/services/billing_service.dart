@@ -25,7 +25,7 @@ class BillingService {
     _purchaseSub?.cancel();
     _purchaseSub = _iap.purchaseStream.listen(
       _onPurchaseUpdate,
-      onError: (Object e) => debugPrint('BillingService: stream error '),
+      onError: (Object e) => debugPrint('BillingService: stream error $e'),
     );
 
     // Restore previously-completed purchases (e.g. after reinstall).
@@ -38,7 +38,7 @@ class BillingService {
       if (purchase.status == PurchaseStatus.pending) continue;
 
       if (purchase.status == PurchaseStatus.error) {
-        debugPrint('BillingService: purchase error for ');
+        debugPrint('BillingService: purchase error for ${purchase.productID}');
         continue;
       }
 
@@ -64,7 +64,7 @@ class BillingService {
   Future<List<ProductDetails>> fetchProducts(List<String> ids) async {
     final response = await _iap.queryProductDetails(ids.toSet());
     if (response.error != null) {
-      debugPrint('BillingService: query error ');
+      debugPrint('BillingService: query error ${response.error}');
     }
     return response.productDetails;
   }
