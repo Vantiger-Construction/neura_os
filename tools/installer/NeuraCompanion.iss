@@ -1,6 +1,6 @@
 #define MyAppName "Neura Companion"
 #define MyAppPublisher "VanTiger"
-#define MyAppId "{{BCA35439-1D8B-4C4A-A970-9741E76EEA57}"
+#define MyAppId "com.vantiger.neura.companion"
 #define MySourceDir GetEnv("NEURA_INSTALLER_SOURCE")
 #define MyOutputDir GetEnv("NEURA_INSTALLER_OUTPUT")
 #define MyAppVersion GetEnv("NEURA_INSTALLER_VERSION")
