@@ -1,19 +1,35 @@
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 
+import '../../startup/neura_prefs_cache.dart';
+
 /// App-layer encryption (AES-GCM) so memory is encrypted at rest even in plain SQLite.
-/// In production, store the key in platform secure storage / user passphrase.
 class MemoryCrypto {
+  static const _keySeed = 'neura.memoryGraph.seed.v1';
+
   final SecretKey _key;
   final AesGcm _algo = AesGcm.with256bits();
 
   MemoryCrypto._(this._key);
 
+  /// Loads this device's random key, generating and persisting one on first
+  /// use. Previously this used a hardcoded, deterministic key baked into
+  /// source (public on GitHub) — every install shared the same "encrypted at
+  /// rest" key, which is not actually confidential. Mirrors the same
+  /// random-seed-in-prefs approach as `MemoryVaultStore._getOrCreateSeed`.
   static Future<MemoryCrypto> demo() async {
-    // Deterministic demo key (DO NOT ship). Replace with secure storage.
-    final bytes = Uint8List.fromList(List<int>.generate(32, (i) => (i * 31) & 0xFF));
-    return MemoryCrypto._(SecretKey(bytes));
+    final sp = NeuraPrefsCache.prefs;
+    var seed = sp.getString(_keySeed);
+    if (seed == null || seed.trim().isEmpty) {
+      final bytes = Uint8List.fromList(
+        List<int>.generate(32, (_) => Random.secure().nextInt(256)),
+      );
+      seed = base64UrlEncode(bytes);
+      await sp.setString(_keySeed, seed);
+    }
+    return MemoryCrypto._(SecretKey(base64Url.decode(seed)));
   }
 
   Future<String> encryptJson(Map<String, dynamic> json) async {
