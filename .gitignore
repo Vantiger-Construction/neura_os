@@ -22,3 +22,4 @@ tools/neura_dart_repair/installer/output/
 # Google Drive rebuilt-source builder output
 /dist/DriveRebuild_build_*.log
 /dist/NeuraCompanion_GoogleDriveRebuild_*
+/dist/NeuraCompanion_Setup_*
