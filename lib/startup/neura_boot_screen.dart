@@ -3,7 +3,9 @@
 import '../config/supabase_config.dart';
 import '../modules/navigation/enhanced_navigation.dart';
 import '../screens/sign_in_screen.dart';
+import '../services/app_lock_prefs.dart';
 import '../services/auth_service.dart';
+import '../widgets/auth_guard.dart';
 import 'neura_startup_coordinator.dart';
 
 /// Animated splash screen shown while [NeuraStartupCoordinator] runs.
@@ -66,13 +68,22 @@ class _NeuraBootScreenState extends State<NeuraBootScreen>
     // Supabase.instance (AuthService included) would throw.
     final needsSignIn =
         SupabaseConfig.isConfigured && AuthService.currentUser == null;
+    // Device-lock only applies to the local-only dashboard path — once
+    // Supabase sign-in is active it already gates identity on its own.
+    final needsDeviceLock =
+        !needsSignIn && AppLockPrefsController.instance.enabled.value;
     // Short pause so "Ready!" is readable, then replace the whole route stack.
     Future<void>.delayed(const Duration(milliseconds: 350), () {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         PageRouteBuilder<void>(
-          pageBuilder: (_, __, ___) =>
-              needsSignIn ? const SignInScreen() : const EnhancedNavigation(),
+          pageBuilder: (_, __, ___) {
+            if (needsSignIn) return const SignInScreen();
+            const dashboard = EnhancedNavigation();
+            return needsDeviceLock
+                ? const AuthGuard(child: dashboard)
+                : dashboard;
+          },
           transitionsBuilder: (_, animation, __, child) {
             return FadeTransition(
               opacity: CurvedAnimation(
