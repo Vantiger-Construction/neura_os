@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-Builds the recovered Neura Flutter source from an isolated staging copy.
+Builds recovered Neura Flutter source from an isolated staging copy.
 
 .DESCRIPTION
 This script is intended for the Google Drive recovery package layout:
@@ -19,16 +19,17 @@ The build is fail-fast:
   1. Resolve Flutter and validate the source.
   2. Copy source into isolated staging.
   3. Generate missing Windows/Android platform scaffolds.
-  4. Restore authored source files.
+  4. Restore authored source and platform files.
   5. Run flutter pub get.
   6. Require flutter analyze to succeed.
   7. Run flutter test unless -SkipTests.
   8. Build Windows x64 release.
   9. Optionally build an Android APK.
- 10. Package outputs and SHA-256 checksums under dist.
+ 10. Package portable outputs and SHA-256 checksums under dist.
+ 11. Optionally compile a per-user Windows installer with Inno Setup.
 
 This script does not merge historical forks, modify the original recovered
-snapshot, create an installer, or prove end-user data recovery.
+snapshot, prove end-user data recovery, or sign release artifacts.
 
 .EXAMPLE
 powershell -ExecutionPolicy Bypass -File .\tools\Build-Neura-GoogleDriveRebuild.ps1 -Yes
@@ -37,17 +38,20 @@ powershell -ExecutionPolicy Bypass -File .\tools\Build-Neura-GoogleDriveRebuild.
 powershell -ExecutionPolicy Bypass -File .\tools\Build-Neura-GoogleDriveRebuild.ps1 `
   -PackageRoot "D:\NeuraRecovery" `
   -FlutterPath "C:\src\flutter\bin\flutter.bat" `
-  -BuildAndroid
+  -BuildAndroid `
+  -BuildInstaller
 #>
 [CmdletBinding()]
 param(
     [string]$PackageRoot = (Split-Path -Parent $PSScriptRoot),
     [string]$SourceRoot,
     [string]$FlutterPath,
+    [string]$InnoSetupPath,
     [string]$BuildName = '1.1.0',
     [int]$BuildNumber = 2,
     [switch]$SkipTests,
     [switch]$BuildAndroid,
+    [switch]$BuildInstaller,
     [switch]$Yes
 )
 
@@ -96,8 +100,57 @@ function Resolve-FlutterExecutable([string]$RequestedPath) {
         Select-Object -First 1)
 }
 
+function Resolve-InnoCompiler([string]$RequestedPath) {
+    if (-not [string]::IsNullOrWhiteSpace($RequestedPath)) {
+        $candidate = [Environment]::ExpandEnvironmentVariables($RequestedPath)
+
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+
+        $exeCandidate = Join-Path $candidate 'ISCC.exe'
+        if (Test-Path -LiteralPath $exeCandidate -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $exeCandidate).Path
+        }
+    }
+
+    $command = Get-Command 'ISCC.exe' -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+
+    $common = New-Object System.Collections.Generic.List[string]
+    $programFilesX86 = ${env:ProgramFiles(x86)}
+    if (-not [string]::IsNullOrWhiteSpace($programFilesX86)) {
+        $common.Add((Join-Path $programFilesX86 'Inno Setup 6\ISCC.exe'))
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:ProgramFiles)) {
+        $common.Add((Join-Path $env:ProgramFiles 'Inno Setup 6\ISCC.exe'))
+    }
+
+    return ($common |
+        Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+        Select-Object -First 1)
+}
+
+function Copy-DirectoryContents([string]$From, [string]$To) {
+    if (-not (Test-Path -LiteralPath $From -PathType Container)) { return }
+
+    New-Item -ItemType Directory -Path $To -Force | Out-Null
+    Get-ChildItem -LiteralPath $From -Force | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $To -Recurse -Force
+    }
+}
+
 function Copy-RecoverySource([string]$From, [string]$To) {
-    $excludedNames = @('.git', '.dart_tool', '.neura_repair', '.pub', 'build', 'dist', '.idea', '.vs')
+    $excludedNames = @(
+        '.git',
+        '.dart_tool',
+        '.neura_repair',
+        '.pub',
+        'build',
+        'dist',
+        '.idea',
+        '.vs'
+    )
 
     Get-ChildItem -LiteralPath $From -Force |
         Where-Object { $excludedNames -notcontains $_.Name } |
@@ -106,20 +159,28 @@ function Copy-RecoverySource([string]$From, [string]$To) {
         }
 }
 
-function Invoke-FlutterLogged(
-    [string]$FlutterExecutable,
+function Invoke-LoggedProcess(
+    [string]$Executable,
     [string[]]$Arguments,
     [string]$LogPath,
     [string]$FailureMessage,
     [int]$FailureCode
 ) {
-    & $FlutterExecutable @Arguments *>&1 |
+    & $Executable @Arguments *>&1 |
         Tee-Object -FilePath $LogPath -Append |
         Out-Host
 
     $exitCode = $LASTEXITCODE
     if ($exitCode -ne 0) {
         Stop-Build "$FailureMessage (exit code $exitCode)." $FailureCode
+    }
+}
+
+function Restore-EnvironmentVariable([string]$Name, [string]$PreviousValue, [bool]$Existed) {
+    if ($Existed) {
+        [Environment]::SetEnvironmentVariable($Name, $PreviousValue, 'Process')
+    } else {
+        Remove-Item -LiteralPath "Env:$Name" -ErrorAction SilentlyContinue
     }
 }
 
@@ -131,6 +192,9 @@ try {
 
 if ($BuildNumber -lt 1) {
     Stop-Build 'BuildNumber must be 1 or greater.'
+}
+if ([string]::IsNullOrWhiteSpace($BuildName)) {
+    Stop-Build 'BuildName cannot be empty.'
 }
 
 $preferredRecoveredSource = Join-Path $PackageRoot 'source\rebuilt_flutter'
@@ -168,6 +232,19 @@ if (-not $flutter) {
     Stop-Build 'Flutter was not found. Install Flutter stable, add flutter\bin to PATH, then run this launcher again.' 10
 }
 
+$InstallerTemplate = Join-Path $PSScriptRoot 'installer\NeuraCompanion.iss'
+$inno = $null
+if ($BuildInstaller) {
+    if (-not (Test-Path -LiteralPath $InstallerTemplate -PathType Leaf)) {
+        Stop-Build "Installer template is missing: $InstallerTemplate" 21
+    }
+
+    $inno = Resolve-InnoCompiler $InnoSetupPath
+    if (-not $inno) {
+        Stop-Build 'Inno Setup compiler (ISCC.exe) was not found. Install Inno Setup 6 or pass -InnoSetupPath.' 22
+    }
+}
+
 $pubspecName = 'unknown'
 $nameMatch = Select-String -LiteralPath (Join-Path $SourceRoot 'pubspec.yaml') -Pattern '^\s*name:\s*(.+?)\s*$' |
     Select-Object -First 1
@@ -175,6 +252,11 @@ if ($nameMatch) {
     $pubspecName = $nameMatch.Matches[0].Groups[1].Value.Trim()
 }
 $dartCount = @(Get-ChildItem -LiteralPath (Join-Path $SourceRoot 'lib') -Recurse -File -Filter '*.dart').Count
+$scaffoldProjectName = if ($pubspecName -match '^[a-z][a-z0-9_]*$') {
+    $pubspecName
+} else {
+    'neura_drive_rebuild'
+}
 
 $Dist = Join-Path $PackageRoot 'dist'
 $Stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
@@ -185,6 +267,7 @@ New-Item -ItemType Directory -Path $WorkSource -Force | Out-Null
 New-Item -ItemType Directory -Path $Preserve -Force | Out-Null
 New-Item -ItemType Directory -Path $Dist -Force | Out-Null
 $Log = Join-Path $Dist "DriveRebuild_build_$Stamp.log"
+$ToolchainManifest = Join-Path $WorkRoot 'TOOLCHAIN_MANIFEST.txt'
 
 Step ''
 Step 'NEURA COMPANION - GOOGLE DRIVE REBUILD' Magenta
@@ -195,6 +278,9 @@ Step "  Pubspec name : $pubspecName"
 Step "  Dart files   : $dartCount"
 Step "  Staging      : $WorkSource"
 Step "  Flutter      : $flutter"
+if ($BuildInstaller) {
+    Step "  Inno Setup   : $inno"
+}
 Step "  Log          : $Log"
 Step ''
 
@@ -209,7 +295,7 @@ if (-not $Yes) {
     if ($answer -match '^(?i:n|no)$') { exit 0 }
 }
 
-# Build from an isolated copy so the recovered snapshots remain untouched.
+# Build from an isolated copy so recovered snapshots remain untouched.
 Copy-RecoverySource $SourceRoot $WorkSource
 
 # Remove nested generated caches that may have been copied inside platform folders.
@@ -226,9 +312,9 @@ foreach ($relativeCache in @(
     }
 }
 
-# Preserve authored files because flutter create may regenerate template files
-# while adding missing platform scaffolding.
-foreach ($name in @('lib', 'test', 'assets')) {
+# Preserve authored source and platform customizations because flutter create may
+# regenerate template files while adding missing scaffolding.
+foreach ($name in @('lib', 'test', 'assets', 'windows', 'android')) {
     $candidate = Join-Path $WorkSource $name
     if (Test-Path -LiteralPath $candidate -PathType Container) {
         Copy-Item -LiteralPath $candidate -Destination (Join-Path $Preserve $name) -Recurse -Force
@@ -243,27 +329,54 @@ foreach ($name in @('pubspec.yaml', 'pubspec.lock', 'analysis_options.yaml', 'l1
 
 $Zip = $null
 $Hash = $null
+$ZipHashPath = $null
 $ApkOut = $null
 $ApkHash = $null
+$InstallerOut = $null
+$InstallerHash = $null
+$InstallerHashPath = $null
 $Release = $null
 $Exe = $null
 $safeBuildName = $BuildName -replace '[^0-9A-Za-z._-]', '_'
+$platforms = if ($BuildAndroid) { 'windows,android' } else { 'windows' }
 
 Push-Location $WorkSource
 try {
-    Step '[1/7] Recording Flutter toolchain'
-    Invoke-FlutterLogged $flutter @('--version') $Log 'Flutter could not start' 11
+    Step '[1/8] Recording Flutter and Windows toolchain'
+    @"
+Neura Companion build toolchain
+Captured UTC: $((Get-Date).ToUniversalTime().ToString('o'))
+PowerShell: $($PSVersionTable.PSVersion)
+OS: $([Environment]::OSVersion.VersionString)
+Flutter executable: $flutter
+Source mode: $sourceMode
+Source root: $SourceRoot
+"@ | Set-Content -LiteralPath $ToolchainManifest -Encoding UTF8
 
-    Step '[2/7] Creating missing Windows and Android platform scaffolds'
-    Invoke-FlutterLogged $flutter @(
+    Invoke-LoggedProcess $flutter @('--version') $Log 'Flutter could not start' 11
+    (& $flutter --version *>&1) | Add-Content -LiteralPath $ToolchainManifest -Encoding UTF8
+
+    Step '      Recording flutter doctor -v (diagnostic; not a release gate)'
+    $doctorOutput = @(& $flutter doctor -v *>&1)
+    $doctorExit = $LASTEXITCODE
+    $doctorOutput |
+        Tee-Object -FilePath $Log -Append |
+        Tee-Object -FilePath $ToolchainManifest -Append |
+        Out-Host
+    if ($doctorExit -ne 0) {
+        Step "      [!] flutter doctor exited $doctorExit. Build gates below remain authoritative." Yellow
+    }
+
+    Step '[2/8] Creating missing platform scaffolds'
+    Invoke-LoggedProcess $flutter @(
         'create',
         '.',
         '--project-name',
-        'neura_drive_rebuild',
+        $scaffoldProjectName,
         '--org',
         'com.vantiger.neura',
         '--platforms',
-        'windows,android'
+        $platforms
     ) $Log 'flutter create failed' 12
 
     foreach ($name in @('lib', 'test', 'assets')) {
@@ -278,6 +391,12 @@ try {
         }
     }
 
+    foreach ($name in @('windows', 'android')) {
+        $authored = Join-Path $Preserve $name
+        $generated = Join-Path $WorkSource $name
+        Copy-DirectoryContents $authored $generated
+    }
+
     foreach ($name in @('pubspec.yaml', 'pubspec.lock', 'analysis_options.yaml', 'l10n.yaml', 'README.md')) {
         $authored = Join-Path $Preserve $name
         if (Test-Path -LiteralPath $authored -PathType Leaf) {
@@ -285,26 +404,26 @@ try {
         }
     }
 
-    Step '[3/7] Restoring dependencies'
-    Invoke-FlutterLogged $flutter @('pub', 'get') $Log 'flutter pub get failed' 13
+    Step '[3/8] Restoring dependencies'
+    Invoke-LoggedProcess $flutter @('pub', 'get') $Log 'flutter pub get failed' 13
 
-    Step '[4/7] Requiring a clean analyzer result'
-    Invoke-FlutterLogged $flutter @(
+    Step '[4/8] Requiring a clean analyzer result'
+    Invoke-LoggedProcess $flutter @(
         'analyze',
         '--no-fatal-warnings',
         '--no-fatal-infos'
     ) $Log 'flutter analyze reported errors' 14
 
     if (-not $SkipTests) {
-        Step '[5/7] Running Flutter tests'
-        Invoke-FlutterLogged $flutter @('test', '--reporter', 'expanded') $Log 'flutter test failed' 15
+        Step '[5/8] Running Flutter tests'
+        Invoke-LoggedProcess $flutter @('test', '--reporter', 'expanded') $Log 'flutter test failed' 15
     } else {
-        Step '[5/7] Tests skipped by request' Yellow
+        Step '[5/8] Tests skipped by request' Yellow
     }
 
-    Step '[6/7] Building Windows x64 release'
-    Invoke-FlutterLogged $flutter @('config', '--enable-windows-desktop') $Log 'Could not enable Windows desktop support' 16
-    Invoke-FlutterLogged $flutter @(
+    Step '[6/8] Building Windows x64 release'
+    Invoke-LoggedProcess $flutter @('config', '--enable-windows-desktop') $Log 'Could not enable Windows desktop support' 16
+    Invoke-LoggedProcess $flutter @(
         'build',
         'windows',
         '--release',
@@ -316,7 +435,7 @@ try {
 
     if ($BuildAndroid) {
         Step '      Building optional Android APK'
-        Invoke-FlutterLogged $flutter @(
+        Invoke-LoggedProcess $flutter @(
             'build',
             'apk',
             '--release',
@@ -327,22 +446,34 @@ try {
         ) $Log 'Android release build failed' 18
     }
 
-    Step '[7/7] Packaging verified Windows release'
+    Step '[7/8] Packaging verified portable release'
     $Release = Join-Path $WorkSource 'build\windows\x64\runner\Release'
     if (-not (Test-Path -LiteralPath $Release -PathType Container)) {
         Stop-Build "Expected Windows release directory was not produced: $Release" 19
     }
 
-    $expectedExe = Join-Path $Release 'neura_drive_rebuild.exe'
-    if (Test-Path -LiteralPath $expectedExe -PathType Leaf) {
-        $Exe = $expectedExe
-    } else {
+    $expectedExeNames = @(
+        "$scaffoldProjectName.exe",
+        'neuro_companion.exe',
+        'neura_drive_rebuild.exe'
+    ) | Select-Object -Unique
+
+    foreach ($expectedExeName in $expectedExeNames) {
+        $candidateExe = Join-Path $Release $expectedExeName
+        if (Test-Path -LiteralPath $candidateExe -PathType Leaf) {
+            $Exe = $candidateExe
+            break
+        }
+    }
+    if (-not $Exe) {
         $Exe = Get-ChildItem -LiteralPath $Release -Filter '*.exe' -File -ErrorAction SilentlyContinue |
             Select-Object -First 1 -ExpandProperty FullName
     }
     if (-not $Exe -or -not (Test-Path -LiteralPath $Exe -PathType Leaf)) {
         Stop-Build "Expected Windows executable was not produced under: $Release" 20
     }
+
+    Copy-Item -LiteralPath $ToolchainManifest -Destination (Join-Path $Release 'TOOLCHAIN_MANIFEST.txt') -Force
 
     $builtUtc = (Get-Date).ToUniversalTime().ToString('o')
     $installReadme = @"
@@ -354,21 +485,25 @@ Source mode: $sourceMode
 Source: $SourceRoot
 Pubspec package: $pubspecName
 
-Install:
+Portable ZIP:
 1. Extract the complete ZIP.
 2. Keep the executable, DLLs, and data folder together.
 3. Run $([IO.Path]::GetFileName($Exe)).
 
+Installer:
+When the build was run with -BuildInstaller, use the matching
+NeuraCompanion_Setup_$safeBuildName.exe from the dist folder.
+
 This package passed dependency restore, Flutter analysis, tests (unless
 explicitly skipped), and Windows release compilation during this build.
 
-This is a portable release ZIP, not an installer.
+The installer is unsigned unless it is signed separately after compilation.
 "@
     $installReadme |
         Set-Content -LiteralPath (Join-Path $Release 'README_INSTALL.txt') -Encoding UTF8
 
     $manifest = [ordered]@{
-        schema_version = 1
+        schema_version = 2
         app = 'Neura Companion'
         build_name = $BuildName
         build_number = $BuildNumber
@@ -377,12 +512,16 @@ This is a portable release ZIP, not an installer.
         source_root = $SourceRoot
         package_root = $PackageRoot
         pubspec_name = $pubspecName
+        scaffold_project_name = $scaffoldProjectName
         dart_file_count = $dartCount
         tests_skipped = [bool]$SkipTests
         android_requested = [bool]$BuildAndroid
+        installer_requested = [bool]$BuildInstaller
         flutter_executable = $flutter
+        inno_setup_compiler = $inno
         windows_executable = [IO.Path]::GetFileName($Exe)
         staging_root = $WorkRoot
+        build_log = $Log
     }
     $manifest |
         ConvertTo-Json -Depth 5 |
@@ -401,7 +540,7 @@ This is a portable release ZIP, not an installer.
     if ($BuildAndroid) {
         $Apk = Join-Path $WorkSource 'build\app\outputs\flutter-apk\app-release.apk'
         if (-not (Test-Path -LiteralPath $Apk -PathType Leaf)) {
-            Stop-Build "Android build succeeded but the release APK was not found: $Apk" 21
+            Stop-Build "Android build succeeded but the release APK was not found: $Apk" 23
         }
 
         $ApkOut = Join-Path $Dist "NeuraCompanion_GoogleDriveRebuild_Android_$safeBuildName.apk"
@@ -410,6 +549,53 @@ This is a portable release ZIP, not an installer.
         "$ApkHash  $([IO.Path]::GetFileName($ApkOut))" |
             Set-Content -LiteralPath (Join-Path $Dist "NeuraCompanion_GoogleDriveRebuild_Android_${safeBuildName}_SHA256.txt") -Encoding ASCII
     }
+
+    if ($BuildInstaller) {
+        Step '[8/8] Compiling Neura Companion Windows installer'
+
+        $environmentNames = @(
+            'NEURA_INSTALLER_SOURCE',
+            'NEURA_INSTALLER_OUTPUT',
+            'NEURA_INSTALLER_VERSION',
+            'NEURA_INSTALLER_SAFE_VERSION',
+            'NEURA_INSTALLER_EXE'
+        )
+        $previousEnvironment = @{}
+        foreach ($name in $environmentNames) {
+            $item = Get-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
+            $previousEnvironment[$name] = [ordered]@{
+                existed = ($null -ne $item)
+                value = if ($item) { [string]$item.Value } else { $null }
+            }
+        }
+
+        try {
+            $env:NEURA_INSTALLER_SOURCE = $Release
+            $env:NEURA_INSTALLER_OUTPUT = $Dist
+            $env:NEURA_INSTALLER_VERSION = $BuildName
+            $env:NEURA_INSTALLER_SAFE_VERSION = $safeBuildName
+            $env:NEURA_INSTALLER_EXE = [IO.Path]::GetFileName($Exe)
+
+            Invoke-LoggedProcess $inno @($InstallerTemplate) $Log 'Inno Setup installer compilation failed' 24
+        } finally {
+            foreach ($name in $environmentNames) {
+                $entry = $previousEnvironment[$name]
+                Restore-EnvironmentVariable $name ([string]$entry.value) ([bool]$entry.existed)
+            }
+        }
+
+        $InstallerOut = Join-Path $Dist "NeuraCompanion_Setup_$safeBuildName.exe"
+        if (-not (Test-Path -LiteralPath $InstallerOut -PathType Leaf)) {
+            Stop-Build "Inno Setup completed but the expected installer was not found: $InstallerOut" 25
+        }
+
+        $InstallerHash = (Get-FileHash -LiteralPath $InstallerOut -Algorithm SHA256).Hash.ToLowerInvariant()
+        $InstallerHashPath = Join-Path $Dist "NeuraCompanion_Setup_${safeBuildName}_SHA256.txt"
+        "$InstallerHash  $([IO.Path]::GetFileName($InstallerOut))" |
+            Set-Content -LiteralPath $InstallerHashPath -Encoding ASCII
+    } else {
+        Step '[8/8] Installer not requested; portable ZIP is complete' DarkGray
+    }
 } finally {
     Pop-Location
 }
@@ -417,12 +603,18 @@ This is a portable release ZIP, not an installer.
 Step ''
 Step 'Native Neura build completed.' Green
 Step "  Windows ZIP : $Zip" Green
-Step "  SHA-256     : $Hash"
+Step "  ZIP SHA-256 : $Hash"
+if ($InstallerOut) {
+    Step "  Installer   : $InstallerOut" Green
+    Step "  EXE SHA-256 : $InstallerHash"
+    Step '  Signing     : unsigned; sign before public distribution' Yellow
+}
 if ($ApkOut) {
-    Step "  Android APK: $ApkOut" Green
-    Step "  APK SHA-256: $ApkHash"
+    Step "  Android APK : $ApkOut" Green
+    Step "  APK SHA-256 : $ApkHash"
 }
 Step "  Build log   : $Log"
+Step "  Toolchain   : $ToolchainManifest"
 Step "  Staging kept: $WorkRoot"
 Step ''
 exit 0
