@@ -38,3 +38,19 @@ neura_prep.bat
 
 Repair output and backups are written under `.neura_repair` and are excluded
 from source control.
+
+## Recovered-source packaging
+
+For a recovered package that contains `source\rebuilt_flutter`, or to build the
+canonical repository root from an isolated staging copy, use:
+
+```powershell
+powershell -ExecutionPolicy Bypass `
+  -File .\tools\Build-Neura-GoogleDriveRebuild.ps1 `
+  -Yes
+```
+
+The builder regenerates only missing platform scaffolds, restores the authored
+Flutter files, requires dependency/analyzer/test gates, creates a Windows
+release ZIP, and writes SHA-256 checksums. See
+`GOOGLE_DRIVE_REBUILD_BUILD.md` for the complete process and limitations.
