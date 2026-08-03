@@ -1,7 +1,0 @@
-{
-  "dependencies": {
-    "com.unity.cinemachine": "2.9.7",
-    "com.unity.timeline": "1.7.6",
-    "com.unity.textmeshpro": "3.0.9"
-  }
-}

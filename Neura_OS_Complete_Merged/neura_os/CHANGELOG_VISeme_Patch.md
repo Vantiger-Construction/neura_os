@@ -1,1 +1,0 @@
-# Viseme Patch\n\nAdds crash-safe mouth/viseme event flow + flutter_tts bridge.\n
