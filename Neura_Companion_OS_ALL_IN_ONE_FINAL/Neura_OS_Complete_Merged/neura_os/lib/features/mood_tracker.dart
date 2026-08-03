@@ -1,1 +1,0 @@
-// Full Mood Tracker implementation

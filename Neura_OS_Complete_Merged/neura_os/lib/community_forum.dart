@@ -1,1 +1,0 @@
-// Placeholder content for community_forum.dart

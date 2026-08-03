@@ -1,4 +1,0 @@
-agent-framework-azure-ai>=0.1.0.dev0
-python-dotenv>=1.0.0
-colorama>=0.4.6
-rich>=13.0.0

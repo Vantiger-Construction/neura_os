@@ -1,1 +1,0 @@
-// Full AI Companion implementation
