@@ -2,6 +2,7 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../config/supabase_config.dart';
 import '../models/journal_entry.dart';
 import 'conflict_resolution_service.dart';
 import '../startup/neura_prefs_cache.dart';
@@ -10,12 +11,20 @@ class SyncService {
   static const _kLocalKey = 'journal_entries';
   static const _kTable = 'journal_entries';
 
-  final _supabase = Supabase.instance.client;
+  // Lazy, not a field initializer: Supabase.instance.client throws if
+  // Supabase.initialize() was never called, which is the case whenever
+  // SupabaseConfig.isConfigured is false. Currently the only call site
+  // (SyncStatusScreen) is UI-gated on isConfigured, but a field initializer
+  // would crash the instant *anything* constructs SyncService() without
+  // that gate — a getter keeps that danger from being reachable at all.
+  SupabaseClient get _supabase => Supabase.instance.client;
   final _conflict = ConflictResolutionService();
 
   /// Starts sync when connectivity is available.
   /// Pushes local entries to Supabase and merges remote changes locally.
   Future<void> syncAll() async {
+    if (!SupabaseConfig.isConfigured) return;
+
     final statuses = await Connectivity().checkConnectivity();
     if (statuses.every((s) => s == ConnectivityResult.none)) return;
 
@@ -26,7 +35,7 @@ class SyncService {
       await _pushLocal(userId);
       await _pullRemote(userId);
     } catch (e) {
-      debugPrint('SyncService: error during sync — ');
+      debugPrint('SyncService: error during sync — $e');
     }
   }
 
