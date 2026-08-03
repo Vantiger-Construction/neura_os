@@ -345,7 +345,7 @@ try {
     }
 
     $builtUtc = (Get-Date).ToUniversalTime().ToString('o')
-    @"
+    $installReadme = @"
 Neura Companion - Google Drive Rebuild
 Version: $BuildName
 Build number: $BuildNumber
@@ -363,7 +363,9 @@ This package passed dependency restore, Flutter analysis, tests (unless
 explicitly skipped), and Windows release compilation during this build.
 
 This is a portable release ZIP, not an installer.
-"@ | Set-Content -LiteralPath (Join-Path $Release 'README_INSTALL.txt') -Encoding UTF8
+"@
+    $installReadme |
+        Set-Content -LiteralPath (Join-Path $Release 'README_INSTALL.txt') -Encoding UTF8
 
     $manifest = [ordered]@{
         schema_version = 1
