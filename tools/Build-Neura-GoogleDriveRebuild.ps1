@@ -120,9 +120,11 @@ function Resolve-InnoCompiler([string]$RequestedPath) {
     $common = New-Object System.Collections.Generic.List[string]
     $programFilesX86 = ${env:ProgramFiles(x86)}
     if (-not [string]::IsNullOrWhiteSpace($programFilesX86)) {
+        $common.Add((Join-Path $programFilesX86 'Inno Setup 7\ISCC.exe'))
         $common.Add((Join-Path $programFilesX86 'Inno Setup 6\ISCC.exe'))
     }
     if (-not [string]::IsNullOrWhiteSpace($env:ProgramFiles)) {
+        $common.Add((Join-Path $env:ProgramFiles 'Inno Setup 7\ISCC.exe'))
         $common.Add((Join-Path $env:ProgramFiles 'Inno Setup 6\ISCC.exe'))
     }
 
@@ -241,7 +243,7 @@ if ($BuildInstaller) {
 
     $inno = Resolve-InnoCompiler $InnoSetupPath
     if (-not $inno) {
-        Stop-Build 'Inno Setup compiler (ISCC.exe) was not found. Install Inno Setup 6 or pass -InnoSetupPath.' 22
+        Stop-Build 'Inno Setup compiler (ISCC.exe) was not found. Install Inno Setup 6.3 or newer, or pass -InnoSetupPath.' 22
     }
 }
 
@@ -353,8 +355,15 @@ Source mode: $sourceMode
 Source root: $SourceRoot
 "@ | Set-Content -LiteralPath $ToolchainManifest -Encoding UTF8
 
-    Invoke-LoggedProcess $flutter @('--version') $Log 'Flutter could not start' 11
-    (& $flutter --version *>&1) | Add-Content -LiteralPath $ToolchainManifest -Encoding UTF8
+    $flutterVersionOutput = @(& $flutter --version *>&1)
+    $flutterVersionExit = $LASTEXITCODE
+    $flutterVersionOutput |
+        Tee-Object -FilePath $Log -Append |
+        Tee-Object -FilePath $ToolchainManifest -Append |
+        Out-Host
+    if ($flutterVersionExit -ne 0) {
+        Stop-Build "Flutter could not start (exit code $flutterVersionExit)." 11
+    }
 
     Step '      Recording flutter doctor -v (diagnostic; not a release gate)'
     $doctorOutput = @(& $flutter doctor -v *>&1)
