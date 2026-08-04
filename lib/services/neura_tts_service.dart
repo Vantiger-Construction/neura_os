@@ -41,6 +41,13 @@ class NeuraTtsService {
     if (_initialized) return;
     _initialized = true;
     await NeuraFlutterTtsVisemeBridge.attach(_tts);
+    // Without this, speak()'s Future resolves as soon as speech *starts*,
+    // not when it finishes (platform-dependent default). Callers — notably
+    // the chat screen's hands-free continuous mode — await speak() and rely
+    // on it not returning until Neura is actually done talking, or the mic
+    // restarts while she's still audibly speaking and picks up her own
+    // voice through the speakers.
+    await _tts.awaitSpeakCompletion(true);
     await _tts.setSpeechRate(0.5);
     await _tts.setPitch(1.05);
     await _applySavedOrDefaultVoice();
