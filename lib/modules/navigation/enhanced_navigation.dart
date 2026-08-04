@@ -10,6 +10,7 @@ import '../../services/update_check_service.dart';
 import '../../dreams/screens/dream_show2_screen.dart';
 import '../../insights/screens/weekly_snapshot_screen.dart';
 import '../../modules/humor/joke_screen.dart';
+import '../../modules/money/money_manager_screen.dart';
 import '../../modules/therapy/therapy_path_screen.dart';
 import '../../modules/mood/mood_checkin_screen.dart';
 import '../../modules/mood/mood_history_screen.dart';
@@ -305,6 +306,12 @@ class _Dashboard extends StatelessWidget {
               title: 'Therapy Journal',
               subtitle: 'Guided CBT / DBT / ACT reflection prompts.',
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TherapyPathScreen())),
+            ),
+            _Tile(
+              icon: Icons.account_balance_wallet_outlined,
+              title: 'Money Manager',
+              subtitle: 'Track income and expenses, on-device.',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MoneyManagerScreen())),
             ),
             _Tile(
               icon: Icons.holiday_village_outlined,
