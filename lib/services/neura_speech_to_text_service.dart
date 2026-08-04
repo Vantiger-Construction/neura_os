@@ -22,11 +22,21 @@ class NeuraSpeechToTextService {
   final StreamController<String> _transcriptStream =
       StreamController.broadcast();
 
+  // WinRT's ContinuousRecognitionSession fires 'onFinal' once per completed
+  // phrase using its own built-in pause/endpoint detection — the session
+  // itself keeps listening. This stream re-exposes just that "the user
+  // finished a thought" signal (never partial hypotheses) so callers can
+  // react to it directly, e.g. to auto-send in a hands-free chat loop
+  // without requiring the user to tap "stop" themselves.
+  final StreamController<String> _finalPhraseStream =
+      StreamController.broadcast();
+
   String _finalText = '';
   bool _listening = false;
   Completer<String>? _stopCompleter;
 
   Stream<String> get transcriptStream => _transcriptStream.stream;
+  Stream<String> get finalPhraseStream => _finalPhraseStream.stream;
   bool get isListening => _listening;
 
   NeuraSpeechToTextService() {
@@ -49,6 +59,9 @@ class NeuraSpeechToTextService {
           _finalText = _finalText.isEmpty ? phrase : '$_finalText $phrase';
         }
         _transcriptStream.add(_finalText);
+        if (phrase.trim().isNotEmpty) {
+          _finalPhraseStream.add(_finalText);
+        }
         break;
       case 'onStopped':
         _listening = false;
@@ -99,5 +112,6 @@ class NeuraSpeechToTextService {
 
   Future<void> dispose() async {
     await _transcriptStream.close();
+    await _finalPhraseStream.close();
   }
 }

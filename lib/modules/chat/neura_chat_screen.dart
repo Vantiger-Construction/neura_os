@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/memory/memory_graph_service.dart';
 import '../../services/neura_ai_service.dart';
 import '../../services/neura_speech_to_text_service.dart';
 import '../../services/neura_tts_service.dart';
@@ -28,6 +29,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
 
   final NeuraSpeechToTextService _voiceInput = NeuraSpeechToTextService();
   StreamSubscription<String>? _voiceSub;
+  StreamSubscription<String>? _finalPhraseSub;
   bool _listening = false;
 
   // "Talk freely" mode: once started via the mic, Neura automatically starts
@@ -35,9 +37,16 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   // hands-free instead of needing a fresh tap to start every turn.
   bool _continuousMode = false;
 
+  // Guards against the end-of-turn handler firing twice for one listening
+  // session — WinRT's continuous recognizer can in principle deliver more
+  // than one 'onFinal' in quick succession (e.g. a multi-sentence turn)
+  // while stopRecording() is still in flight for the first one.
+  bool _turnEnding = false;
+
   @override
   void dispose() {
     _voiceSub?.cancel();
+    _finalPhraseSub?.cancel();
     unawaited(_voiceInput.dispose());
     _controller.dispose();
     _scrollController.dispose();
@@ -46,7 +55,26 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
 
   Future<void> _toggleListening() async {
     if (_listening) {
+      await _stopListeningAndSend();
+      return;
+    }
+
+    _continuousMode = true;
+    await _startListeningTurn();
+  }
+
+  /// Ends the current listening turn and sends whatever was transcribed.
+  /// Called either by the user tapping the mic again, or automatically once
+  /// [NeuraSpeechToTextService.finalPhraseStream] reports the user has
+  /// finished a thought (WinRT's own pause/endpoint detection) — that's what
+  /// makes "talk freely" mode actually hands-free instead of still requiring
+  /// a tap to end every turn.
+  Future<void> _stopListeningAndSend() async {
+    if (_turnEnding) return;
+    _turnEnding = true;
+    try {
       final text = await _voiceInput.stopRecording();
+      if (!mounted) return;
       setState(() {
         _listening = false;
         _controller.text = text;
@@ -56,11 +84,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       // Hands-free loop: turning the mic off sends straight to Neura instead
       // of leaving the transcript sitting in the box for a manual tap.
       unawaited(_send());
-      return;
+    } finally {
+      _turnEnding = false;
     }
-
-    _continuousMode = true;
-    await _startListeningTurn();
   }
 
   Future<void> _startListeningTurn() async {
@@ -74,6 +100,15 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         _controller.selection =
             TextSelection.collapsed(offset: _controller.text.length);
       });
+    });
+
+    // In continuous mode, a completed phrase means the user is done talking
+    // for this turn — end listening and send automatically rather than
+    // waiting for a manual tap on the mic button.
+    _finalPhraseSub?.cancel();
+    _finalPhraseSub = _voiceInput.finalPhraseStream.listen((_) {
+      if (!_continuousMode || !mounted) return;
+      unawaited(_stopListeningAndSend());
     });
 
     final ok = await _voiceInput.startRecording();
@@ -125,6 +160,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     });
     _scrollToEnd();
     AppLog.instance.info('chat_turn', {'user': text});
+    unawaited(_remember(isUser: true, text: text));
 
     // Skip the hardcoded opening greeting (_lines[0]) — the API requires the
     // conversation to start with a user turn, and that greeting was never
@@ -149,6 +185,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         setState(() => botLine.text += delta);
         _scrollToEnd();
       }
+      unawaited(_remember(isUser: false, text: botLine.text));
       // Awaited (not fire-and-forget): in continuous mode we must not start
       // listening again until Neura is actually done talking, or the mic
       // would pick up her own voice from the speakers.
@@ -176,11 +213,36 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       _busy = false;
     });
     _scrollToEnd();
+    unawaited(_remember(isUser: false, text: reply));
     if (_speechEnabled) {
       await NeuraTtsService.instance.speak(reply);
     }
     if (_continuousMode) {
       unawaited(_startListeningTurn());
+    }
+  }
+
+  /// Persists a real chat turn into the (encrypted, on-device)
+  /// [MemoryGraphService] — this is the app's actual conversation history,
+  /// as opposed to raw ambient audio, which Neura deliberately does not
+  /// record. Fire-and-forget: a memory-write failure must never break the
+  /// chat itself.
+  Future<void> _remember({required bool isUser, required String text}) async {
+    if (text.trim().isEmpty) return;
+    try {
+      if (isUser) {
+        await MemoryGraphService.I.logUserAction(
+          kind: 'CHAT_MESSAGE',
+          payload: {'text': text},
+        );
+      } else {
+        await MemoryGraphService.I.logSuggestion(
+          kind: 'CHAT_REPLY',
+          payload: {'text': text},
+        );
+      }
+    } catch (e) {
+      await AppLog.instance.warn('chat_memory_log_failed: $e');
     }
   }
 
