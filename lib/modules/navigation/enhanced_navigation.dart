@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../neura_shell/neura_shell.dart';
 import '../../neura_shell/models/neura_room.dart';
+import '../../services/update_check_service.dart';
 
 
 import '../../dreams/screens/dream_show2_screen.dart';
@@ -53,6 +55,27 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     // fire it. No BuildContext needed: it only writes to prefs, never shows
     // UI itself.
     unawaited(WeeklySummaristService.instance.maybeGenerateOnAppOpen());
+    _checkForUpdate();
+  }
+
+  Future<void> _checkForUpdate() async {
+    final update = await UpdateCheckService.instance.checkForUpdate();
+    if (update == null || !mounted) return;
+    ScaffoldMessenger.of(context).showMaterialBanner(
+      MaterialBanner(
+        content: Text('Neura ${update.tag} is available - you\'re on an older build.'),
+        actions: [
+          TextButton(
+            onPressed: () => launchUrl(Uri.parse(update.htmlUrl), mode: LaunchMode.externalApplication),
+            child: const Text('View'),
+          ),
+          TextButton(
+            onPressed: () => ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
+            child: const Text('Dismiss'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _openChat() {
