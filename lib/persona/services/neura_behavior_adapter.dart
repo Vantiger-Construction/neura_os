@@ -1,3 +1,4 @@
+import '../models/agent_persona.dart';
 import '../models/persona_profile.dart';
 import '../models/neura_response_style.dart';
 import '../../mood/services/mood_theme_service.dart';
@@ -8,7 +9,7 @@ class NeuraBehaviorAdapter {
   NeuraResponseStyle computeStyle({
     required PersonaProfile persona,
     required String mood,
-    String module = 'general',
+    required AgentPersona agent,
   }) {
     final moodTheme = MoodThemeService.instance.themeFor(mood);
     final difficulty = moodTheme.difficulty;
@@ -50,7 +51,7 @@ class NeuraBehaviorAdapter {
     final useDirectLanguage = persona.directness >= 0.65;
 
     final systemPromptSnippet =
-        _buildPromptSnippet(persona, mood, difficulty, toneLabel, module);
+        _buildPromptSnippet(persona, mood, difficulty, toneLabel, agent);
 
     return NeuraResponseStyle(
       toneLabel: toneLabel,
@@ -68,7 +69,7 @@ class NeuraBehaviorAdapter {
     String mood,
     String difficulty,
     String toneLabel,
-    String module,
+    AgentPersona agent,
   ) {
     final moodStr = mood.isEmpty ? 'neutral' : mood.toLowerCase();
 
@@ -117,14 +118,11 @@ class NeuraBehaviorAdapter {
             'Keep a balanced level of challenge and comfort.';
     }
 
-    final moduleHint = module.isEmpty
-        ? ''
-        : 'You are currently helping with the "$module" area of their life.';
+    final roleBullets = agent.roleInstructions.map((r) => '- $r').join('\n');
 
     return '''
-You are Neura, a personal AI companion. The user is currently in a "$moodStr" mood.
+${agent.identityPrompt} The user is currently in a "$moodStr" mood.
 $toneLabel tone.
-$moduleHint
 
 Style configuration:
 - Warmth level: ${persona.warmth.toStringAsFixed(2)}
@@ -141,6 +139,7 @@ Behavior rules:
 - $depthText
 - $energyText
 - $difficultyText
+${roleBullets.isEmpty ? '' : '\n$roleBullets'}
 
 General rules:
 - Never give harmful advice.

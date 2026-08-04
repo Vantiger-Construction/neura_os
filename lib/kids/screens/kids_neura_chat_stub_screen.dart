@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../persona/agents/agent_persona_catalog.dart';
 import '../../persona/models/neura_audience.dart';
 import '../../persona/services/neura_prompt_builder.dart';
 
@@ -35,7 +36,7 @@ class _KidsNeuraChatStubScreenState extends State<KidsNeuraChatStubScreen> {
 
     final promptBuilder = NeuraPromptBuilder.instance;
     final systemMessage = await promptBuilder.buildSystemMessage(
-      module: 'kids_mode',
+      agentId: AgentPersonaCatalog.generalId,
       audience: NeuraAudience.child,
     );
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../neura_shell/neura_shell.dart';
 import '../../neura_shell/models/neura_room.dart';
@@ -19,6 +21,7 @@ import '../../screens/monthly_dream_show_screen.dart';
 import '../../screens/dream_visualizer_screen.dart';
 import '../../screens/journal_prompt_screen.dart';
 import '../../screens/voice_journal_screen.dart';
+import '../../insights/services/weekly_summarist_service.dart';
 import '../../src/modules/legacy/legacy_deadman_service.dart';
 import '../../src/modules/legacy/legacy_home_screen.dart';
 import '../../src/modules/settings/settings.dart';
@@ -45,6 +48,11 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
       if (!mounted) return;
       LegacyDeadmanService.instance.maybePromptOnStartup(context);
     });
+    // Cadence-gated, at most once per week -- see WeeklySummaristService's
+    // doc comment for why this is the right (and only reasonable) place to
+    // fire it. No BuildContext needed: it only writes to prefs, never shows
+    // UI itself.
+    unawaited(WeeklySummaristService.instance.maybeGenerateOnAppOpen());
   }
 
   void _openChat() {

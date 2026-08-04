@@ -6,6 +6,7 @@ import '../../../../modules/human/accessibility_screen.dart';
 import '../../../../modules/human/life_snapshot_screen.dart';
 import '../../../../modules/human/persona_lab_screen.dart';
 import '../../../../modules/human/theme_screen.dart';
+import '../../../../persona/screens/agent_persona_settings_screen.dart';
 import '../../../../persona/screens/audience_settings_screen.dart';
 import '../../../../screens/avatar_selector_screen.dart';
 import '../../../../screens/help_screen.dart';
@@ -137,8 +138,19 @@ class SettingsScreen extends StatelessWidget {
           const Divider(),
           ListTile(
             leading: const Icon(Icons.tune),
-            title: const Text('Persona Lab'),
-            subtitle: const Text('Tune how Neura talks to you — tone, humor, and depth.'),
+            title: const Text("Neura's Personas"),
+            subtitle: const Text('Which specialist answers, and shared tone — warmth, humor, depth.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AgentPersonaSettingsScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.flag_outlined),
+            title: const Text('Goals & Values'),
+            subtitle: const Text('What you want more of, and what you refuse to betray.'),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const PersonaLabScreen()),

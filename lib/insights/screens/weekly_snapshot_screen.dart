@@ -7,6 +7,7 @@ import '../../modules/review/weekly_review_models.dart';
 import '../../modules/review/weekly_review_store.dart';
 import '../../weekly/widgets/weekly_life_snapshot_card.dart';
 import '../services/weekly_snapshot_export_service.dart';
+import '../widgets/weekly_narrative_card.dart';
 
 /// The single, consolidated "Weekly Snapshot" screen. Combines:
 ///  - storms/dreams/vibe summary ([WeeklyLifeSnapshotCard], from lib/weekly)
@@ -158,6 +159,8 @@ class _WeeklySnapshotScreenState extends State<WeeklySnapshotScreen> {
                 padding: const EdgeInsets.all(16.0),
                 children: [
                   const WeeklyLifeSnapshotCard(),
+                  const SizedBox(height: 16),
+                  const WeeklyNarrativeCard(),
                   const SizedBox(height: 16),
                   if (review != null) _numbersCard(review),
                   if (_trendEntries.length >= 2) ...[
