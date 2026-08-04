@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 
+import '../../../screens/ambient_recordings_screen.dart';
+import '../../../services/ambient_listening_prefs.dart';
 import '../../../services/app_lock_prefs.dart';
 import 'data_controls_screen.dart';
 import 'legal_text_screen.dart';
@@ -17,6 +19,25 @@ class PrivacyHomeScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           const Card(child: _DeviceLockToggle()),
+          const SizedBox(height: 16),
+          Card(
+            child: Column(
+              children: [
+                const _AmbientListeningToggle(),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.mic_none_outlined),
+                  title: const Text('View recorded clips'),
+                  subtitle: const Text('Play back or delete what Neura has recorded.'),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const AmbientRecordingsScreen(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 16),
           Card(
             child: Column(
@@ -136,6 +157,36 @@ class _DeviceLockToggleState extends State<_DeviceLockToggle> {
                 : supported
                     ? 'Uses your Windows PIN/password or biometrics. Off by default.'
                     : 'Not available — this device has no PIN, password, or biometrics set up.',
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// "Listen for speech and record short clips" toggle.
+///
+/// Off by default. When on, Neura's mic activates only when it hears
+/// speech (not continuously/indiscriminately) and saves a short encrypted
+/// clip; a visible indicator shows whenever a clip is actively being
+/// recorded (see AmbientRecordingBadge), and turning this off immediately
+/// stops it.
+class _AmbientListeningToggle extends StatelessWidget {
+  const _AmbientListeningToggle();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: AmbientListeningPrefsController.instance.enabled,
+      builder: (context, enabled, _) {
+        return SwitchListTile(
+          value: enabled,
+          onChanged: (v) => AmbientListeningPrefsController.instance.setEnabled(v),
+          secondary: const Icon(Icons.hearing_outlined),
+          title: const Text('Listen for speech and record clips'),
+          subtitle: const Text(
+            'Records short encrypted clips when it hears you talking. Off by default. '
+            'A visible indicator shows whenever it\'s actively recording.',
           ),
         );
       },
