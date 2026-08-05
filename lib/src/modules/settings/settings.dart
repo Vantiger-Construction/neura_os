@@ -19,6 +19,7 @@ import '../focus/focus_office_screen.dart';
 import '../legacy/legacy_home_screen.dart';
 import '../privacy/privacy_home_screen.dart';
 import '../voice/voice_lab_screen.dart';
+import '../../../../modules/memory/memory_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -80,6 +81,15 @@ class SettingsScreen extends StatelessWidget {
             subtitle: const Text('Data, backups, and what Neura does (and doesn\'t) do.'),
             onTap: () {
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PrivacyHomeScreen()));
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.psychology_outlined),
+            title: const Text('What Neura Remembers'),
+            subtitle: const Text('View, search, or clear memory from past conversations.'),
+            onTap: () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MemoryScreen()));
             },
           ),
           const Divider(),

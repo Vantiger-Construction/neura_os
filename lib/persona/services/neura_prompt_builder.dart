@@ -1,3 +1,4 @@
+import '../../core/memory/memory_graph_service.dart';
 import '../../mood/services/mood_state_service.dart';
 import '../agents/agent_persona_catalog.dart';
 import '../models/neura_audience.dart';
@@ -34,12 +35,52 @@ class NeuraPromptBuilder {
     );
   }
 
-  /// Build a suggested system message string for your LLM client.
+  /// Build a suggested system message string for your LLM client. Appends a
+  /// short recap of recent memory-graph entries so Neura can recall things
+  /// from past sessions - without this, every fresh chat screen starts from
+  /// nothing since [_lines] there is only ever in-memory.
   Future<String> buildSystemMessage({
     String agentId = AgentPersonaCatalog.generalId,
     NeuraAudience? audience,
   }) async {
     final style = await resolveStyle(agentId: agentId, audience: audience);
-    return style.systemPromptSnippet;
+    final memorySnippet = await _buildMemorySnippet();
+    if (memorySnippet.isEmpty) return style.systemPromptSnippet;
+    return '${style.systemPromptSnippet}\n\n$memorySnippet';
+  }
+
+  Future<String> _buildMemorySnippet() async {
+    try {
+      final nodes = await MemoryGraphService.I.recentNodes(limit: 8);
+      final lines = nodes
+          .map(_summarizeNode)
+          .where((s) => s.isNotEmpty)
+          .toList();
+      if (lines.isEmpty) return '';
+      return 'Relevant things you remember about this person from past '
+          'conversations (most recent first) - use naturally, don\'t just '
+          'recite this list:\n${lines.map((l) => '- $l').join('\n')}';
+    } catch (_) {
+      // Memory recall is a nice-to-have; never let it block a reply.
+      return '';
+    }
+  }
+
+  String _summarizeNode(Map<String, dynamic> node) {
+    final type = node['type'] as String? ?? '';
+    final payload = node['payload'] as Map<String, dynamic>? ?? {};
+    String truncate(String s) => s.length > 160 ? '${s.substring(0, 160)}…' : s;
+
+    if (type == 'ACTION:CHAT_MESSAGE') {
+      return 'They said: "${truncate(payload['text']?.toString() ?? '')}"';
+    }
+    if (type == 'SUGGESTION:CHAT_REPLY') {
+      return 'You replied: "${truncate(payload['text']?.toString() ?? '')}"';
+    }
+    if (type == 'ACTION:THERAPY_REFLECTION') {
+      final title = payload['promptTitle']?.toString() ?? 'a reflection';
+      return 'They reflected on "$title": ${truncate(payload['text']?.toString() ?? '')}';
+    }
+    return '';
   }
 }
