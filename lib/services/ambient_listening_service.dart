@@ -86,9 +86,16 @@ class AmbientListeningService {
   /// own voice-activity gate.
   Future<void> greetAndStartListening() async {
     try {
-      await NeuraTtsService.instance.speak(
-        "Hi. I'm Neura. I'm here if you need me.",
-      );
+      // Hard timeout: this is the first-ever proactive (not user-initiated)
+      // TTS call in the app's history. If flutter_tts's native Windows
+      // voice-init/enumeration path ever blocks the platform thread on a
+      // given machine, waiting on it unbounded here would leave the whole
+      // app appearing to hang right as the dashboard tries to render. Giving
+      // up after a few seconds means a slow/broken TTS backend degrades to
+      // "no spoken greeting" instead of "app never loads."
+      await NeuraTtsService.instance
+          .speak("Hi. I'm Neura. I'm here if you need me.")
+          .timeout(const Duration(seconds: 5));
     } catch (e) {
       await AppLog.instance.warn('ambient_greet_failed: $e');
     }

@@ -59,7 +59,20 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     // opted in under Settings > Privacy & Safety -- starts voice-activated
     // ambient listening. No BuildContext needed past this point; the
     // service only speaks (once) and writes encrypted files to disk.
-    unawaited(AmbientListeningService.instance.greetAndStartListening());
+    //
+    // Deliberately delayed a couple seconds past the first frame (not fired
+    // from the immediate postFrameCallback like the other hooks here): this
+    // is the app's first-ever *proactive* native TTS call, immediately
+    // followed by starting mic capture -- two native audio subsystems
+    // (SAPI/WinRT speech synthesis, then WASAPI capture) initializing back
+    // to back, this early in the window's lifecycle, is a combination that
+    // has never been exercised before today. Giving the window/engine a
+    // moment to fully settle after first paint avoids finding out the hard
+    // way whether that combination is safe at the literal first frame.
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      unawaited(AmbientListeningService.instance.greetAndStartListening());
+    });
     // Cadence-gated, at most once per week -- see WeeklySummaristService's
     // doc comment for why this is the right (and only reasonable) place to
     // fire it. No BuildContext needed: it only writes to prefs, never shows
