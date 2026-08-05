@@ -7,6 +7,8 @@ import '../../neura_shell/models/neura_room.dart';
 
 import '../../dreams/screens/dream_show2_screen.dart';
 import '../../insights/screens/weekly_snapshot_screen.dart';
+import '../../modules/humor/joke_screen.dart';
+import '../../modules/therapy/therapy_path_screen.dart';
 import '../../modules/mood/mood_checkin_screen.dart';
 import '../../modules/mood/mood_history_screen.dart';
 import '../../modules/pay_it_forward/pay_it_forward_screen.dart';
@@ -268,6 +270,18 @@ class _Dashboard extends StatelessWidget {
               title: 'Quest Mode',
               subtitle: 'Tiny missions to build momentum.',
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const QuestModeScreen())),
+            ),
+            _Tile(
+              icon: Icons.mood_outlined,
+              title: 'Neura Jokes',
+              subtitle: 'Need a laugh? Tap in for a joke, told out loud.',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const JokeScreen())),
+            ),
+            _Tile(
+              icon: Icons.self_improvement_outlined,
+              title: 'Therapy Journal',
+              subtitle: 'Guided CBT / DBT / ACT reflection prompts.',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TherapyPathScreen())),
             ),
             _Tile(
               icon: Icons.holiday_village_outlined,
