@@ -10,6 +10,7 @@ import '../guardrails/guardrails.dart';
 import '../guardrails/guardrails_types.dart';
 import '../guardrails/support_resources.dart';
 import '../modules/mood/mood_store.dart';
+import '../persona/agents/agent_persona_catalog.dart';
 import '../persona/models/neura_audience.dart';
 import '../persona/services/neura_audience_service.dart';
 import '../persona/services/neura_prompt_builder.dart';
@@ -47,9 +48,13 @@ class NeuraAiService {
   bool get isConfigured => _apiKey.isNotEmpty;
 
   /// Streams incremental text deltas for a reply to [history] (last entry is
-  /// the new user message). Applies Neura's persona/mood/safety system
+  /// the new user message), answering as [agentId] (see
+  /// [AgentPersonaCatalog]). Applies Neura's persona/mood/safety system
   /// prompt (see NeuraPromptBuilder) on every call.
-  Stream<String> streamReply(List<NeuraChatTurn> history) async* {
+  Stream<String> streamReply(
+    List<NeuraChatTurn> history, {
+    String agentId = AgentPersonaCatalog.generalId,
+  }) async* {
     if (!isConfigured) {
       throw StateError('ANTHROPIC_API_KEY was not set at build time.');
     }
@@ -60,7 +65,8 @@ class NeuraAiService {
       return;
     }
 
-    final systemPrompt = await NeuraPromptBuilder.instance.buildSystemMessage();
+    final systemPrompt =
+        await NeuraPromptBuilder.instance.buildSystemMessage(agentId: agentId);
 
     final request = http.Request('POST', Uri.parse(_endpoint))
       ..headers.addAll({
@@ -106,6 +112,75 @@ class NeuraAiService {
         }
       }
     }
+  }
+
+  /// One-shot, non-streaming completion for content generated internally
+  /// (not a chat reply) -- e.g. the weekly summarist. Goes through the same
+  /// guardrail + prompt-builder pipeline as [streamReply], applied twice:
+  /// once to the outgoing [userPrompt] (skips generation entirely if the
+  /// user's recent mood history alone trips a hard block) and once to the
+  /// model's own output (catches the rare case the drafted text itself
+  /// trips the same check). Unlike [streamReply] -- which returns the
+  /// guardrail's safe-alternative message inline, correct for interactive
+  /// chat -- a block here throws [NeuraGuardrailBlocked] so the caller can
+  /// simply skip showing anything, since there's no chat UI to show a
+  /// safe-alternative message in.
+  ///
+  /// [agentId] is required (no "general" default): a one-shot
+  /// content-generation call should always be explicit about which persona
+  /// is drafting.
+  Future<String> completeOnce(
+    String userPrompt, {
+    required String agentId,
+  }) async {
+    if (!isConfigured) {
+      throw StateError('ANTHROPIC_API_KEY was not set at build time.');
+    }
+
+    final syntheticRequest = [NeuraChatTurn(isUser: true, text: userPrompt)];
+    final preBlocked = await _checkGuardrails(syntheticRequest);
+    if (preBlocked != null) {
+      throw NeuraGuardrailBlocked(preBlocked);
+    }
+
+    final systemPrompt =
+        await NeuraPromptBuilder.instance.buildSystemMessage(agentId: agentId);
+
+    final response = await http.post(
+      Uri.parse(_endpoint),
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': _apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: jsonEncode({
+        'model': _model,
+        'max_tokens': _maxTokens,
+        'stream': false,
+        'system': systemPrompt,
+        'messages': syntheticRequest.map((t) => t.toJson()).toList(),
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw NeuraApiException('${response.statusCode}: ${response.body}');
+    }
+
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    final blocks = decoded['content'] as List<dynamic>? ?? const [];
+    final rawText = blocks
+        .whereType<Map<String, dynamic>>()
+        .where((b) => b['type'] == 'text')
+        .map((b) => b['text']?.toString() ?? '')
+        .join();
+
+    final syntheticReply = [NeuraChatTurn(isUser: true, text: rawText)];
+    final postBlocked = await _checkGuardrails(syntheticReply);
+    if (postBlocked != null) {
+      throw NeuraGuardrailBlocked(postBlocked);
+    }
+
+    return rawText;
   }
 
   /// Runs the outgoing user message through Guardrails before it reaches the
@@ -181,4 +256,15 @@ class NeuraApiException implements Exception {
   NeuraApiException(this.message);
   @override
   String toString() => message;
+}
+
+/// Thrown by [NeuraAiService.completeOnce] when Guardrails blocks either the
+/// outgoing prompt or the model's own drafted output. Carries the
+/// guardrail's message for logging/debugging, but callers of `completeOnce`
+/// are expected to treat this like a network failure and show nothing.
+class NeuraGuardrailBlocked implements Exception {
+  final String guardrailMessage;
+  NeuraGuardrailBlocked(this.guardrailMessage);
+  @override
+  String toString() => 'NeuraGuardrailBlocked: $guardrailMessage';
 }

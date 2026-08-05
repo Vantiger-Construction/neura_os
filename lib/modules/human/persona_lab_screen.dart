@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'human_prefs.dart';
 import 'human_prefs_controller.dart';
-import 'persona_profile.dart';
 
 class PersonaLabScreen extends StatelessWidget {
   const PersonaLabScreen({super.key});
@@ -46,61 +45,17 @@ class PersonaLabScreen extends StatelessWidget {
       builder: (context, prefs, _) {
         final p = prefs.persona;
         return Scaffold(
-          appBar: AppBar(title: const Text('Persona Lab')),
+          appBar: AppBar(title: const Text('Goals & Values')),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
               const Text(
-                'Tune how Neura talks to you. Nothing here leaves your device.\n'
-                'Move sliders until Neura feels like a useful co-pilot instead of a motivational poster.',
+                'What you want more of, and what you refuse to betray. '
+                'Nothing here leaves your device.\n'
+                'Looking to tune how Neura talks? That moved to '
+                "Settings → Neura's Personas.",
               ),
               const SizedBox(height: 16),
-              _SliderRow(
-                label: 'Directness',
-                left: 'Gentle',
-                right: 'Blunt',
-                value: p.directness,
-                onChanged: (v) => HumanPrefsController.instance.update(
-                  prefs.copyWith(persona: p.copyWith(directness: v)),
-                ),
-              ),
-              _SliderRow(
-                label: 'Humor',
-                left: 'Serious',
-                right: 'Jokey',
-                value: p.humor,
-                onChanged: (v) => HumanPrefsController.instance.update(
-                  prefs.copyWith(persona: p.copyWith(humor: v)),
-                ),
-              ),
-              _SliderRow(
-                label: 'Energy',
-                left: 'Calm',
-                right: 'Hype',
-                value: p.energy,
-                onChanged: (v) => HumanPrefsController.instance.update(
-                  prefs.copyWith(persona: p.copyWith(energy: v)),
-                ),
-              ),
-              _SliderRow(
-                label: 'Depth',
-                left: 'Simple',
-                right: 'Deep',
-                value: p.depth,
-                onChanged: (v) => HumanPrefsController.instance.update(
-                  prefs.copyWith(persona: p.copyWith(depth: v)),
-                ),
-              ),
-              _SliderRow(
-                label: 'Pacing',
-                left: 'Slow',
-                right: 'Fast',
-                value: p.pacing,
-                onChanged: (v) => HumanPrefsController.instance.update(
-                  prefs.copyWith(persona: p.copyWith(pacing: v)),
-                ),
-              ),
-              const SizedBox(height: 14),
               _ChipsSection(
                 title: 'Goals (what you want more of)',
                 chips: p.goals,
@@ -134,76 +89,10 @@ class PersonaLabScreen extends StatelessWidget {
                   HumanPrefsController.instance.update(prefs.copyWith(persona: p.copyWith(values: list)));
                 },
               ),
-              const SizedBox(height: 18),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Preview', style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 8),
-                      Text(_preview(p)),
-                    ],
-                  ),
-                ),
-              ),
             ],
           ),
         );
       },
-    );
-  }
-
-  String _preview(PersonaProfile p) {
-    final blunt = p.directness > 0.65;
-    final jokey = p.humor > 0.65;
-    final deep = p.depth > 0.65;
-    final calm = p.energy < 0.35;
-
-    final a = blunt ? 'Here\'s the deal' : 'Okay';
-    final b = calm ? 'Let\'s take one slow step.' : 'We\'re moving.';
-    final c = jokey ? 'No shame, just science.' : 'No shame.';
-    final d = deep ? 'What belief is steering the ship right now?' : 'What\'s the next right action?';
-
-    return '$a — $b $c $d';
-  }
-}
-
-class _SliderRow extends StatelessWidget {
-  final String label;
-  final String left;
-  final String right;
-  final double value;
-  final ValueChanged<double> onChanged;
-
-  const _SliderRow({
-    required this.label,
-    required this.left,
-    required this.right,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: Theme.of(context).textTheme.titleMedium),
-            Row(
-              children: [
-                Expanded(child: Text(left, style: Theme.of(context).textTheme.bodySmall)),
-                Expanded(child: Text(right, textAlign: TextAlign.right, style: Theme.of(context).textTheme.bodySmall)),
-              ],
-            ),
-            Slider(value: value, onChanged: onChanged),
-          ],
-        ),
-      ),
     );
   }
 }

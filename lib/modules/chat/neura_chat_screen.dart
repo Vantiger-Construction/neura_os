@@ -3,6 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/memory/memory_graph_service.dart';
+import '../../neura_shell/neura_shell.dart';
+import '../../persona/agents/agent_persona_catalog.dart';
+import '../../persona/models/agent_persona.dart';
+import '../../persona/services/agent_selection_service.dart';
 import '../../services/neura_ai_service.dart';
 import '../../services/neura_speech_to_text_service.dart';
 import '../../services/neura_tts_service.dart';
@@ -43,6 +47,26 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   // while stopRecording() is still in flight for the first one.
   bool _turnEnding = false;
 
+  // Defaults to General synchronously so the first frame has something
+  // sensible to show; _initAgent() resolves the real room-based default (or
+  // a persisted explicit override) right after.
+  AgentPersona _activeAgent = AgentPersonaCatalog.general;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_initAgent());
+  }
+
+  Future<void> _initAgent() async {
+    await AgentSelectionService.instance.load();
+    if (!mounted) return;
+    final room = NeuraShell.of(context).room;
+    setState(() {
+      _activeAgent = AgentSelectionService.instance.resolveAgent(room);
+    });
+  }
+
   @override
   void dispose() {
     _voiceSub?.cancel();
@@ -51,6 +75,57 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  // Sentinel distinguishing an explicit "Auto" tap (clears the override)
+  // from the sheet being dismissed without a choice (barrier tap, back
+  // button) — both of those pop with null, which means "no change".
+  static const _autoSentinel = '__auto__';
+
+  Future<void> _openAgentPicker() async {
+    final selected = await showModalBottomSheet<String?>(
+      context: context,
+      builder: (sheetContext) {
+        final room = NeuraShell.of(context).room;
+        final auto = AgentSelectionService.instance.isAuto;
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.auto_mode),
+                title: const Text('Auto'),
+                subtitle: Text('Matches ${room.title}'),
+                trailing: auto ? const Icon(Icons.check) : null,
+                onTap: () => Navigator.of(sheetContext).pop(_autoSentinel),
+              ),
+              const Divider(height: 1),
+              for (final agent in AgentPersonaCatalog.all)
+                if (!agent.isInternal)
+                  ListTile(
+                    leading: Icon(agent.icon),
+                    title: Text(agent.displayName),
+                    subtitle: Text(agent.tagline),
+                    trailing: (!auto && _activeAgent.id == agent.id)
+                        ? const Icon(Icons.check)
+                        : null,
+                    onTap: () => Navigator.of(sheetContext).pop(agent.id),
+                  ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (selected == null) return; // dismissed without choosing
+    await AgentSelectionService.instance.setExplicitAgent(
+      selected == _autoSentinel ? null : selected,
+    );
+    if (!mounted) return;
+    final room = NeuraShell.of(context).room;
+    setState(() {
+      _activeAgent = AgentSelectionService.instance.resolveAgent(room);
+    });
   }
 
   Future<void> _toggleListening() async {
@@ -176,12 +251,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       return;
     }
 
-    final botLine = _ChatLine.bot('');
+    final botLine = _ChatLine.bot('', agentId: _activeAgent.id);
     setState(() => _lines.add(botLine));
     _scrollToEnd();
 
     try {
-      await for (final delta in NeuraAiService.instance.streamReply(history)) {
+      await for (final delta in NeuraAiService.instance
+          .streamReply(history, agentId: _activeAgent.id)) {
         setState(() => botLine.text += delta);
         _scrollToEnd();
       }
@@ -257,7 +333,19 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Neura Chat'),
+        title: InkWell(
+          onTap: _openAgentPicker,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(_activeAgent.icon, size: 20),
+              const SizedBox(width: 8),
+              Text(_activeAgent.displayName),
+              const SizedBox(width: 4),
+              const Icon(Icons.expand_more, size: 20),
+            ],
+          ),
+        ),
         actions: [
           if (_continuousMode)
             IconButton(
@@ -286,17 +374,54 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
                 final color = line.isUser
                     ? Colors.blueGrey.shade700
                     : Colors.grey.shade900;
+
+                // Only caption a bot line with "who answered" when the agent
+                // differs from the previous bot line -- avoids repeating the
+                // same label on every turn of an unbroken single-agent run.
+                String? agentCaption;
+                if (!line.isUser && line.agentId != null) {
+                  _ChatLine? prevBotLine;
+                  for (var j = i - 1; j >= 0; j--) {
+                    if (!_lines[j].isUser) {
+                      prevBotLine = _lines[j];
+                      break;
+                    }
+                  }
+                  if (prevBotLine?.agentId != line.agentId) {
+                    agentCaption =
+                        AgentPersonaCatalog.byId(line.agentId!).displayName;
+                  }
+                }
+
                 return Align(
                   alignment: align,
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    padding: const EdgeInsets.all(12),
-                    constraints: const BoxConstraints(maxWidth: 560),
-                    decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Text(line.text.isEmpty ? '…' : line.text),
+                  child: Column(
+                    crossAxisAlignment: line.isUser
+                        ? CrossAxisAlignment.end
+                        : CrossAxisAlignment.start,
+                    children: [
+                      if (agentCaption != null)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4, bottom: 2),
+                          child: Text(
+                            agentCaption,
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(color: Colors.white70),
+                          ),
+                        ),
+                      Container(
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        padding: const EdgeInsets.all(12),
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Text(line.text.isEmpty ? '…' : line.text),
+                      ),
+                    ],
                   ),
                 );
               },
@@ -351,7 +476,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
 class _ChatLine {
   final bool isUser;
   String text;
-  _ChatLine(this.isUser, this.text);
+  final String? agentId;
+  _ChatLine(this.isUser, this.text, {this.agentId});
   factory _ChatLine.user(String t) => _ChatLine(true, t);
-  factory _ChatLine.bot(String t) => _ChatLine(false, t);
+  factory _ChatLine.bot(String t, {String? agentId}) =>
+      _ChatLine(false, t, agentId: agentId);
 }

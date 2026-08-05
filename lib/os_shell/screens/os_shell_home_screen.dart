@@ -5,7 +5,7 @@ import '../../weekly/widgets/weekly_life_snapshot_card.dart';
 import '../../dreams/screens/dream_theater_screen.dart';
 import '../../care/screens/care_mode_home_screen.dart';
 import '../../after_storm/screens/after_storm_screen.dart';
-import '../../persona/screens/persona_tuning_screen.dart';
+import '../../persona/screens/agent_persona_settings_screen.dart';
 import '../../kids/screens/kids_mode_home_screen.dart';
 import '../../mirror/screens/mirror_mode_screen.dart';
 import '../../joy_engine/joy_engine.dart';
@@ -115,12 +115,12 @@ class OsShellHomeScreen extends StatelessWidget {
                 ),
                 NeuraOsRoomCard(
                   icon: Icons.tune,
-                  title: 'Persona Lab',
-                  subtitle: 'Tune how Neura talks, jokes, and coaches you.',
+                  title: "Neura's Personas",
+                  subtitle: 'Which specialist answers, and how Neura talks, jokes, and coaches you.',
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => const PersonaTuningScreen(),
+                        builder: (_) => const AgentPersonaSettingsScreen(),
                       ),
                     );
                   },
