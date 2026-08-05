@@ -27,7 +27,9 @@ import '../../screens/dream_visualizer_screen.dart';
 import '../../screens/journal_prompt_screen.dart';
 import '../../screens/voice_journal_screen.dart';
 import '../../insights/services/weekly_summarist_service.dart';
+import '../../services/ambient_listening_service.dart';
 import '../../src/modules/legacy/legacy_deadman_service.dart';
+import '../../widgets/ambient_recording_badge.dart';
 import '../../src/modules/legacy/legacy_home_screen.dart';
 import '../../src/modules/settings/settings.dart';
 import '../chat/neura_chat_screen.dart';
@@ -53,6 +55,11 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
       if (!mounted) return;
       LegacyDeadmanService.instance.maybePromptOnStartup(context);
     });
+    // Speaks a short greeting once per launch, then -- only if the user has
+    // opted in under Settings > Privacy & Safety -- starts voice-activated
+    // ambient listening. No BuildContext needed past this point; the
+    // service only speaks (once) and writes encrypted files to disk.
+    unawaited(AmbientListeningService.instance.greetAndStartListening());
     // Cadence-gated, at most once per week -- see WeeklySummaristService's
     // doc comment for why this is the right (and only reasonable) place to
     // fire it. No BuildContext needed: it only writes to prefs, never shows
@@ -128,7 +135,12 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     ];
 
     return Scaffold(
-      body: SafeArea(child: IndexedStack(index: _index, children: pages)),
+      body: Stack(
+        children: [
+          SafeArea(child: IndexedStack(index: _index, children: pages)),
+          const AmbientRecordingBadge(),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openChat,
         icon: const Icon(Icons.chat_bubble_outline),
