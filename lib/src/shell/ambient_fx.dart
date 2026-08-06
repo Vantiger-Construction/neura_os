@@ -68,7 +68,23 @@ class _Orb {
   final double speed;
   final double phase;
 
-  const _Orb({required this.x, required this.y, required this.radius, required this.speed, required this.phase});
+  _Orb({required this.x, required this.y, required this.radius, required this.speed, required this.phase});
+
+  // radius never changes after construction, so the shader can be built once
+  // (centered at the origin) and repositioned per frame via canvas.translate
+  // instead of rebuilding a RadialGradient every repaint.
+  Paint? _paint;
+  Paint get paint {
+    return _paint ??= Paint()
+      ..shader = RadialGradient(
+        colors: [
+          Colors.cyanAccent.withValues(alpha: 0.05),
+          Colors.deepPurpleAccent.withValues(alpha: 0.03),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.35, 1.0],
+      ).createShader(Rect.fromCircle(center: Offset.zero, radius: radius));
+  }
 }
 
 class _AmbientPainter extends CustomPainter {
@@ -107,17 +123,10 @@ class _AmbientPainter extends CustomPainter {
       final dx = (o.x * size.width) + sin((t * 2 * pi * o.speed) + o.phase) * 60;
       final dy = (o.y * size.height) + cos((t * 2 * pi * o.speed) + o.phase) * 60;
 
-      final core = Paint()
-        ..shader = RadialGradient(
-          colors: [
-            Colors.cyanAccent.withValues(alpha: 0.05),
-            Colors.deepPurpleAccent.withValues(alpha: 0.03),
-            Colors.transparent,
-          ],
-          stops: const [0.0, 0.35, 1.0],
-        ).createShader(Rect.fromCircle(center: Offset(dx, dy), radius: o.radius));
-
-      canvas.drawCircle(Offset(dx, dy), o.radius, core);
+      canvas.save();
+      canvas.translate(dx, dy);
+      canvas.drawCircle(Offset.zero, o.radius, o.paint);
+      canvas.restore();
     }
   }
 
