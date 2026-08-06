@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../core/memory/memory_crypto.dart';
+import '../mascot/mascot_window_service.dart';
 import '../modules/core/app_log.dart';
 import 'ambient_listening_prefs.dart';
 import 'neura_tts_service.dart';
@@ -85,6 +86,15 @@ class AmbientListeningService {
   /// Neura's own voice through the speakers doesn't immediately trip her
   /// own voice-activity gate.
   Future<void> greetAndStartListening() async {
+    // Wait for the mascot window's own native engine/window creation to
+    // settle first. Confirmed via crash reproduction (Windows Error
+    // Reporting: flutter_tts_plugin.dll, exception 0xC0000005) that firing
+    // this app's first proactive TTS call while that second engine is still
+    // spinning up crashes the process outright -- a plain delay isn't
+    // enough to avoid this since the mascot window's own creation time
+    // varies. See MascotWindowService.initialCreationSettled.
+    await MascotWindowService.I.initialCreationSettled;
+
     try {
       // Hard timeout: this is the first-ever proactive (not user-initiated)
       // TTS call in the app's history. If flutter_tts's native Windows
