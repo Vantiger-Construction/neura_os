@@ -10,8 +10,15 @@ class AppLog {
   AppLog._();
   static final AppLog instance = AppLog._();
 
+  // Without a cap this file grows forever across every launch in the app's
+  // history (observed 1.4GB+ in the wild). Rotate to a single `.old` backup
+  // once the live file crosses this size.
+  static const int _maxBytes = 10 * 1024 * 1024;
+  static const int _sizeCheckInterval = 500;
+
   File? _file;
   bool _init = false;
+  int _writesSinceSizeCheck = 0;
 
   Future<void> init() async {
     if (_init) return;
@@ -25,11 +32,30 @@ class AppLog {
       _file = File('${logDir.path}/neura.log.ndjson');
       if (!await _file!.exists()) {
         await _file!.create(recursive: true);
+      } else {
+        await _rotateIfOversized();
       }
       await info('log_init', {'path': _file!.path});
     } catch (_) {
       // If logging can't initialize, do NOT crash the app.
       _file = null;
+    }
+  }
+
+  Future<void> _rotateIfOversized() async {
+    final file = _file;
+    if (file == null) return;
+    try {
+      if (await file.length() <= _maxBytes) return;
+      final path = file.path;
+      final old = File('$path.old');
+      if (await old.exists()) {
+        await old.delete();
+      }
+      await file.rename(old.path);
+      _file = File(path)..createSync(recursive: true);
+    } catch (_) {
+      // Best effort -- keep appending to the existing file rather than lose logging.
     }
   }
 
@@ -56,6 +82,10 @@ class AppLog {
         'data': data,
       };
       await _file!.writeAsString('${jsonEncode(payload)}\n', mode: FileMode.append, flush: false);
+      if (++_writesSinceSizeCheck >= _sizeCheckInterval) {
+        _writesSinceSizeCheck = 0;
+        await _rotateIfOversized();
+      }
     } catch (_) {
       // Nope.
     }
