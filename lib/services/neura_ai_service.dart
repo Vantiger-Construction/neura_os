@@ -9,6 +9,7 @@ import '../care/services/care_mode_bridge.dart';
 import '../guardrails/guardrails.dart';
 import '../guardrails/guardrails_types.dart';
 import '../guardrails/support_resources.dart';
+import '../modules/mood/mood_models.dart';
 import '../modules/mood/mood_store.dart';
 import '../persona/agents/agent_persona_catalog.dart';
 import '../persona/models/neura_audience.dart';
@@ -19,15 +20,42 @@ import '../src/modules/focus/focus_controller.dart';
 import '../src/modules/focus/focus_mode.dart';
 
 /// One turn in the conversation, in the shape the Messages API expects.
+/// A user turn may optionally carry an image (base64-encoded) for vision.
 class NeuraChatTurn {
   final bool isUser;
   final String text;
-  const NeuraChatTurn({required this.isUser, required this.text});
+  final String? imageBase64;
+  final String? imageMediaType;
 
-  Map<String, dynamic> toJson() => {
+  const NeuraChatTurn({
+    required this.isUser,
+    required this.text,
+    this.imageBase64,
+    this.imageMediaType,
+  });
+
+  Map<String, dynamic> toJson() {
+    if (imageBase64 == null) {
+      return {
         'role': isUser ? 'user' : 'assistant',
         'content': text,
       };
+    }
+    return {
+      'role': isUser ? 'user' : 'assistant',
+      'content': [
+        {
+          'type': 'image',
+          'source': {
+            'type': 'base64',
+            'media_type': imageMediaType ?? 'image/jpeg',
+            'data': imageBase64,
+          },
+        },
+        if (text.isNotEmpty) {'type': 'text', 'text': text},
+      ],
+    };
+  }
 }
 
 /// Raw HTTP client for the Anthropic Messages API — there is no official
@@ -36,21 +64,83 @@ class NeuraChatTurn {
 ///
 /// The API key is baked into this beta build via --dart-define at build
 /// time (ANTHROPIC_API_KEY), not committed to source control.
+///
+/// Model: Claude Sonnet 5. Supports tool use (Neura can read/log the user's
+/// mood via [_tools]), vision (photos attached to a chat turn), and prompt
+/// caching (the system prompt is marked cacheable to cut repeat-turn cost).
 class NeuraAiService {
   NeuraAiService._();
   static final NeuraAiService instance = NeuraAiService._();
 
   static const _apiKey = String.fromEnvironment('ANTHROPIC_API_KEY');
-  static const _model = 'claude-opus-4-8';
-  static const _maxTokens = 1024;
+  static const _model = 'claude-sonnet-5';
+  static const _maxTokens = 2048;
   static const _endpoint = 'https://api.anthropic.com/v1/messages';
 
+  /// Safety cap on tool-use round trips within a single reply, so a
+  /// misbehaving tool loop can't spin forever.
+  static const _maxToolRounds = 4;
+
+  static const _tools = [
+    {
+      'name': 'get_mood_history',
+      'description':
+          "Get the user's recent mood check-in history (timestamp, 0-10 "
+          'mood score, and note). Call this when the user asks about their '
+          'mood history, trends, or wants a summary of how they have been '
+          'feeling recently.',
+      'input_schema': {
+        'type': 'object',
+        'properties': {
+          'limit': {
+            'type': 'integer',
+            'description':
+                'Max number of most recent entries to return. Defaults to 10.',
+          },
+        },
+        'required': <String>[],
+      },
+    },
+    {
+      'name': 'log_mood_entry',
+      'description':
+          'Record a new mood check-in for the user. Call this when the user '
+          "explicitly describes today's mood/feeling as a check-in they want "
+          "saved (e.g. \"I'm about a 7 today\", \"log that I'm anxious\") — "
+          'not for every passing mention of an emotion in conversation.',
+      'input_schema': {
+        'type': 'object',
+        'properties': {
+          'mood0to10': {
+            'type': 'integer',
+            'description': 'Mood rating from 0 (worst) to 10 (best).',
+          },
+          'note': {
+            'type': 'string',
+            'description': 'Short note describing the mood or context.',
+          },
+        },
+        'required': ['mood0to10'],
+      },
+    },
+  ];
+
   bool get isConfigured => _apiKey.isNotEmpty;
+
+  static List<Map<String, dynamic>> _systemBlock(String systemPrompt) => [
+        {
+          'type': 'text',
+          'text': systemPrompt,
+          'cache_control': {'type': 'ephemeral'},
+        },
+      ];
 
   /// Streams incremental text deltas for a reply to [history] (last entry is
   /// the new user message), answering as [agentId] (see
   /// [AgentPersonaCatalog]). Applies Neura's persona/mood/safety system
-  /// prompt (see NeuraPromptBuilder) on every call.
+  /// prompt (see NeuraPromptBuilder) on every call. Transparently runs any
+  /// tool calls the model makes (see [_tools]) and continues streaming the
+  /// follow-up reply.
   Stream<String> streamReply(
     List<NeuraChatTurn> history, {
     String agentId = AgentPersonaCatalog.generalId,
@@ -68,6 +158,56 @@ class NeuraAiService {
     final systemPrompt =
         await NeuraPromptBuilder.instance.buildSystemMessage(agentId: agentId);
 
+    final messages = history.map((t) => t.toJson()).toList();
+
+    var toolRounds = 0;
+    while (true) {
+      List<Map<String, dynamic>>? finishedBlocks;
+      var stopReason = 'end_turn';
+
+      await for (final event in _streamOneTurn(systemPrompt, messages)) {
+        if (event is _TextDelta) {
+          yield event.text;
+        } else if (event is _TurnComplete) {
+          finishedBlocks = event.contentBlocks;
+          stopReason = event.stopReason;
+        }
+      }
+
+      final blocks = finishedBlocks;
+      if (stopReason != 'tool_use' || blocks == null || blocks.isEmpty) {
+        break;
+      }
+      if (++toolRounds > _maxToolRounds) break;
+
+      messages.add({'role': 'assistant', 'content': blocks});
+
+      final toolResults = <Map<String, dynamic>>[];
+      for (final block in blocks) {
+        if (block['type'] != 'tool_use') continue;
+        final resultText = await _executeTool(
+          block['name'] as String,
+          (block['input'] as Map<String, dynamic>?) ?? const {},
+        );
+        toolResults.add({
+          'type': 'tool_result',
+          'tool_use_id': block['id'],
+          'content': resultText,
+        });
+      }
+      if (toolResults.isEmpty) break;
+      messages.add({'role': 'user', 'content': toolResults});
+    }
+  }
+
+  /// Runs one streamed turn against the Messages API and yields text deltas
+  /// as they arrive, finishing with a [_TurnComplete] carrying every content
+  /// block (needed to replay the assistant turn verbatim if a tool was
+  /// called) and the response's stop reason.
+  Stream<_StreamEvent> _streamOneTurn(
+    String systemPrompt,
+    List<Map<String, dynamic>> messages,
+  ) async* {
     final request = http.Request('POST', Uri.parse(_endpoint))
       ..headers.addAll({
         'content-type': 'application/json',
@@ -78,8 +218,13 @@ class NeuraAiService {
         'model': _model,
         'max_tokens': _maxTokens,
         'stream': true,
-        'system': systemPrompt,
-        'messages': history.map((t) => t.toJson()).toList(),
+        // Chat replies favor low latency over deliberation; tool selection
+        // doesn't need extended reasoning for a fixed 2-tool surface.
+        'thinking': {'type': 'disabled'},
+        'output_config': {'effort': 'low'},
+        'system': _systemBlock(systemPrompt),
+        'tools': _tools,
+        'messages': messages,
       });
 
     final streamedResponse = await http.Client().send(request);
@@ -87,6 +232,10 @@ class NeuraAiService {
       final body = await streamedResponse.stream.bytesToString();
       throw NeuraApiException('${streamedResponse.statusCode}: $body');
     }
+
+    final blocksByIndex = <int, Map<String, dynamic>>{};
+    final toolInputBuffers = <int, StringBuffer>{};
+    var stopReason = 'end_turn';
 
     var buffer = '';
     await for (final chunk in streamedResponse.stream.transform(utf8.decoder)) {
@@ -101,16 +250,105 @@ class NeuraAiService {
         if (data.isEmpty) continue;
 
         final event = jsonDecode(data) as Map<String, dynamic>;
-        if (event['type'] == 'content_block_delta') {
-          final delta = event['delta'] as Map<String, dynamic>?;
-          if (delta?['type'] == 'text_delta') {
-            yield delta!['text'] as String;
-          }
-        } else if (event['type'] == 'error') {
-          final error = event['error'] as Map<String, dynamic>?;
-          throw NeuraApiException(error?['message']?.toString() ?? 'Unknown API error');
+        switch (event['type']) {
+          case 'content_block_start':
+            final index = event['index'] as int;
+            final block = event['content_block'] as Map<String, dynamic>;
+            blocksByIndex[index] = Map<String, dynamic>.from(block);
+            if (block['type'] == 'tool_use') {
+              toolInputBuffers[index] = StringBuffer();
+            }
+            break;
+
+          case 'content_block_delta':
+            final index = event['index'] as int;
+            final delta = event['delta'] as Map<String, dynamic>?;
+            if (delta?['type'] == 'text_delta') {
+              final text = delta!['text'] as String;
+              final block = blocksByIndex[index];
+              if (block != null && block['type'] == 'text') {
+                block['text'] = (block['text'] as String? ?? '') + text;
+              }
+              yield _TextDelta(text);
+            } else if (delta?['type'] == 'input_json_delta') {
+              toolInputBuffers[index]
+                  ?.write(delta!['partial_json'] as String? ?? '');
+            }
+            break;
+
+          case 'content_block_stop':
+            final index = event['index'] as int;
+            final inputBuffer = toolInputBuffers[index];
+            if (inputBuffer != null) {
+              var input = <String, dynamic>{};
+              final raw = inputBuffer.toString();
+              if (raw.trim().isNotEmpty) {
+                try {
+                  input = jsonDecode(raw) as Map<String, dynamic>;
+                } catch (_) {
+                  // Malformed tool input JSON — leave it empty; the tool
+                  // executor below will simply see no arguments.
+                }
+              }
+              blocksByIndex[index]?['input'] = input;
+            }
+            break;
+
+          case 'message_delta':
+            final delta = event['delta'] as Map<String, dynamic>?;
+            final reason = delta?['stop_reason'];
+            if (reason != null) stopReason = reason as String;
+            break;
+
+          case 'error':
+            final error = event['error'] as Map<String, dynamic>?;
+            throw NeuraApiException(
+                error?['message']?.toString() ?? 'Unknown API error');
         }
       }
+    }
+
+    final orderedIndices = blocksByIndex.keys.toList()..sort();
+    final contentBlocks =
+        orderedIndices.map((i) => blocksByIndex[i]!).toList();
+    yield _TurnComplete(contentBlocks, stopReason);
+  }
+
+  /// Executes a tool call by name, returning the text to send back as the
+  /// tool_result content. Never throws — a failure becomes an error string
+  /// the model can react to instead of breaking the conversation.
+  Future<String> _executeTool(String name, Map<String, dynamic> input) async {
+    try {
+      switch (name) {
+        case 'get_mood_history':
+          final limit = (input['limit'] as num?)?.toInt() ?? 10;
+          final entries = await MoodStore.instance.getAll();
+          final recent =
+              entries.length > limit ? entries.sublist(entries.length - limit) : entries;
+          if (recent.isEmpty) return 'No mood entries recorded yet.';
+          return recent
+              .map((e) =>
+                  '${e.timestamp.toIso8601String()}: mood ${e.mood0to10}/10'
+                  '${e.note.isEmpty ? '' : ' — ${e.note}'}')
+              .join('\n');
+
+        case 'log_mood_entry':
+          final moodRaw = input['mood0to10'];
+          if (moodRaw is! num) {
+            return 'Tool error: mood0to10 is required.';
+          }
+          final mood = moodRaw.round().clamp(0, 10);
+          final note = (input['note'] as String?) ?? '';
+          await MoodStore.instance.add(
+            MoodEntry(timestamp: DateTime.now(), mood0to10: mood, note: note),
+          );
+          return 'Logged mood $mood/10${note.isEmpty ? '' : ' — $note'}.';
+
+        default:
+          return 'Unknown tool: $name';
+      }
+    } catch (e) {
+      return 'Tool error: $e';
     }
   }
 
@@ -157,7 +395,9 @@ class NeuraAiService {
         'model': _model,
         'max_tokens': _maxTokens,
         'stream': false,
-        'system': systemPrompt,
+        'thinking': {'type': 'disabled'},
+        'output_config': {'effort': 'low'},
+        'system': _systemBlock(systemPrompt),
         'messages': syntheticRequest.map((t) => t.toJson()).toList(),
       }),
     );
@@ -249,6 +489,20 @@ class NeuraAiService {
     }
     return message;
   }
+}
+
+/// Internal event type streamed out of [NeuraAiService._streamOneTurn].
+abstract class _StreamEvent {}
+
+class _TextDelta extends _StreamEvent {
+  final String text;
+  _TextDelta(this.text);
+}
+
+class _TurnComplete extends _StreamEvent {
+  final List<Map<String, dynamic>> contentBlocks;
+  final String stopReason;
+  _TurnComplete(this.contentBlocks, this.stopReason);
 }
 
 class NeuraApiException implements Exception {
