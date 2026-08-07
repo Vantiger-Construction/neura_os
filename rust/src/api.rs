@@ -50,7 +50,7 @@ pub async fn review_and_extract(
     SwarmOutcome::from(outcome)
 }
 
-/// FFI-friendly mirror of [`crate::orchestrator::SwarmOutcome`] -- kept as a
+/// FFI-friendly mirror of [`crate::orchestrator::AgentResults`] -- kept as a
 /// separate type (rather than exposing the internal one directly) so the
 /// Rust-internal orchestrator/agent modules stay free to evolve without
 /// touching the generated Dart API surface.
@@ -69,8 +69,8 @@ pub struct SwarmFact {
     pub kind: String,
 }
 
-impl From<orchestrator::SwarmOutcome> for SwarmOutcome {
-    fn from(o: orchestrator::SwarmOutcome) -> Self {
+impl From<orchestrator::AgentResults> for SwarmOutcome {
+    fn from(o: orchestrator::AgentResults) -> Self {
         SwarmOutcome {
             verdict: match o.verdict {
                 CriticVerdict::Pass => SwarmVerdict::Pass,

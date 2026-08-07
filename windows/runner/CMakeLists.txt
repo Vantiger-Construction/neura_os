@@ -80,8 +80,8 @@ if(NOT CARGO_EXE)
     message(FATAL_ERROR "cargo not found -- install Rust (https://rustup.rs) to build neura_swarm.")
 endif()
 
-set(NEURA_SWARM_MANIFEST "${CMAKE_SOURCE_DIR}/../../rust/Cargo.toml")
-set(NEURA_SWARM_DLL "${CMAKE_SOURCE_DIR}/../../rust/target/release/neura_swarm.dll")
+set(NEURA_SWARM_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/../../rust/Cargo.toml")
+set(NEURA_SWARM_DLL "${CMAKE_CURRENT_SOURCE_DIR}/../../rust/target/release/neura_swarm.dll")
 
 add_custom_target(neura_swarm_rust ALL
         COMMAND ${CARGO_EXE} build --release --manifest-path "${NEURA_SWARM_MANIFEST}"

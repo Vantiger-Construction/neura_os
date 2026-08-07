@@ -6,7 +6,7 @@
 use crate::agents::critic::{self, CriticVerdict};
 use crate::agents::memory::{self, MemoryFact};
 
-pub struct SwarmOutcome {
+pub struct AgentResults {
     pub verdict: CriticVerdict,
     pub facts: Vec<MemoryFact>,
 }
@@ -23,13 +23,13 @@ pub async fn handle_turn(
     transcript: &str,
     draft_reply: &str,
     user_message: &str,
-) -> SwarmOutcome {
+) -> AgentResults {
     let critic_fut = critic::review(base_url, api_key, transcript, draft_reply);
     let memory_fut = memory::extract(base_url, api_key, user_message, draft_reply);
 
     let (critic_result, memory_result) = tokio::join!(critic_fut, memory_fut);
 
-    SwarmOutcome {
+    AgentResults {
         verdict: critic_result.unwrap_or(CriticVerdict::Pass),
         facts: memory_result.unwrap_or_default(),
     }
