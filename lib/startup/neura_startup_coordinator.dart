@@ -15,6 +15,7 @@ import '../services/wake_word_prefs.dart';
 import '../notifications/neura_notifications_prefs.dart';
 import '../notifications/neura_notifications_service.dart';
 import '../services/app_lock_prefs.dart';
+import '../services/neura_swarm_service.dart';
 import '../services/neura_tts_service.dart';
 import '../services/neura_voice_pack.dart';
 import '../src/modules/focus/focus_controller.dart';
@@ -102,6 +103,15 @@ class NeuraStartupCoordinator {
     // native access violation kills the process outright, it isn't
     // something Dart exception handling can intercept.
     await _safe(() => NeuraTtsService.instance.warmUp(), 'TtsWarmup');
+
+    // 6b – Rust swarm (critic + memory agents) -- same API key already
+    // baked into the build for NeuraAiService, forwarded once so the
+    // native library never needs its own build-time secret.
+    await _safe(
+      () => NeuraSwarmService.instance
+          .init(const String.fromEnvironment('ANTHROPIC_API_KEY')),
+      'SwarmInit',
+    );
 
     // 7 – Room / memory runtime
     _emit('Loading memory…', 0.80);

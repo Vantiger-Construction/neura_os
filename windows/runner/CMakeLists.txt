@@ -69,3 +69,32 @@ target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
+
+# --- Rust swarm library (neura_swarm) --------------------------------------
+# Loaded directly from Dart via flutter_rust_bridge FFI (dart:ffi), not
+# through a Flutter plugin or method channel like neura_speech_recognizer
+# above -- so no plugin registration here, it just needs to exist next to
+# the exe at runtime.
+find_program(CARGO_EXE NAMES cargo)
+if(NOT CARGO_EXE)
+    message(FATAL_ERROR "cargo not found -- install Rust (https://rustup.rs) to build neura_swarm.")
+endif()
+
+set(NEURA_SWARM_MANIFEST "${CMAKE_SOURCE_DIR}/../../rust/Cargo.toml")
+set(NEURA_SWARM_DLL "${CMAKE_SOURCE_DIR}/../../rust/target/release/neura_swarm.dll")
+
+add_custom_target(neura_swarm_rust ALL
+        COMMAND ${CARGO_EXE} build --release --manifest-path "${NEURA_SWARM_MANIFEST}"
+        BYPRODUCTS "${NEURA_SWARM_DLL}"
+        COMMENT "Building neura_swarm (Rust)"
+        VERBATIM
+)
+
+add_dependencies(${BINARY_NAME} neura_swarm_rust)
+
+add_custom_command(TARGET ${BINARY_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${NEURA_SWARM_DLL}"
+                "$<TARGET_FILE_DIR:${BINARY_NAME}>"
+        COMMENT "Copying neura_swarm.dll next to ${BINARY_NAME}"
+)
