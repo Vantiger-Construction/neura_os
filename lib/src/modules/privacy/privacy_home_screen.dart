@@ -4,6 +4,8 @@ import 'package:local_auth/local_auth.dart';
 import '../../../screens/ambient_recordings_screen.dart';
 import '../../../services/ambient_listening_prefs.dart';
 import '../../../services/app_lock_prefs.dart';
+import '../../../services/wake_word_prefs.dart';
+import '../../../services/wake_word_listener_service.dart';
 import 'data_controls_screen.dart';
 import 'legal_text_screen.dart';
 import 'privacy_texts.dart';
@@ -38,6 +40,8 @@ class PrivacyHomeScreen extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          const Card(child: _WakeWordToggle()),
           const SizedBox(height: 16),
           Card(
             child: Column(
@@ -187,6 +191,42 @@ class _AmbientListeningToggle extends StatelessWidget {
           subtitle: const Text(
             'Records short encrypted clips when it hears you talking. Off by default. '
             'A visible indicator shows whenever it\'s actively recording.',
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// "Hey Neura" hands-free wake phrase toggle.
+///
+/// Off by default. When on, Neura continuously transcribes speech (a
+/// different privacy model from the raw-audio clip recording above) and,
+/// once she hears "Hey Neura", sends whatever follows to the AI and speaks
+/// the reply -- a full chat turn, hands-free.
+class _WakeWordToggle extends StatelessWidget {
+  const _WakeWordToggle();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: WakeWordPrefsController.instance.enabled,
+      builder: (context, enabled, _) {
+        return SwitchListTile(
+          value: enabled,
+          onChanged: (v) async {
+            await WakeWordPrefsController.instance.setEnabled(v);
+            if (v) {
+              await WakeWordListenerService.instance.start();
+            } else {
+              await WakeWordListenerService.instance.stop();
+            }
+          },
+          secondary: const Icon(Icons.record_voice_over_outlined),
+          title: const Text('"Hey Neura" hands-free wake phrase'),
+          subtitle: const Text(
+            'Continuously listens for "Hey Neura" and starts a spoken conversation '
+            'when she hears it. Off by default.',
           ),
         );
       },

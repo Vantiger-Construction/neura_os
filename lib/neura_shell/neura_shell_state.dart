@@ -1,6 +1,7 @@
 ﻿import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import '../mascot/mascot_event_bridge.dart';
 import '../mascot/mascot_window_service.dart';
 import '../neura_runtime/neura_bus.dart';
 import 'models/neura_room.dart';
@@ -86,6 +87,7 @@ class NeuraShellState extends ChangeNotifier {
       await completer.future;
     }
     await MascotWindowService.I.init(visible: _showAvatar);
+    MascotEventBridge.instance.start();
   }
 
   Future<void> setRoom(NeuraRoom room) async {

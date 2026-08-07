@@ -12,6 +12,7 @@ import '../../persona/services/agent_selection_service.dart';
 import '../../services/neura_ai_service.dart';
 import '../../services/neura_speech_to_text_service.dart';
 import '../../services/neura_tts_service.dart';
+import '../../services/wake_word_listener_service.dart';
 import '../core/ai_engine.dart';
 import '../core/app_log.dart';
 
@@ -33,7 +34,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   bool _speechEnabled = true;
   bool _busy = false;
 
-  final NeuraSpeechToTextService _voiceInput = NeuraSpeechToTextService();
+  final NeuraSpeechToTextService _voiceInput = NeuraSpeechToTextService.instance;
   final ImagePicker _imagePicker = ImagePicker();
   StreamSubscription<String>? _voiceSub;
   StreamSubscription<String>? _finalPhraseSub;
@@ -59,6 +60,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   void initState() {
     super.initState();
     unawaited(_initAgent());
+    // Both this screen's own mic button and the wake-word listener share the
+    // one NeuraSpeechToTextService singleton -- pause the listener's
+    // reactions while this screen owns the mic to avoid the same phrase
+    // being processed by both at once. Resumed on dispose below.
+    WakeWordListenerService.instance.pause();
   }
 
   Future<void> _initAgent() async {
@@ -74,7 +80,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   void dispose() {
     _voiceSub?.cancel();
     _finalPhraseSub?.cancel();
-    unawaited(_voiceInput.dispose());
+    // _voiceInput is a shared singleton now (other features, e.g. the
+    // wake-word listener, may also use it) -- stop listening if this screen
+    // left a session running, but never dispose the shared instance.
+    if (_listening) {
+      unawaited(_voiceInput.stopRecording());
+    }
+    unawaited(WakeWordListenerService.instance.resume());
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();

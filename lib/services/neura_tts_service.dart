@@ -37,6 +37,10 @@ class NeuraTtsService {
   /// highlight the active choice).
   String? get selectedVoiceName => _selectedVoiceName;
 
+  /// Forces the native TTS engine to initialize now, without speaking
+  /// anything -- see call site in NeuraStartupCoordinator for why.
+  Future<void> warmUp() => _ensureInit();
+
   Future<void> _ensureInit() async {
     if (_initialized) return;
     _initialized = true;

@@ -59,6 +59,19 @@ class _MascotHomeState extends State<_MascotHome>
 
   Timer? _idleGestureTimer;
 
+  // Driven by events forwarded from the main engine via
+  // MascotEventBridge/MascotWindowService.sendEvent -- see onEventFromWindow
+  // below. Best-effort/visual-only: never treated as authoritative state.
+  bool _thinking = false;
+  bool _talking = false;
+  double _mood = 0.0; // -1..1
+  double _energy = 0.4; // 0..1
+
+  late final AnimationController _pulseController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
   @override
   void initState() {
     super.initState();
@@ -79,6 +92,69 @@ class _MascotHomeState extends State<_MascotHome>
   void _playNotice() {
     _notice.forward(from: 0).then((_) {
       if (mounted) _notice.reverse();
+    });
+  }
+
+  @override
+  Future<dynamic> onEventFromWindow(
+      String eventName, int fromWindowId, dynamic arguments) async {
+    if (eventName != 'neura_state') return null;
+    try {
+      final args = Map<String, dynamic>.from(arguments as Map);
+      if (args['v'] != 1) return null; // unknown payload version, ignore
+      final kind = args['kind'] as String?;
+      switch (kind) {
+        case 'thinking':
+          _setThinking(args['on'] as bool? ?? false);
+          break;
+        case 'talking':
+          _setTalking(args['on'] as bool? ?? false);
+          break;
+        case 'mood':
+          if (!mounted) break;
+          setState(() {
+            _mood = ((args['mood'] as num?) ?? _mood).toDouble().clamp(-1.0, 1.0);
+            _energy = ((args['energy'] as num?) ?? _energy).toDouble().clamp(0.0, 1.0);
+          });
+          break;
+        case 'pulse':
+          _firePulse();
+          break;
+      }
+    } catch (_) {
+      // Malformed/unexpected payload -- ignore, this is a visual hint only.
+    }
+    return null;
+  }
+
+  void _setThinking(bool value) {
+    if (!mounted || _thinking == value) return;
+    setState(() => _thinking = value);
+    if (value) {
+      _pulseController.repeat(reverse: true);
+    } else if (!_talking) {
+      _pulseController.stop();
+      _pulseController.animateTo(0, duration: const Duration(milliseconds: 300));
+    }
+  }
+
+  void _setTalking(bool value) {
+    if (!mounted || _talking == value) return;
+    setState(() => _talking = value);
+    if (value) {
+      _pulseController.repeat(reverse: true);
+    } else if (!_thinking) {
+      _pulseController.stop();
+      _pulseController.animateTo(0, duration: const Duration(milliseconds: 300));
+    }
+  }
+
+  void _firePulse() {
+    if (!mounted) return;
+    _pulseController.forward(from: 0).then((_) {
+      if (mounted && !_thinking && !_talking) {
+        _pulseController.animateTo(0, duration: const Duration(milliseconds: 300));
+      }
     });
   }
 
@@ -128,6 +204,7 @@ class _MascotHomeState extends State<_MascotHome>
     _life.dispose();
     _entrance.dispose();
     _notice.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -143,6 +220,14 @@ class _MascotHomeState extends State<_MascotHome>
     await prefs.setDouble(_kPosYKey, pos.dy);
   }
 
+  /// Warm gold for a positive mood, cool blue for a negative one -- purely a
+  /// visual hint, not a claim about the user's actual state.
+  Color get _glowColor => Color.lerp(
+        const Color(0xFF64B5F6),
+        const Color(0xFFFFD54F),
+        (_mood + 1) / 2,
+      )!;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -156,7 +241,8 @@ class _MascotHomeState extends State<_MascotHome>
           // the window edge (the OS window itself doesn't resize).
           padding: const EdgeInsets.fromLTRB(18, 26, 18, 12),
           child: AnimatedBuilder(
-            animation: Listenable.merge([_life, _entrance, _notice]),
+            animation:
+                Listenable.merge([_life, _entrance, _notice, _pulseController]),
             builder: (context, _) {
               final t = _life.value * 2 * math.pi;
               final breathe = 1.0 + 0.02 * math.sin(t);
@@ -164,7 +250,7 @@ class _MascotHomeState extends State<_MascotHome>
               // doesn't repeat in lockstep and reads as organic, not robotic.
               final swayDeg = 1.4 * math.sin(t * 0.5 + 1.0);
               final bobY = 3.5 * math.sin(t * 0.7);
-              final glowAlpha = 0.05 + 0.035 * (0.5 + 0.5 * math.sin(t * 0.9));
+              final idleGlowAlpha = 0.05 + 0.035 * (0.5 + 0.5 * math.sin(t * 0.9));
 
               final noticeT = Curves.easeOutBack.transform(_notice.value);
               final noticeScale = 1.0 + 0.1 * math.sin(noticeT * math.pi);
@@ -180,7 +266,7 @@ class _MascotHomeState extends State<_MascotHome>
                     angle: (swayDeg + noticeTiltDeg) * math.pi / 180,
                     child: Transform.scale(
                       scale: breathe * noticeScale * (0.92 + 0.08 * entranceT),
-                      child: _buildBody(context, glowAlpha),
+                      child: _buildBody(context, idleGlowAlpha),
                     ),
                   ),
                 ),
@@ -192,15 +278,24 @@ class _MascotHomeState extends State<_MascotHome>
     );
   }
 
-  Widget _buildBody(BuildContext context, double glowAlpha) {
+  Widget _buildBody(BuildContext context, double idleGlowAlpha) {
+    final active = _thinking || _talking;
+    final pt = _pulseController.value;
+    final pulseGlowStrength = active ? (0.25 + 0.35 * pt) * (0.5 + _energy) : 0.0;
     return DecoratedBox(
       decoration: BoxDecoration(
         boxShadow: [
           BoxShadow(
-            color: Colors.white.withValues(alpha: glowAlpha),
+            color: Colors.white.withValues(alpha: idleGlowAlpha),
             blurRadius: 46,
             spreadRadius: 8,
           ),
+          if (pulseGlowStrength > 0)
+            BoxShadow(
+              color: _glowColor.withValues(alpha: pulseGlowStrength.clamp(0.0, 1.0)),
+              blurRadius: 30 + 20 * pt,
+              spreadRadius: 4 + 6 * pt,
+            ),
         ],
       ),
       child: Image.asset(

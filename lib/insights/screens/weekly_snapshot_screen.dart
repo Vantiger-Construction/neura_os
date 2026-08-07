@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../modules/mood/mood_models.dart';
 import '../../modules/mood/mood_store.dart';
 import '../../modules/review/weekly_review_models.dart';
+import '../../modules/review/weekly_review_screen.dart';
 import '../../modules/review/weekly_review_store.dart';
 import '../../weekly/widgets/weekly_life_snapshot_card.dart';
 import '../services/weekly_snapshot_export_service.dart';
@@ -158,6 +159,16 @@ class _WeeklySnapshotScreenState extends State<WeeklySnapshotScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16.0),
                 children: [
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const WeeklyReviewScreen()),
+                      ),
+                      icon: const Icon(Icons.history_outlined),
+                      label: const Text('View history & notes →'),
+                    ),
+                  ),
                   const WeeklyLifeSnapshotCard(),
                   const SizedBox(height: 16),
                   const WeeklyNarrativeCard(),

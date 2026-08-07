@@ -1,9 +1,16 @@
+import '../core/memory/memory_graph_service.dart';
 import 'joy_types.dart';
 
-/// Local-only metrics hook (wire into Memory Graph if desired).
 class JoyMetrics {
   Future<void> logResult(JoyMoment moment, {required String result}) async {
-    // TODO: integrate with encrypted memory graph:
-    // createNode(type: 'JoyMoment', payload: {moment.id, result}, outcome: result)
+    try {
+      await MemoryGraphService.I.logSuggestion(
+        kind: 'JOY_MOMENT',
+        payload: {'id': moment.id, 'title': moment.title, 'type': moment.type.name},
+        outcome: result,
+      );
+    } catch (_) {
+      // Metrics are a nice-to-have; never let a log failure surface to the UI.
+    }
   }
 }
