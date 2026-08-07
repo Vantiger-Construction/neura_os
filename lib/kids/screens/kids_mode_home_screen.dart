@@ -3,6 +3,7 @@
 import '../services/kids_game_library_service.dart';
 import 'breathing_game_screen.dart';
 import 'gratitude_stars_screen.dart';
+import 'kids_neura_chat_screen.dart';
 
 class KidsModeHomeScreen extends StatefulWidget {
   const KidsModeHomeScreen({super.key});
@@ -56,6 +57,22 @@ class _KidsModeHomeScreenState extends State<KidsModeHomeScreen> {
               'Kids Mode is for gentle, age-appropriate interactions.\n'
               'Neura avoids heavy topics, hard language, and adult content here.',
               style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            const SizedBox(height: 16),
+            // Always available regardless of _kidLock -- that toggle guards
+            // access to Parent Controls/edit mode, not core kid-safe
+            // features. Chat's real safety gate is inside the screen itself
+            // (forces the global audience to `child` for its lifetime).
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.chat_bubble_outline),
+                title: const Text('Talk to Neura'),
+                subtitle: const Text('A safe, kid-friendly chat.'),
+                trailing: const Icon(Icons.play_arrow),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const KidsNeuraChatScreen()),
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             const Text(

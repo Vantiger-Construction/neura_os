@@ -16,6 +16,12 @@ import '../modules/core/app_log.dart';
 /// startRecording / stopRecording / dispose) so callers can be swapped
 /// between the two without changing call sites.
 class NeuraSpeechToTextService {
+  // The underlying MethodChannel maps to a single native WinRT recognizer
+  // session -- setMethodCallHandler can only safely have one owner. A second
+  // instance would silently steal another owner's native callbacks (see the
+  // wake-word listener, which needs to share this with the chat screen).
+  static final NeuraSpeechToTextService instance = NeuraSpeechToTextService._();
+
   static const MethodChannel _channel =
       MethodChannel('neura/speech_recognition');
 
@@ -39,7 +45,7 @@ class NeuraSpeechToTextService {
   Stream<String> get finalPhraseStream => _finalPhraseStream.stream;
   bool get isListening => _listening;
 
-  NeuraSpeechToTextService() {
+  NeuraSpeechToTextService._() {
     _channel.setMethodCallHandler(_handleNativeCall);
   }
 
@@ -110,8 +116,9 @@ class NeuraSpeechToTextService {
     );
   }
 
-  Future<void> dispose() async {
-    await _transcriptStream.close();
-    await _finalPhraseStream.close();
-  }
+  // Deliberately no dispose() -- this is a permanent app-lifetime singleton
+  // (multiple features share the one underlying native recognizer session),
+  // so closing its StreamControllers would break it for every other owner.
+  // Callers that stop "owning" the mic (e.g. a screen closing) should call
+  // stopRecording() instead.
 }

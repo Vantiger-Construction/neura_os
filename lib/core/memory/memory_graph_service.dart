@@ -131,6 +131,94 @@ class MemoryGraphService {
     return out.reversed.toList();
   }
 
+  /// Nodes older than [cutoff], most-recent-of-the-matched-set first is NOT
+  /// guaranteed -- returned in original (chronological, oldest-first) file
+  /// order, capped to the last [limit] matches before [cutoff] so a long
+  /// history doesn't mean decrypting the entire file. Read-only; unlike
+  /// [recentNodes] (tail-of-file, always-recent), this is what
+  /// long-range features (memory consolidation, recap export) should use.
+  Future<List<Map<String, dynamic>>> nodesOlderThan(DateTime cutoff, {int limit = 200}) async {
+    final crypto = await _ensureCrypto();
+    final f = await _nodesFile();
+    if (!f.existsSync()) return [];
+
+    final lines = await f.readAsLines();
+    final matched = <String>[];
+    for (final line in lines) {
+      if (line.trim().isEmpty) continue;
+      try {
+        final m = jsonDecode(line) as Map<String, dynamic>;
+        final ts = DateTime.tryParse(m['ts'] as String? ?? '');
+        if (ts == null || !ts.isBefore(cutoff)) continue;
+        matched.add(line);
+      } catch (_) {
+        // Skip corrupt lines.
+      }
+    }
+
+    final tail = matched.length <= limit ? matched : matched.sublist(matched.length - limit);
+    final out = <Map<String, dynamic>>[];
+    for (final line in tail) {
+      try {
+        final m = jsonDecode(line) as Map<String, dynamic>;
+        final dec = await crypto.decryptJson(m['encryptedPayload'] as String);
+        out.add({
+          'id': m['id'],
+          'type': m['type'],
+          'ts': m['ts'],
+          'outcome': m['outcome'],
+          'payload': dec,
+        });
+      } catch (_) {
+        // Skip corrupt lines.
+      }
+    }
+    return out;
+  }
+
+  /// Nodes with `ts` inside `[start, end)`, chronological (oldest-first)
+  /// order, capped to the last [limit] matches -- same O(n) ts-only scan
+  /// before decrypting as [nodesOlderThan]. For recap-style features that
+  /// need a bounded date window rather than "everything before a cutoff".
+  Future<List<Map<String, dynamic>>> nodesBetween(DateTime start, DateTime end, {int limit = 500}) async {
+    final crypto = await _ensureCrypto();
+    final f = await _nodesFile();
+    if (!f.existsSync()) return [];
+
+    final lines = await f.readAsLines();
+    final matched = <String>[];
+    for (final line in lines) {
+      if (line.trim().isEmpty) continue;
+      try {
+        final m = jsonDecode(line) as Map<String, dynamic>;
+        final ts = DateTime.tryParse(m['ts'] as String? ?? '');
+        if (ts == null || ts.isBefore(start) || !ts.isBefore(end)) continue;
+        matched.add(line);
+      } catch (_) {
+        // Skip corrupt lines.
+      }
+    }
+
+    final tail = matched.length <= limit ? matched : matched.sublist(matched.length - limit);
+    final out = <Map<String, dynamic>>[];
+    for (final line in tail) {
+      try {
+        final m = jsonDecode(line) as Map<String, dynamic>;
+        final dec = await crypto.decryptJson(m['encryptedPayload'] as String);
+        out.add({
+          'id': m['id'],
+          'type': m['type'],
+          'ts': m['ts'],
+          'outcome': m['outcome'],
+          'payload': dec,
+        });
+      } catch (_) {
+        // Skip corrupt lines.
+      }
+    }
+    return out;
+  }
+
   Future<void> resetAll() async {
     final nf = await _nodesFile();
     final ef = await _edgesFile();

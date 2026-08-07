@@ -101,12 +101,36 @@ class AgentPersonaCatalog {
     isInternal: true,
   );
 
+  /// Internal-only -- drafts the long-term memory profile snippet consumed
+  /// by [NeuraPromptBuilder]. Never shown in the user-facing chat picker.
+  static const memoryConsolidator = AgentPersona(
+    id: 'memory_consolidator',
+    displayName: 'Memory Consolidator',
+    tagline: 'Summarizes what you remember about the user',
+    icon: Icons.history_edu_outlined,
+    identityPrompt:
+        'You are Neura, privately summarizing what you know about this '
+        'user from past conversations so you can recall it later. You are '
+        'not chatting -- do not address the reader, do not ask questions.',
+    roleInstructions: [
+      'Write a short third-person summary (3-6 sentences) of stable facts, '
+          'interests, ongoing concerns, and relationships mentioned in the '
+          'conversation excerpts given to you.',
+      'Never invent details not present in the given excerpts.',
+      'Prefer durable facts over one-off remarks -- skip anything that '
+          'reads like a passing mood rather than something worth '
+          'remembering weeks from now.',
+    ],
+    isInternal: true,
+  );
+
   static const List<AgentPersona> all = [
     general,
     moodCoach,
     journalPrompter,
     legacyVaultAssistant,
     weeklySummarist,
+    memoryConsolidator,
   ];
 
   static AgentPersona byId(String id) {

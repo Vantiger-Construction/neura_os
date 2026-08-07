@@ -20,6 +20,7 @@ import '../legacy/legacy_home_screen.dart';
 import '../privacy/privacy_home_screen.dart';
 import '../voice/voice_lab_screen.dart';
 import '../../../../modules/memory/memory_screen.dart';
+import '../../../../notifications/notifications_settings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -208,6 +209,17 @@ class SettingsScreen extends StatelessWidget {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.notifications_outlined),
+            title: const Text('Notifications'),
+            subtitle: const Text('Weekly review, Legacy check-ins, and a daily mood nudge.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const NotificationsSettingsScreen()),
               );
             },
           ),

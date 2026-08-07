@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../insights/screens/weekly_snapshot_screen.dart';
 import '../../widgets/neura_explain.dart';
 import '../coach/coach_models.dart';
 import '../coach/coach_store.dart';
@@ -135,7 +136,7 @@ class _WeeklyReviewScreenState extends State<WeeklyReviewScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Weekly Review'),
+        title: const Text('Weekly Review — History & Notes'),
         actions: [
           IconButton(icon: const Icon(Icons.help_outline), onPressed: () => showNeuraExplain(context, spec: explain)),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
@@ -151,6 +152,16 @@ class _WeeklyReviewScreenState extends State<WeeklyReviewScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const WeeklySnapshotScreen()),
+                    ),
+                    icon: const Icon(Icons.insights_outlined),
+                    label: const Text("This week's full snapshot →"),
+                  ),
+                ),
                 if (_latest == null)
                   Card(
                     child: ListTile(

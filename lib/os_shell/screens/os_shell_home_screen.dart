@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../../dashboard/widgets/proactive_banner_card.dart';
+import '../../joy_engine/joy_metrics.dart';
 import '../../mood/widgets/mood_adaptive_container.dart';
 import '../../weekly/widgets/weekly_life_snapshot_card.dart';
 import '../../dreams/screens/dream_theater_screen.dart';
 import '../../care/screens/care_mode_home_screen.dart';
 import '../../after_storm/screens/after_storm_screen.dart';
 import '../../persona/screens/agent_persona_settings_screen.dart';
+import '../../recap/screens/neura_recap_screen.dart';
 import '../../kids/screens/kids_mode_home_screen.dart';
 import '../../mirror/screens/mirror_mode_screen.dart';
 import '../../joy_engine/joy_engine.dart';
@@ -55,6 +58,8 @@ class OsShellHomeScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const ProactiveBannerCard(),
+                const SizedBox(height: 16),
                 const WeeklyLifeSnapshotCard(),
                 const SizedBox(height: 16),
                 const Text(
@@ -146,12 +151,16 @@ class OsShellHomeScreen extends StatelessWidget {
                     final mood = _mapMood(MoodStateService.instance.currentMood);
                     final moment = JoyEngine().pickMoment(mood);
                     if (!context.mounted) return;
-                    Navigator.of(context).push(
+                    final result = await Navigator.of(context).push<Map<String, dynamic>>(
                       MaterialPageRoute(
                         builder: (_) => const NeuraJoyScreen(),
                         settings: RouteSettings(arguments: moment),
                       ),
                     );
+                    final outcome = result?['result'] as String?;
+                    if (outcome != null) {
+                      await JoyMetrics().logResult(moment, result: outcome);
+                    }
                   },
                 ),
                 NeuraOsRoomCard(
@@ -174,6 +183,18 @@ class OsShellHomeScreen extends StatelessWidget {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => const PromisesListScreen(),
+                      ),
+                    );
+                  },
+                ),
+                NeuraOsRoomCard(
+                  icon: Icons.auto_awesome_mosaic_outlined,
+                  title: 'Neura Recap',
+                  subtitle: 'Monthly/yearly highlights, shareable as a PDF.',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const NeuraRecapScreen(),
                       ),
                     );
                   },

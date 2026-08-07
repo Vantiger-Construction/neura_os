@@ -1,3 +1,4 @@
+import '../../core/memory/memory_consolidation_service.dart';
 import '../../core/memory/memory_graph_service.dart';
 import '../../mood/services/mood_state_service.dart';
 import '../agents/agent_persona_catalog.dart';
@@ -44,9 +45,21 @@ class NeuraPromptBuilder {
     NeuraAudience? audience,
   }) async {
     final style = await resolveStyle(agentId: agentId, audience: audience);
+    final profileSnippet = await _buildProfileSnippet();
     final memorySnippet = await _buildMemorySnippet();
-    if (memorySnippet.isEmpty) return style.systemPromptSnippet;
-    return '${style.systemPromptSnippet}\n\n$memorySnippet';
+
+    final parts = [style.systemPromptSnippet, profileSnippet, memorySnippet]
+        .where((s) => s.isNotEmpty);
+    return parts.join('\n\n');
+  }
+
+  Future<String> _buildProfileSnippet() async {
+    try {
+      return await MemoryConsolidationService.instance.currentProfileSnippet();
+    } catch (_) {
+      // Long-term profile recall is a nice-to-have; never let it block a reply.
+      return '';
+    }
   }
 
   Future<String> _buildMemorySnippet() async {

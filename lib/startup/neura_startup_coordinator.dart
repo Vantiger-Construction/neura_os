@@ -11,7 +11,11 @@ import '../modules/human/human_prefs_controller.dart';
 import '../modules/humor/joke_prefs_controller.dart';
 import '../neura_runtime/neura_runtime_controller.dart';
 import '../services/ambient_listening_prefs.dart';
+import '../services/wake_word_prefs.dart';
+import '../notifications/neura_notifications_prefs.dart';
+import '../notifications/neura_notifications_service.dart';
 import '../services/app_lock_prefs.dart';
+import '../services/neura_tts_service.dart';
 import '../services/neura_voice_pack.dart';
 import '../src/modules/focus/focus_controller.dart';
 import '../src/shell/shell_prefs.dart';
@@ -72,6 +76,9 @@ class NeuraStartupCoordinator {
     await _safe(AppLockPrefsController.instance.init, 'AppLockPrefs');
     await _safe(JokePrefsController.instance.init, 'JokePrefs');
     await _safe(AmbientListeningPrefsController.instance.init, 'AmbientListeningPrefs');
+    await _safe(WakeWordPrefsController.instance.init, 'WakeWordPrefs');
+    await _safe(NeuraNotificationsPrefsController.instance.init, 'NotificationsPrefs');
+    await _safe(NeuraNotificationsService.instance.init, 'NotificationsService');
 
     // 5 – Avatar runtime (in-memory, essentially instant)
     _emit('Waking Neura avatar…', 0.50);
@@ -81,6 +88,20 @@ class NeuraStartupCoordinator {
     // e.g. VoiceLabScreen's mic toggle — not held open continuously from boot).
     _emit('Preparing voice…', 0.65);
     await _safe(() => NeuraVoicePack.I.init(enableMic: false), 'VoicePack');
+    // Forces flutter_tts's native engine to initialize now, while nothing
+    // else native is starting up yet -- root-caused via crash reproduction
+    // (Windows Error Reporting: flutter_tts_plugin.dll, exception
+    // 0xC0000005, 100% reproducible) that this native init crashing the
+    // whole process when it happens to be the *first* TTS call AND the
+    // mascot window's own separate engine is concurrently spinning up (see
+    // MascotWindowService, which only starts once `ready` below flips true
+    // -- strictly after this line). By the time AmbientListeningService's
+    // proactive greeting calls speak() later, the engine is already warm
+    // and this is no longer that first, fragile call. A Dart try/catch
+    // around the later speak() call was never able to prevent this -- a
+    // native access violation kills the process outright, it isn't
+    // something Dart exception handling can intercept.
+    await _safe(() => NeuraTtsService.instance.warmUp(), 'TtsWarmup');
 
     // 7 – Room / memory runtime
     _emit('Loading memory…', 0.80);

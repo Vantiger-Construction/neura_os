@@ -31,14 +31,91 @@ class _MascotHome extends StatefulWidget {
   State<_MascotHome> createState() => _MascotHomeState();
 }
 
-class _MascotHomeState extends State<_MascotHome> with WindowListener {
+class _MascotHomeState extends State<_MascotHome>
+    with WindowListener, SingleTickerProviderStateMixin {
   WindowManagerPlus get _wm => WindowManagerPlus.current;
+
+  // Driven by events forwarded from the main engine via
+  // MascotEventBridge/MascotWindowService.sendEvent -- see onEventFromWindow
+  // below. Best-effort/visual-only: never treated as authoritative state.
+  bool _thinking = false;
+  bool _talking = false;
+  double _mood = 0.0; // -1..1
+  double _energy = 0.4; // 0..1
+
+  late final AnimationController _pulseController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
 
   @override
   void initState() {
     super.initState();
     _wm.addListener(this);
     _setup();
+  }
+
+  @override
+  Future<dynamic> onEventFromWindow(
+      String eventName, int fromWindowId, dynamic arguments) async {
+    if (eventName != 'neura_state') return null;
+    try {
+      final args = Map<String, dynamic>.from(arguments as Map);
+      if (args['v'] != 1) return null; // unknown payload version, ignore
+      final kind = args['kind'] as String?;
+      switch (kind) {
+        case 'thinking':
+          _setThinking(args['on'] as bool? ?? false);
+          break;
+        case 'talking':
+          _setTalking(args['on'] as bool? ?? false);
+          break;
+        case 'mood':
+          if (!mounted) break;
+          setState(() {
+            _mood = ((args['mood'] as num?) ?? _mood).toDouble().clamp(-1.0, 1.0);
+            _energy = ((args['energy'] as num?) ?? _energy).toDouble().clamp(0.0, 1.0);
+          });
+          break;
+        case 'pulse':
+          _firePulse();
+          break;
+      }
+    } catch (_) {
+      // Malformed/unexpected payload -- ignore, this is a visual hint only.
+    }
+    return null;
+  }
+
+  void _setThinking(bool value) {
+    if (!mounted || _thinking == value) return;
+    setState(() => _thinking = value);
+    if (value) {
+      _pulseController.repeat(reverse: true);
+    } else if (!_talking) {
+      _pulseController.stop();
+      _pulseController.animateTo(0, duration: const Duration(milliseconds: 300));
+    }
+  }
+
+  void _setTalking(bool value) {
+    if (!mounted || _talking == value) return;
+    setState(() => _talking = value);
+    if (value) {
+      _pulseController.repeat(reverse: true);
+    } else if (!_thinking) {
+      _pulseController.stop();
+      _pulseController.animateTo(0, duration: const Duration(milliseconds: 300));
+    }
+  }
+
+  void _firePulse() {
+    if (!mounted) return;
+    _pulseController.forward(from: 0).then((_) {
+      if (mounted && !_thinking && !_talking) {
+        _pulseController.animateTo(0, duration: const Duration(milliseconds: 300));
+      }
+    });
   }
 
   Future<void> _setup() async {
@@ -83,6 +160,7 @@ class _MascotHomeState extends State<_MascotHome> with WindowListener {
   @override
   void dispose() {
     _wm.removeListener(this);
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -98,6 +176,14 @@ class _MascotHomeState extends State<_MascotHome> with WindowListener {
     await prefs.setDouble(_kPosYKey, pos.dy);
   }
 
+  /// Warm gold for a positive mood, cool blue for a negative one -- purely a
+  /// visual hint, not a claim about the user's actual state.
+  Color get _glowColor => Color.lerp(
+        const Color(0xFF64B5F6),
+        const Color(0xFFFFD54F),
+        (_mood + 1) / 2,
+      )!;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -105,15 +191,37 @@ class _MascotHomeState extends State<_MascotHome> with WindowListener {
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onPanStart: (_) => _wm.startDragging(),
-        child: Image.asset(
-          'assets/images/neura_fullbody.png',
-          fit: BoxFit.contain,
-          cacheWidth: (_kWindowWidth * MediaQuery.devicePixelRatioOf(context)).round(),
-          cacheHeight: (_kWindowHeight * MediaQuery.devicePixelRatioOf(context)).round(),
-          errorBuilder: (_, __, ___) => const Center(
-            child: Text(
-              'NEURA',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+        child: AnimatedBuilder(
+          animation: _pulseController,
+          builder: (context, child) {
+            final active = _thinking || _talking;
+            final t = _pulseController.value;
+            final glowStrength = active ? (0.25 + 0.35 * t) * (0.5 + _energy) : 0.0;
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                boxShadow: glowStrength <= 0
+                    ? const []
+                    : [
+                        BoxShadow(
+                          color: _glowColor.withValues(alpha: glowStrength.clamp(0.0, 1.0)),
+                          blurRadius: 30 + 20 * t,
+                          spreadRadius: 4 + 6 * t,
+                        ),
+                      ],
+              ),
+              child: child,
+            );
+          },
+          child: Image.asset(
+            'assets/images/neura_fullbody.png',
+            fit: BoxFit.contain,
+            cacheWidth: (_kWindowWidth * MediaQuery.devicePixelRatioOf(context)).round(),
+            cacheHeight: (_kWindowHeight * MediaQuery.devicePixelRatioOf(context)).round(),
+            errorBuilder: (_, __, ___) => const Center(
+              child: Text(
+                'NEURA',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+              ),
             ),
           ),
         ),

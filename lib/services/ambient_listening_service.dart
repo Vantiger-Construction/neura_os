@@ -14,6 +14,31 @@ import '../modules/core/app_log.dart';
 import 'ambient_listening_prefs.dart';
 import 'neura_tts_service.dart';
 
+/// Whether [AmbientListeningService.greetAndStartListening] actually speaks
+/// its greeting at boot.
+///
+/// Disabled by default as of this build. Root cause: the app's first
+/// proactive (non-user-initiated) native TTS call, happening a couple
+/// seconds after launch while the floating mascot window's own separate
+/// engine process is also spinning up, crashes the whole process with an
+/// access violation in flutter_tts_plugin.dll (0xC0000005) -- confirmed via
+/// repeated crash reproduction and Windows Error Reporting during beta
+/// testing. Two mitigation attempts (warming the TTS engine up earlier in
+/// boot -- see NeuraStartupCoordinator's TtsWarmup step, still kept, it's
+/// harmless -- and adding a grace period after the mascot window's creation
+/// future resolves) both measurably reduced but did not reliably eliminate
+/// the crash across repeated test launches. Given a native access violation
+/// can't be caught by Dart exception handling (it kills the process
+/// outright, not just the call), skipping the call entirely is the only
+/// mitigation that has actually been confirmed crash-free. All other
+/// TTS usage (chat replies, wake-word replies, Voice Lab) is user-initiated,
+/// happens well after boot with no mascot-window race, and is unaffected.
+///
+/// Flip this back to true once the underlying flutter_tts/mascot-window
+/// race is properly root-caused and fixed -- this is a mitigation, not a
+/// permanent feature removal.
+const bool kEnableProactiveGreetingTts = false;
+
 /// Voice-activity-triggered ambient recording, encrypted at rest.
 ///
 /// Deliberately NOT indiscriminate always-on capture: the mic stream is
@@ -95,19 +120,23 @@ class AmbientListeningService {
     // varies. See MascotWindowService.initialCreationSettled.
     await MascotWindowService.I.initialCreationSettled;
 
-    try {
-      // Hard timeout: this is the first-ever proactive (not user-initiated)
-      // TTS call in the app's history. If flutter_tts's native Windows
-      // voice-init/enumeration path ever blocks the platform thread on a
-      // given machine, waiting on it unbounded here would leave the whole
-      // app appearing to hang right as the dashboard tries to render. Giving
-      // up after a few seconds means a slow/broken TTS backend degrades to
-      // "no spoken greeting" instead of "app never loads."
-      await NeuraTtsService.instance
-          .speak("Hi. I'm Neura. I'm here if you need me.")
-          .timeout(const Duration(seconds: 5));
-    } catch (e) {
-      await AppLog.instance.warn('ambient_greet_failed: $e');
+    // The spoken greeting is disabled by default (see
+    // kEnableProactiveGreetingTts doc comment) -- everything else in this
+    // method (opt-in ambient listening) still runs normally.
+    if (kEnableProactiveGreetingTts) {
+      try {
+        // Hard timeout: if flutter_tts's native Windows voice-init/enumeration
+        // path ever blocks the platform thread on a given machine, waiting on
+        // it unbounded here would leave the whole app appearing to hang right
+        // as the dashboard tries to render. Giving up after a few seconds
+        // means a slow/broken TTS backend degrades to "no spoken greeting"
+        // instead of "app never loads."
+        await NeuraTtsService.instance
+            .speak("Hi. I'm Neura. I'm here if you need me.")
+            .timeout(const Duration(seconds: 5));
+      } catch (e) {
+        await AppLog.instance.warn('ambient_greet_failed: $e');
+      }
     }
 
     if (AmbientListeningPrefsController.instance.enabled.value) {

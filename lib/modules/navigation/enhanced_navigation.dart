@@ -26,8 +26,12 @@ import '../../screens/monthly_dream_show_screen.dart';
 import '../../screens/dream_visualizer_screen.dart';
 import '../../screens/journal_prompt_screen.dart';
 import '../../screens/voice_journal_screen.dart';
+import '../../core/memory/memory_consolidation_service.dart';
 import '../../insights/services/weekly_summarist_service.dart';
+import '../../notifications/neura_notifications_prefs.dart';
+import '../../notifications/neura_notifications_service.dart';
 import '../../services/ambient_listening_service.dart';
+import '../../services/wake_word_listener_service.dart';
 import '../../src/modules/legacy/legacy_deadman_service.dart';
 import '../../widgets/ambient_recording_badge.dart';
 import '../../src/modules/legacy/legacy_home_screen.dart';
@@ -72,13 +76,55 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     Future.delayed(const Duration(seconds: 2), () {
       if (!mounted) return;
       unawaited(AmbientListeningService.instance.greetAndStartListening());
+      // Same "let the window/engine settle first" reasoning as the greeting
+      // above -- this is also a native voice subsystem starting for the
+      // first time. Opt-in and off by default; start() itself checks the
+      // pref and no-ops if the user hasn't enabled it.
+      unawaited(WakeWordListenerService.instance.start());
     });
     // Cadence-gated, at most once per week -- see WeeklySummaristService's
     // doc comment for why this is the right (and only reasonable) place to
     // fire it. No BuildContext needed: it only writes to prefs, never shows
     // UI itself.
-    unawaited(WeeklySummaristService.instance.maybeGenerateOnAppOpen());
+    unawaited(_generateWeeklySummaryThenMaybeNotify());
+    // Same cadence-gated, app-open-only pattern -- summarizes older memory
+    // entries into a persistent profile snippet chat can recall from later.
+    unawaited(MemoryConsolidationService.instance.maybeConsolidateOnAppOpen());
+    unawaited(_maybeNotifyLegacyOverdue());
+    unawaited(_reconfirmDailyMoodNudgeSchedule());
     _checkForUpdate();
+  }
+
+  /// Wraps WeeklySummaristService's own app-open hook so a notification can
+  /// fire right after a *fresh* generation -- checks freshness after, rather
+  /// than threading a callback through the existing service, so this stays
+  /// purely additive to it.
+  Future<void> _generateWeeklySummaryThenMaybeNotify() async {
+    await WeeklySummaristService.instance.maybeGenerateOnAppOpen();
+    if (!NeuraNotificationsPrefsController.instance.prefs.value.weeklyReviewReadyEnabled) return;
+    final fresh = await WeeklySummaristService.instance.currentIfFresh();
+    if (fresh == null) return;
+    if (DateTime.now().difference(fresh.generatedAt) > const Duration(minutes: 1)) return;
+    await NeuraNotificationsService.instance.showWeeklyReviewReadyNotification();
+  }
+
+  Future<void> _maybeNotifyLegacyOverdue() async {
+    if (!NeuraNotificationsPrefsController.instance.prefs.value.legacyOverdueEnabled) return;
+    final overdue = await LegacyDeadmanService.instance.isOverdue();
+    if (!overdue) return;
+    await NeuraNotificationsService.instance.showLegacyOverdueNotification();
+  }
+
+  /// Windows' own notification platform keeps a daily-repeating scheduled
+  /// toast alive across app restarts once scheduled, but re-asserting it on
+  /// every app open is cheap and guards against it having been lost (e.g.
+  /// after a rebuild/reinstall).
+  Future<void> _reconfirmDailyMoodNudgeSchedule() async {
+    final prefs = NeuraNotificationsPrefsController.instance.prefs.value;
+    if (!prefs.dailyMoodNudgeEnabled) return;
+    await NeuraNotificationsService.instance.scheduleDailyMoodNudge(
+      TimeOfDay(hour: prefs.dailyMoodNudgeHour, minute: prefs.dailyMoodNudgeMinute),
+    );
   }
 
   Future<void> _checkForUpdate() async {
@@ -225,13 +271,13 @@ class _Dashboard extends StatelessWidget {
             _Tile(
               icon: Icons.insights,
               title: 'Weekly Snapshot',
-              subtitle: 'Mood trend, rituals, and export.',
+              subtitle: "This week's mood trend, rituals, and export.",
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WeeklySnapshotScreen())),
             ),
             _Tile(
               icon: Icons.auto_awesome_outlined,
               title: 'Weekly Review',
-              subtitle: 'Full history, notes, and coach commentary.',
+              subtitle: 'Past weeks, your notes, and coach commentary.',
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WeeklyReviewScreen())),
             ),
             _Tile(
