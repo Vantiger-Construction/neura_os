@@ -66,8 +66,10 @@ class NeuraChatTurn {
 /// time (ANTHROPIC_API_KEY), not committed to source control.
 ///
 /// Model: Claude Sonnet 5. Supports tool use (Neura can read/log the user's
-/// mood via [_tools]), vision (photos attached to a chat turn), and prompt
-/// caching (the system prompt is marked cacheable to cut repeat-turn cost).
+/// mood, and search the web, via [_tools]), vision (photos attached to a
+/// chat turn), prompt caching (system prompt + a rolling per-turn
+/// breakpoint), and retries transient failures (429/5xx/network) with
+/// exponential backoff before any content has been streamed to the caller.
 class NeuraAiService {
   NeuraAiService._();
   static final NeuraAiService instance = NeuraAiService._();
@@ -77,9 +79,16 @@ class NeuraAiService {
   static const _maxTokens = 2048;
   static const _endpoint = 'https://api.anthropic.com/v1/messages';
 
-  /// Safety cap on tool-use round trips within a single reply, so a
-  /// misbehaving tool loop can't spin forever.
+  /// Safety cap on tool-use / server-tool-loop round trips within a single
+  /// reply, so a misbehaving loop can't spin forever.
   static const _maxToolRounds = 4;
+
+  /// Retries for a request that hasn't streamed any content back yet (a
+  /// non-200 status, or a transport failure before the connection opened).
+  /// Once we've started forwarding text deltas to the caller, a later
+  /// failure is surfaced as-is rather than retried, since re-sending would
+  /// duplicate output already shown in the chat.
+  static const _maxRetries = 3;
 
   static const _tools = [
     {
@@ -123,6 +132,14 @@ class NeuraAiService {
         'required': ['mood0to10'],
       },
     },
+    // Server-side tool: Anthropic runs the search and returns results with
+    // citations, no client execution needed. Capped at 3 uses/turn so an
+    // open-ended research tangent can't run away with cost.
+    {
+      'type': 'web_search_20260209',
+      'name': 'web_search',
+      'max_uses': 3,
+    },
   ];
 
   bool get isConfigured => _apiKey.isNotEmpty;
@@ -135,12 +152,50 @@ class NeuraAiService {
         },
       ];
 
+  /// Returns a copy of [messages] with a cache breakpoint on the last
+  /// content block of the last message. As a conversation grows, every
+  /// earlier turn up to this point is then served from cache on the next
+  /// request instead of being repriced in full -- see
+  /// shared/prompt-caching.md "Multi-turn conversations".
+  static List<Map<String, dynamic>> _withTrailingCacheBreakpoint(
+    List<Map<String, dynamic>> messages,
+  ) {
+    if (messages.isEmpty) return messages;
+    final copy = messages.map((m) => Map<String, dynamic>.from(m)).toList();
+    final last = copy.last;
+    final content = last['content'];
+
+    List<Map<String, dynamic>> blocks;
+    if (content is String) {
+      blocks = [
+        {'type': 'text', 'text': content}
+      ];
+    } else if (content is List) {
+      blocks = content
+          .map((b) => b is Map<String, dynamic>
+              ? Map<String, dynamic>.from(b)
+              : <String, dynamic>{})
+          .toList();
+    } else {
+      return copy;
+    }
+    if (blocks.isEmpty) return copy;
+
+    blocks[blocks.length - 1] = {
+      ...blocks.last,
+      'cache_control': {'type': 'ephemeral'},
+    };
+    last['content'] = blocks;
+    return copy;
+  }
+
   /// Streams incremental text deltas for a reply to [history] (last entry is
   /// the new user message), answering as [agentId] (see
   /// [AgentPersonaCatalog]). Applies Neura's persona/mood/safety system
   /// prompt (see NeuraPromptBuilder) on every call. Transparently runs any
-  /// tool calls the model makes (see [_tools]) and continues streaming the
-  /// follow-up reply.
+  /// client-side tool calls the model makes (see [_tools]) and resumes a
+  /// server-tool loop that hit its iteration cap (`pause_turn`), continuing
+  /// to stream the follow-up reply either way.
   Stream<String> streamReply(
     List<NeuraChatTurn> history, {
     String agentId = AgentPersonaCatalog.generalId,
@@ -160,7 +215,7 @@ class NeuraAiService {
 
     final messages = history.map((t) => t.toJson()).toList();
 
-    var toolRounds = 0;
+    var rounds = 0;
     while (true) {
       List<Map<String, dynamic>>? finishedBlocks;
       var stopReason = 'end_turn';
@@ -175,10 +230,19 @@ class NeuraAiService {
       }
 
       final blocks = finishedBlocks;
-      if (stopReason != 'tool_use' || blocks == null || blocks.isEmpty) {
-        break;
+      if (blocks == null) break;
+
+      if (stopReason == 'pause_turn') {
+        // The server-side tool loop (e.g. web_search) hit its iteration
+        // cap mid-turn. Re-send as-is to resume -- no synthetic "Continue"
+        // message; the API detects the trailing server_tool_use block.
+        if (++rounds > _maxToolRounds) break;
+        messages.add({'role': 'assistant', 'content': blocks});
+        continue;
       }
-      if (++toolRounds > _maxToolRounds) break;
+
+      if (stopReason != 'tool_use' || blocks.isEmpty) break;
+      if (++rounds > _maxToolRounds) break;
 
       messages.add({'role': 'assistant', 'content': blocks});
 
@@ -202,36 +266,32 @@ class NeuraAiService {
 
   /// Runs one streamed turn against the Messages API and yields text deltas
   /// as they arrive, finishing with a [_TurnComplete] carrying every content
-  /// block (needed to replay the assistant turn verbatim if a tool was
-  /// called) and the response's stop reason.
+  /// block (needed to replay the assistant turn verbatim on a follow-up
+  /// tool result or a `pause_turn` resume) and the response's stop reason.
   Stream<_StreamEvent> _streamOneTurn(
     String systemPrompt,
     List<Map<String, dynamic>> messages,
   ) async* {
-    final request = http.Request('POST', Uri.parse(_endpoint))
-      ..headers.addAll({
-        'content-type': 'application/json',
-        'x-api-key': _apiKey,
-        'anthropic-version': '2023-06-01',
-      })
-      ..body = jsonEncode({
-        'model': _model,
-        'max_tokens': _maxTokens,
-        'stream': true,
-        // Chat replies favor low latency over deliberation; tool selection
-        // doesn't need extended reasoning for a fixed 2-tool surface.
-        'thinking': {'type': 'disabled'},
-        'output_config': {'effort': 'low'},
-        'system': _systemBlock(systemPrompt),
-        'tools': _tools,
-        'messages': messages,
-      });
-
-    final streamedResponse = await http.Client().send(request);
-    if (streamedResponse.statusCode != 200) {
-      final body = await streamedResponse.stream.bytesToString();
-      throw NeuraApiException('${streamedResponse.statusCode}: $body');
-    }
+    final streamedResponse = await _sendWithRetry(
+      () => http.Request('POST', Uri.parse(_endpoint))
+        ..headers.addAll({
+          'content-type': 'application/json',
+          'x-api-key': _apiKey,
+          'anthropic-version': '2023-06-01',
+        })
+        ..body = jsonEncode({
+          'model': _model,
+          'max_tokens': _maxTokens,
+          'stream': true,
+          // Chat replies favor low latency over deliberation; tool
+          // selection doesn't need extended reasoning for this tool set.
+          'thinking': {'type': 'disabled'},
+          'output_config': {'effort': 'low'},
+          'system': _systemBlock(systemPrompt),
+          'tools': _tools,
+          'messages': _withTrailingCacheBreakpoint(messages),
+        }),
+    );
 
     final blocksByIndex = <int, Map<String, dynamic>>{};
     final toolInputBuffers = <int, StringBuffer>{};
@@ -255,7 +315,10 @@ class NeuraAiService {
             final index = event['index'] as int;
             final block = event['content_block'] as Map<String, dynamic>;
             blocksByIndex[index] = Map<String, dynamic>.from(block);
-            if (block['type'] == 'tool_use') {
+            // server_tool_use (e.g. web_search) streams its input the same
+            // way tool_use does -- buffer it so it can be finalized below.
+            if (block['type'] == 'tool_use' ||
+                block['type'] == 'server_tool_use') {
               toolInputBuffers[index] = StringBuffer();
             }
             break;
@@ -384,7 +447,7 @@ class NeuraAiService {
     final systemPrompt =
         await NeuraPromptBuilder.instance.buildSystemMessage(agentId: agentId);
 
-    final response = await http.post(
+    final response = await _postWithRetry(
       Uri.parse(_endpoint),
       headers: {
         'content-type': 'application/json',
@@ -402,10 +465,6 @@ class NeuraAiService {
       }),
     );
 
-    if (response.statusCode != 200) {
-      throw NeuraApiException('${response.statusCode}: ${response.body}');
-    }
-
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
     final blocks = decoded['content'] as List<dynamic>? ?? const [];
     final rawText = blocks
@@ -421,6 +480,79 @@ class NeuraAiService {
     }
 
     return rawText;
+  }
+
+  static bool _isRetryableStatus(int code) =>
+      code == 429 || code == 500 || code == 502 || code == 503 || code == 529;
+
+  static Duration _backoffDelay(int attempt, {String? retryAfterHeader}) {
+    final headerSeconds =
+        retryAfterHeader != null ? int.tryParse(retryAfterHeader) : null;
+    if (headerSeconds != null) return Duration(seconds: headerSeconds);
+    return Duration(milliseconds: 500 * (1 << attempt)); // 500ms, 1s, 2s, 4s
+  }
+
+  /// Sends a streaming request, retrying a non-200 response or a transport
+  /// failure with exponential backoff (honoring `retry-after` when present).
+  /// [buildRequest] must build a fresh [http.Request] each call -- a
+  /// `http.Request` can only be sent once.
+  Future<http.StreamedResponse> _sendWithRetry(
+    http.Request Function() buildRequest,
+  ) async {
+    for (var attempt = 0;; attempt++) {
+      http.StreamedResponse response;
+      try {
+        response = await http.Client().send(buildRequest());
+      } on http.ClientException {
+        if (attempt >= _maxRetries) rethrow;
+        await Future.delayed(_backoffDelay(attempt));
+        continue;
+      }
+
+      if (response.statusCode == 200) return response;
+      if (!_isRetryableStatus(response.statusCode) || attempt >= _maxRetries) {
+        final body = await response.stream.bytesToString();
+        throw NeuraApiException(
+          '${response.statusCode}: $body',
+          statusCode: response.statusCode,
+        );
+      }
+      await response.stream.drain<void>();
+      await Future.delayed(_backoffDelay(
+        attempt,
+        retryAfterHeader: response.headers['retry-after'],
+      ));
+    }
+  }
+
+  /// Non-streaming counterpart of [_sendWithRetry] for [completeOnce].
+  Future<http.Response> _postWithRetry(
+    Uri uri, {
+    required Map<String, String> headers,
+    required String body,
+  }) async {
+    for (var attempt = 0;; attempt++) {
+      http.Response response;
+      try {
+        response = await http.post(uri, headers: headers, body: body);
+      } on http.ClientException {
+        if (attempt >= _maxRetries) rethrow;
+        await Future.delayed(_backoffDelay(attempt));
+        continue;
+      }
+
+      if (response.statusCode == 200) return response;
+      if (!_isRetryableStatus(response.statusCode) || attempt >= _maxRetries) {
+        throw NeuraApiException(
+          '${response.statusCode}: ${response.body}',
+          statusCode: response.statusCode,
+        );
+      }
+      await Future.delayed(_backoffDelay(
+        attempt,
+        retryAfterHeader: response.headers['retry-after'],
+      ));
+    }
   }
 
   /// Runs the outgoing user message through Guardrails before it reaches the
@@ -507,7 +639,11 @@ class _TurnComplete extends _StreamEvent {
 
 class NeuraApiException implements Exception {
   final String message;
-  NeuraApiException(this.message);
+  /// The HTTP status code, when this came from a non-200 response (after
+  /// retries were exhausted or the failure wasn't retryable). Null for
+  /// transport-level failures and API-reported SSE `error` events.
+  final int? statusCode;
+  NeuraApiException(this.message, {this.statusCode});
   @override
   String toString() => message;
 }
