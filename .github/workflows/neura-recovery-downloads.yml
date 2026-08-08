@@ -75,6 +75,9 @@ jobs:
       - name: Check out the recovery branch
         uses: actions/checkout@v4
 
+      - name: Install Rust (neura_swarm crate)
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install Flutter
         uses: subosito/flutter-action@v2
         with:
