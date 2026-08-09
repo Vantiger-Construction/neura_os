@@ -22,7 +22,13 @@ class NeuraSwarmService {
       _initialized = true;
     }
     if (apiKey.isEmpty) return;
-    rust_api.init(apiKey: apiKey);
+    // Must be awaited: this crosses the FFI bridge and is the first
+    // real call into the native library. Firing it without awaiting let
+    // `boot()` flip `ready` (and kick off the mascot window's own native
+    // engine spin-up) while this was still in flight -- the same
+    // concurrent-first-native-call hazard documented in
+    // MascotWindowService.initialCreationSettled, just via a new source.
+    await rust_api.init(apiKey: apiKey);
   }
 
   /// Runs the critic + memory-extractor agents for one finished chat turn.
