@@ -256,7 +256,6 @@ class NeuraAiService {
             await cancel.delay(_retryDelay(attempt, streamedResponse.headers));
             continue;
           }
-          _diagnostics.recordFailure(error);
           throw error;
         }
 
@@ -431,7 +430,7 @@ class NeuraAiService {
       switch (name) {
         case NeuraChatPolicy.getMoodHistory:
           final limitRaw = (input['limit'] as num?)?.toInt() ?? 10;
-          final limit = limitRaw.clamp(1, 50);
+          final limit = limitRaw.clamp(1, 50).toInt();
           final entries = await MoodStore.instance.getAll();
           cancel.throwIfCancelled();
           final recent = entries.length > limit
@@ -449,7 +448,7 @@ class NeuraAiService {
           if (moodRaw is! num) {
             return 'Tool error: mood0to10 is required.';
           }
-          final mood = moodRaw.round().clamp(0, 10);
+          final mood = moodRaw.round().clamp(0, 10).toInt();
           final note = (input['note'] as String?) ?? '';
           await MoodStore.instance.add(
             MoodEntry(timestamp: DateTime.now(), mood0to10: mood, note: note),
@@ -583,7 +582,7 @@ class NeuraAiService {
           await Future<void>.delayed(_retryDelay(attempt, const {}));
           continue;
         }
-        if (error is! NeuraApiException || error != lastError) {
+        if (error is! NeuraApiException) {
           _diagnostics.recordFailure(error);
         }
         rethrow;
