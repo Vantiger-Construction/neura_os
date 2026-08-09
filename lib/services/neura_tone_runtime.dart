@@ -1,12 +1,15 @@
 import 'package:flutter/foundation.dart';
 
+import '../core/neura_event_bus.dart';
+import '../core/neura_events.dart';
 import 'neura_chat_policy.dart';
 
-/// Small shared runtime channel for model-requested presentation tone.
+/// Shared runtime channel for model-requested presentation tone.
 ///
-/// Avatar/motor surfaces can listen to [tone] without coupling the LLM client
-/// to a particular renderer. Invalid values are ignored even if a future
-/// caller bypasses the model-tool validation layer.
+/// The current tone is exposed as a notifier for UI/motor consumers and is
+/// also translated onto Neura's existing mood/energy event channel. The
+/// floating mascot already consumes that channel, so model tone changes have
+/// an immediate visual effect without adding a second mascot protocol.
 class NeuraToneRuntime {
   NeuraToneRuntime._();
   static final NeuraToneRuntime instance = NeuraToneRuntime._();
@@ -16,6 +19,34 @@ class NeuraToneRuntime {
   bool setTone(String value) {
     if (!NeuraChatPolicy.knownTones.contains(value)) return false;
     if (tone.value != value) tone.value = value;
+
+    final visual = _visualFor(value);
+    NeuraEventBus.I.emit(
+      NeuraMoodEvent(mood: visual.mood, energy: visual.energy),
+    );
     return true;
   }
+
+  static _ToneVisual _visualFor(String value) {
+    switch (value) {
+      case 'strategist':
+        return const _ToneVisual(mood: 0.15, energy: 0.72);
+      case 'calm_wellness':
+        return const _ToneVisual(mood: 0.35, energy: 0.28);
+      case 'cinematic_guide':
+        return const _ToneVisual(mood: 0.45, energy: 0.82);
+      case 'quiet_private':
+        return const _ToneVisual(mood: 0.05, energy: 0.16);
+      case 'warm_companion':
+      default:
+        return const _ToneVisual(mood: 0.65, energy: 0.48);
+    }
+  }
+}
+
+class _ToneVisual {
+  final double mood;
+  final double energy;
+
+  const _ToneVisual({required this.mood, required this.energy});
 }
