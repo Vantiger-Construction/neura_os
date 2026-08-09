@@ -5,13 +5,18 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/memory/memory_graph_service.dart';
+import '../../neura_shell/models/neura_room.dart';
 import '../../neura_shell/neura_shell.dart';
 import '../../persona/agents/agent_persona_catalog.dart';
 import '../../persona/models/agent_persona.dart';
 import '../../persona/services/agent_selection_service.dart';
 import '../../services/neura_ai_service.dart';
+import '../../services/neura_chat_policy.dart';
+import '../../services/neura_generation_cancel.dart';
+import '../../services/neura_llm_diagnostics.dart';
 import '../../services/neura_speech_to_text_service.dart';
 import '../../services/neura_swarm_service.dart';
+import '../../services/neura_tone_runtime.dart';
 import '../../services/neura_tts_service.dart';
 import '../../services/wake_word_listener_service.dart';
 import '../core/ai_engine.dart';
@@ -34,6 +39,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
 
   bool _speechEnabled = true;
   bool _busy = false;
+  String? _activeReplyId;
+  _ChatLine? _activeBotLine;
+  int _generationSerial = 0;
 
   final NeuraSpeechToTextService _voiceInput = NeuraSpeechToTextService.instance;
   final ImagePicker _imagePicker = ImagePicker();
@@ -48,23 +56,15 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
 
   // Guards against the end-of-turn handler firing twice for one listening
   // session — WinRT's continuous recognizer can in principle deliver more
-  // than one 'onFinal' in quick succession (e.g. a multi-sentence turn)
-  // while stopRecording() is still in flight for the first one.
+  // than one 'onFinal' in quick succession while stopRecording() is in flight.
   bool _turnEnding = false;
 
-  // Defaults to General synchronously so the first frame has something
-  // sensible to show; _initAgent() resolves the real room-based default (or
-  // a persisted explicit override) right after.
   AgentPersona _activeAgent = AgentPersonaCatalog.general;
 
   @override
   void initState() {
     super.initState();
     unawaited(_initAgent());
-    // Both this screen's own mic button and the wake-word listener share the
-    // one NeuraSpeechToTextService singleton -- pause the listener's
-    // reactions while this screen owns the mic to avoid the same phrase
-    // being processed by both at once. Resumed on dispose below.
     WakeWordListenerService.instance.pause();
   }
 
@@ -81,9 +81,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   void dispose() {
     _voiceSub?.cancel();
     _finalPhraseSub?.cancel();
-    // _voiceInput is a shared singleton now (other features, e.g. the
-    // wake-word listener, may also use it) -- stop listening if this screen
-    // left a session running, but never dispose the shared instance.
+    NeuraAiService.instance.cancelActiveGeneration();
+    unawaited(NeuraTtsService.instance.stop());
     if (_listening) {
       unawaited(_voiceInput.stopRecording());
     }
@@ -93,9 +92,6 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     super.dispose();
   }
 
-  // Sentinel distinguishing an explicit "Auto" tap (clears the override)
-  // from the sheet being dismissed without a choice (barrier tap, back
-  // button) — both of those pop with null, which means "no change".
   static const _autoSentinel = '__auto__';
 
   Future<void> _openAgentPicker() async {
@@ -133,7 +129,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       },
     );
 
-    if (selected == null) return; // dismissed without choosing
+    if (selected == null) return;
     await AgentSelectionService.instance.setExplicitAgent(
       selected == _autoSentinel ? null : selected,
     );
@@ -154,12 +150,6 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     await _startListeningTurn();
   }
 
-  /// Ends the current listening turn and sends whatever was transcribed.
-  /// Called either by the user tapping the mic again, or automatically once
-  /// [NeuraSpeechToTextService.finalPhraseStream] reports the user has
-  /// finished a thought (WinRT's own pause/endpoint detection) — that's what
-  /// makes "talk freely" mode actually hands-free instead of still requiring
-  /// a tap to end every turn.
   Future<void> _stopListeningAndSend() async {
     if (_turnEnding) return;
     _turnEnding = true;
@@ -172,8 +162,6 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         _controller.selection =
             TextSelection.collapsed(offset: _controller.text.length);
       });
-      // Hands-free loop: turning the mic off sends straight to Neura instead
-      // of leaving the transcript sitting in the box for a manual tap.
       unawaited(_send());
     } finally {
       _turnEnding = false;
@@ -193,9 +181,6 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       });
     });
 
-    // In continuous mode, a completed phrase means the user is done talking
-    // for this turn — end listening and send automatically rather than
-    // waiting for a manual tap on the mic button.
     _finalPhraseSub?.cancel();
     _finalPhraseSub = _voiceInput.finalPhraseStream.listen((_) {
       if (!_continuousMode || !mounted) return;
@@ -212,11 +197,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     setState(() => _listening = true);
   }
 
-  /// Explicit exit for "talk freely" mode — discards anything mid-recording
-  /// rather than sending it, since the intent here is "stop", not "send".
   Future<void> _endConversation() async {
     _continuousMode = false;
-    unawaited(NeuraTtsService.instance.stop());
+    await _interruptActiveReply();
     if (_listening) {
       await _voiceInput.stopRecording();
       if (!mounted) return;
@@ -224,9 +207,40 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         _listening = false;
         _controller.clear();
       });
-    } else {
+    } else if (mounted) {
       setState(() {});
     }
+  }
+
+  Future<void> _beginVoiceBargeIn() async {
+    if (_busy) await _interruptActiveReply();
+    if (!mounted) return;
+    await _toggleListening();
+  }
+
+  /// Stops both the in-flight model stream and TTS. The partial/full bot line
+  /// remains visible and is marked interrupted so correlation with its
+  /// generation id is preserved instead of silently deleting output.
+  Future<void> _interruptActiveReply() async {
+    final interruptedId = _activeReplyId;
+    final interruptedLine = _activeBotLine;
+    NeuraAiService.instance.cancelActiveGeneration();
+    await NeuraTtsService.instance.stop();
+
+    if (interruptedId != null) {
+      AppLog.instance.info('speak_interrupted', {
+        'utterance_id': interruptedId,
+        'seq': interruptedLine?.seq ?? 0,
+      });
+    }
+
+    if (!mounted) return;
+    setState(() {
+      if (interruptedLine != null) interruptedLine.interrupted = true;
+      _activeReplyId = null;
+      _activeBotLine = null;
+      _busy = false;
+    });
   }
 
   void _scrollToEnd() {
@@ -240,8 +254,6 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     });
   }
 
-  /// Opens the gallery, and — if a photo was picked — sends it straight to
-  /// Neura (with whatever caption is already typed, or a default prompt).
   Future<void> _pickAndSendImage() async {
     if (_busy) return;
     final XFile? picked = await _imagePicker.pickImage(
@@ -264,30 +276,45 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   Future<void> _send({String? imageBase64, String? imageMediaType}) async {
     final text = _controller.text.trim();
     final hasImage = imageBase64 != null;
-    if ((text.isEmpty && !hasImage) || _busy) return;
+    if (text.isEmpty && !hasImage) return;
 
-    // A photo with no typed caption still needs something to send as the
-    // turn's text -- both for display and because it doubles as the prompt.
+    if (_busy) {
+      await _interruptActiveReply();
+      if (!mounted) return;
+    }
+
+    final room = NeuraShell.of(context).room;
+    final policy = NeuraChatPolicy.forRoom(room.id);
     final displayText =
         text.isEmpty && hasImage ? 'What do you see in this photo?' : text;
+    final generationId =
+        '${DateTime.now().microsecondsSinceEpoch}-${_generationSerial++}';
 
     setState(() {
       _lines.add(_ChatLine.user(
         displayText,
+        utteranceId: generationId,
         imageBase64: imageBase64,
         imageMediaType: imageMediaType,
       ));
       _controller.clear();
       _busy = true;
+      _activeReplyId = generationId;
     });
     _scrollToEnd();
-    AppLog.instance
-        .info('chat_turn', {'user': displayText, 'has_image': hasImage});
-    unawaited(_remember(isUser: true, text: displayText));
+    AppLog.instance.info('chat_turn', {
+      'user': displayText,
+      'has_image': hasImage,
+      'utterance_id': generationId,
+      'room': room.id,
+      'persist': policy.persistMemory,
+    });
+    unawaited(_remember(
+      isUser: true,
+      text: displayText,
+      persistMemory: policy.persistMemory,
+    ));
 
-    // Skip the hardcoded opening greeting (_lines[0]) — the API requires the
-    // conversation to start with a user turn, and that greeting was never
-    // actually generated by the model.
     final history = _lines
         .skip(1)
         .where((l) => l.text.isNotEmpty || l.imageBase64 != null)
@@ -300,72 +327,151 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         .toList();
 
     if (!NeuraAiService.instance.isConfigured) {
-      await _fallbackToLocalReply(displayText);
+      await _fallbackToLocalReply(
+        displayText,
+        generationId: generationId,
+        persistMemory: policy.persistMemory,
+      );
       return;
     }
 
-    final botLine = _ChatLine.bot('', agentId: _activeAgent.id);
-    setState(() => _lines.add(botLine));
+    final botLine = _ChatLine.bot(
+      '',
+      agentId: _activeAgent.id,
+      utteranceId: generationId,
+    );
+    setState(() {
+      _lines.add(botLine);
+      _activeBotLine = botLine;
+    });
     _scrollToEnd();
 
     try {
-      await for (final delta in NeuraAiService.instance
-          .streamReply(history, agentId: _activeAgent.id)) {
-        setState(() => botLine.text += delta);
+      await for (final delta in NeuraAiService.instance.streamReply(
+        history,
+        agentId: _activeAgent.id,
+        roomId: room.id,
+        generationId: generationId,
+        onToolCommand: _handleToolCommand,
+      )) {
+        if (!mounted || _activeReplyId != generationId) return;
+        setState(() {
+          botLine.text += delta;
+          botLine.seq += 1;
+        });
         _scrollToEnd();
       }
-      unawaited(_remember(isUser: false, text: botLine.text));
-      // Fire-and-forget: the swarm's critic + memory agents run in the
-      // background, alongside (not instead of) the reply already shown
-      // above -- a swarm hiccup must never block or break the chat turn.
+
+      if (!mounted || _activeReplyId != generationId) return;
+      AppLog.instance.info('chat_reply_complete', {
+        'utterance_id': generationId,
+        'seq': botLine.seq,
+        'room': room.id,
+      });
+      unawaited(_remember(
+        isUser: false,
+        text: botLine.text,
+        persistMemory: policy.persistMemory,
+      ));
       unawaited(_runSwarm(
         userMessage: displayText,
         draftReply: botLine.text,
         history: history,
+        persistMemory: policy.persistMemory,
       ));
-      // Awaited (not fire-and-forget): in continuous mode we must not start
-      // listening again until Neura is actually done talking, or the mic
-      // would pick up her own voice from the speakers.
-      if (_speechEnabled) {
+
+      if (_speechEnabled && botLine.text.trim().isNotEmpty) {
         await NeuraTtsService.instance.speak(botLine.text);
       }
+    } on NeuraGenerationCancelled catch (e) {
+      AppLog.instance.info('chat_generation_cancelled', {
+        'utterance_id': e.generationId,
+        'seq': botLine.seq,
+      });
+      if (mounted) {
+        setState(() => botLine.interrupted = true);
+      }
+      return;
     } catch (e) {
-      AppLog.instance.info('chat_error', {'error': e.toString()});
-      setState(() => _lines.remove(botLine));
-      await _fallbackToLocalReply(displayText);
+      AppLog.instance.info('chat_error', {
+        'error': e.toString(),
+        'utterance_id': generationId,
+      });
+      if (!mounted || _activeReplyId != generationId) return;
+
+      if (botLine.text.isEmpty) {
+        setState(() => _lines.remove(botLine));
+        await _fallbackToLocalReply(
+          displayText,
+          generationId: generationId,
+          persistMemory: policy.persistMemory,
+        );
+      } else {
+        setState(() => botLine.interrupted = true);
+      }
       return;
     } finally {
-      setState(() => _busy = false);
+      if (mounted && _activeReplyId == generationId) {
+        setState(() {
+          _busy = false;
+          _activeReplyId = null;
+          _activeBotLine = null;
+        });
+      }
     }
 
-    if (_continuousMode) {
+    if (_continuousMode && mounted && !_busy) {
       unawaited(_startListeningTurn());
     }
   }
 
-  Future<void> _fallbackToLocalReply(String text) async {
+  Future<void> _fallbackToLocalReply(
+    String text, {
+    required String generationId,
+    required bool persistMemory,
+  }) async {
+    NeuraLlmDiagnostics.instance.recordFallback();
     final reply = NeuraAICore.instance.respond(text);
+    if (!mounted || _activeReplyId != generationId) return;
+
+    final fallbackLine = _ChatLine.bot(
+      reply,
+      agentId: _activeAgent.id,
+      utteranceId: generationId,
+    );
     setState(() {
-      _lines.add(_ChatLine.bot(reply));
-      _busy = false;
+      _lines.add(fallbackLine);
+      _activeBotLine = fallbackLine;
     });
     _scrollToEnd();
-    unawaited(_remember(isUser: false, text: reply));
+    unawaited(_remember(
+      isUser: false,
+      text: reply,
+      persistMemory: persistMemory,
+    ));
     if (_speechEnabled) {
       await NeuraTtsService.instance.speak(reply);
     }
+
+    if (!mounted || _activeReplyId != generationId) return;
+    setState(() {
+      _busy = false;
+      _activeReplyId = null;
+      _activeBotLine = null;
+    });
     if (_continuousMode) {
       unawaited(_startListeningTurn());
     }
   }
 
-  /// Persists a real chat turn into the (encrypted, on-device)
-  /// [MemoryGraphService] — this is the app's actual conversation history,
-  /// as opposed to raw ambient audio, which Neura deliberately does not
-  /// record. Fire-and-forget: a memory-write failure must never break the
-  /// chat itself.
-  Future<void> _remember({required bool isUser, required String text}) async {
-    if (text.trim().isEmpty) return;
+  /// Long-term memory writes are skipped entirely in ephemeral room policy.
+  /// The visible conversation still remains in [_lines] for working memory.
+  Future<void> _remember({
+    required bool isUser,
+    required String text,
+    required bool persistMemory,
+  }) async {
+    if (!persistMemory || text.trim().isEmpty) return;
     try {
       if (isUser) {
         await MemoryGraphService.I.logUserAction(
@@ -383,16 +489,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     }
   }
 
-  /// Runs the Rust swarm's critic + memory-extractor agents (see
-  /// [NeuraSwarmService]) for the turn that was just shown. On a critic
-  /// concern, appends a soft follow-up bubble rather than retracting the
-  /// already-shown reply. Extracted facts are written through the same
-  /// [MemoryGraphService] append-only log [_remember] already uses, under a
-  /// distinct `kind` so they're identifiable as swarm-derived.
   Future<void> _runSwarm({
     required String userMessage,
     required String draftReply,
     required List<NeuraChatTurn> history,
+    required bool persistMemory,
   }) async {
     try {
       final outcome = await NeuraSwarmService.instance.reviewAndExtract(
@@ -408,6 +509,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         _scrollToEnd();
       }
 
+      // The critic may still run in an ephemeral room, but extracted facts
+      // never cross the persistence gate.
+      if (!persistMemory) return;
       for (final fact in outcome.facts) {
         await MemoryGraphService.I.logUserAction(
           kind: 'SWARM_MEMORY_FACT',
@@ -419,9 +523,29 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     }
   }
 
-  /// Last few turns as plain "User:"/"Neura:" lines for the critic's
-  /// context -- doesn't need the full history, just enough to judge the
-  /// reply in context.
+  Future<void> _handleToolCommand(NeuraToolCommand command) async {
+    if (!mounted) return;
+    switch (command.name) {
+      case NeuraChatPolicy.dispatchIntent:
+        final roomId = command.arguments['room']?.toString() ?? '';
+        if (!NeuraChatPolicy.knownRoomIds.contains(roomId)) return;
+        final target = NeuraRoom.fromId(roomId);
+        if (target.id != roomId) return;
+        await NeuraShell.of(context).setRoom(target);
+        if (!mounted) return;
+        setState(() {
+          _activeAgent = AgentSelectionService.instance.resolveAgent(target);
+        });
+        AppLog.instance.info('dispatch_intent', {'room': roomId});
+        break;
+      case NeuraChatPolicy.setTone:
+        final tone = command.arguments['tone']?.toString() ?? '';
+        final applied = NeuraToneRuntime.instance.setTone(tone);
+        AppLog.instance.info('set_tone', {'tone': tone, 'applied': applied});
+        break;
+    }
+  }
+
   String _transcriptSnippet(List<NeuraChatTurn> history) {
     const maxTurns = 6;
     final recent = history.length > maxTurns
@@ -437,6 +561,43 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     if (!_speechEnabled) {
       unawaited(NeuraTtsService.instance.stop());
     }
+  }
+
+  void _showAiDiagnostics() {
+    final snapshot = NeuraAiService.instance.diagnosticsSnapshot;
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'AI diagnostics',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 12),
+              Text('Healthy: ${snapshot['healthy']}'),
+              Text('Attempts: ${snapshot['attempts']}'),
+              Text('Successes: ${snapshot['successes']}'),
+              Text('Failures: ${snapshot['failures']}'),
+              Text('Retries: ${snapshot['retries']}'),
+              Text('Interruptions: ${snapshot['cancellations']}'),
+              Text('Dropped tools: ${snapshot['tool_drops']}'),
+              Text('Local fallbacks: ${snapshot['fallbacks']}'),
+              if (snapshot['last_error'] != null) ...[
+                const SizedBox(height: 8),
+                Text('Last error: ${snapshot['last_error']}'),
+              ],
+              const SizedBox(height: 8),
+              Text(snapshot['remedy']?.toString() ?? ''),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -457,6 +618,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            tooltip: 'AI diagnostics',
+            onPressed: _showAiDiagnostics,
+            icon: const Icon(Icons.monitor_heart_outlined),
+          ),
           if (_continuousMode)
             IconButton(
               tooltip: 'End hands-free conversation',
@@ -485,9 +651,6 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
                     ? Colors.blueGrey.shade700
                     : Colors.grey.shade900;
 
-                // Only caption a bot line with "who answered" when the agent
-                // differs from the previous bot line -- avoids repeating the
-                // same label on every turn of an unbroken single-agent run.
                 String? agentCaption;
                 if (!line.isUser && line.agentId != null) {
                   _ChatLine? prevBotLine;
@@ -529,8 +692,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
                           color: color,
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: line.imageBase64 != null
-                            ? Row(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (line.imageBase64 != null)
+                              Row(
                                 mainAxisSize: MainAxisSize.min,
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -543,7 +710,28 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
                                   ),
                                 ],
                               )
-                            : Text(line.text.isEmpty ? '…' : line.text),
+                            else
+                              Text(line.text.isEmpty ? '…' : line.text),
+                            if (line.interrupted) ...[
+                              const SizedBox(height: 6),
+                              const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.stop_circle_outlined,
+                                      size: 14, color: Colors.white70),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Interrupted',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -560,14 +748,16 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
                   Expanded(
                     child: TextField(
                       controller: _controller,
-                      enabled: !_busy,
+                      enabled: true,
                       onSubmitted: (_) => _send(),
                       decoration: InputDecoration(
                         hintText: _listening
                             ? 'Listening…'
-                            : (_continuousMode
-                                ? 'Getting ready to listen…'
-                                : 'Talk to Neura…'),
+                            : (_busy
+                                ? 'Type to interrupt Neura…'
+                                : (_continuousMode
+                                    ? 'Getting ready to listen…'
+                                    : 'Talk to Neura…')),
                         border: const OutlineInputBorder(),
                       ),
                     ),
@@ -581,15 +771,18 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
                   IconButton(
                     tooltip: _listening
                         ? 'Done — send it'
-                        : 'Talk freely (hands-free)',
-                    onPressed: _busy ? null : _toggleListening,
+                        : (_busy
+                            ? 'Interrupt and talk'
+                            : 'Talk freely (hands-free)'),
+                    onPressed: _beginVoiceBargeIn,
                     icon: Icon(
                       _listening ? Icons.mic : Icons.mic_none,
                       color: _listening ? Colors.redAccent : null,
                     ),
                   ),
                   IconButton(
-                    onPressed: _busy ? null : _send,
+                    tooltip: _busy ? 'Interrupt and send' : 'Send',
+                    onPressed: _send,
                     icon: const Icon(Icons.send),
                   ),
                 ],
@@ -606,17 +799,41 @@ class _ChatLine {
   final bool isUser;
   String text;
   final String? agentId;
+  final String? utteranceId;
   final String? imageBase64;
   final String? imageMediaType;
+  int seq;
+  bool interrupted;
+
   _ChatLine(
     this.isUser,
     this.text, {
     this.agentId,
+    this.utteranceId,
     this.imageBase64,
     this.imageMediaType,
+    this.seq = 0,
+    this.interrupted = false,
   });
-  factory _ChatLine.user(String t, {String? imageBase64, String? imageMediaType}) =>
-      _ChatLine(true, t, imageBase64: imageBase64, imageMediaType: imageMediaType);
-  factory _ChatLine.bot(String t, {String? agentId}) =>
-      _ChatLine(false, t, agentId: agentId);
+
+  factory _ChatLine.user(
+    String t, {
+    String? utteranceId,
+    String? imageBase64,
+    String? imageMediaType,
+  }) =>
+      _ChatLine(
+        true,
+        t,
+        utteranceId: utteranceId,
+        imageBase64: imageBase64,
+        imageMediaType: imageMediaType,
+      );
+
+  factory _ChatLine.bot(
+    String t, {
+    String? agentId,
+    String? utteranceId,
+  }) =>
+      _ChatLine(false, t, agentId: agentId, utteranceId: utteranceId);
 }
