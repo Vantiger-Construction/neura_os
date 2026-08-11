@@ -20,6 +20,7 @@ import '../legacy/legacy_home_screen.dart';
 import '../privacy/privacy_home_screen.dart';
 import '../voice/voice_lab_screen.dart';
 import '../../../../modules/memory/memory_screen.dart';
+import '../../../../modules/feedback/feedback_screen.dart';
 import '../../../../notifications/notifications_settings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -231,6 +232,17 @@ class SettingsScreen extends StatelessWidget {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const HelpScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.feedback_outlined),
+            title: const Text('Send Feedback'),
+            subtitle: const Text('Report a bug or tell us what\'s on your mind.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const FeedbackScreen()),
               );
             },
           ),
