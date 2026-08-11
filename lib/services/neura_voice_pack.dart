@@ -497,7 +497,7 @@ class _VoicePackMicDriver {
 
   Future<void> dispose() async {
     await stop();
-    _recorder.dispose();
+    await _recorder.dispose();
     if (!_out.isClosed) await _out.close();
   }
 }

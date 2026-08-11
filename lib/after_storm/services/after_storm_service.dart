@@ -48,7 +48,7 @@ class AfterStormService {
 
     // Fan-out to other systems
     await _weekly.logStormEvent(event);
-    _care.logStormEvent(event);
+    await _care.logStormEvent(event);
   }
 
   Future<StormSummary> computeSummary({int days = 7}) async {

@@ -1,4 +1,6 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+
+import 'package:flutter/material.dart';
 
 import '../services/kids_game_library_service.dart';
 import 'breathing_game_screen.dart';
@@ -108,13 +110,13 @@ class _KidsModeHomeScreenState extends State<KidsModeHomeScreen> {
                             final target = _games.getLaunchTarget(name);
                             if (!ctx.mounted) return;
                             if (target == 'neura://kids/breathing') {
-                              Navigator.of(ctx).push(MaterialPageRoute(
+                              unawaited(Navigator.of(ctx).push(MaterialPageRoute(
                                 builder: (_) => const BreathingGameScreen(),
-                              ));
+                              )));
                             } else if (target == 'neura://kids/gratitude') {
-                              Navigator.of(ctx).push(MaterialPageRoute(
+                              unawaited(Navigator.of(ctx).push(MaterialPageRoute(
                                 builder: (_) => const GratitudeStarsScreen(),
-                              ));
+                              )));
                             }
                           }
                         },

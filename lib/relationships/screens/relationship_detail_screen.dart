@@ -220,7 +220,7 @@ class _RelationshipDetailScreenState extends State<RelationshipDetailScreen> {
                       await PromiseService.instance
                           .updateStatus(p.id, PromiseStatus.dropped);
                     }
-                    _load();
+                    await _load();
                   },
                   itemBuilder: (context) => const [
                     PopupMenuItem(

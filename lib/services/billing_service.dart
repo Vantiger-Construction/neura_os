@@ -22,7 +22,7 @@ class BillingService {
     final available = await _iap.isAvailable();
     if (!available) return;
 
-    _purchaseSub?.cancel();
+    unawaited(_purchaseSub?.cancel());
     _purchaseSub = _iap.purchaseStream.listen(
       _onPurchaseUpdate,
       onError: (Object e) => debugPrint('BillingService: stream error $e'),

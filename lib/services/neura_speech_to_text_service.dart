@@ -77,7 +77,7 @@ class NeuraSpeechToTextService {
         break;
       case 'onError':
         _listening = false;
-        AppLog.instance.error('speech_to_text_native_error', {'reason': call.arguments});
+        await AppLog.instance.error('speech_to_text_native_error', {'reason': call.arguments});
         _transcriptStream.add('[voice input error] ${call.arguments}');
         if (!(_stopCompleter?.isCompleted ?? true)) {
           _stopCompleter!.complete(_finalText);
@@ -95,7 +95,7 @@ class NeuraSpeechToTextService {
       return true;
     } catch (e) {
       _listening = false;
-      AppLog.instance.error('speech_to_text_start_failed', {'error': e.toString()});
+      await AppLog.instance.error('speech_to_text_start_failed', {'error': e.toString()});
       _transcriptStream.add('Speech-to-text not available on this device.');
       return false;
     }

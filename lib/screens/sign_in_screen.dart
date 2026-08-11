@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../modules/navigation/enhanced_navigation.dart';
 import '../services/auth_service.dart';
@@ -27,13 +29,13 @@ class _SignInScreenState extends State<SignInScreen> {
       await AuthService().signIn(_email.text, _pass.text);
       if (!mounted) return;
       if (await AuthService().isEmailVerified()) {
-        Navigator.of(context).pushAndRemoveUntil(
+        unawaited(Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const EnhancedNavigation()),
           (route) => false,
-        );
+        ));
       } else {
-        Navigator.pushReplacement(
-            context, MaterialPageRoute(builder: (_) => VerifyEmailScreen()));
+        unawaited(Navigator.pushReplacement(
+            context, MaterialPageRoute(builder: (_) => VerifyEmailScreen())));
       }
     } catch (e) {
       setState(() {

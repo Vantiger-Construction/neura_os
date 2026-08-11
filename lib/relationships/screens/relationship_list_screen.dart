@@ -101,7 +101,7 @@ class _RelationshipListScreenState extends State<RelationshipListScreen> {
     );
     if (name == null || name.isEmpty) return;
     await RelationshipProfileService.instance.create(name);
-    _load();
+    await _load();
   }
 
   /// The tile's suggestions aren't tagged with a type, only a title/label --

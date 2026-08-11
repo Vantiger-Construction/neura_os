@@ -66,7 +66,7 @@ class _NeuraRiveResidentState extends State<NeuraRiveResident>
   Future<void> _bootstrap() async {
     // NeuraVoicePack is initialised in main() before the widget tree builds.
     await _loadPosition();
-    _voiceSub?.cancel();
+    unawaited(_voiceSub?.cancel());
     _voiceSub = NeuraVoicePack.I.stream.listen((f) {
       // Talking state -> event bus so AvatarOrchestrator and other listeners react.
       NeuraEventBus.I.emit(NeuraTalkingEvent(f.talkLevel > 0.05));
@@ -123,7 +123,7 @@ class _NeuraRiveResidentState extends State<NeuraRiveResident>
     final anchor = _defaultAnchor(room);
     _from = _posFrac;
     _to = anchor;
-    _move.forward(from: 0);
+    unawaited(_move.forward(from: 0));
     await _savePosition(anchor, pinned: false);
   }
 

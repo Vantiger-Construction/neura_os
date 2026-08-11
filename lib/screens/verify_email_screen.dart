@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../modules/navigation/enhanced_navigation.dart';
 import '../services/auth_service.dart';
@@ -22,10 +24,10 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
     final verified = await AuthService().isEmailVerified();
     if (!mounted) return;
     if (verified) {
-      Navigator.of(context).pushAndRemoveUntil(
+      unawaited(Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const EnhancedNavigation()),
         (route) => false,
-      );
+      ));
     }
   }
 

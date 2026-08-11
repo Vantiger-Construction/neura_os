@@ -3,6 +3,7 @@ import 'dart:async';
 import '../core/memory/memory_graph_service.dart';
 import '../core/neura_event_bus.dart';
 import '../core/neura_events.dart';
+import '../mascot/mascot_window_service.dart';
 import '../modules/core/app_log.dart';
 import '../persona/agents/agent_persona_catalog.dart';
 import 'neura_ai_service.dart';
@@ -68,6 +69,14 @@ class WakeWordListenerService {
 
   Future<void> _beginListening() async {
     if (!_stt.isListening) {
+      // Wait for the mascot window's own native engine/window creation to
+      // settle first -- same "two native engines/windows starting close
+      // together" hazard documented on MascotWindowService.initialCreationSettled
+      // and already worked around in AmbientListeningService.greetAndStartListening
+      // for the TTS path; this is the same wait for the wake-word mic path.
+      // Already-resolved after the first real boot, so this is a no-op on
+      // pause()/resume() cycles.
+      await MascotWindowService.I.initialCreationSettled;
       final ok = await _stt.startRecording();
       if (!ok) return;
       _weStartedSession = true;

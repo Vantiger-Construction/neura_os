@@ -31,12 +31,12 @@ class _PromisesListScreenState extends State<PromisesListScreen> {
 
   Future<void> _markDone(NeuraPromise p) async {
     await PromiseService.instance.updateStatus(p.id, PromiseStatus.completed);
-    _load();
+    await _load();
   }
 
   Future<void> _markDropped(NeuraPromise p) async {
     await PromiseService.instance.updateStatus(p.id, PromiseStatus.dropped);
-    _load();
+    await _load();
   }
 
   @override

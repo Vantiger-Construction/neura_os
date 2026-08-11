@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -140,10 +141,10 @@ class _AmbientRecordingsScreenState extends State<AmbientRecordingsScreen> {
         await _player.play(DeviceFileSource(tempPath));
       }
 
-      _player.onPlayerComplete.first.then((_) async {
+      unawaited(_player.onPlayerComplete.first.then((_) async {
         if (mounted) setState(() => _playingFilename = null);
         await _cleanupTempFile();
-      });
+      }));
     } catch (e) {
       if (!mounted) return;
       setState(() => _playingFilename = null);

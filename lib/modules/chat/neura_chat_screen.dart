@@ -171,7 +171,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   Future<void> _startListeningTurn() async {
     if (!_continuousMode || !mounted) return;
 
-    _voiceSub?.cancel();
+    unawaited(_voiceSub?.cancel());
     _voiceSub = _voiceInput.transcriptStream.listen((partial) {
       if (!mounted) return;
       setState(() {
@@ -181,7 +181,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       });
     });
 
-    _finalPhraseSub?.cancel();
+    // In continuous mode, a completed phrase means the user is done talking
+    // for this turn — end listening and send automatically rather than
+    // waiting for a manual tap on the mic button.
+    unawaited(_finalPhraseSub?.cancel());
     _finalPhraseSub = _voiceInput.finalPhraseStream.listen((_) {
       if (!_continuousMode || !mounted) return;
       unawaited(_stopListeningAndSend());
@@ -189,7 +192,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
 
     final ok = await _voiceInput.startRecording();
     if (!ok) {
-      AppLog.instance.info('voice_input_unavailable', {});
+      await AppLog.instance.info('voice_input_unavailable', {});
       _continuousMode = false;
       return;
     }
@@ -228,7 +231,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     await NeuraTtsService.instance.stop();
 
     if (interruptedId != null) {
-      AppLog.instance.info('speak_interrupted', {
+      await AppLog.instance.info('speak_interrupted', {
         'utterance_id': interruptedId,
         'seq': interruptedLine?.seq ?? 0,
       });
@@ -302,7 +305,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       _activeReplyId = generationId;
     });
     _scrollToEnd();
-    AppLog.instance.info('chat_turn', {
+    await AppLog.instance.info('chat_turn', {
       'user': displayText,
       'has_image': hasImage,
       'utterance_id': generationId,
@@ -363,7 +366,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       }
 
       if (!mounted || _activeReplyId != generationId) return;
-      AppLog.instance.info('chat_reply_complete', {
+      await AppLog.instance.info('chat_reply_complete', {
         'utterance_id': generationId,
         'seq': botLine.seq,
         'room': room.id,
@@ -384,7 +387,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         await NeuraTtsService.instance.speak(botLine.text);
       }
     } on NeuraGenerationCancelled catch (e) {
-      AppLog.instance.info('chat_generation_cancelled', {
+      await AppLog.instance.info('chat_generation_cancelled', {
         'utterance_id': e.generationId,
         'seq': botLine.seq,
       });
@@ -393,7 +396,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       }
       return;
     } catch (e) {
-      AppLog.instance.info('chat_error', {
+      await AppLog.instance.info('chat_error', {
         'error': e.toString(),
         'utterance_id': generationId,
       });
@@ -536,12 +539,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         setState(() {
           _activeAgent = AgentSelectionService.instance.resolveAgent(target);
         });
-        AppLog.instance.info('dispatch_intent', {'room': roomId});
+        await AppLog.instance.info('dispatch_intent', {'room': roomId});
         break;
       case NeuraChatPolicy.setTone:
         final tone = command.arguments['tone']?.toString() ?? '';
         final applied = NeuraToneRuntime.instance.setTone(tone);
-        AppLog.instance.info('set_tone', {'tone': tone, 'applied': applied});
+        await AppLog.instance.info('set_tone', {'tone': tone, 'applied': applied});
         break;
     }
   }

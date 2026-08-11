@@ -34,6 +34,13 @@ linter:
   rules:
     # avoid_print: false  # Uncomment to disable the `avoid_print` rule
     # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
+    # Flags Future-returning calls left neither awaited nor explicitly
+    # wrapped in `unawaited(...)` -- the exact class of bug that caused a
+    # boot-time native crash (a missing `await` on an FFI init call let the
+    # boot sequence race a native window's startup). Genuinely
+    # fire-and-forget calls should be wrapped in `unawaited()` to document
+    # the intent, not left bare.
+    unawaited_futures: true
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options

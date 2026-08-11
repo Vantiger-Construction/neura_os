@@ -109,7 +109,7 @@ class _MonthlyDreamShowScreenState extends State<MonthlyDreamShowScreen>
     if (!mounted) return;
     _pageCtrl.jumpToPage(next);
     setState(() => _currentPage = next);
-    _fade.forward();
+    unawaited(_fade.forward());
   }
 
   @override

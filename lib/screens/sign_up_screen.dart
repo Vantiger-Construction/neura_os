@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import 'verify_email_screen.dart';
@@ -22,8 +24,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
     try {
       await AuthService().signUp(_email.text, _pass.text);
-      Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => VerifyEmailScreen()));
+      unawaited(Navigator.pushReplacement(
+          context, MaterialPageRoute(builder: (_) => VerifyEmailScreen())));
     } catch (e) {
       setState(() {
         _error = e.toString();

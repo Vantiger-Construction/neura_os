@@ -92,7 +92,7 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     unawaited(MemoryConsolidationService.instance.maybeConsolidateOnAppOpen());
     unawaited(_maybeNotifyLegacyOverdue());
     unawaited(_reconfirmDailyMoodNudgeSchedule());
-    _checkForUpdate();
+    unawaited(_checkForUpdate());
   }
 
   /// Wraps WeeklySummaristService's own app-open hook so a notification can
