@@ -4,12 +4,21 @@
 //! (`lib/services/neura_ai_service.dart`) so both call sites hit the API the
 //! same way -- this client just isn't the one driving the main chat stream.
 
+use std::time::Duration;
+
 use serde::Deserialize;
 use serde_json::json;
 
 const ENDPOINT: &str = "https://api.anthropic.com/v1/messages";
 const MODEL: &str = "claude-sonnet-5";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
+
+/// These are quick, low-effort single-purpose calls (see `complete`'s
+/// `max_tokens` doc), so a generous-but-bounded timeout is enough to stop a
+/// stalled connection from hanging the calling agent forever -- both
+/// agents already degrade gracefully on any `ClientError`, so a timeout
+/// just becomes one more input to that same fallback path.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Debug)]
 pub enum ClientError {
@@ -50,7 +59,10 @@ pub async fn complete(
     user_message: &str,
     max_tokens: u32,
 ) -> Result<String, ClientError> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(REQUEST_TIMEOUT)
+        .build()
+        .map_err(|e| ClientError::Http(e.to_string()))?;
 
     let body = json!({
         "model": MODEL,
