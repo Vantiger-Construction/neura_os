@@ -36,17 +36,22 @@ class NeuraPromptBuilder {
     );
   }
 
-  /// Build a suggested system message string for your LLM client. Appends a
-  /// short recap of recent memory-graph entries so Neura can recall things
-  /// from past sessions - without this, every fresh chat screen starts from
-  /// nothing since [_lines] there is only ever in-memory.
+  /// Build a suggested system message string for your LLM client.
+  ///
+  /// When [includePersistentMemory] is false, this method deliberately does
+  /// not read either the consolidated profile or encrypted memory graph from
+  /// disk. The caller can still provide the current in-memory conversation,
+  /// giving private rooms working memory without long-term recall.
   Future<String> buildSystemMessage({
     String agentId = AgentPersonaCatalog.generalId,
     NeuraAudience? audience,
+    bool includePersistentMemory = true,
   }) async {
     final style = await resolveStyle(agentId: agentId, audience: audience);
-    final profileSnippet = await _buildProfileSnippet();
-    final memorySnippet = await _buildMemorySnippet();
+    final profileSnippet =
+        includePersistentMemory ? await _buildProfileSnippet() : '';
+    final memorySnippet =
+        includePersistentMemory ? await _buildMemorySnippet() : '';
 
     final parts = [style.systemPromptSnippet, profileSnippet, memorySnippet]
         .where((s) => s.isNotEmpty);
