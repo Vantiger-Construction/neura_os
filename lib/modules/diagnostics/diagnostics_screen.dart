@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../core/app_log.dart';
+import '../../reliability/module_health_monitor.dart';
+import '../../reliability/safe_boot.dart';
+import '../../reliability/timeline_vault.dart';
 
 class DiagnosticsScreen extends StatefulWidget {
   const DiagnosticsScreen({super.key});
@@ -13,6 +16,7 @@ class DiagnosticsScreen extends StatefulWidget {
 
 class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
   List<String> _lines = const [];
+  List<Map<String, dynamic>> _timeline = const [];
   bool _loading = true;
 
   @override
@@ -23,11 +27,33 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final lines = await AppLog.instance.tail(maxLines: 250);
+    final results = await Future.wait([
+      AppLog.instance.tail(maxLines: 250),
+      TimelineVault.instance.tail(maxLines: 50),
+    ]);
+    if (!mounted) return;
     setState(() {
-      _lines = lines;
+      _lines = results[0] as List<String>;
+      _timeline = results[1] as List<Map<String, dynamic>>;
       _loading = false;
     });
+  }
+
+  Future<void> _exportTimeline() async {
+    final path = await TimelineVault.instance.exportCopy();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Timeline exported to $path')),
+    );
+  }
+
+  Future<void> _toggleSafeMode() async {
+    if (SafeBoot.instance.safeMode.value) {
+      await SafeBoot.instance.clearSafeMode();
+    } else {
+      await SafeBoot.instance.requestSafeMode();
+    }
+    if (mounted) setState(() {});
   }
 
   Future<void> _clear() async {
@@ -68,6 +94,85 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                     subtitle: const Text('When in doubt, blame the multiverse and log everything.'),
                     onTap: _dimensionalSync,
                   ),
+                ),
+                const SizedBox(height: 12),
+                ValueListenableBuilder<bool>(
+                  valueListenable: SafeBoot.instance.safeMode,
+                  builder: (context, safeMode, _) => Card(
+                    child: ListTile(
+                      leading: Icon(
+                        safeMode ? Icons.health_and_safety : Icons.verified_outlined,
+                        color: safeMode ? Colors.orange : Colors.green,
+                      ),
+                      title: Text(safeMode ? 'Safe Mode active' : 'Normal startup mode'),
+                      subtitle: Text(
+                        safeMode
+                            ? 'Voice, notifications, and cloud startup are temporarily suppressed.'
+                            : 'Consecutive failed boots: ${SafeBoot.instance.consecutiveFailures}',
+                      ),
+                      trailing: TextButton(
+                        onPressed: _toggleSafeMode,
+                        child: Text(safeMode ? 'Clear' : 'Enable'),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                AnimatedBuilder(
+                  animation: ModuleHealthMonitor.instance,
+                  builder: (context, _) {
+                    final modules = ModuleHealthMonitor.instance.snapshot;
+                    return ExpansionTile(
+                      initiallyExpanded: true,
+                      title: const Text('Module Health Monitor'),
+                      subtitle: Text('${modules.length} startup modules reported'),
+                      children: modules.map((module) {
+                        final healthy = module.status == NeuraModuleStatus.healthy;
+                        final skipped = module.status == NeuraModuleStatus.skipped;
+                        return ListTile(
+                          leading: Icon(
+                            healthy
+                                ? Icons.check_circle
+                                : skipped
+                                    ? Icons.pause_circle_outline
+                                    : Icons.warning_amber,
+                            color: healthy
+                                ? Colors.green
+                                : skipped
+                                    ? Colors.blueGrey
+                                    : Colors.orange,
+                          ),
+                          title: Text(module.name),
+                          subtitle: Text([
+                            module.status.name,
+                            if (module.duration != null)
+                              '${module.duration!.inMilliseconds} ms',
+                            if (module.detail != null) module.detail!,
+                            if (module.remedy != null) 'Remedy: ${module.remedy}',
+                          ].join(' · ')),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                ExpansionTile(
+                  title: const Text('Timeline Vault'),
+                  subtitle: Text('${_timeline.length} recent append-only events'),
+                  trailing: IconButton(
+                    tooltip: 'Export Timeline Vault',
+                    onPressed: _exportTimeline,
+                    icon: const Icon(Icons.download_outlined),
+                  ),
+                  children: _timeline.reversed.map((event) {
+                    return ListTile(
+                      dense: true,
+                      title: Text(event['kind']?.toString() ?? 'unknown'),
+                      subtitle: Text(
+                        '${event['ts'] ?? ''}\n${jsonEncode(event['data'] ?? const {})}',
+                      ),
+                    );
+                  }).toList(),
                 ),
                 const SizedBox(height: 12),
                 Text('Recent logs', style: Theme.of(context).textTheme.titleLarge),
