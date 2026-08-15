@@ -43,6 +43,17 @@ class NeuraRuntimeController {
     _sub = null;
   }
 
+  /// Stops the memory watcher so a later runtime event cannot re-persist a
+  /// pre-wipe room summary in the same process.
+  Future<void> resetAfterDataWipe() async {
+    await _sub?.cancel();
+    _sub = null;
+    await NeuraMemoryWatcher.I.stop();
+    NeuraRoomMemory.I.resetAfterDataWipe();
+    NeuraBus.I.resetAfterDataWipe();
+    _started = false;
+  }
+
   Future<void> _onRoomEnter(NeuraRoomKey room) async {
     // Tiny "welcome back" line based on last memory in that room.
     final line = NeuraRoomMemory.I.composeReturnLine(room);

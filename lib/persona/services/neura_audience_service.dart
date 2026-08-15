@@ -28,6 +28,11 @@ class NeuraAudienceService {
     await prefs.setString(_keyAudience, audience.label);
   }
 
+  void resetAfterDataWipe() {
+    _currentAudience = NeuraAudience.adult;
+    _loaded = false;
+  }
+
   NeuraAudience _parse(String label) {
     switch (label) {
       case 'child':

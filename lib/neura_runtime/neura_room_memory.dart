@@ -131,4 +131,9 @@ class NeuraRoomMemory {
         return 'Welcome back — I remember what we were doing here.';
     }
   }
+
+  void resetAfterDataWipe() {
+    _byRoom.clear();
+    _loaded = false;
+  }
 }

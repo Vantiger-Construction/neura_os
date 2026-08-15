@@ -37,4 +37,8 @@ class AppLockPrefsController {
       await AppLog.instance.warn('AppLockPrefsController.setEnabled failed: $e');
     }
   }
+
+  void resetAfterDataWipe() {
+    enabled.value = false;
+  }
 }

@@ -63,6 +63,11 @@ class DreamThemeService {
     _loaded = true;
   }
 
+  void resetAfterDataWipe() {
+    _entries = [];
+    _loaded = false;
+  }
+
   Future<void> _save() async {
     final prefs = NeuraPrefsCache.prefs;
     final list = _entries.map((e) => e.toMap()).toList();

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../config/supabase_config.dart';
@@ -23,7 +24,16 @@ import '../privacy/privacy_home_screen.dart';
 import '../voice/voice_lab_screen.dart';
 import '../../../modules/memory/memory_screen.dart';
 import '../../../modules/feedback/feedback_screen.dart';
+import '../../../intelligence/intelligence_center_screen.dart';
 import '../../../notifications/notifications_settings_screen.dart';
+import '../../../reliability/safe_boot.dart';
+
+@visibleForTesting
+bool cloudSettingsRoutesAllowed({
+  required bool configured,
+  required bool safeMode,
+}) =>
+    configured && !safeMode;
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -35,30 +45,73 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
-          if (SupabaseConfig.isConfigured) ...[
-            ListTile(
-              leading: const Icon(Icons.account_circle_outlined),
-              title: const Text('Profile & Account'),
-              subtitle: const Text('Display name, email, and sign out.'),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+          if (SupabaseConfig.isConfigured)
+            AnimatedBuilder(
+              animation: Listenable.merge([
+                SafeBoot.instance.safeMode,
+                SafeBoot.instance.restartRequired,
+              ]),
+              builder: (context, _) {
+                final safeMode = SafeBoot.instance.safeMode.value;
+                final restartRequired =
+                    SafeBoot.instance.restartRequired.value;
+                if (!cloudSettingsRoutesAllowed(
+                  configured: SupabaseConfig.isConfigured,
+                  safeMode: safeMode,
+                )) {
+                  return Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.cloud_off_outlined),
+                        title: const Text('Cloud account and sync paused'),
+                        subtitle: Text(
+                          restartRequired
+                              ? 'Safe Mode remains active in this process. '
+                                  'Restart Neura to restore Profile and Sync.'
+                              : 'Safe Mode keeps Supabase offline. Clear Safe '
+                                  'Mode in Diagnostics, then restart Neura to '
+                                  'restore Profile and Sync.',
+                        ),
+                      ),
+                      const Divider(),
+                    ],
+                  );
+                }
+
+                return Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.account_circle_outlined),
+                      title: const Text('Profile & Account'),
+                      subtitle: const Text('Display name, email, and sign out.'),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const ProfileScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(),
+                    ListTile(
+                      leading: const Icon(Icons.sync_outlined),
+                      title: const Text('Sync Status'),
+                      subtitle: const Text(
+                        'Push and pull your journal entries manually.',
+                      ),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const SyncStatusScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(),
+                  ],
                 );
               },
             ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.sync_outlined),
-              title: const Text('Sync Status'),
-              subtitle: const Text('Push and pull your journal entries manually.'),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SyncStatusScreen()),
-                );
-              },
-            ),
-            const Divider(),
-          ],
           ListTile(
             leading: const Icon(Icons.smart_toy_outlined),
             title: const Text('AI Provider'),
@@ -67,6 +120,21 @@ class SettingsScreen extends StatelessWidget {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => const AiProviderSettingsScreen(),
+                ),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.hub_outlined),
+            title: const Text('Neura Intelligence'),
+            subtitle: const Text(
+              'Signal controls, quiet hours, capability approvals, and decision receipts.',
+            ),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const NeuraIntelligenceCenterScreen(),
                 ),
               );
             },

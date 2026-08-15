@@ -30,20 +30,23 @@ if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
 Push-Location $Root
 try {
     Step 'Checking for embedded Anthropic secrets'
-    $matches = Get-ChildItem -LiteralPath $Root -File -Recurse |
+    $secretHits = Get-ChildItem -LiteralPath $Root -File -Recurse |
         Where-Object {
             $_.FullName -notmatch '[\\/](build|\.dart_tool|\.git|dist|upgrade_backups)[\\/]' -and
             $_.Length -lt 5MB
         } |
         Select-String -Pattern 'sk-ant-[A-Za-z0-9_-]{20,}' -ErrorAction SilentlyContinue
-    if ($matches) {
-        $paths = ($matches | Select-Object -ExpandProperty Path -Unique) -join "`n  "
+    if ($secretHits) {
+        $paths = ($secretHits | Select-Object -ExpandProperty Path -Unique) -join "`n  "
         throw "Possible provider secret found. Revoke/remove it before building:`n  $paths"
     }
     Good 'Secret gate passed'
 
     Step 'Resolving Flutter packages'
     Run { flutter pub get } 'flutter pub get failed'
+
+    Step 'Checking Dart formatting'
+    Run { dart format --output=none --set-exit-if-changed lib test } 'Dart format check failed'
 
     Step 'Formatting and testing Rust'
     Run { cargo fmt --manifest-path rust\Cargo.toml -- --check } 'cargo fmt check failed'
@@ -67,14 +70,20 @@ try {
         Run { flutter build appbundle --release } 'Android app bundle failed'
     }
 
+    $versionMatch = Select-String -LiteralPath (Join-Path $Root 'pubspec.yaml') -Pattern '^version:\s*([^+\s]+)' |
+        Select-Object -First 1
+    if (-not $versionMatch) { throw 'Could not read the app version from pubspec.yaml.' }
+    $releaseVersion = $versionMatch.Matches[0].Groups[1].Value
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $dist = Join-Path $Root "dist\Neura_Companion_1.2.0_$stamp"
+    $dist = Join-Path $Root "dist\Neura_Companion_${releaseVersion}_$stamp"
     New-Item -ItemType Directory -Force -Path $dist | Out-Null
 
     $windowsRelease = Join-Path $Root 'build\windows\x64\runner\Release'
     Copy-Item -LiteralPath $windowsRelease -Destination (Join-Path $dist 'app') -Recurse
     Copy-Item -LiteralPath (Join-Path $Root 'rust\target\release\neura_api.exe') -Destination (Join-Path $dist 'app\neura_api.exe')
     Copy-Item -LiteralPath (Join-Path $Root 'NEURA_CONSOLIDATED_UPGRADES.md') -Destination $dist
+    Copy-Item -LiteralPath (Join-Path $Root 'CHANGELOG_INTELLIGENCE_v1.3.0.md') -Destination $dist
+    Copy-Item -LiteralPath (Join-Path $Root 'docs\INTELLIGENCE_FABRIC_v1.3.md') -Destination $dist
     Copy-Item -LiteralPath (Join-Path $Root 'docs\PrivacyPolicy.md') -Destination $dist
     Copy-Item -LiteralPath (Join-Path $Root 'docs\TermsOfService.md') -Destination $dist
 

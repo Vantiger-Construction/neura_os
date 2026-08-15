@@ -130,8 +130,9 @@ class NeuraChatPolicy {
         return {
           'name': getMoodHistory,
           'description':
-              "Get the user's recent mood check-in history (timestamp, 0-10 "
-              'mood score, and note). Use this for mood history or trends.',
+              "Request the user's recent mood dates and 0-10 scores for this "
+              'reply. A user confirmation is required and notes are never '
+              'shared.',
           'input_schema': {
             'type': 'object',
             'properties': {

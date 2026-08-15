@@ -78,11 +78,21 @@ class _AiProviderSettingsScreenState
       ),
     );
     if (confirmed != true) return;
-    await NeuraProviderCredentials.instance.clear();
     try {
+      // Stop native use first, then remove the authoritative secure copy. A
+      // failure in either layer must not be presented as a completed removal.
       await NeuraSwarmService.instance.clearCredential();
+      await NeuraProviderCredentials.instance.clear();
     } catch (_) {
-      // Secure storage is authoritative; a restart also clears native memory.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Key removal is incomplete. Close Neura and try again before using cloud features.',
+          ),
+        ),
+      );
+      return;
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

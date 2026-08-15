@@ -89,4 +89,8 @@ class NeuraNotificationsPrefsController {
       await AppLog.instance.warn('NeuraNotificationsPrefsController.update failed: $e');
     }
   }
+
+  void resetAfterDataWipe() {
+    prefs.value = const NeuraNotificationsPrefs();
+  }
 }

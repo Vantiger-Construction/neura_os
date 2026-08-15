@@ -1,7 +1,6 @@
 ﻿import 'dart:convert';
 import '../models/storm_event.dart';
 import '../../shared/services/self_heal_service.dart';
-import '../../weekly/services/weekly_snapshot_bridge.dart';
 import '../../care/services/care_mode_bridge.dart';
 import '../../startup/neura_prefs_cache.dart';
 
@@ -12,7 +11,6 @@ class AfterStormService {
   static const _keyEvents = 'after_storm_events_v1';
 
   final _selfHeal = SelfHealService.instance;
-  final _weekly = WeeklySnapshotBridge.instance;
   final _care = CareModeBridge.instance;
 
   Future<List<StormEvent>> loadEvents() async {
@@ -46,8 +44,10 @@ class AfterStormService {
     final updated = [event, ...existing];
     await _saveEvents(updated);
 
-    // Fan-out to other systems
-    await _weekly.logStormEvent(event);
+    // WeeklySnapshotService reads this store directly when it builds a
+    // summary. Do not send the event back through WeeklySnapshotBridge here:
+    // that bridge delegates to this method for external callers, so doing so
+    // would recurse forever.
     await _care.logStormEvent(event);
   }
 

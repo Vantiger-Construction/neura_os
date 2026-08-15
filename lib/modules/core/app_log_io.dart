@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -19,8 +20,12 @@ class AppLog {
   File? _file;
   bool _init = false;
   int _writesSinceSizeCheck = 0;
+  int _activeWrites = 0;
+  Completer<void>? _writesDrained;
+  bool _suspendedForDataWipe = false;
 
   Future<void> init() async {
+    if (_suspendedForDataWipe) return;
     if (_init) return;
     _init = true;
     try {
@@ -72,6 +77,8 @@ class AppLog {
   }
 
   Future<void> _write(String level, String event, Map<String, Object?> data) async {
+    if (_suspendedForDataWipe) return;
+    _activeWrites += 1;
     try {
       if (!_init) await init();
       if (_file == null) return;
@@ -88,6 +95,13 @@ class AppLog {
       }
     } catch (_) {
       // Nope.
+    } finally {
+      _activeWrites -= 1;
+      if (_activeWrites == 0) {
+        final drained = _writesDrained;
+        _writesDrained = null;
+        if (drained != null && !drained.isCompleted) drained.complete();
+      }
     }
   }
 
@@ -112,5 +126,18 @@ class AppLog {
     } catch (_) {
       // shrug
     }
+  }
+
+  /// Drains and suspends logging, then releases the old path before its
+  /// containing app-data directory is removed. A restart resumes logging.
+  Future<void> resetAfterDataWipe() async {
+    _suspendedForDataWipe = true;
+    if (_activeWrites > 0) {
+      final drained = _writesDrained ??= Completer<void>();
+      await drained.future;
+    }
+    _file = null;
+    _init = false;
+    _writesSinceSizeCheck = 0;
   }
 }

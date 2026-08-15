@@ -46,9 +46,20 @@ class GuardrailRules {
   }
 
   GuardrailDecision? softShape(NeuraContextSnapshot ctx, NeuraProposal p) {
-    if (ctx.userInFocusMode && p.type == ProposalType.notification) {
+    if (ctx.userSleepingMode &&
+        (p.type == ProposalType.prompt ||
+            p.type == ProposalType.suggestion ||
+            p.type == ProposalType.notification)) {
       return GuardrailDecision.block(
-        'User in focus mode. Suppressing notification.',
+        'Quiet hours are active. Suppressing proactive interruption.',
+      );
+    }
+
+    if (ctx.userInFocusMode &&
+        (p.type == ProposalType.notification ||
+            p.type == ProposalType.prompt)) {
+      return GuardrailDecision.block(
+        'User in focus mode. Suppressing proactive interruption.',
         safeAlternative: NeuraProposal(
           type: ProposalType.suggestion,
           id: 'queue_for_later',

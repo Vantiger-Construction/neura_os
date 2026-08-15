@@ -62,6 +62,12 @@ class GoodwillController {
     streak.value = 0;
   }
 
+  void resetAfterDataWipe() {
+    acts.value = const <KindnessAct>[];
+    streak.value = 0;
+    _loaded = false;
+  }
+
   int _calculateStreakEndingOn(DateTime? end, {List<KindnessAct>? list}) {
     final items = list ?? acts.value;
     if (end == null || items.isEmpty) return 0;

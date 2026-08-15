@@ -10,10 +10,19 @@ class NeuraErrorVault {
   static const _fileName = 'neura_error_vault.jsonl';
   static const _maxBytes = 1024 * 512; // 512 KB
   static const _maxBackupFiles = 3;
+  static bool _suspendedForDataWipe = false;
+  static Future<void> _writeQueue = Future<void>.value();
 
   static File _file() => File('${Directory.systemTemp.path}${Platform.pathSeparator}$_fileName');
 
-  static Future<void> append(NeuraFaultEvent event) async {
+  static Future<void> append(NeuraFaultEvent event) {
+    if (_suspendedForDataWipe) return Future<void>.value();
+    final next = _writeQueue.then((_) => _appendNow(event));
+    _writeQueue = next.then<void>((_) {}, onError: (_) {});
+    return next;
+  }
+
+  static Future<void> _appendNow(NeuraFaultEvent event) async {
     try {
       final f = _file();
       await _rotateIfNeeded(f);
@@ -30,6 +39,11 @@ class NeuraErrorVault {
     } catch (_) {
       return null;
     }
+  }
+
+  static Future<void> suspendForDataWipe() async {
+    _suspendedForDataWipe = true;
+    await _writeQueue;
   }
 
   static Future<void> _rotateIfNeeded(File f) async {

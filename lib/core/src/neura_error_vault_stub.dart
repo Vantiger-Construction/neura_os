@@ -7,4 +7,6 @@ class NeuraErrorVault {
   }
 
   static Future<String?> getVaultPath() async => null;
+
+  static Future<void> suspendForDataWipe() async {}
 }

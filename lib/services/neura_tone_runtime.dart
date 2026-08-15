@@ -27,6 +27,12 @@ class NeuraToneRuntime {
     return true;
   }
 
+  void resetAfterDataWipe() {
+    // Do not emit a runtime event here: the startup audit subscriber would
+    // recreate the just-deleted timeline during the wipe itself.
+    tone.value = 'warm_companion';
+  }
+
   static _ToneVisual _visualFor(String value) {
     switch (value) {
       case 'strategist':

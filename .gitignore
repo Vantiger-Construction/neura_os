@@ -4,13 +4,13 @@
 **/.dart_tool/
 **/.pub/
 **/pubspec.lock
+!/pubspec.lock
 **/android/.gradle/
 **/android/app/*.keystore
 **/.idea/
 **/.vscode/
 **/.vs/
 **/scripts/
-**/.github/
 
 # Neura repair/build diagnostics and generated installer output
 **/.neura_repair/

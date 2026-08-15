@@ -31,4 +31,8 @@ class HumanPrefsController {
       await AppLog.instance.warn('HumanPrefsController.update failed: $e');
     }
   }
+
+  void resetAfterDataWipe() {
+    prefs.value = HumanPrefs.defaults;
+  }
 }

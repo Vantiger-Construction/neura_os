@@ -2,10 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
-import '../core/app_log.dart';
 import '../../reliability/module_health_monitor.dart';
 import '../../reliability/safe_boot.dart';
 import '../../reliability/timeline_vault.dart';
+import '../core/app_log.dart';
 
 class DiagnosticsScreen extends StatefulWidget {
   const DiagnosticsScreen({super.key});
@@ -49,11 +49,18 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
 
   Future<void> _toggleSafeMode() async {
     if (SafeBoot.instance.safeMode.value) {
+      if (SafeBoot.instance.restartRequired.value) return;
       await SafeBoot.instance.clearSafeMode();
     } else {
       await SafeBoot.instance.requestSafeMode();
     }
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    final message = SafeBoot.instance.restartRequired.value
+        ? 'Safe Mode stays active until you restart Neura.'
+        : 'Safe Mode is active for this session.';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   Future<void> _clear() async {
@@ -96,26 +103,49 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                ValueListenableBuilder<bool>(
-                  valueListenable: SafeBoot.instance.safeMode,
-                  builder: (context, safeMode, _) => Card(
-                    child: ListTile(
-                      leading: Icon(
-                        safeMode ? Icons.health_and_safety : Icons.verified_outlined,
-                        color: safeMode ? Colors.orange : Colors.green,
+                AnimatedBuilder(
+                  animation: Listenable.merge([
+                    SafeBoot.instance.safeMode,
+                    SafeBoot.instance.restartRequired,
+                  ]),
+                  builder: (context, _) {
+                    final safeMode = SafeBoot.instance.safeMode.value;
+                    final restartRequired =
+                        SafeBoot.instance.restartRequired.value;
+                    return Card(
+                      child: ListTile(
+                        leading: Icon(
+                          safeMode
+                              ? Icons.health_and_safety
+                              : Icons.verified_outlined,
+                          color: safeMode ? Colors.orange : Colors.green,
+                        ),
+                        title: Text(
+                          restartRequired
+                              ? 'Restart required'
+                              : safeMode
+                                  ? 'Safe Mode active'
+                                  : 'Normal startup mode',
+                        ),
+                        subtitle: Text(
+                          restartRequired
+                              ? 'Safe Mode remains active in this process. '
+                                  'Restart Neura to return to normal startup mode.'
+                              : safeMode
+                                  ? 'Voice, notifications, and cloud startup '
+                                      'are temporarily suppressed.'
+                                  : 'Consecutive failed boots: '
+                                      '${SafeBoot.instance.consecutiveFailures}',
+                        ),
+                        trailing: restartRequired
+                            ? const Chip(label: Text('Next launch'))
+                            : TextButton(
+                                onPressed: _toggleSafeMode,
+                                child: Text(safeMode ? 'Clear' : 'Enable'),
+                              ),
                       ),
-                      title: Text(safeMode ? 'Safe Mode active' : 'Normal startup mode'),
-                      subtitle: Text(
-                        safeMode
-                            ? 'Voice, notifications, and cloud startup are temporarily suppressed.'
-                            : 'Consecutive failed boots: ${SafeBoot.instance.consecutiveFailures}',
-                      ),
-                      trailing: TextButton(
-                        onPressed: _toggleSafeMode,
-                        child: Text(safeMode ? 'Clear' : 'Enable'),
-                      ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 12),
                 AnimatedBuilder(

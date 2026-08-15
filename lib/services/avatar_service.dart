@@ -42,4 +42,8 @@ class AvatarService {
       orElse: () => all.first,
     );
   }
+
+  void resetAfterDataWipe() {
+    selectedAvatarId.value = 'neura';
+  }
 }

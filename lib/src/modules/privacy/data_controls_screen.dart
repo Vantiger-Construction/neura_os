@@ -134,7 +134,10 @@ class _DataControlsScreenState extends State<DataControlsScreen> {
   Future<void> _wipeAllLocal() async {
     final ok = await _confirm(
       'Wipe all local data?',
-      'This clears app settings + deletes the Legacy Vault. This cannot be undone.',
+      'This removes Neura credentials, encryption keys, settings, memories, '
+          'journals, recordings, logs, and app-generated exports from this '
+          'device. Copies you already shared outside Neura are not affected. '
+          'This cannot be undone.',
     );
     if (!ok) return;
 
@@ -142,12 +145,19 @@ class _DataControlsScreenState extends State<DataControlsScreen> {
     try {
       await NeuraDataWipeService.wipeAllLocalData();
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('All local data wiped.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('All local data wiped. Restart Neura before continuing.'),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Wipe failed: $e')));
+          .showSnackBar(SnackBar(
+        content: Text(
+          'Wipe incomplete: $e Restart Neura before retrying.',
+        ),
+      ));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -203,7 +213,9 @@ class _DataControlsScreenState extends State<DataControlsScreen> {
                 const Divider(height: 1),
                 ListTile(
                   title: const Text('Wipe ALL local data'),
-                  subtitle: const Text('Clears settings and deletes Legacy Vault.'),
+                  subtitle: const Text(
+                    'Removes credentials and every known app-owned local record.',
+                  ),
                   leading: const Icon(Icons.warning_amber_rounded),
                   onTap: _busy ? null : _wipeAllLocal,
                 ),

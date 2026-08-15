@@ -63,4 +63,10 @@ class JokePrefsController {
       await AppLog.instance.warn('JokePrefsController persist($key) failed: $e');
     }
   }
+
+  void resetAfterDataWipe() {
+    favorites.value = const <String>[];
+    dislikes.value = const <String>[];
+    includeSpicy.value = false;
+  }
 }

@@ -1,9 +1,13 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../modules/core/app_log.dart';
+import '../reliability/safe_boot.dart';
 
 /// Opt-in Windows toast notifications for three existing app-open-gated
 /// signals ([WeeklySummaristService], [LegacyDeadmanService]) plus a daily
@@ -24,23 +28,31 @@ import '../modules/core/app_log.dart';
 /// tradeoff is the repeat anchor drifts by an hour across a DST transition
 /// -- acceptable for a beta reminder feature.
 class NeuraNotificationsService {
-  NeuraNotificationsService._();
-  static final NeuraNotificationsService instance = NeuraNotificationsService._();
+  NeuraNotificationsService._() {
+    SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
+  }
+  static final NeuraNotificationsService instance =
+      NeuraNotificationsService._();
 
   static const _weeklyReviewId = 1001;
   static const _legacyOverdueId = 1002;
   static const _dailyMoodNudgeId = 1003;
 
-  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  FlutterLocalNotificationsPlugin? _plugin;
   bool _initialized = false;
   bool _available = false;
+  bool get deliveryAllowed => !SafeBoot.instance.safeMode.value;
 
-  Future<void> init() async {
+  Future<void> init() => _initialize();
+
+  Future<void> _initialize({bool allowInSafeMode = false}) async {
+    if (!allowInSafeMode && !deliveryAllowed) return;
     if (_initialized) return;
     _initialized = true;
     try {
       tz_data.initializeTimeZones();
-      final ok = await _plugin.initialize(
+      final plugin = _plugin ??= FlutterLocalNotificationsPlugin();
+      final ok = await plugin.initialize(
         settings: const InitializationSettings(
           windows: WindowsInitializationSettings(
             appName: 'Neura',
@@ -50,6 +62,9 @@ class NeuraNotificationsService {
         ),
       );
       _available = ok ?? false;
+      if (!allowInSafeMode && !deliveryAllowed && _available) {
+        await plugin.cancelAll();
+      }
     } catch (e) {
       _available = false;
       await AppLog.instance.warn('neura_notifications_init_failed: $e');
@@ -75,8 +90,11 @@ class NeuraNotificationsService {
   }
 
   Future<void> _showSafely(int id, String title, String body) async {
+    if (!deliveryAllowed) return;
+    final plugin = _plugin;
+    if (plugin == null) return;
     try {
-      await _plugin.show(
+      await plugin.show(
         id: id,
         title: title,
         body: body,
@@ -94,8 +112,9 @@ class NeuraNotificationsService {
       var next = DateTime(now.year, now.month, now.day, at.hour, at.minute);
       if (!next.isAfter(now)) next = next.add(const Duration(days: 1));
       final scheduled = tz.TZDateTime.from(next.toUtc(), tz.UTC);
+      if (!deliveryAllowed) return;
 
-      await _plugin.zonedSchedule(
+      await _plugin!.zonedSchedule(
         id: _dailyMoodNudgeId,
         title: 'How are you feeling today?',
         body: 'A quick mood check-in with Neura only takes a few seconds.',
@@ -110,25 +129,71 @@ class NeuraNotificationsService {
   }
 
   Future<void> cancelDailyMoodNudge() async {
-    if (!_available) return;
+    final plugin = _plugin;
+    if (!_available || plugin == null) return;
     try {
-      await _plugin.cancel(id: _dailyMoodNudgeId);
+      await plugin.cancel(id: _dailyMoodNudgeId);
     } catch (e) {
       await AppLog.instance.warn('neura_notifications_cancel_failed: $e');
     }
   }
 
   Future<void> cancelAll() async {
-    if (!_available) return;
+    final plugin = _plugin;
+    if (!_available || plugin == null) return;
     try {
-      await _plugin.cancelAll();
+      await plugin.cancelAll();
     } catch (e) {
       await AppLog.instance.warn('neura_notifications_cancel_all_failed: $e');
     }
   }
 
+  /// Safe Mode may start after a prior normal launch left a repeating OS
+  /// reminder behind. Initialize only the cancellation backend, then remove
+  /// every Neura schedule; delivery remains blocked by [deliveryAllowed].
+  Future<void> cancelAllForSafeMode() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.windows) return;
+    if (!_initialized || !_available) {
+      _initialized = false;
+      await _initialize(allowInSafeMode: true);
+    }
+    if (!_available) {
+      throw StateError(
+        'The notification platform is unavailable; Safe Mode could not '
+        'verify removal of scheduled reminders.',
+      );
+    }
+    await _plugin!.cancelAll();
+  }
+
+  /// Wipe-specific cancellation that preserves the normal no-op behavior when
+  /// notifications were never scheduled, but lets a platform deletion
+  /// failure propagate so the wipe cannot claim full success. Initialization
+  /// is attempted even in Safe Mode because a prior launch may have left an
+  /// OS-level repeating schedule behind.
+  Future<void> cancelAllForDataWipe() async {
+    // This build only configures/schedules Windows notifications. Other
+    // platforms therefore cannot have a Neura-owned OS schedule to remove.
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.windows) return;
+    if (!_initialized || !_available) {
+      _initialized = false;
+      await _initialize(allowInSafeMode: true);
+    }
+    if (!_available) {
+      throw StateError(
+        'The notification platform is unavailable; scheduled reminders could not be verified as removed.',
+      );
+    }
+    await _plugin!.cancelAll();
+  }
+
   Future<bool> _ready() async {
+    if (!deliveryAllowed) return false;
     if (!_initialized) await init();
-    return _available;
+    return deliveryAllowed && _available;
+  }
+
+  void _onSafeModeChanged() {
+    if (!deliveryAllowed) unawaited(cancelAll());
   }
 }

@@ -52,3 +52,29 @@ class NeuraPulseEvent extends NeuraEvent {
   const NeuraPulseEvent.wave() : this._(wave: true, blink: false);
   const NeuraPulseEvent.blink() : this._(wave: false, blink: true);
 }
+
+/// Metadata-only intelligence events. These never include journal text,
+/// relationship names, prompts, or private signal values.
+class NeuraIntelligenceEvaluatedEvent extends NeuraEvent {
+  final String receiptId;
+  final String capabilityId;
+  final String outcome;
+  final double score;
+
+  const NeuraIntelligenceEvaluatedEvent({
+    required this.receiptId,
+    required this.capabilityId,
+    required this.outcome,
+    required this.score,
+  });
+}
+
+class NeuraIntelligenceOutcomeEvent extends NeuraEvent {
+  final String receiptId;
+  final String outcome;
+
+  const NeuraIntelligenceOutcomeEvent({
+    required this.receiptId,
+    required this.outcome,
+  });
+}

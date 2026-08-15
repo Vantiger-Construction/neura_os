@@ -66,6 +66,11 @@ class ModuleHealthMonitor extends ChangeNotifier {
         detail: reason,
       );
 
+  void resetAfterDataWipe() {
+    _modules.clear();
+    notifyListeners();
+  }
+
   void _set(
     String name,
     NeuraModuleStatus status, {

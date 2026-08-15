@@ -31,4 +31,8 @@ class MoodStateService {
       await _selfHeal.recordError('MoodStateService.setMood', e, st);
     }
   }
+
+  void resetAfterDataWipe() {
+    _mood = 'neutral';
+  }
 }

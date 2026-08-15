@@ -90,4 +90,8 @@ class CoachStore {
       await AppLog.instance.warn('CoachStore.clear failed: $e');
     }
   }
+
+  void resetAfterDataWipe() {
+    notes.value = const <CoachNote>[];
+  }
 }

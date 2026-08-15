@@ -7,6 +7,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:record/record.dart';
 
+import '../reliability/safe_boot.dart';
+
 /// =========================
 ///  Neura Voice Pack (Offline)
 /// =========================
@@ -39,10 +41,14 @@ class NeuraVoiceFrame {
 }
 
 class NeuraVoicePack {
-  NeuraVoicePack._();
+  NeuraVoicePack._() {
+    SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
+  }
   static final NeuraVoicePack I = NeuraVoicePack._();
 
-  final AudioPlayer _player = AudioPlayer();
+  // Keep plugin-backed objects lazy so merely opening a Safe Mode screen or
+  // subscribing to [stream] cannot initialize native audio state.
+  AudioPlayer? _player;
   final StreamController<NeuraVoiceFrame> _out = StreamController.broadcast();
   Stream<NeuraVoiceFrame> get stream => _out.stream;
 
@@ -55,19 +61,16 @@ class NeuraVoicePack {
   Timer? _tick;
 
   // Mic
-  final _VoicePackMicDriver _mic = _VoicePackMicDriver();
+  _VoicePackMicDriver? _mic;
   StreamSubscription? _micSub;
   bool _micEnabled = false;
   bool _initialized = false;
+  bool get audioAllowed => !SafeBoot.instance.safeMode.value;
 
   Future<void> init({bool enableMic = true}) async {
-    if (_initialized) return;
+    if (_initialized || !audioAllowed) return;
     _initialized = true;
-
-    // Clip complete handler
-    _player.onPlayerComplete.listen((_) {
-      _stopClip();
-    });
+    _ensurePlayer();
 
     if (enableMic) {
       await startMic();
@@ -75,10 +78,20 @@ class NeuraVoicePack {
   }
 
   Future<void> startMic() async {
-    if (_micEnabled) return;
+    if (_micEnabled || !audioAllowed) return;
+    final mic = _mic ??= _VoicePackMicDriver();
     _micEnabled = true;
-    await _mic.start();
-    _micSub = _mic.stream.listen((f) {
+    await mic.start();
+    if (!audioAllowed) {
+      _micEnabled = false;
+      await mic.stop();
+      return;
+    }
+    _micSub = mic.stream.listen((f) {
+      if (!audioAllowed) {
+        unawaited(stopMic());
+        return;
+      }
       // Mic only drives when no clip is playing
       if (_playing) return;
       _out.add(NeuraVoiceFrame(
@@ -97,26 +110,45 @@ class NeuraVoicePack {
     _micEnabled = false;
     await _micSub?.cancel();
     _micSub = null;
-    await _mic.stop();
+    await _mic?.stop();
   }
 
   Future<void> playAsset(String filename) async {
+    if (!audioAllowed) return;
     // filename is the WAV name inside assets/audio/neura/
     await _stopClip();
+    if (!audioAllowed) return;
 
     _playing = true;
     _clipStart = DateTime.now();
 
     // Load envelope if exists
     _envelope = await NeuraEnvelopeLoader.loadFor(filename);
+    if (!audioAllowed) {
+      await _stopClip();
+      return;
+    }
 
     // Load viseme timeline if exists
     _timeline = await NeuraVisemeTimelineLoader.loadForAudio(filename);
+    if (!audioAllowed) {
+      await _stopClip();
+      return;
+    }
 
-    await _player.play(AssetSource('audio/neura/$filename'));
+    final player = _ensurePlayer();
+    await player.play(AssetSource('audio/neura/$filename'));
+    if (!audioAllowed) {
+      await _stopClip();
+      return;
+    }
 
     // Emit frames at ~30 fps
     _tick = Timer.periodic(const Duration(milliseconds: 33), (_) {
+      if (!audioAllowed) {
+        unawaited(_stopClip());
+        return;
+      }
       final start = _clipStart;
       if (!_playing || start == null) return;
 
@@ -145,10 +177,29 @@ class NeuraVoicePack {
   }
 
   Future<void> dispose() async {
+    SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
     await stop();
     await stopMic();
-    await _player.dispose();
+    await _mic?.dispose();
+    await _player?.dispose();
     await _out.close();
+  }
+
+  AudioPlayer _ensurePlayer() {
+    final existing = _player;
+    if (existing != null) return existing;
+    final player = AudioPlayer();
+    _player = player;
+    player.onPlayerComplete.listen((_) {
+      unawaited(_stopClip());
+    });
+    return player;
+  }
+
+  void _onSafeModeChanged() {
+    if (audioAllowed) return;
+    unawaited(stopMic().catchError((_) {}));
+    unawaited(stop().catchError((_) {}));
   }
 
   Future<void> _stopClip() async {
@@ -158,8 +209,10 @@ class NeuraVoicePack {
     _clipStart = null;
     _envelope = null;
     _timeline = null;
+    final player = _player;
+    if (player == null) return;
     try {
-      await _player.stop();
+      await player.stop();
     } catch (_) {}
   }
 }
@@ -508,5 +561,3 @@ String _stem(String filename) {
   if (dot != -1) s = s.substring(0, dot);
   return s;
 }
-
-

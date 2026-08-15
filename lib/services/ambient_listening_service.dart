@@ -11,6 +11,7 @@ import 'package:record/record.dart';
 import '../core/memory/memory_crypto.dart';
 import '../mascot/mascot_window_service.dart';
 import '../modules/core/app_log.dart';
+import '../reliability/safe_boot.dart';
 import 'ambient_listening_prefs.dart';
 import 'neura_tts_service.dart';
 
@@ -59,16 +60,27 @@ class AmbientListeningService {
     // immediately (the one-tap pause requirement), and flipping it on
     // should start listening right away without needing an app restart.
     AmbientListeningPrefsController.instance.enabled.addListener(_onPrefChanged);
+    SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
   }
   static final AmbientListeningService instance = AmbientListeningService._();
 
+  bool get captureAllowed => !SafeBoot.instance.safeMode.value;
+
   void _onPrefChanged() {
+    if (!captureAllowed) {
+      if (_running) unawaited(stop());
+      return;
+    }
     final enabled = AmbientListeningPrefsController.instance.enabled.value;
     if (enabled && !_running) {
       unawaited(start());
     } else if (!enabled && _running) {
       unawaited(stop());
     }
+  }
+
+  void _onSafeModeChanged() {
+    if (!captureAllowed && _running) unawaited(stop());
   }
 
   /// Same threshold/normalization NeuraMicDriver already uses -- don't
@@ -85,7 +97,7 @@ class AmbientListeningService {
   static const int _sampleRate = 16000;
   static const int _bytesPerSample = 2; // pcm16bits, mono
 
-  final AudioRecorder _recorder = AudioRecorder();
+  AudioRecorder? _recorder;
   StreamSubscription<Uint8List>? _audioSub;
   Timer? _amplitudeTimer;
   Timer? _silenceTimer;
@@ -99,6 +111,8 @@ class AmbientListeningService {
   int _utteranceStartMs = 0;
 
   MemoryCrypto? _crypto;
+  Future<void> _persistQueue = Future<void>.value();
+  int _dataGeneration = 0;
 
   final ValueNotifier<bool> isLive = ValueNotifier<bool>(false);
 
@@ -111,6 +125,7 @@ class AmbientListeningService {
   /// Neura's own voice through the speakers doesn't immediately trip her
   /// own voice-activity gate.
   Future<void> greetAndStartListening() async {
+    if (!captureAllowed) return;
     // Wait for the mascot window's own native engine/window creation to
     // settle first. Confirmed via crash reproduction (Windows Error
     // Reporting: flutter_tts_plugin.dll, exception 0xC0000005) that firing
@@ -119,6 +134,7 @@ class AmbientListeningService {
     // enough to avoid this since the mascot window's own creation time
     // varies. See MascotWindowService.initialCreationSettled.
     await MascotWindowService.I.initialCreationSettled;
+    if (!captureAllowed) return;
 
     // The spoken greeting is disabled by default (see
     // kEnableProactiveGreetingTts doc comment) -- everything else in this
@@ -145,14 +161,16 @@ class AmbientListeningService {
   }
 
   Future<void> start() async {
-    if (_running) return;
-    if (!await _recorder.hasPermission()) {
+    if (_running || !captureAllowed) return;
+    final recorder = _recorder ??= AudioRecorder();
+    if (!await recorder.hasPermission()) {
       await AppLog.instance.warn('ambient_listening_no_mic_permission');
       return;
     }
+    if (!captureAllowed) return;
 
     try {
-      final audioStream = await _recorder.startStream(
+      final audioStream = await recorder.startStream(
         const RecordConfig(
           encoder: AudioEncoder.pcm16bits,
           sampleRate: _sampleRate,
@@ -160,6 +178,10 @@ class AmbientListeningService {
         ),
       );
       _audioSub = audioStream.listen(_onAudioChunk);
+      if (!captureAllowed) {
+        await stop();
+        return;
+      }
     } catch (e) {
       await AppLog.instance.warn('ambient_listening_start_failed: $e');
       return;
@@ -183,8 +205,17 @@ class AmbientListeningService {
     _preRollBytes = 0;
     _utteranceBuffer.clear();
     try {
-      await _recorder.stop();
+      await _recorder?.stop();
     } catch (_) {}
+  }
+
+  /// Stops every producer and releases the cached data-encryption handle
+  /// before on-disk recordings and the device key are removed.
+  Future<void> resetAfterDataWipe() async {
+    _dataGeneration += 1;
+    await stop();
+    await _persistQueue;
+    _crypto = null;
   }
 
   void _onAudioChunk(Uint8List chunk) {
@@ -208,9 +239,15 @@ class AmbientListeningService {
 
   Future<void> _pollAmplitude() async {
     if (!_running) return;
+    if (!captureAllowed) {
+      await stop();
+      return;
+    }
     double normalized;
     try {
-      final amp = await _recorder.getAmplitude();
+      final recorder = _recorder;
+      if (recorder == null) return;
+      final amp = await recorder.getAmplitude();
       normalized = ((amp.current - _kFloor) / (-_kFloor)).clamp(0.0, 1.0);
     } catch (_) {
       normalized = 0.0;
@@ -241,7 +278,7 @@ class AmbientListeningService {
   }
 
   Future<void> _finalizeUtterance() async {
-    if (!_capturing) return;
+    if (!_capturing || !captureAllowed) return;
     _capturing = false;
     isLive.value = false;
     _silenceTimer?.cancel();
@@ -256,9 +293,15 @@ class AmbientListeningService {
       return;
     }
 
+    final generation = _dataGeneration;
     try {
       final wav = _wrapWav(pcm);
-      await _persist(wav, durationMs);
+      final next = _persistQueue.then((_) async {
+        if (generation != _dataGeneration || !captureAllowed) return;
+        await _persist(wav, durationMs);
+      });
+      _persistQueue = next.then<void>((_) {}, onError: (_) {});
+      await next;
     } catch (e) {
       await AppLog.instance.warn('ambient_listening_persist_failed: $e');
     }
@@ -309,10 +352,13 @@ class AmbientListeningService {
   }
 
   Future<void> _persist(Uint8List wav, int durationMs) async {
+    if (!captureAllowed) return;
     final crypto = await _ensureCrypto();
+    if (!captureAllowed) return;
     final encrypted = await crypto.encryptBytes(wav);
 
     final dir = await _dir();
+    if (!captureAllowed) return;
     final ts = DateTime.now().millisecondsSinceEpoch;
     final filename = 'amb_$ts.enc';
     final file = File('${dir.path}${Platform.pathSeparator}$filename');

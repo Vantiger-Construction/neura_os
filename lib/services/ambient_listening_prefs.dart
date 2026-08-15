@@ -38,4 +38,8 @@ class AmbientListeningPrefsController {
       await AppLog.instance.warn('AmbientListeningPrefsController.setEnabled failed: $e');
     }
   }
+
+  void resetAfterDataWipe() {
+    enabled.value = false;
+  }
 }

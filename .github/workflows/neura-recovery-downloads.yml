@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/build-neura-downloads-20260729
+      - agent/neura-intelligence-fabric-v1.3
   pull_request:
     branches:
       - Neura
@@ -43,6 +44,12 @@ jobs:
           flutter clean
           flutter pub get
 
+      - name: Format sources and record exact patch
+        shell: bash
+        run: |
+          dart format lib test
+          git diff --no-ext-diff --binary -- lib test > dart-format.patch
+
       - name: Require zero analyzer errors
         shell: bash
         run: |
@@ -63,6 +70,8 @@ jobs:
           path: |
             analyze.log
             tests.log
+            dart-format.patch
+            pubspec.lock
           if-no-files-found: warn
           retention-days: 14
 
@@ -99,8 +108,10 @@ jobs:
       - name: Build Windows release
         shell: pwsh
         run: |
+          $versionLine = Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$'
+          $buildName = $versionLine.Matches[0].Groups[1].Value.Trim().Split('+')[0]
           flutter build windows --release `
-            --build-name 1.0.0 `
+            --build-name $buildName `
             --build-number $env:GITHUB_RUN_NUMBER *>&1 |
             Tee-Object -FilePath windows-build.log |
             Out-Host
@@ -120,7 +131,9 @@ jobs:
 
           $output = Join-Path $PWD 'recovery_downloads\windows'
           New-Item -ItemType Directory -Path $output -Force | Out-Null
-          $version = "1.0.0-recovery.$env:GITHUB_RUN_NUMBER"
+          $versionLine = Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$'
+          $buildName = $versionLine.Matches[0].Groups[1].Value.Trim().Split('+')[0]
+          $version = "$buildName-recovery.$env:GITHUB_RUN_NUMBER"
           $zipName = "NeuraCompanion_Windows_x64_$version.zip"
           $zipPath = Join-Path $output $zipName
 
@@ -201,8 +214,10 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          app_version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n 1)"
+          build_name="${app_version%%+*}"
           flutter build apk --debug \
-            --build-name 1.0.0 \
+            --build-name "$build_name" \
             --build-number "$GITHUB_RUN_NUMBER" 2>&1 | tee android-build.log
 
       - name: Package Android download
@@ -213,7 +228,8 @@ jobs:
           test -f "$source_apk"
           output="recovery_downloads/android"
           mkdir -p "$output"
-          version="1.0.0-recovery.${GITHUB_RUN_NUMBER}"
+          app_version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n 1)"
+          version="${app_version%%+*}-recovery.${GITHUB_RUN_NUMBER}"
           apk_name="NeuraCompanion_Android_${version}_debug-signed.apk"
           cp "$source_apk" "$output/$apk_name"
           sha256sum "$output/$apk_name" | sed "s#  $output/#  #" > "$output/SHA256SUMS.txt"

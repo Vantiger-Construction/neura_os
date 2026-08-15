@@ -57,4 +57,9 @@ class AgentSelectionService extends ChangeNotifier {
       await _selfHeal.recordError('AgentSelectionService.setExplicitAgent', e, st);
     }
   }
+
+  void resetAfterDataWipe() {
+    _explicitAgentId = null;
+    notifyListeners();
+  }
 }

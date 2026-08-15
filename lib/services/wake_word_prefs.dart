@@ -39,4 +39,8 @@ class WakeWordPrefsController {
       await AppLog.instance.warn('WakeWordPrefsController.setEnabled failed: $e');
     }
   }
+
+  void resetAfterDataWipe() {
+    enabled.value = false;
+  }
 }

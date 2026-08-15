@@ -68,6 +68,10 @@ class NeuraLlmDiagnostics {
   /// Test-only convenience. Production code should never need to clear health
   /// history during a process lifetime.
   void resetForTesting() {
+    resetAfterDataWipe();
+  }
+
+  void resetAfterDataWipe() {
     attempts = 0;
     successes = 0;
     failures = 0;

@@ -10,8 +10,10 @@ class AppLog {
 
   static const _key = 'neura_log_ndjson';
   bool _init = false;
+  bool _suspendedForDataWipe = false;
 
   Future<void> init() async {
+    if (_suspendedForDataWipe) return;
     if (_init) return;
     _init = true;
     await info('log_init', {'platform': 'web'});
@@ -34,6 +36,7 @@ class AppLog {
 
   Future<void> _write(
       String level, String event, Map<String, Object?> data) async {
+    if (_suspendedForDataWipe) return;
     try {
       final prefs = NeuraPrefsCache.prefs;
       final current = prefs.getString(_key) ?? '';
@@ -76,5 +79,11 @@ class AppLog {
     } catch (_) {
       // shrug
     }
+  }
+
+  Future<void> resetAfterDataWipe() async {
+    _suspendedForDataWipe = true;
+    await clear();
+    _init = false;
   }
 }

@@ -27,9 +27,12 @@ import '../../screens/dream_visualizer_screen.dart';
 import '../../screens/journal_prompt_screen.dart';
 import '../../screens/voice_journal_screen.dart';
 import '../../core/memory/memory_consolidation_service.dart';
+import '../../dashboard/widgets/proactive_banner_card.dart';
+import '../../intelligence/intelligence_center_screen.dart';
 import '../../insights/services/weekly_summarist_service.dart';
 import '../../notifications/neura_notifications_prefs.dart';
 import '../../notifications/neura_notifications_service.dart';
+import '../../reliability/safe_boot.dart';
 import '../../services/ambient_listening_service.dart';
 import '../../services/wake_word_listener_service.dart';
 import '../../src/modules/legacy/legacy_deadman_service.dart';
@@ -49,6 +52,8 @@ class EnhancedNavigation extends StatefulWidget {
 class _EnhancedNavigationState extends State<EnhancedNavigation> {
   int _index = 0;
 
+  bool get _optionalHooksAllowed => !SafeBoot.instance.safeMode.value;
+
   @override
   void initState() {
     super.initState();
@@ -56,9 +61,17 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     // Legacy Guard; this is the startup check that actually detects an
     // overdue check-in and offers to release capsules. No-ops if disabled.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      LegacyDeadmanService.instance.maybePromptOnStartup(context);
+      if (!mounted || !_optionalHooksAllowed) return;
+      unawaited(
+        LegacyDeadmanService.instance.maybePromptOnStartup(context),
+      );
     });
+
+    // Safe Mode deliberately avoids optional native, network, and proactive
+    // work. Startup already suppresses these services; keep the dashboard's
+    // post-boot hooks from silently starting them again after navigation.
+    if (!_optionalHooksAllowed) return;
+
     // Speaks a short greeting once per launch, then -- only if the user has
     // opted in under Settings > Privacy & Safety -- starts voice-activated
     // ambient listening. No BuildContext needed past this point; the
@@ -74,7 +87,7 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     // moment to fully settle after first paint avoids finding out the hard
     // way whether that combination is safe at the literal first frame.
     Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
+      if (!mounted || !_optionalHooksAllowed) return;
       unawaited(AmbientListeningService.instance.greetAndStartListening());
       // Same "let the window/engine settle first" reasoning as the greeting
       // above -- this is also a native voice subsystem starting for the
@@ -100,18 +113,22 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
   /// than threading a callback through the existing service, so this stays
   /// purely additive to it.
   Future<void> _generateWeeklySummaryThenMaybeNotify() async {
+    if (!_optionalHooksAllowed) return;
     await WeeklySummaristService.instance.maybeGenerateOnAppOpen();
+    if (!_optionalHooksAllowed) return;
     if (!NeuraNotificationsPrefsController.instance.prefs.value.weeklyReviewReadyEnabled) return;
     final fresh = await WeeklySummaristService.instance.currentIfFresh();
     if (fresh == null) return;
     if (DateTime.now().difference(fresh.generatedAt) > const Duration(minutes: 1)) return;
+    if (!_optionalHooksAllowed) return;
     await NeuraNotificationsService.instance.showWeeklyReviewReadyNotification();
   }
 
   Future<void> _maybeNotifyLegacyOverdue() async {
+    if (!_optionalHooksAllowed) return;
     if (!NeuraNotificationsPrefsController.instance.prefs.value.legacyOverdueEnabled) return;
     final overdue = await LegacyDeadmanService.instance.isOverdue();
-    if (!overdue) return;
+    if (!overdue || !_optionalHooksAllowed) return;
     await NeuraNotificationsService.instance.showLegacyOverdueNotification();
   }
 
@@ -120,6 +137,7 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
   /// every app open is cheap and guards against it having been lost (e.g.
   /// after a rebuild/reinstall).
   Future<void> _reconfirmDailyMoodNudgeSchedule() async {
+    if (!_optionalHooksAllowed) return;
     final prefs = NeuraNotificationsPrefsController.instance.prefs.value;
     if (!prefs.dailyMoodNudgeEnabled) return;
     await NeuraNotificationsService.instance.scheduleDailyMoodNudge(
@@ -128,8 +146,9 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
   }
 
   Future<void> _checkForUpdate() async {
+    if (!_optionalHooksAllowed) return;
     final update = await UpdateCheckService.instance.checkForUpdate();
-    if (update == null || !mounted) return;
+    if (update == null || !mounted || !_optionalHooksAllowed) return;
     ScaffoldMessenger.of(context).showMaterialBanner(
       MaterialBanner(
         content: Text('Neura ${update.tag} is available - you\'re on an older build.'),
@@ -245,6 +264,8 @@ class _Dashboard extends StatelessWidget {
           'An OS for becoming a better human. No capes required.',
           style: Theme.of(context).textTheme.bodyMedium,
         ),
+        const SizedBox(height: 12),
+        const ProactiveBannerCard(),
         const SizedBox(height: 16),
         Wrap(
           spacing: 12,
@@ -255,6 +276,16 @@ class _Dashboard extends StatelessWidget {
               title: 'Talk to Neura',
               subtitle: 'Plan, reflect, reset.',
               onTap: openChat,
+            ),
+            _Tile(
+              icon: Icons.hub_outlined,
+              title: 'Neura Intelligence',
+              subtitle: 'Signals, decision receipts, and consent controls.',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const NeuraIntelligenceCenterScreen(),
+                ),
+              ),
             ),
             _Tile(
               icon: Icons.favorite_border,

@@ -65,4 +65,8 @@ class FocusController {
       await AppLog.instance.warn('FocusController.setMode failed: $e');
     }
   }
+
+  void resetAfterDataWipe() {
+    state.value = FocusState(mode: FocusMode.off, startedAt: DateTime.now());
+  }
 }

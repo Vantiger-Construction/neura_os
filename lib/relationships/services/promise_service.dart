@@ -86,4 +86,8 @@ class PromiseService {
     await _loadIfNeeded();
     return _cache.where((p) => p.status == PromiseStatus.pending).length;
   }
+
+  void resetAfterDataWipe() {
+    _cache = [];
+  }
 }

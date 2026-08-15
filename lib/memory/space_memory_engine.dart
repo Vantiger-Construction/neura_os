@@ -33,4 +33,6 @@ class SpaceMemoryEngine {
     list.sort((a,b) => b.outcomeScore.compareTo(a.outcomeScore));
     return list.first;
   }
+
+  void resetAfterDataWipe() => _mem.clear();
 }

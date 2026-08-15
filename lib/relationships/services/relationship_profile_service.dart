@@ -89,4 +89,8 @@ class RelationshipProfileService {
         .toList();
     await _save();
   }
+
+  void resetAfterDataWipe() {
+    _cache = [];
+  }
 }

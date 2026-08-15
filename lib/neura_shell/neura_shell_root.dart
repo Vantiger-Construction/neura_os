@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'neura_shell_state.dart';
@@ -23,7 +25,7 @@ class _NeuraShellRootState extends State<NeuraShellRoot> {
   void initState() {
     super.initState();
     // Non-blocking init: show UI immediately, then hydrate.
-    _state.load();
+    unawaited(_state.load().catchError((_) {}));
   }
 
   @override
