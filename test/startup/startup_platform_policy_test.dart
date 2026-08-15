@@ -69,6 +69,93 @@ void main() {
       }
     });
 
+    test('normal startup keeps optional native audio lazy', () {
+      expect(kNativeAudioStartupIsLazy, isTrue);
+    });
+
+    test('native swarm startup requires a credential and normal Windows', () {
+      expect(
+        shouldInitializeNativeNeuraSwarm(
+          platform: TargetPlatform.windows,
+          isWeb: false,
+          safeMode: false,
+          hasProviderCredential: true,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldInitializeNativeNeuraSwarm(
+          platform: TargetPlatform.windows,
+          isWeb: false,
+          safeMode: false,
+          hasProviderCredential: false,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldInitializeNativeNeuraSwarm(
+          platform: TargetPlatform.windows,
+          isWeb: false,
+          safeMode: true,
+          hasProviderCredential: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldInitializeNativeNeuraSwarm(
+          platform: TargetPlatform.macOS,
+          isWeb: false,
+          safeMode: false,
+          hasProviderCredential: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldInitializeNativeNeuraSwarm(
+          platform: TargetPlatform.windows,
+          isWeb: true,
+          safeMode: false,
+          hasProviderCredential: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('Supabase session is read only after successful initialization', () {
+      expect(
+        shouldInspectSupabaseSession(
+          safeMode: false,
+          configured: true,
+          initialized: true,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldInspectSupabaseSession(
+          safeMode: false,
+          configured: true,
+          initialized: false,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldInspectSupabaseSession(
+          safeMode: true,
+          configured: true,
+          initialized: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldInspectSupabaseSession(
+          safeMode: false,
+          configured: false,
+          initialized: true,
+        ),
+        isFalse,
+      );
+    });
+
     test('mascot is advertised only for Windows', () {
       for (final platform in TargetPlatform.values) {
         expect(

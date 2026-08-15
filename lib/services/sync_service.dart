@@ -1,9 +1,9 @@
 ﻿import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/journal_entry.dart';
+import '../modules/core/app_log.dart';
 import 'conflict_resolution_service.dart';
 import '../startup/neura_prefs_cache.dart';
 
@@ -34,8 +34,8 @@ class SyncService {
     try {
       await _pushLocal(userId);
       await _pullRemote(userId);
-    } catch (e) {
-      debugPrint('SyncService: error during sync — $e');
+    } catch (error, stack) {
+      await AppLog.instance.caught('sync_failed', error, stack);
     }
   }
 

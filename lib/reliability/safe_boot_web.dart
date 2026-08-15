@@ -6,6 +6,7 @@ class SafeBoot {
   final ValueNotifier<bool> safeMode = ValueNotifier(false);
   final ValueNotifier<bool> restartRequired = ValueNotifier(false);
   int get consecutiveFailures => 0;
+  void preselectSafeModeForProcess() => safeMode.value = true;
   Future<void> beginBoot() async {}
   Future<void> completeBoot() async {}
   Future<void> requestSafeMode() async {

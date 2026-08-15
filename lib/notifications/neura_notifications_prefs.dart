@@ -76,8 +76,8 @@ class NeuraNotificationsPrefsController {
       if (decoded is Map) {
         prefs.value = NeuraNotificationsPrefs.fromMap(decoded.cast<String, dynamic>());
       }
-    } catch (e) {
-      await AppLog.instance.warn('NeuraNotificationsPrefsController.init failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('notifications_prefs_init_failed', e, st);
     }
   }
 
@@ -85,8 +85,12 @@ class NeuraNotificationsPrefsController {
     prefs.value = next;
     try {
       await NeuraPrefsCache.prefs.setString(_key, jsonEncode(next.toMap()));
-    } catch (e) {
-      await AppLog.instance.warn('NeuraNotificationsPrefsController.update failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught(
+        'notifications_prefs_update_failed',
+        e,
+        st,
+      );
     }
   }
 

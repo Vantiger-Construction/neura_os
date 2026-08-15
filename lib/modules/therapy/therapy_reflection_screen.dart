@@ -54,8 +54,8 @@ class _TherapyReflectionScreenState extends State<TherapyReflectionScreen> {
             'text': text,
           },
         );
-      } catch (e) {
-        await AppLog.instance.warn('therapy_memory_log_failed: $e');
+      } catch (e, st) {
+        await AppLog.instance.caught('therapy_memory_log_failed', e, st);
       }
       if (!mounted) return;
       setState(() {

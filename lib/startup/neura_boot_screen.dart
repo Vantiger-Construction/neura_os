@@ -70,39 +70,44 @@ class _NeuraBootScreenState extends State<NeuraBootScreen>
     // placeholder keys, Supabase.initialize() was skipped, so touching
     // Supabase.instance (AuthService included) would throw.
     final safeMode = SafeBoot.instance.safeMode.value;
-    final needsSignIn = !safeMode &&
-        SupabaseConfig.isConfigured &&
-        AuthService.currentUser == null;
+    final canInspectSession = shouldInspectSupabaseSession(
+      safeMode: safeMode,
+      configured: SupabaseConfig.isConfigured,
+      initialized: _coordinator.supabaseInitialized,
+    );
+    final needsSignIn = canInspectSession && AuthService.currentUser == null;
     // Device-lock only applies to the local-only dashboard path — once
     // Supabase sign-in is active it already gates identity on its own.
     final needsDeviceLock = !safeMode &&
         !needsSignIn &&
         AppLockPrefsController.instance.enabled.value;
     // Short pause so "Ready!" is readable, then replace the whole route stack.
-    Future<void>.delayed(const Duration(milliseconds: 350), () {
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder<void>(
-          pageBuilder: (_, __, ___) {
-            if (needsSignIn) return const SignInScreen();
-            const dashboard = EnhancedNavigation();
-            return needsDeviceLock
-                ? const AuthGuard(child: dashboard)
-                : dashboard;
-          },
-          transitionsBuilder: (_, animation, __, child) {
-            return FadeTransition(
-              opacity: CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeIn,
-              ),
-              child: child,
-            );
-          },
-          transitionDuration: const Duration(milliseconds: 600),
-        ),
-      );
-    });
+    unawaited(
+      Future<void>.delayed(const Duration(milliseconds: 350), () {
+        if (!mounted) return;
+        Navigator.of(context).pushReplacement(
+          PageRouteBuilder<void>(
+            pageBuilder: (_, __, ___) {
+              if (needsSignIn) return const SignInScreen();
+              const dashboard = EnhancedNavigation();
+              return needsDeviceLock
+                  ? const AuthGuard(child: dashboard)
+                  : dashboard;
+            },
+            transitionsBuilder: (_, animation, __, child) {
+              return FadeTransition(
+                opacity: CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeIn,
+                ),
+                child: child,
+              );
+            },
+            transitionDuration: const Duration(milliseconds: 600),
+          ),
+        );
+      }),
+    );
   }
 
   @override

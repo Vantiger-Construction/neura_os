@@ -1,89 +1,203 @@
-﻿import 'dart:convert';
-/// Web-safe AppLog implementation using SharedPreferences.
-///
-/// Stores NDJSON inside a single key. We keep a bounded tail so storage doesn't balloon.
-import '../../startup/neura_prefs_cache.dart';
+import 'dart:async';
+import 'dart:convert';
 
+import '../../startup/neura_prefs_cache.dart';
+import 'app_log_record.dart';
+
+/// Web-safe structured logger backed by a bounded SharedPreferences tail.
 class AppLog {
   AppLog._();
   static final AppLog instance = AppLog._();
 
-  static const _key = 'neura_log_ndjson';
-  bool _init = false;
+  static const String _key = 'neura_log_ndjson';
+  static const int _maxStoredLines = 500;
+  static const int _maxTailLines = 500;
+
+  final AppLogRecordFactory _records = AppLogRecordFactory(platform: 'web');
+  Future<void> _writeQueue = Future<void>.value();
+  bool _initialized = false;
   bool _suspendedForDataWipe = false;
 
-  Future<void> init() async {
-    if (_suspendedForDataWipe) return;
-    if (_init) return;
-    _init = true;
-    await info('log_init', {'platform': 'web'});
+  Future<void> init() {
+    return _enqueue(() async {
+      final newlyInitialized = await _ensureInitialized();
+      if (!newlyInitialized) return;
+      await _appendRecord(
+        'info',
+        'log_init',
+        const <String, Object?>{'storage': 'browser_preferences'},
+      );
+    });
   }
 
-  Future<void> info(String event,
-      [Map<String, Object?> data = const {}]) async {
-    await _write('info', event, data);
+  Future<void> initChecked() {
+    return _enqueue(() async {
+      final newlyInitialized = await _ensureInitialized();
+      await _appendRecord(
+        'info',
+        newlyInitialized ? 'log_init' : 'log_healthcheck',
+        const <String, Object?>{'storage': 'browser_preferences'},
+      );
+    }, propagateErrors: true);
   }
 
-  Future<void> warn(String event,
-      [Map<String, Object?> data = const {}]) async {
-    await _write('warn', event, data);
+  Future<void> info(
+    String event, [
+    Map<String, Object?> data = const <String, Object?>{},
+  ]) {
+    return _write('info', event, data);
   }
 
-  Future<void> error(String event,
-      [Map<String, Object?> data = const {}]) async {
-    await _write('error', event, data);
+  Future<void> warn(
+    String event, [
+    Map<String, Object?> data = const <String, Object?>{},
+  ]) {
+    return _write('warn', event, data);
+  }
+
+  Future<void> error(
+    String event, [
+    Map<String, Object?> data = const <String, Object?>{},
+  ]) {
+    return _write('error', event, data);
+  }
+
+  Future<void> errorChecked(
+    String event, [
+    Map<String, Object?> data = const <String, Object?>{},
+  ]) {
+    return _write('error', event, data, propagateErrors: true);
+  }
+
+  Future<void> exception(
+    String event,
+    Object error,
+    StackTrace stack, {
+    Map<String, Object?> context = const <String, Object?>{},
+    String? safeMessage,
+  }) {
+    final errorType = error.runtimeType.toString();
+    return _write('error', event, <String, Object?>{
+      ...context,
+      'error_type': errorType,
+      'message': safeMessage ?? '$errorType details withheld',
+      'stack': stack.toString(),
+    });
+  }
+
+  Future<void> caught(
+    String event,
+    Object error,
+    StackTrace stack, {
+    Map<String, Object?> context = const <String, Object?>{},
+    String? safeMessage,
+  }) {
+    final errorType = error.runtimeType.toString();
+    return _write('warn', event, <String, Object?>{
+      ...context,
+      'handled': true,
+      'error_type': errorType,
+      'message': safeMessage ?? '$errorType details withheld',
+      'stack': stack.toString(),
+    });
   }
 
   Future<void> _write(
-      String level, String event, Map<String, Object?> data) async {
-    if (_suspendedForDataWipe) return;
-    try {
-      final prefs = NeuraPrefsCache.prefs;
-      final current = prefs.getString(_key) ?? '';
-      final payload = <String, Object?>{
-        'ts': DateTime.now().toUtc().toIso8601String(),
-        'level': level,
-        'event': event,
-        'data': data,
-      };
-      final next = '${current.isEmpty ? '' : current}${jsonEncode(payload)}\n';
+    String level,
+    String event,
+    Map<String, Object?> data, {
+    bool propagateErrors = false,
+  }) {
+    return _enqueue(() async {
+      await _ensureInitialized();
+      await _appendRecord(level, event, data);
+    }, propagateErrors: propagateErrors);
+  }
 
-      // Keep last ~200 lines. Cheap and effective.
-      final lines = const LineSplitter().convert(next);
-      final trimmed =
-          lines.length <= 220 ? lines : lines.sublist(lines.length - 220);
-      await prefs.setString(
-          _key, trimmed.join('\n') + (trimmed.isEmpty ? '' : '\n'));
-    } catch (_) {
-      // If logging fails, do not crash.
-    }
+  Future<void> _enqueue(
+    Future<void> Function() operation, {
+    bool propagateErrors = false,
+  }) {
+    if (_suspendedForDataWipe) return Future<void>.value();
+    final next = _writeQueue.then<void>((_) async {
+      if (_suspendedForDataWipe) return;
+      await operation();
+    });
+    _writeQueue = next.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace __) {},
+    );
+    return propagateErrors ? next : _writeQueue;
+  }
+
+  Future<bool> _ensureInitialized() async {
+    if (_suspendedForDataWipe) return false;
+    if (_initialized) return false;
+    // Access is intentionally the readiness check. If preferences are not yet
+    // available, the queued operation is swallowed and a later write retries.
+    NeuraPrefsCache.prefs;
+    _initialized = true;
+    return true;
+  }
+
+  Future<void> _appendRecord(
+    String level,
+    String event,
+    Map<String, Object?> data,
+  ) async {
+    if (_suspendedForDataWipe) return;
+    final prefs = NeuraPrefsCache.prefs;
+    final current = prefs.getString(_key) ?? '';
+    final record = _records.build(level: level, event: event, data: data);
+    final lines = <String>[
+      ...const LineSplitter().convert(current),
+      jsonEncode(record),
+    ];
+    final trimmed = lines.length <= _maxStoredLines
+        ? lines
+        : lines.sublist(lines.length - _maxStoredLines);
+    final stored = await prefs.setString(_key, '${trimmed.join('\n')}\n');
+    if (!stored) throw StateError('Browser log write was not persisted.');
   }
 
   Future<List<String>> tail({int maxLines = 200}) async {
+    if (_suspendedForDataWipe) return const <String>[];
+    await init();
+    await _writeQueue;
     try {
-      final prefs = NeuraPrefsCache.prefs;
-      final current = prefs.getString(_key) ?? '';
-      if (current.trim().isEmpty) return const [];
+      final current = NeuraPrefsCache.prefs.getString(_key) ?? '';
+      if (current.trim().isEmpty) return const <String>[];
       final lines = const LineSplitter().convert(current.trimRight());
-      if (lines.length <= maxLines) return lines;
-      return lines.sublist(lines.length - maxLines);
+      final take = maxLines.clamp(1, _maxTailLines).toInt();
+      if (lines.length <= take) return lines;
+      return lines.sublist(lines.length - take);
     } catch (_) {
-      return const [];
+      return const <String>[];
     }
   }
 
-  Future<void> clear() async {
-    try {
-      final prefs = NeuraPrefsCache.prefs;
-      await prefs.remove(_key);
-    } catch (_) {
-      // shrug
-    }
+  Future<String> exportCopy() {
+    throw UnsupportedError(
+      'Filesystem log export is unavailable in the browser build.',
+    );
+  }
+
+  Future<String?> getLogPath() async => null;
+
+  Future<void> clear() {
+    return _enqueue(() async {
+      await _ensureInitialized();
+      await NeuraPrefsCache.prefs.remove(_key);
+      await _appendRecord('info', 'log_cleared', const <String, Object?>{});
+    });
   }
 
   Future<void> resetAfterDataWipe() async {
     _suspendedForDataWipe = true;
-    await clear();
-    _init = false;
+    await _writeQueue;
+    try {
+      await NeuraPrefsCache.prefs.remove(_key);
+    } catch (_) {}
+    _initialized = false;
   }
 }

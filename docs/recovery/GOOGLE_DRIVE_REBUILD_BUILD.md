@@ -12,6 +12,12 @@ The current repository root on branch `Neura` remains the authoritative Neura
 application. Historical Drive packages and nested project copies are recovery
 evidence only. Do not bulk-overlay them onto the root project.
 
+Do not use the older standalone `Build-NeuraDriveRebuild-WithInstaller.ps1`.
+That historical script regenerated Flutter scaffolding without restoring the
+authored Windows runner, which can remove Neura's `neura/window_role` channel
+and produce an executable that closes before the first Flutter frame. Use the
+checked-in builder documented here.
+
 The builder prefers this recovered-package layout when it exists:
 
 ```text
@@ -43,6 +49,8 @@ Portable Windows build:
 - Flutter stable
 - Visual Studio 2022 with **Desktop development with C++**
 - A compatible Windows SDK
+- Rust/Cargo and `nuget.exe` when the authored Neura Windows runner enables
+  the native swarm and WinRT speech integration
 
 Optional installer:
 
@@ -129,13 +137,24 @@ powershell -ExecutionPolicy Bypass `
 Tests are required by default. Use `-SkipTests` only for diagnostic builds,
 not for a release candidate.
 
+The Windows package is also started with `--launch-smoke-test`. That bounded
+mode does not initialize Neura's user-state persistence; it must render its
+first frame, verify the native window-role and window-manager bridge, and then
+exit by itself with the dedicated success sentinel `73` within 15 seconds. A
+normal message-loop exit (`0`), blank window, or hung window therefore fails
+the build. Headless CI workers without an interactive Windows desktop
+may opt out explicitly with
+`-SkipLaunchSmokeTest`; do not use that switch for a release candidate built
+on a normal workstation.
+
 ## Version controls
 
-Defaults:
+By default, the script reads both values from `pubspec.yaml`. For example,
+`version: 1.3.0+5` produces:
 
 ```text
-BuildName   = 1.1.0
-BuildNumber = 2
+BuildName   = 1.3.0
+BuildNumber = 4
 ```
 
 Override them together for a release:
@@ -143,8 +162,8 @@ Override them together for a release:
 ```powershell
 powershell -ExecutionPolicy Bypass `
   -File .\tools\Build-Neura-GoogleDriveRebuild.ps1 `
-  -BuildName "1.2.0" `
-  -BuildNumber 3 `
+  -BuildName "1.3.1" `
+  -BuildNumber 5 `
   -BuildInstaller `
   -Yes
 ```
@@ -164,21 +183,27 @@ must be at least 1.
    ```
 
 5. Excludes source-control and generated caches from the staging copy.
-6. Preserves authored `lib`, `test`, `assets`, Windows and Android platform
-   customizations, `pubspec.yaml`, `pubspec.lock`, analysis configuration,
-   localization configuration, and README files.
-7. Runs `flutter create` only to add required platform scaffolding.
-8. Restores authored source and overlays authored platform customizations.
+6. Preserves authored `lib`, `test`, `assets`, Windows, and—when requested—
+   Android platform customizations, plus `pubspec.yaml`, `pubspec.lock`,
+   analysis/localization configuration, and README files.
+7. Skips `flutter create` when requested platform scaffolds are already valid;
+   otherwise generates only missing platforms.
+8. Restores exact authored Windows/Android trees after scaffold generation and
+   verifies that Dart/native window-role wiring still agrees.
 9. Runs `flutter pub get`.
 10. Requires `flutter analyze --no-fatal-warnings --no-fatal-infos` to exit
     successfully.
 11. Runs `flutter test --reporter expanded` unless `-SkipTests` is supplied.
 12. Builds a Windows x64 release.
 13. Optionally builds an Android release APK.
-14. Adds `README_INSTALL.txt`, `BUILD_MANIFEST.json`, and
-    `TOOLCHAIN_MANIFEST.txt` to the Windows release.
-15. Creates portable ZIP/APK outputs and SHA-256 checksum files under `dist`.
-16. When requested, compiles `tools/installer/NeuraCompanion.iss` against the
+14. Verifies the executable, Flutter engine/data payload, optional Rust DLL,
+    and app-local Visual C++ runtime dependencies before packaging, then runs
+    that exact EXE's bounded `--launch-smoke-test` and requires sentinel exit
+    code `73`; an ordinary early Windows exit (`0`) is a failure.
+15. Adds `README_INSTALL.txt`, `BUILD_MANIFEST.json`, and
+   `TOOLCHAIN_MANIFEST.txt` to the Windows release.
+16. Creates portable ZIP/APK outputs and SHA-256 checksum files under `dist`.
+17. When requested, compiles `tools/installer/NeuraCompanion.iss` against the
     verified Windows Release directory and hashes the resulting setup EXE.
 
 ## Output
@@ -187,8 +212,8 @@ Typical portable Windows output:
 
 ```text
 dist/
-  NeuraCompanion_GoogleDriveRebuild_Windows_x64_1.1.0.zip
-  NeuraCompanion_GoogleDriveRebuild_Windows_x64_1.1.0_SHA256.txt
+  NeuraCompanion_GoogleDriveRebuild_Windows_x64_<pubspec-version>.zip
+  NeuraCompanion_GoogleDriveRebuild_Windows_x64_<pubspec-version>_SHA256.txt
   DriveRebuild_build_<timestamp>.log
 ```
 
@@ -196,16 +221,16 @@ Optional installer output:
 
 ```text
 dist/
-  NeuraCompanion_Setup_1.1.0.exe
-  NeuraCompanion_Setup_1.1.0_SHA256.txt
+  NeuraCompanion_Setup_<pubspec-version>.exe
+  NeuraCompanion_Setup_<pubspec-version>_SHA256.txt
 ```
 
 Optional Android output:
 
 ```text
 dist/
-  NeuraCompanion_GoogleDriveRebuild_Android_1.1.0.apk
-  NeuraCompanion_GoogleDriveRebuild_Android_1.1.0_SHA256.txt
+  NeuraCompanion_GoogleDriveRebuild_Android_<pubspec-version>.apk
+  NeuraCompanion_GoogleDriveRebuild_Android_<pubspec-version>_SHA256.txt
 ```
 
 The Windows ZIP and installer contain the complete Flutter Release directory,
@@ -238,6 +263,9 @@ or SmartScreen reputation.
 - It does not add features or change Flutter behavior.
 - It stops on dependency, analyzer, test, compiler, packaging, or requested
   installer failure.
+- Its launch smoke gate uses the app's user-state-free self-test mode. That
+  mode must self-exit successfully; only a timed-out or failed exact PID is
+  forcibly stopped.
 - It preserves the staging folder and log for diagnosis.
 - The portable ZIP remains available even when installer compilation is not
   requested.

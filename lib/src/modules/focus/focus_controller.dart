@@ -50,8 +50,8 @@ class FocusController {
       if (decoded is Map<String, dynamic>) {
         state.value = FocusState.fromJson(decoded);
       }
-    } catch (e) {
-      await AppLog.instance.warn('FocusController.init failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('focus_controller_init_failed', e, st);
     }
   }
 
@@ -61,8 +61,8 @@ class FocusController {
     try {
       final prefs = NeuraPrefsCache.prefs;
       await prefs.setString(_prefsKey, jsonEncode(next.toJson()));
-    } catch (e) {
-      await AppLog.instance.warn('FocusController.setMode failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('focus_controller_update_failed', e, st);
     }
   }
 

@@ -172,9 +172,9 @@ class WakeWordListenerService {
       NeuraEventBus.I.emit(const NeuraTalkingEvent(true));
       await NeuraTtsService.instance.speak(reply);
       NeuraEventBus.I.emit(const NeuraTalkingEvent(false));
-    } catch (e) {
+    } catch (e, st) {
       NeuraEventBus.I.emit(const NeuraThinkingEvent(false));
-      await AppLog.instance.warn('wake_word_reply_failed: $e');
+      await AppLog.instance.caught('wake_word_reply_failed', e, st);
     } finally {
       _busy = false;
     }
@@ -194,8 +194,8 @@ class WakeWordListenerService {
           payload: {'text': text, 'source': 'wake_word'},
         );
       }
-    } catch (e) {
-      await AppLog.instance.warn('wake_word_memory_log_failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('wake_word_memory_log_failed', e, st);
     }
   }
 

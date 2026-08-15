@@ -397,11 +397,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         setState(() => botLine.interrupted = true);
       }
       return;
-    } catch (e) {
-      await AppLog.instance.info('chat_error', {
-        'error': e.toString(),
-        'utterance_id': generationId,
-      });
+    } catch (error, stack) {
+      await AppLog.instance.caught(
+        'chat_generation_failed',
+        error,
+        stack,
+        context: <String, Object?>{'utterance_id': generationId},
+      );
       if (!mounted || _activeReplyId != generationId) return;
 
       if (botLine.text.isEmpty) {
@@ -489,8 +491,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
           payload: {'text': text},
         );
       }
-    } catch (e) {
-      await AppLog.instance.warn('chat_memory_log_failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('chat_memory_log_failed', e, st);
     }
   }
 
@@ -523,8 +525,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
           payload: {'summary': fact.summary, 'factKind': fact.kind},
         );
       }
-    } catch (e) {
-      await AppLog.instance.warn('chat_swarm_failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('chat_swarm_failed', e, st);
     }
   }
 

@@ -1,7 +1,7 @@
 NEURA 1.3 CONSOLIDATED UPGRADE VALIDATION STATUS
 ================================================
 
-Package declared in source: neuro_companion 1.3.0+4
+Package declared in source: neuro_companion 1.3.0+5
 
 IMPORTANT STATUS
 ----------------
@@ -51,6 +51,15 @@ SOURCE IMPLEMENTATION PRESENT
   [SOURCE] Window-manager startup is guarded by platform; the secondary mascot
            role and native Rust Swarm remain Windows-only, web has a safe Swarm
            fallback, and macOS secure-storage entitlement is present.
+  [SOURCE] A dependency-free first frame precedes optional plugin handshakes.
+           Missing Windows role/window channels now degrade safely instead of
+           terminating before the primary UI is attached.
+  [SOURCE] One redacted structured pipeline covers Flutter, platform, root-zone,
+           and root-isolate failures. Windows adds bounded runner/native crash
+           breadcrumbs; Diagnostics can inspect, clear, and export every log.
+  [SOURCE] Windows rebuild tooling preserves the authored native runner,
+           validates the complete runtime payload, and invokes the packaged
+           executable's self-exiting first-frame smoke mode.
   [SOURCE] After Storm bridge recursion repair and local-learning preference
            enforcement remain installed.
   [SOURCE] GitHub recovery CI takes its release version from pubspec.yaml,
@@ -69,6 +78,7 @@ TEST SOURCES INSTALLED — NOT EXECUTED HERE
   [INSTALLED] Complete data-wipe path and failure tests.
   [INSTALLED] Provider-credential migration tombstone tests.
   [INSTALLED] Startup platform-policy and After Storm regression tests.
+  [INSTALLED] Bootstrap error-pipeline and structured AppLog privacy tests.
 
 DEPENDENCY-LOCK STATUS
 ----------------------

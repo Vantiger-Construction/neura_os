@@ -155,12 +155,12 @@ class WeeklySummaristService {
         summaryText: text,
         generatedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
       ), generation);
-    } catch (e) {
+    } catch (e, st) {
       if (generation != _dataGeneration) return;
       // Network failure, guardrail block (NeuraGuardrailBlocked), or missing
       // key -- don't persist anything, stay "due", retry next app-open. The
       // weekly snapshot screen just shows its existing deterministic cards.
-      await AppLog.instance.warn('weekly_summarist_generate_failed: $e');
+      await AppLog.instance.caught('weekly_summarist_generate_failed', e, st);
     }
   }
 }

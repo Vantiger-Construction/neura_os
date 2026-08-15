@@ -36,7 +36,10 @@ class NeuraLlmDiagnostics {
   void recordFailure(Object error) {
     failures += 1;
     lastFailureAt = DateTime.now();
-    lastError = error.toString();
+    // Provider exceptions may echo prompts, credentials, URLs, or local
+    // paths. Diagnostics only needs a stable classification; arbitrary
+    // exception text must never cross into logs or the UI.
+    lastError = '${error.runtimeType} details withheld.';
   }
 
   void recordRetry() => retries += 1;

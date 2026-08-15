@@ -23,8 +23,8 @@ class AppLockPrefsController {
     try {
       final sp = NeuraPrefsCache.prefs;
       enabled.value = sp.getBool(_prefsKey) ?? false;
-    } catch (e) {
-      await AppLog.instance.warn('AppLockPrefsController.init failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('app_lock_prefs_init_failed', e, st);
     }
   }
 
@@ -33,8 +33,8 @@ class AppLockPrefsController {
     try {
       final sp = NeuraPrefsCache.prefs;
       await sp.setBool(_prefsKey, value);
-    } catch (e) {
-      await AppLog.instance.warn('AppLockPrefsController.setEnabled failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('app_lock_prefs_update_failed', e, st);
     }
   }
 

@@ -18,9 +18,15 @@ NeuraSpeechRecognizer::NeuraSpeechRecognizer(flutter::BinaryMessenger* messenger
 NeuraSpeechRecognizer::~NeuraSpeechRecognizer() {
 #if defined(WINAPI_FAMILY) && (WINAPI_FAMILY == WINAPI_FAMILY_DESKTOP_APP)
   if (initialized_) {
-    recognizer_.ContinuousRecognitionSession().ResultGenerated(result_token_);
-    recognizer_.HypothesisGenerated(hypothesis_token_);
-    recognizer_.ContinuousRecognitionSession().Completed(completed_token_);
+    // Destructors must not allow a late WinRT/COM teardown error to invoke
+    // std::terminate while the app is closing.
+    try {
+      recognizer_.ContinuousRecognitionSession().ResultGenerated(
+          result_token_);
+      recognizer_.HypothesisGenerated(hypothesis_token_);
+      recognizer_.ContinuousRecognitionSession().Completed(completed_token_);
+    } catch (...) {
+    }
   }
 #endif
 }

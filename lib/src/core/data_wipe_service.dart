@@ -15,6 +15,7 @@ import '../../intelligence/action_loom.dart';
 import '../../intelligence/neura_intelligence_controller.dart';
 import '../../insights/services/weekly_summarist_service.dart';
 import '../../memory/space_memory_engine.dart';
+import '../../mascot/neura_window_role.dart';
 import '../../neura_runtime/neura_runtime_controller.dart';
 import '../../modules/coach/coach_store.dart';
 import '../../modules/core/app_log.dart';
@@ -50,6 +51,7 @@ import '../../services/neura_swarm_service.dart';
 import '../../services/neura_tone_runtime.dart';
 import '../../services/wake_word_listener_service.dart';
 import '../../services/wake_word_prefs.dart';
+import '../../startup/neura_bootstrap_log.dart';
 import '../../mood/services/mood_state_service.dart';
 import '../modules/focus/focus_controller.dart';
 
@@ -83,6 +85,7 @@ class NeuraDataWipeService {
   // considered, so unrelated temp files can never be removed.
   static final List<RegExp> _temporaryArtifactNames = <RegExp>[
     RegExp(r'^neura_error_vault\.jsonl(?:\.[1-3])?$'),
+    RegExp(r'^neura_bootstrap_export_[0-9TZ.-]+\.ndjson$'),
     RegExp(r'^usage_entries_[0-9]+\.csv$'),
     RegExp(r'^usage_report_[0-9]+\.pdf$'),
     RegExp(r'^neura_weekly_snapshot_[0-9]+\.(?:csv|pdf)$'),
@@ -112,8 +115,18 @@ class NeuraDataWipeService {
     WakeWordPrefsController.instance.resetAfterDataWipe();
     await _attempt(
       failures,
+      'native crash-log writer shutdown',
+      NeuraWindowRole.suspendDiagnosticsForDataWipe,
+    );
+    await _attempt(
+      failures,
       'error-vault writer shutdown',
       NeuraErrorVault.suspendForDataWipe,
+    );
+    await _attempt(
+      failures,
+      'bootstrap-log writer shutdown',
+      NeuraBootstrapLog.suspendForDataWipe,
     );
     await _attempt(
       failures,

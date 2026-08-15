@@ -5,12 +5,15 @@
 #include <string>
 
 #include "flutter_window.h"
+#include "neura_native_diagnostics.h"
 #include "utils.h"
 
 #include "window_manager_plus/window_manager_plus_plugin.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
+  InitializeNeuraNativeDiagnostics();
+
   // Attach to console when present (e.g., 'flutter run') or create a
   // new console when running with a debugger.
   if (!::AttachConsole(ATTACH_PARENT_PROCESS) && ::IsDebuggerPresent()) {
@@ -29,11 +32,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project, /*window_id=*/0, /*is_mascot=*/false);
+  RecordNeuraNativeBreadcrumb("primary_window_create_started");
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
   if (!window.Create(L"neuro_companion", origin, size)) {
+    RecordNeuraNativeBreadcrumb("primary_window_create_failed");
     return EXIT_FAILURE;
   }
+  RecordNeuraNativeBreadcrumb("primary_window_created");
   window.SetQuitOnClose(true);
 
   // window_manager_plus (used for the floating avatar window) creates
@@ -52,6 +58,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // "neura/window_role" channel -- see neura_window_role.h.
   WindowManagerPlusPluginSetWindowCreatedCallback(
       [](std::vector<std::string> command_line_arguments) {
+        RecordNeuraNativeBreadcrumb("secondary_window_create_started");
         flutter::DartProject sub_project(L"data");
         sub_project.set_dart_entrypoint_arguments(command_line_arguments);
 
@@ -68,17 +75,25 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
         Win32Window::Point sub_origin(10, 10);
         Win32Window::Size sub_size(1280, 720);
         if (sub_window->Create(L"neuro_companion", sub_origin, sub_size)) {
+          RecordNeuraNativeBreadcrumb("secondary_window_created");
           sub_window->Show();
           sub_window->SetQuitOnClose(false);
+        } else {
+          RecordNeuraNativeBreadcrumb("secondary_window_create_failed");
         }
         return sub_window;
       });
+  RecordNeuraNativeBreadcrumb("secondary_window_callback_ready");
 
   ::MSG msg;
-  while (::GetMessage(&msg, nullptr, 0, 0)) {
+  BOOL message_result = 0;
+  while ((message_result = ::GetMessage(&msg, nullptr, 0, 0)) > 0) {
     ::TranslateMessage(&msg);
     ::DispatchMessage(&msg);
   }
+
+  RecordNeuraNativeBreadcrumb(message_result == 0 ? "message_loop_exit"
+                                                   : "message_loop_error");
 
   ::CoUninitialize();
   return EXIT_SUCCESS;

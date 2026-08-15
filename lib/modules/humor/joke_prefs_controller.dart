@@ -22,8 +22,8 @@ class JokePrefsController {
       favorites.value = sp.getStringList(_kFavoritesKey) ?? const [];
       dislikes.value = sp.getStringList(_kDislikesKey) ?? const [];
       includeSpicy.value = sp.getBool(_kSpicyKey) ?? false;
-    } catch (e) {
-      await AppLog.instance.warn('JokePrefsController.init failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('joke_prefs_init_failed', e, st);
     }
   }
 
@@ -49,8 +49,8 @@ class JokePrefsController {
     includeSpicy.value = value;
     try {
       await NeuraPrefsCache.prefs.setBool(_kSpicyKey, value);
-    } catch (e) {
-      await AppLog.instance.warn('JokePrefsController.setIncludeSpicy failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('joke_prefs_spicy_update_failed', e, st);
     }
   }
 
@@ -59,8 +59,13 @@ class JokePrefsController {
   Future<void> _persistList(String key, List<String> value) async {
     try {
       await NeuraPrefsCache.prefs.setStringList(key, value);
-    } catch (e) {
-      await AppLog.instance.warn('JokePrefsController persist($key) failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught(
+        'joke_prefs_persist_failed',
+        e,
+        st,
+        context: <String, Object?>{'preference': key},
+      );
     }
   }
 

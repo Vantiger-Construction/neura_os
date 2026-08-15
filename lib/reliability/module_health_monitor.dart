@@ -56,7 +56,9 @@ class ModuleHealthMonitor extends ChangeNotifier {
   void failed(String name, Object error, {String? remedy}) => _set(
         name,
         NeuraModuleStatus.failed,
-        detail: error.toString(),
+        // Exceptions from plugins/providers can echo prompts, paths, tokens,
+        // or even throw from toString(). Keep live Diagnostics type-only.
+        detail: '${error.runtimeType} details withheld',
         remedy: remedy ?? 'Restart Neura in Safe Mode and review Diagnostics.',
       );
 

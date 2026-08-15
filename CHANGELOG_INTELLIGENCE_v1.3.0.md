@@ -1,4 +1,4 @@
-# Neura OS 1.3.0+4 — Intelligence Fabric
+# Neura OS 1.3.0+5 — Intelligence Fabric
 
 ## Added
 
@@ -61,6 +61,20 @@
 
 ## Reliability and platform safety
 
+- Startup now renders a dependency-free first frame before any optional
+  MethodChannel or plugin handshake. Missing or stale Windows runner channels
+  degrade companion-window support instead of closing the primary app.
+- Audio, TTS, and Rust Swarm loading are deferred until actually needed and
+  permitted. Optional native binaries are no longer on the default cold-start
+  path.
+- One structured error pipeline owns Flutter framework, platform dispatcher,
+  root-zone, and root-isolate failures on every target. Windows additionally
+  records privacy-safe runner and native-crash breadcrumbs before Dart starts.
+- Early-bootstrap, structured application, and Windows-native logs are bounded,
+  rotated, redacted, visible in Diagnostics, exportable for support, and
+  included in the coordinated local-data wipe.
+- Both supported Windows rebuild paths preserve the authored runner and run an
+  app-owned first-frame smoke mode against the exact packaged executable.
 - Safe Mode now blocks cloud AI, native Swarm review, ambient capture, wake
   word listening, TTS playback, notification delivery, proactive cards, and
   optional startup hooks at both coordinator and service boundaries.
@@ -80,7 +94,8 @@
 - Added focused tests for intelligence scoring and fusion, consent and action
   lifecycle, durable Action Loom behavior, preferences and guardrails,
   complete data wipe, provider-credential tombstoning, startup platform
-  policy, and the After Storm bridge.
+  policy, bootstrap error handling, structured-log privacy, and the After
+  Storm bridge.
 - GitHub Actions derives Windows and Android recovery artifact versions from
   `pubspec.yaml`; verification artifacts include analyzer/test logs, the exact
   formatting patch, and the generated `pubspec.lock` when available.

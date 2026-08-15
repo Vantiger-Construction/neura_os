@@ -1,5 +1,7 @@
 ﻿import 'package:flutter/foundation.dart';
 
+import '../../modules/core/app_log.dart';
+
 class SelfHealService {
   SelfHealService._internal();
   static final SelfHealService instance = SelfHealService._internal();
@@ -17,12 +19,18 @@ class SelfHealService {
   Future<void> recordError(String where, Object error, StackTrace st) async {
     final record = _ErrorRecord(
       where: where,
-      error: error.toString(),
+      error: '${error.runtimeType} details withheld',
       time: DateTime.now(),
     );
     _log.add(record);
+    await AppLog.instance.caught(
+      'self_heal_recorded',
+      error,
+      st,
+      context: <String, Object?>{'where': where},
+    );
     if (kDebugMode) {
-      debugPrint('[SelfHeal] $where — $error');
+      debugPrint('[SelfHeal] $where — ${error.runtimeType}');
       debugPrintStack(stackTrace: st, maxFrames: 10);
     }
   }

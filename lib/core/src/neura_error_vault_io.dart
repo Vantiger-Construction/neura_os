@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path_provider/path_provider.dart';
+
+import '../../modules/core/app_log_record.dart';
 import '../neura_fault_event.dart';
 
 /// Crash-safe local vault.
@@ -26,7 +29,11 @@ class NeuraErrorVault {
     try {
       final f = _file();
       await _rotateIfNeeded(f);
-      final line = jsonEncode(event.toJson());
+      final line = jsonEncode(
+        AppLogSanitizer.map(
+          Map<String, Object?>.from(event.toJson()),
+        ),
+      );
       await f.writeAsString('$line\n', mode: FileMode.append, flush: true);
     } catch (_) {
       // last line of defense: never crash while trying to log a crash
@@ -41,9 +48,75 @@ class NeuraErrorVault {
     }
   }
 
+  static Future<List<String>> tail({int maxLines = 200}) async {
+    try {
+      await _writeQueue;
+      final f = _file();
+      final lines = <String>[];
+      for (var index = _maxBackupFiles; index >= 1; index -= 1) {
+        final backup = File('${f.path}.$index');
+        if (await backup.exists()) lines.addAll(await backup.readAsLines());
+      }
+      if (await f.exists()) lines.addAll(await f.readAsLines());
+      final take = maxLines.clamp(1, 10000).toInt();
+      final selected = lines.length <= take
+          ? lines
+          : lines.sublist(lines.length - take);
+      return selected.map(_sanitizePersistedLine).toList(growable: false);
+    } catch (_) {
+      return const <String>[];
+    }
+  }
+
+  static Future<void> clear() async {
+    await _writeQueue;
+    await _deleteFiles();
+  }
+
+  static Future<String> exportCopy() async {
+    await _writeQueue;
+    final lines = await tail(maxLines: 10000);
+    if (lines.isEmpty) throw StateError('The crash vault is empty.');
+    final support = await getApplicationSupportDirectory();
+    final exports = Directory(
+      '${support.path}${Platform.pathSeparator}neura'
+      '${Platform.pathSeparator}exports',
+    );
+    await exports.create(recursive: true);
+    final stamp = DateTime.now().toUtc().toIso8601String().replaceAll(':', '-');
+    final target = File(
+      '${exports.path}${Platform.pathSeparator}'
+      'neura-crash-vault-$stamp.jsonl',
+    );
+    await target.writeAsString('${lines.join('\n')}\n', flush: true);
+    return target.path;
+  }
+
   static Future<void> suspendForDataWipe() async {
     _suspendedForDataWipe = true;
     await _writeQueue;
+    await _deleteFiles();
+  }
+
+  static String _sanitizePersistedLine(String line) {
+    try {
+      final decoded = jsonDecode(line);
+      if (decoded is! Map) return '{"type":"corrupt_record"}';
+      return jsonEncode(
+        AppLogSanitizer.map(Map<String, Object?>.from(decoded)),
+      );
+    } catch (_) {
+      return '{"type":"corrupt_record"}';
+    }
+  }
+
+  static Future<void> _deleteFiles() async {
+    final f = _file();
+    if (await f.exists()) await f.delete();
+    for (var index = 1; index <= _maxBackupFiles; index += 1) {
+      final backup = File('${f.path}.$index');
+      if (await backup.exists()) await backup.delete();
+    }
   }
 
   static Future<void> _rotateIfNeeded(File f) async {

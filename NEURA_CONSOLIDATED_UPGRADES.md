@@ -67,6 +67,16 @@ money, goals, clinical-support, notifications, Legacy, and Swarm modules.
 
 ## Safe Mode and platform hardening
 
+- Neura attaches a dependency-free first frame before optional native/plugin
+  handshakes. A missing or stale Windows role channel now disables the mascot
+  integration while keeping the primary app open.
+- Audio, TTS, and Rust Swarm initialization are lazy and policy-gated, removing
+  optional native code from the normal cold-start crash surface.
+- A single privacy-filtered error pipeline captures Flutter framework,
+  platform, root-zone, and root-isolate failures across targets. Windows also
+  records bounded native runner/crash breadcrumbs before Dart is available.
+- Bootstrap, application, and native logs rotate locally, appear in
+  Diagnostics, support sanitized export, and participate in full data wipe.
 - Safe Mode is enforced at startup and inside cloud AI, native Swarm, ambient
   capture, wake-word, TTS, notification, proactive-card, and shell boundaries.
   A direct service call cannot bypass the gate.

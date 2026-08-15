@@ -65,9 +65,9 @@ class NeuraNotificationsService {
       if (!allowInSafeMode && !deliveryAllowed && _available) {
         await plugin.cancelAll();
       }
-    } catch (e) {
+    } catch (e, st) {
       _available = false;
-      await AppLog.instance.warn('neura_notifications_init_failed: $e');
+      await AppLog.instance.caught('notifications_init_failed', e, st);
     }
   }
 
@@ -100,8 +100,8 @@ class NeuraNotificationsService {
         body: body,
         notificationDetails: const NotificationDetails(),
       );
-    } catch (e) {
-      await AppLog.instance.warn('neura_notifications_show_failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('notifications_show_failed', e, st);
     }
   }
 
@@ -123,8 +123,8 @@ class NeuraNotificationsService {
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         matchDateTimeComponents: DateTimeComponents.time,
       );
-    } catch (e) {
-      await AppLog.instance.warn('neura_notifications_schedule_failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('notifications_schedule_failed', e, st);
     }
   }
 
@@ -133,8 +133,8 @@ class NeuraNotificationsService {
     if (!_available || plugin == null) return;
     try {
       await plugin.cancel(id: _dailyMoodNudgeId);
-    } catch (e) {
-      await AppLog.instance.warn('neura_notifications_cancel_failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('notifications_cancel_failed', e, st);
     }
   }
 
@@ -143,8 +143,8 @@ class NeuraNotificationsService {
     if (!_available || plugin == null) return;
     try {
       await plugin.cancelAll();
-    } catch (e) {
-      await AppLog.instance.warn('neura_notifications_cancel_all_failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('notifications_cancel_all_failed', e, st);
     }
   }
 

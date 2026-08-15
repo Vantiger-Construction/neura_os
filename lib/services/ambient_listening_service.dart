@@ -25,10 +25,10 @@ import 'neura_tts_service.dart';
 /// access violation in flutter_tts_plugin.dll (0xC0000005) -- confirmed via
 /// repeated crash reproduction and Windows Error Reporting during beta
 /// testing. Two mitigation attempts (warming the TTS engine up earlier in
-/// boot -- see NeuraStartupCoordinator's TtsWarmup step, still kept, it's
-/// harmless -- and adding a grace period after the mascot window's creation
-/// future resolves) both measurably reduced but did not reliably eliminate
-/// the crash across repeated test launches. Given a native access violation
+/// boot and adding a grace period after the mascot window's creation future
+/// resolves) both measurably reduced but did not reliably eliminate the
+/// crash across repeated test launches. Eager TTS warm-up has therefore also
+/// been removed from startup. Given a native access violation
 /// can't be caught by Dart exception handling (it kills the process
 /// outright, not just the call), skipping the call entirely is the only
 /// mitigation that has actually been confirmed crash-free. All other
@@ -150,8 +150,8 @@ class AmbientListeningService {
         await NeuraTtsService.instance
             .speak("Hi. I'm Neura. I'm here if you need me.")
             .timeout(const Duration(seconds: 5));
-      } catch (e) {
-        await AppLog.instance.warn('ambient_greet_failed: $e');
+      } catch (e, st) {
+        await AppLog.instance.caught('ambient_greet_failed', e, st);
       }
     }
 
@@ -182,8 +182,8 @@ class AmbientListeningService {
         await stop();
         return;
       }
-    } catch (e) {
-      await AppLog.instance.warn('ambient_listening_start_failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('ambient_listening_start_failed', e, st);
       return;
     }
 
@@ -302,8 +302,8 @@ class AmbientListeningService {
       });
       _persistQueue = next.then<void>((_) {}, onError: (_) {});
       await next;
-    } catch (e) {
-      await AppLog.instance.warn('ambient_listening_persist_failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('ambient_listening_persist_failed', e, st);
     }
   }
 

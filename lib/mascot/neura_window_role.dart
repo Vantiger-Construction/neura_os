@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Tells this engine whether it's the main app window or the floating
@@ -18,5 +19,12 @@ class NeuraWindowRole {
       windowId: result?['windowId'] as int? ?? 0,
       isMascot: result?['isMascot'] as bool? ?? false,
     );
+  }
+
+  /// Latches the Windows runner's privacy-safe native crash writer off for
+  /// the remainder of this process before a full local-data wipe.
+  static Future<void> suspendDiagnosticsForDataWipe() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.windows) return;
+    await _channel.invokeMethod<bool>('suspendDiagnosticsForDataWipe');
   }
 }

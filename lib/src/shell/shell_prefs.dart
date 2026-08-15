@@ -53,8 +53,8 @@ class ShellPrefsController {
       if (decoded is Map<String, dynamic>) {
         prefs.value = ShellPrefs.fromJson(decoded);
       }
-    } catch (e) {
-      await AppLog.instance.warn('ShellPrefsController.init failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('shell_prefs_init_failed', e, st);
     }
   }
 
@@ -63,8 +63,8 @@ class ShellPrefsController {
     try {
       final sp = NeuraPrefsCache.prefs;
       await sp.setString(_prefsKey, jsonEncode(next.toJson()));
-    } catch (e) {
-      await AppLog.instance.warn('ShellPrefsController.update failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('shell_prefs_update_failed', e, st);
     }
   }
 }

@@ -20,7 +20,8 @@ class NeuraRuntimeController {
     if (_started) return;
     _started = true;
 
-    // NeuraVoicePack is initialised in main() before start() is called.
+    // Native voice playback remains lazy; NeuraVoicePack creates its player
+    // only if a later user action actually requests a clip.
     await NeuraMemoryWatcher.I.start();
 
     _sub = NeuraBus.I.stream.listen((e) async {

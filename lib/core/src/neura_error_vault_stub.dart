@@ -8,5 +8,16 @@ class NeuraErrorVault {
 
   static Future<String?> getVaultPath() async => null;
 
+  static Future<List<String>> tail({int maxLines = 200}) async =>
+      const <String>[];
+
+  static Future<void> clear() async {}
+
+  static Future<String> exportCopy() {
+    throw UnsupportedError(
+      'Crash-vault export is unavailable in the browser build.',
+    );
+  }
+
   static Future<void> suspendForDataWipe() async {}
 }

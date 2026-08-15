@@ -16,7 +16,7 @@ void main() {
     expect(snapshot['attempts'], 1);
     expect(snapshot['retries'], 1);
     expect(snapshot['failures'], 1);
-    expect(snapshot['last_error'], contains('offline'));
+    expect(snapshot['last_error'], 'StateError details withheld.');
 
     diagnostics.recordAttempt();
     diagnostics.recordSuccess();
@@ -32,4 +32,18 @@ void main() {
     expect(snapshot['fallbacks'], 1);
     expect(snapshot['last_error'], isNull);
   });
+
+  test('failure snapshots never evaluate arbitrary exception text', () {
+    diagnostics.recordFailure(_ThrowingToStringError());
+
+    expect(
+      diagnostics.snapshot()['last_error'],
+      '_ThrowingToStringError details withheld.',
+    );
+  });
+}
+
+class _ThrowingToStringError {
+  @override
+  String toString() => throw StateError('must not be evaluated');
 }

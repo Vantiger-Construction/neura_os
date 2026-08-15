@@ -129,6 +129,86 @@ jobs:
             throw "Expected executable not found: $exe"
           }
 
+          foreach ($runtimeName in @(
+            'msvcp140.dll',
+            'vcruntime140.dll',
+            'vcruntime140_1.dll'
+          )) {
+            $destination = Join-Path $release $runtimeName
+            if (-not (Test-Path -LiteralPath $destination -PathType Leaf)) {
+              $matches = @()
+              foreach ($programRoot in @(
+                ${env:ProgramFiles(x86)},
+                $env:ProgramFiles
+              ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) {
+                $matches += Get-ChildItem -Path (
+                  Join-Path $programRoot (
+                    "Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*" +
+                    "\x64\Microsoft.VC*.CRT\$runtimeName"
+                  )
+                ) -File -ErrorAction SilentlyContinue
+              }
+              $source = $matches |
+                Sort-Object -Property FullName -Descending |
+                Select-Object -First 1
+              if (-not $source) {
+                throw "Visual C++ x64 runtime was not found: $runtimeName"
+              }
+              Copy-Item -LiteralPath $source.FullName -Destination $destination
+            }
+          }
+
+          foreach ($required in @(
+            $exe,
+            (Join-Path $release 'flutter_windows.dll'),
+            (Join-Path $release 'neura_swarm.dll'),
+            (Join-Path $release 'msvcp140.dll'),
+            (Join-Path $release 'vcruntime140.dll'),
+            (Join-Path $release 'vcruntime140_1.dll'),
+            (Join-Path $release 'data\icudtl.dat'),
+            (Join-Path $release 'data\app.so')
+          )) {
+            if (-not (Test-Path -LiteralPath $required -PathType Leaf) -or
+                (Get-Item -LiteralPath $required).Length -le 0) {
+              throw "Windows runtime payload is incomplete: $required"
+            }
+          }
+          $flutterAssets = Join-Path $release 'data\flutter_assets'
+          if (-not (Test-Path -LiteralPath $flutterAssets -PathType Container) -or
+              -not (Get-ChildItem -LiteralPath $flutterAssets -File -Recurse |
+                Select-Object -First 1)) {
+            throw "Windows Flutter assets are missing or empty: $flutterAssets"
+          }
+
+          $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+          $startInfo.FileName = $exe
+          $startInfo.Arguments = '--launch-smoke-test'
+          $startInfo.WorkingDirectory = $release
+          $startInfo.UseShellExecute = $false
+          $smoke = New-Object System.Diagnostics.Process
+          $smoke.StartInfo = $startInfo
+          $smokeStarted = $false
+          try {
+            if (-not $smoke.Start()) {
+              throw 'Windows did not start the packaged executable.'
+            }
+            $smokeStarted = $true
+            if (-not $smoke.WaitForExit(15000)) {
+              throw 'Packaged launch self-test did not self-exit within 15 seconds.'
+            }
+            if ($smoke.ExitCode -ne 73) {
+              throw "Packaged launch self-test exited with code $($smoke.ExitCode); expected sentinel 73."
+            }
+          } finally {
+            if ($smokeStarted) {
+              $smoke.Refresh()
+              if (-not $smoke.HasExited) {
+                Stop-Process -Id $smoke.Id -Force -ErrorAction Stop
+              }
+            }
+            $smoke.Dispose()
+          }
+
           $output = Join-Path $PWD 'recovery_downloads\windows'
           New-Item -ItemType Directory -Path $output -Force | Out-Null
           $versionLine = Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$'
@@ -149,7 +229,13 @@ jobs:
           3. Keep the data, DLL, and executable files together.
 
           This build passed dependency restore, Flutter analysis, Flutter tests,
-          and Windows release compilation in the same GitHub workflow.
+          Windows release compilation, runtime-payload validation, and the
+          packaged first-frame launch self-test in the same GitHub workflow.
+
+          Startup diagnostics:
+          - %TEMP%\neura_error_vault.jsonl (and .1 through .3)
+          - %LOCALAPPDATA%\Neura OS\Logs\bootstrap_crash.ndjson (and .old)
+          - %APPDATA%\com.neurocompanion\neuro_companion\neura\logs\neura.log.ndjson
           "@ | Set-Content -LiteralPath (Join-Path $release 'README_INSTALL.txt') -Encoding UTF8
 
           [ordered]@{
@@ -159,6 +245,8 @@ jobs:
             commit = $env:GITHUB_SHA
             workflowRun = $env:GITHUB_RUN_ID
             flutter = (flutter --version | Select-Object -First 1)
+            launchSmokeTest = 'passed'
+            runtimePayload = 'passed'
             builtAtUtc = (Get-Date).ToUniversalTime().ToString('o')
           } | ConvertTo-Json |
             Set-Content -LiteralPath (Join-Path $release 'BUILD_PROVENANCE.json') -Encoding UTF8

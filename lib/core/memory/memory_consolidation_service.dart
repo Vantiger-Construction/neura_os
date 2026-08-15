@@ -153,11 +153,11 @@ class MemoryConsolidationService {
         profileText: text,
         generatedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
       ), generation);
-    } catch (e) {
+    } catch (e, st) {
       if (generation != _dataGeneration) return;
       // Network failure, guardrail block, or missing key -- stay "due",
       // retry next app-open. Chat just proceeds without a profile snippet.
-      await AppLog.instance.warn('memory_consolidation_failed: $e');
+      await AppLog.instance.caught('memory_consolidation_failed', e, st);
     }
   }
 
