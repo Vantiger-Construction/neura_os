@@ -1,17 +1,263 @@
-name: Neura CI probe
+name: Neura recovery downloads
 
 on:
   push:
     branches:
+      - agent/build-neura-downloads-20260729
       - agent/neura-intelligence-fabric-v1.3
+  pull_request:
+    branches:
+      - Neura
   workflow_dispatch:
 
-permissions: {}
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-recovery-downloads-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: "3.44.7"
 
 jobs:
-  validate-definition:
+  verify:
+    name: Analyze and test
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 45
     steps:
-      - name: Confirm workflow startup
-        run: echo "GitHub Actions workflow startup is available."
+      - name: Check out the recovery branch
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Record Flutter version
+        run: flutter --version
+
+      - name: Restore dependencies
+        run: |
+          flutter clean
+          flutter pub get
+
+      - name: Format sources and record exact patch
+        shell: bash
+        run: |
+          dart format lib test
+          git diff --no-ext-diff --binary -- lib test > dart-format.patch
+
+      - name: Require zero analyzer errors
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter analyze --no-fatal-warnings --no-fatal-infos 2>&1 | tee analyze.log
+
+      - name: Run Flutter tests
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter test --reporter expanded 2>&1 | tee tests.log
+
+      - name: Upload verification logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Neura-verification-logs
+          path: |
+            analyze.log
+            tests.log
+            dart-format.patch
+            pubspec.lock
+          if-no-files-found: warn
+          retention-days: 14
+
+  windows:
+    name: Build Windows x64
+    needs: verify
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out the recovery branch
+        uses: actions/checkout@v4
+
+      - name: Install Rust (neura_swarm crate)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Enable Windows desktop
+        shell: pwsh
+        run: |
+          flutter config --enable-windows-desktop
+          flutter --version
+          flutter doctor -v
+
+      - name: Restore dependencies
+        shell: pwsh
+        run: flutter pub get
+
+      - name: Build Windows release
+        shell: pwsh
+        run: |
+          $versionLine = Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$'
+          $buildName = $versionLine.Matches[0].Groups[1].Value.Trim().Split('+')[0]
+          flutter build windows --release `
+            --build-name $buildName `
+            --build-number $env:GITHUB_RUN_NUMBER *>&1 |
+            Tee-Object -FilePath windows-build.log |
+            Out-Host
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Package Windows download
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = Join-Path $PWD 'build\windows\x64\runner\Release'
+          $exe = Join-Path $release 'neuro_companion.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+            throw "Expected executable not found: $exe"
+          }
+
+          $output = Join-Path $PWD 'recovery_downloads\windows'
+          New-Item -ItemType Directory -Path $output -Force | Out-Null
+          $versionLine = Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$'
+          $buildName = $versionLine.Matches[0].Groups[1].Value.Trim().Split('+')[0]
+          $version = "$buildName-recovery.$env:GITHUB_RUN_NUMBER"
+          $zipName = "NeuraCompanion_Windows_x64_$version.zip"
+          $zipPath = Join-Path $output $zipName
+
+          @"
+          Neura Companion - Windows x64 recovery build
+
+          Version: $version
+          Commit: $env:GITHUB_SHA
+
+          Install:
+          1. Extract the entire ZIP to a folder you choose.
+          2. Run neuro_companion.exe.
+          3. Keep the data, DLL, and executable files together.
+
+          This build passed dependency restore, Flutter analysis, Flutter tests,
+          and Windows release compilation in the same GitHub workflow.
+          "@ | Set-Content -LiteralPath (Join-Path $release 'README_INSTALL.txt') -Encoding UTF8
+
+          [ordered]@{
+            app = 'Neura Companion'
+            platform = 'windows-x64'
+            version = $version
+            commit = $env:GITHUB_SHA
+            workflowRun = $env:GITHUB_RUN_ID
+            flutter = (flutter --version | Select-Object -First 1)
+            builtAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+          } | ConvertTo-Json |
+            Set-Content -LiteralPath (Join-Path $release 'BUILD_PROVENANCE.json') -Encoding UTF8
+
+          Compress-Archive -Path (Join-Path $release '*') -DestinationPath $zipPath -CompressionLevel Optimal
+          $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $zipName" | Set-Content -LiteralPath (Join-Path $output 'SHA256SUMS.txt') -Encoding ASCII
+
+      - name: Upload Windows download
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeuraCompanion-Windows-x64
+          path: recovery_downloads/windows/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Windows failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Neura-Windows-build-log
+          path: windows-build.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  android:
+    name: Build Android installable APK
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out the recovery branch
+        uses: actions/checkout@v4
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Restore dependencies
+        run: flutter pub get
+
+      - name: Build debug-signed Android APK
+        shell: bash
+        run: |
+          set -o pipefail
+          app_version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n 1)"
+          build_name="${app_version%%+*}"
+          flutter build apk --debug \
+            --build-name "$build_name" \
+            --build-number "$GITHUB_RUN_NUMBER" 2>&1 | tee android-build.log
+
+      - name: Package Android download
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_apk="build/app/outputs/flutter-apk/app-debug.apk"
+          test -f "$source_apk"
+          output="recovery_downloads/android"
+          mkdir -p "$output"
+          app_version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n 1)"
+          version="${app_version%%+*}-recovery.${GITHUB_RUN_NUMBER}"
+          apk_name="NeuraCompanion_Android_${version}_debug-signed.apk"
+          cp "$source_apk" "$output/$apk_name"
+          sha256sum "$output/$apk_name" | sed "s#  $output/#  #" > "$output/SHA256SUMS.txt"
+          cat > "$output/README_INSTALL.txt" <<EOF
+          Neura Companion - Android recovery test build
+
+          Version: $version
+          Commit: $GITHUB_SHA
+
+          This APK is debug-signed so it can be installed for recovery testing.
+          It is not the permanently signed Google Play release. Android may ask
+          you to allow installation from the browser or file manager you use.
+          EOF
+
+      - name: Upload Android download
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeuraCompanion-Android-APK
+          path: recovery_downloads/android/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Android failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Neura-Android-build-log
+          path: android-build.log
+          if-no-files-found: warn
+          retention-days: 14
