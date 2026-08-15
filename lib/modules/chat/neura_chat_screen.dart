@@ -805,8 +805,8 @@ class _ChatLine {
   final String? utteranceId;
   final String? imageBase64;
   final String? imageMediaType;
-  int seq;
-  bool interrupted;
+  int seq = 0;
+  bool interrupted = false;
 
   _ChatLine(
     this.isUser,
@@ -815,8 +815,6 @@ class _ChatLine {
     this.utteranceId,
     this.imageBase64,
     this.imageMediaType,
-    this.seq = 0,
-    this.interrupted = false,
   });
 
   factory _ChatLine.user(
