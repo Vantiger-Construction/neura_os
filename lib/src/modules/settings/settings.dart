@@ -1,27 +1,29 @@
 import 'package:flutter/material.dart';
 
-import '../../../../config/supabase_config.dart';
-import '../../../../modules/coach/coach_settings_screen.dart';
-import '../../../../modules/human/accessibility_screen.dart';
-import '../../../../modules/human/life_snapshot_screen.dart';
-import '../../../../modules/human/persona_lab_screen.dart';
-import '../../../../modules/human/theme_screen.dart';
-import '../../../../persona/screens/agent_persona_settings_screen.dart';
-import '../../../../persona/screens/audience_settings_screen.dart';
-import '../../../../screens/avatar_selector_screen.dart';
-import '../../../../screens/help_screen.dart';
-import '../../../../screens/neura_voice_settings_screen.dart';
-import '../../../../screens/profile_screen.dart';
-import '../../../../screens/subscription_screen.dart';
-import '../../../../screens/sync_status_screen.dart';
+import '../../../config/supabase_config.dart';
+import '../../../modules/coach/coach_settings_screen.dart';
+import '../../../modules/human/accessibility_screen.dart';
+import '../../../modules/human/life_snapshot_screen.dart';
+import '../../../modules/human/persona_lab_screen.dart';
+import '../../../modules/human/theme_screen.dart';
+import '../../../persona/screens/agent_persona_settings_screen.dart';
+import '../../../persona/screens/audience_settings_screen.dart';
+import '../../../screens/avatar_selector_screen.dart';
+import '../../../screens/ai_provider_settings_screen.dart';
+import '../../../neura_link/neura_console_page.dart';
+import '../../../screens/help_screen.dart';
+import '../../../screens/neura_voice_settings_screen.dart';
+import '../../../screens/profile_screen.dart';
+import '../../../screens/subscription_screen.dart';
+import '../../../screens/sync_status_screen.dart';
 import '../../shell/shell_prefs.dart';
 import '../focus/focus_office_screen.dart';
 import '../legacy/legacy_home_screen.dart';
 import '../privacy/privacy_home_screen.dart';
 import '../voice/voice_lab_screen.dart';
-import '../../../../modules/memory/memory_screen.dart';
-import '../../../../modules/feedback/feedback_screen.dart';
-import '../../../../notifications/notifications_settings_screen.dart';
+import '../../../modules/memory/memory_screen.dart';
+import '../../../modules/feedback/feedback_screen.dart';
+import '../../../notifications/notifications_settings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -57,6 +59,34 @@ class SettingsScreen extends StatelessWidget {
             ),
             const Divider(),
           ],
+          ListTile(
+            leading: const Icon(Icons.smart_toy_outlined),
+            title: const Text('AI Provider'),
+            subtitle: const Text('Securely connect, replace, or remove the model key.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const AiProviderSettingsScreen(),
+                ),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.hub_outlined),
+            title: const Text('Local Brain Console'),
+            subtitle: const Text('Streaming link, tone, connection health, and diagnostics.'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const NeuraConsolePage(
+                    brainUrl: 'ws://127.0.0.1:8787',
+                  ),
+                ),
+              );
+            },
+          ),
+          const Divider(),
           ListTile(
             leading: const Icon(Icons.record_voice_over_outlined),
             title: const Text('Voice Lab'),

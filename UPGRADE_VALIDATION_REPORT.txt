@@ -1,0 +1,31 @@
+NEURA CONSOLIDATED UPGRADE VALIDATION
+=====================================
+
+Source package: neuro_companion 1.2.0+3
+
+Integrated source checks performed in the packaging environment:
+  [PASS] Original source archive extracted successfully.
+  [PASS] Existing Neura modules preserved.
+  [PASS] Secure provider service referenced by startup and AI service.
+  [PASS] Provider settings screen linked from Settings.
+  [PASS] Neura Link barrel and protocol source installed.
+  [PASS] Local Brain Console linked from Settings.
+  [PASS] Rust neura_api binary target source installed.
+  [PASS] Windows build/run automation installed.
+  [PASS] Dart and Rust focused tests installed.
+  [PASS] Timeline Vault, Safe Boot, and Module Health source installed.
+  [PASS] Diagnostics reliability controls and export installed.
+  [PASS] Reliability-focused tests installed.
+  [PASS] No key-shaped Anthropic secret found in packaged source.
+
+Toolchain status in packaging environment:
+  [NOT AVAILABLE] Flutter / Dart
+  [NOT AVAILABLE] Rust / cargo
+  [NOT AVAILABLE] Windows PowerShell
+
+Required final gate on Windows:
+  Run BUILD_ALL_NEURA_UPGRADES.bat.
+
+That script runs dependency resolution, Rust format/tests/build, Flutter
+analysis/tests, Windows release compilation, optional Android app-bundle
+compilation, and portable distribution packaging. It stops on failures.

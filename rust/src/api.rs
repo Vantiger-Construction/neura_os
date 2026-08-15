@@ -13,11 +13,14 @@ use crate::{anthropic_client, orchestrator};
 static API_KEY: Mutex<Option<String>> = Mutex::new(None);
 
 /// Stores the Anthropic API key in memory only (never written to disk by
-/// Rust) -- same key already baked into the Dart build via
-/// `--dart-define=ANTHROPIC_API_KEY`, just forwarded here once at startup.
-/// Safe to call more than once (e.g. Flutter hot-restart during dev).
+/// Rust). Dart owns OS-backed secure persistence and forwards the current
+/// value at startup or after settings change. An empty value clears it.
 pub fn init(api_key: String) {
-    *API_KEY.lock().unwrap() = Some(api_key);
+    *API_KEY.lock().unwrap() = if api_key.trim().is_empty() {
+        None
+    } else {
+        Some(api_key)
+    };
 }
 
 /// Runs the critic + memory-extractor agents for one finished chat turn.

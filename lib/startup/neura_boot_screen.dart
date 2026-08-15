@@ -7,6 +7,7 @@ import '../services/app_lock_prefs.dart';
 import '../services/auth_service.dart';
 import '../widgets/auth_guard.dart';
 import 'neura_startup_coordinator.dart';
+import '../reliability/safe_boot.dart';
 
 /// Animated splash screen shown while [NeuraStartupCoordinator] runs.
 ///
@@ -159,6 +160,19 @@ class _NeuraBootScreenState extends State<NeuraBootScreen>
                     ),
                   ),
                   const SizedBox(height: 6),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: SafeBoot.instance.safeMode,
+                    builder: (context, safeMode, _) {
+                      if (!safeMode) return const SizedBox.shrink();
+                      return const Padding(
+                        padding: EdgeInsets.only(bottom: 6),
+                        child: Chip(
+                          avatar: Icon(Icons.health_and_safety, size: 18),
+                          label: Text('Safe Mode'),
+                        ),
+                      );
+                    },
+                  ),
                   Text(
                     'Your AI companion',
                     style: TextStyle(

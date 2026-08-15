@@ -1,4 +1,6 @@
-﻿import 'package:flutter/foundation.dart';
+﻿import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../avatar/avatar_globals.dart';
 import '../avatar/avatar_orchestrator.dart';
@@ -16,8 +18,12 @@ import '../notifications/neura_notifications_prefs.dart';
 import '../notifications/neura_notifications_service.dart';
 import '../services/app_lock_prefs.dart';
 import '../services/neura_swarm_service.dart';
+import '../services/neura_provider_credentials.dart';
 import '../services/neura_tts_service.dart';
 import '../services/neura_voice_pack.dart';
+import '../reliability/module_health_monitor.dart';
+import '../reliability/safe_boot.dart';
+import '../reliability/timeline_vault.dart';
 import '../src/modules/focus/focus_controller.dart';
 import '../src/shell/shell_prefs.dart';
 /// One stage in the startup sequence (label + 0.0–1.0 progress).
@@ -42,6 +48,7 @@ class NeuraStartupCoordinator {
   AvatarOrchestrator? _orchestrator;
   // ignore: unused_field
   AvatarVisemeWiring? _visemeWiring;
+  StreamSubscription<Object>? _timelineSubscription;
 
   bool _booted = false;
 
@@ -57,6 +64,16 @@ class NeuraStartupCoordinator {
     if (_booted) return;
     _booted = true;
 
+    // Safe Boot marker is written before native services start. If two
+    // consecutive launches fail to reach completeBoot(), optional native and
+    // network services are skipped on the next launch.
+    try {
+      await SafeBoot.instance.beginBoot();
+      ModuleHealthMonitor.instance.healthy('SafeBoot');
+    } catch (error) {
+      ModuleHealthMonitor.instance.failed('SafeBoot', error);
+    }
+
     // 1 – Error handler (synchronous, must be first)
     _emit('Setting up error handling…', 0.05);
     ErrorHandler.install();
@@ -64,6 +81,23 @@ class NeuraStartupCoordinator {
     // 2 – Logging
     _emit('Starting logger…', 0.10);
     await _safe(AppLog.instance.init, 'AppLog');
+    await _safe(TimelineVault.instance.initialize, 'TimelineVault');
+    _timelineSubscription ??= NeuraEventBus.I.rawStream.listen((event) {
+      unawaited(
+        TimelineVault.instance
+            .append(
+              'event_bus',
+              data: {'type': event.runtimeType.toString()},
+            )
+            .catchError((_) {}),
+      );
+    });
+    try {
+      await TimelineVault.instance.append('boot_started', data: {
+        'safe_mode': SafeBoot.instance.safeMode.value,
+        'previous_failures': SafeBoot.instance.consecutiveFailures,
+      });
+    } catch (_) {}
 
     // 3 – SharedPreferences (single cached instance used by all services)
     _emit('Loading preferences…', 0.20);
@@ -79,7 +113,14 @@ class NeuraStartupCoordinator {
     await _safe(AmbientListeningPrefsController.instance.init, 'AmbientListeningPrefs');
     await _safe(WakeWordPrefsController.instance.init, 'WakeWordPrefs');
     await _safe(NeuraNotificationsPrefsController.instance.init, 'NotificationsPrefs');
-    await _safe(NeuraNotificationsService.instance.init, 'NotificationsService');
+    if (SafeBoot.instance.safeMode.value) {
+      ModuleHealthMonitor.instance.skipped(
+        'NotificationsService',
+        'Safe Mode disables optional native services.',
+      );
+    } else {
+      await _safe(NeuraNotificationsService.instance.init, 'NotificationsService');
+    }
 
     // 5 – Avatar runtime (in-memory, essentially instant)
     _emit('Waking Neura avatar…', 0.50);
@@ -88,7 +129,11 @@ class NeuraStartupCoordinator {
     // 6 – Voice (mic capture is started lazily by whichever screen needs it,
     // e.g. VoiceLabScreen's mic toggle — not held open continuously from boot).
     _emit('Preparing voice…', 0.65);
-    await _safe(() => NeuraVoicePack.I.init(enableMic: false), 'VoicePack');
+    if (!SafeBoot.instance.safeMode.value) {
+      await _safe(() => NeuraVoicePack.I.init(enableMic: false), 'VoicePack');
+    } else {
+      ModuleHealthMonitor.instance.skipped('VoicePack', 'Disabled by Safe Mode.');
+    }
     // Forces flutter_tts's native engine to initialize now, while nothing
     // else native is starting up yet -- root-caused via crash reproduction
     // (Windows Error Reporting: flutter_tts_plugin.dll, exception
@@ -102,14 +147,22 @@ class NeuraStartupCoordinator {
     // around the later speak() call was never able to prevent this -- a
     // native access violation kills the process outright, it isn't
     // something Dart exception handling can intercept.
-    await _safe(() => NeuraTtsService.instance.warmUp(), 'TtsWarmup');
+    if (!SafeBoot.instance.safeMode.value) {
+      await _safe(() => NeuraTtsService.instance.warmUp(), 'TtsWarmup');
+    } else {
+      ModuleHealthMonitor.instance.skipped('TtsWarmup', 'Disabled by Safe Mode.');
+    }
 
-    // 6b – Rust swarm (critic + memory agents) -- same API key already
-    // baked into the build for NeuraAiService, forwarded once so the
-    // native library never needs its own build-time secret.
+    // 6b – Provider credential + Rust swarm. Existing build-time credentials
+    // are migrated once into OS-backed secure storage. New builds should not
+    // contain provider secrets.
+    await _safe(
+      NeuraProviderCredentials.instance.initialize,
+      'ProviderCredentials',
+    );
     await _safe(
       () => NeuraSwarmService.instance
-          .init(const String.fromEnvironment('ANTHROPIC_API_KEY')),
+          .init(NeuraProviderCredentials.instance.apiKey),
       'SwarmInit',
     );
 
@@ -119,10 +172,22 @@ class NeuraStartupCoordinator {
 
     // 8 – Supabase (network, last + optional; gracefully skipped if placeholder keys)
     _emit('Connecting to cloud…', 0.90);
-    await _safe(_initSupabase, 'Supabase');
+    if (!SafeBoot.instance.safeMode.value) {
+      await _safe(_initSupabase, 'Supabase');
+    } else {
+      ModuleHealthMonitor.instance.skipped('Supabase', 'Disabled by Safe Mode.');
+    }
 
     // Done
     _emit('Ready!', 1.0);
+    try {
+      await TimelineVault.instance.append('boot_completed', data: {
+        'safe_mode': SafeBoot.instance.safeMode.value,
+      });
+    } catch (_) {}
+    try {
+      await SafeBoot.instance.completeBoot();
+    } catch (_) {}
     ready.value = true;
   }
 
@@ -158,10 +223,28 @@ class NeuraStartupCoordinator {
 
   /// Runs [fn] safely; logs and swallows any exception so boot always completes.
   Future<void> _safe(Future<void> Function() fn, String label) async {
+    final stopwatch = Stopwatch()..start();
+    ModuleHealthMonitor.instance.starting(label);
     try {
       await fn();
+      stopwatch.stop();
+      ModuleHealthMonitor.instance.healthy(label, duration: stopwatch.elapsed);
+      try {
+        await TimelineVault.instance.append('module_healthy', data: {
+          'module': label,
+          'duration_ms': stopwatch.elapsedMilliseconds,
+        });
+      } catch (_) {}
     } catch (e, st) {
+      stopwatch.stop();
+      ModuleHealthMonitor.instance.failed(label, e);
       debugPrint('[NeuraStartup] $label failed (non-fatal): $e\n$st');
+      try {
+        await TimelineVault.instance.append('module_failed', data: {
+          'module': label,
+          'error_type': e.runtimeType.toString(),
+        });
+      } catch (_) {}
       try {
         await AppLog.instance.warn('startup.$label failed: $e');
       } catch (_) {}

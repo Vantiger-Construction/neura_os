@@ -21,6 +21,7 @@ import '../src/modules/focus/focus_mode.dart';
 import 'neura_chat_policy.dart';
 import 'neura_generation_cancel.dart';
 import 'neura_llm_diagnostics.dart';
+import 'neura_provider_credentials.dart';
 
 typedef NeuraToolCommandHandler = FutureOr<void> Function(
   NeuraToolCommand command,
@@ -78,7 +79,6 @@ class NeuraAiService {
   NeuraAiService._();
   static final NeuraAiService instance = NeuraAiService._();
 
-  static const _apiKey = String.fromEnvironment('ANTHROPIC_API_KEY');
   static const _model = 'claude-sonnet-5';
   static const _maxTokens = 2048;
   static const _endpoint = 'https://api.anthropic.com/v1/messages';
@@ -93,7 +93,8 @@ class NeuraAiService {
   NeuraGenerationCancel? _activeCancel;
   String? _activeGenerationId;
 
-  bool get isConfigured => _apiKey.isNotEmpty;
+  String get _apiKey => NeuraProviderCredentials.instance.apiKey;
+  bool get isConfigured => NeuraProviderCredentials.instance.hasKey;
   String? get activeGenerationId => _activeGenerationId;
   Map<String, dynamic> get diagnosticsSnapshot => _diagnostics.snapshot();
 
@@ -128,7 +129,7 @@ class NeuraAiService {
     NeuraToolCommandHandler? onToolCommand,
   }) async* {
     if (!isConfigured) {
-      throw StateError('ANTHROPIC_API_KEY was not set at build time.');
+      throw StateError('Configure the AI provider key in Settings.');
     }
 
     final id = generationId ?? const Uuid().v4();
@@ -505,7 +506,7 @@ class NeuraAiService {
     required String agentId,
   }) async {
     if (!isConfigured) {
-      throw StateError('ANTHROPIC_API_KEY was not set at build time.');
+      throw StateError('Configure the AI provider key in Settings.');
     }
 
     final syntheticRequest = [NeuraChatTurn(isUser: true, text: userPrompt)];

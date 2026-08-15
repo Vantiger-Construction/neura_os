@@ -12,16 +12,14 @@ class NeuraSwarmService {
 
   bool _initialized = false;
 
-  /// Loads the native library and forwards the same Anthropic API key
-  /// already baked into the build for [NeuraAiService]. Never persisted to
-  /// disk by Rust -- kept in memory only, matching how the key is already
-  /// scoped. Safe to call more than once.
+  /// Loads the native library and forwards the credential held by the secure
+  /// provider store. Rust keeps it in memory only. Safe to call more than
+  /// once when the user replaces or removes the credential.
   Future<void> init(String apiKey) async {
     if (!_initialized) {
       await RustLib.init();
       _initialized = true;
     }
-    if (apiKey.isEmpty) return;
     // Must be awaited: this crosses the FFI bridge and is the first
     // real call into the native library. Firing it without awaiting let
     // `boot()` flip `ready` (and kick off the mascot window's own native
@@ -30,6 +28,10 @@ class NeuraSwarmService {
     // MascotWindowService.initialCreationSettled, just via a new source.
     await rust_api.init(apiKey: apiKey);
   }
+
+  /// Removes the provider credential from the native process as well as the
+  /// Dart side. The secure store itself is owned by ProviderCredentials.
+  Future<void> clearCredential() => init('');
 
   /// Runs the critic + memory-extractor agents for one finished chat turn.
   /// Never throws -- a swarm-agent failure degrades to "no concern, no
