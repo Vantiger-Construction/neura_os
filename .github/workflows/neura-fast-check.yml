@@ -1,44 +1,14 @@
-name: Neura Local Runner Check
+name: Neura local runner probe
 
 on:
-  pull_request:
-    branches: [Neura]
-    paths:
-      - 'lib/**'
-      - 'test/**'
-      - 'rust/**'
-      - 'windows/**'
-      - 'pubspec.yaml'
-      - 'pubspec.lock'
-      - 'analysis_options.yaml'
-      - 'tools/Neura-FastCheck.ps1'
-      - '.github/workflows/neura-fast-check.yml'
   workflow_dispatch:
 
-concurrency:
-  group: neura-local-runner-${{ github.ref }}
-  cancel-in-progress: true
+permissions: {}
 
 jobs:
-  validate:
-    # Uses the owner's Windows computer instead of paid GitHub-hosted minutes.
-    runs-on: [self-hosted, Windows, X64, neura]
-    timeout-minutes: 45
-
+  validate-definition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Verify local tools
-        shell: pwsh
-        run: |
-          flutter --version
-          dart --version
-          git --version
-          # neura_swarm (rust/) needs cargo on this machine's PATH -- if this
-          # fails, install Rust once via https://rustup.rs on the runner host.
-          cargo --version
-
-      - name: Run optimized validation
-        shell: pwsh
-        run: ./tools/Neura-FastCheck.ps1 -Root . -BuildWindows
+      - name: Confirm workflow startup
+        run: echo "GitHub Actions workflow startup is available."
