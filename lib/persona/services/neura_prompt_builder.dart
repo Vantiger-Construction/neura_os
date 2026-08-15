@@ -70,10 +70,8 @@ class NeuraPromptBuilder {
   Future<String> _buildMemorySnippet() async {
     try {
       final nodes = await MemoryGraphService.I.recentNodes(limit: 8);
-      final lines = nodes
-          .map(_summarizeNode)
-          .where((s) => s.isNotEmpty)
-          .toList();
+      final lines =
+          nodes.map(_summarizeNode).where((s) => s.isNotEmpty).toList();
       if (lines.isEmpty) return '';
       return 'Relevant things you remember about this person from past '
           'conversations (most recent first) - use naturally, don\'t just '

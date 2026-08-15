@@ -12,8 +12,10 @@ class JokePrefsController {
   static const _kDislikesKey = 'neura.jokes.dislikes.v1';
   static const _kSpicyKey = 'neura.jokes.includeSpicy.v1';
 
-  final ValueNotifier<List<String>> favorites = ValueNotifier<List<String>>(const []);
-  final ValueNotifier<List<String>> dislikes = ValueNotifier<List<String>>(const []);
+  final ValueNotifier<List<String>> favorites =
+      ValueNotifier<List<String>>(const []);
+  final ValueNotifier<List<String>> dislikes =
+      ValueNotifier<List<String>>(const []);
   final ValueNotifier<bool> includeSpicy = ValueNotifier<bool>(false);
 
   Future<void> init() async {

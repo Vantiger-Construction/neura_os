@@ -48,27 +48,34 @@ class _SupportCenterScreenState extends State<SupportCenterScreen> {
           children: [
             TextField(
               controller: nameC,
-              decoration: const InputDecoration(labelText: 'Name', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                  labelText: 'Name', border: OutlineInputBorder()),
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 10),
             TextField(
               controller: phoneC,
-              decoration: const InputDecoration(labelText: 'Phone', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                  labelText: 'Phone', border: OutlineInputBorder()),
               keyboardType: TextInputType.phone,
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 10),
             TextField(
               controller: noteC,
-              decoration: const InputDecoration(labelText: 'Note (optional)', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                  labelText: 'Note (optional)', border: OutlineInputBorder()),
               maxLines: 2,
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Add')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Add')),
         ],
       ),
     );
@@ -92,20 +99,24 @@ class _SupportCenterScreenState extends State<SupportCenterScreen> {
   Widget build(BuildContext context) {
     final explain = NeuraExplainSpec(
       title: 'Support Center',
-      body: 'A calm, no-drama space for grounding tools and "reach out" helpers.',
+      body:
+          'A calm, no-drama space for grounding tools and "reach out" helpers.',
       bullets: const [
         'Calm Protocol: a 60–120 second reset you can do anywhere.',
         'Trusted Contacts are stored locally only.',
         "This is not emergency services; call local emergency numbers if you're in danger.",
       ],
-      footer: "If you're feeling unsafe or in crisis, contact local emergency services or a crisis hotline in your country.",
+      footer:
+          "If you're feeling unsafe or in crisis, contact local emergency services or a crisis hotline in your country.",
     );
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Support Center'),
         actions: [
-          IconButton(icon: const Icon(Icons.help_outline), onPressed: () => showNeuraExplain(context, spec: explain)),
+          IconButton(
+              icon: const Icon(Icons.help_outline),
+              onPressed: () => showNeuraExplain(context, spec: explain)),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
@@ -127,10 +138,12 @@ class _SupportCenterScreenState extends State<SupportCenterScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Trusted Contacts', style: Theme.of(context).textTheme.titleMedium),
+                        Text('Trusted Contacts',
+                            style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 8),
                         if (_contacts.isEmpty)
-                          const Text('Add someone you trust. Neura will prep a "reach out" message you can copy.')
+                          const Text(
+                              'Add someone you trust. Neura will prep a "reach out" message you can copy.')
                         else
                           ..._contacts.map((c) => _ContactTile(
                                 contact: c,
@@ -162,21 +175,25 @@ class _ContactTile extends StatelessWidget {
       child: ListTile(
         leading: const Icon(Icons.person_outline),
         title: Text(contact.name),
-        subtitle: Text('${contact.phone}${contact.note.trim().isEmpty ? '' : "\n${contact.note}"}'),
+        subtitle: Text(
+            '${contact.phone}${contact.note.trim().isEmpty ? '' : "\n${contact.note}"}'),
         isThreeLine: contact.note.trim().isNotEmpty,
         trailing: PopupMenuButton<String>(
           onSelected: (v) async {
             if (v == 'copy_phone') {
               await Clipboard.setData(ClipboardData(text: contact.phone));
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone copied.')));
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Phone copied.')));
               }
             }
             if (v == 'copy_text') {
-              final msg = "Hey ${contact.name}, I could use a little support right now. If you're free, can we talk?";
+              final msg =
+                  "Hey ${contact.name}, I could use a little support right now. If you're free, can we talk?";
               await Clipboard.setData(ClipboardData(text: msg));
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Message copied.')));
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Message copied.')));
               }
             }
             if (v == 'delete') {
@@ -237,12 +254,15 @@ class _CalmProtocolCardState extends State<_CalmProtocolCard> {
               children: [
                 const Icon(Icons.spa_outlined),
                 const SizedBox(width: 8),
-                Expanded(child: Text('Calm Protocol', style: Theme.of(context).textTheme.titleMedium)),
+                Expanded(
+                    child: Text('Calm Protocol',
+                        style: Theme.of(context).textTheme.titleMedium)),
                 if (running) Text('$_secondsLeft s'),
               ],
             ),
             const SizedBox(height: 8),
-            const Text('60 seconds of "my nervous system is not the boss of me."'),
+            const Text(
+                '60 seconds of "my nervous system is not the boss of me."'),
             const SizedBox(height: 10),
             Wrap(
               spacing: 10,
@@ -260,10 +280,12 @@ class _CalmProtocolCardState extends State<_CalmProtocolCard> {
                 ),
                 TextButton.icon(
                   onPressed: () async {
-                    const steps = 'Grounding 5-4-3-2-1:\n5 things you see\n4 things you feel\n3 things you hear\n2 things you smell\n1 thing you taste';
+                    const steps =
+                        'Grounding 5-4-3-2-1:\n5 things you see\n4 things you feel\n3 things you hear\n2 things you smell\n1 thing you taste';
                     await Clipboard.setData(const ClipboardData(text: steps));
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Grounding steps copied.')));
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('Grounding steps copied.')));
                     }
                   },
                   icon: const Icon(Icons.copy),

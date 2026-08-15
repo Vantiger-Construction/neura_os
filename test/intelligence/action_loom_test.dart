@@ -21,8 +21,7 @@ void main() {
     NeuraActionLoom.instance.resumeAfterDataWipe();
     await QuestStore.instance.wipe();
     await NeuraPrefsCache.prefs.remove('neura.action_loom.ledger.v1');
-    await NeuraPrefsCache.prefs
-        .remove('neura.action_loom.quest_executions.v1');
+    await NeuraPrefsCache.prefs.remove('neura.action_loom.quest_executions.v1');
   });
 
   test('approved goal draft creates one reversible local quest', () async {
@@ -123,7 +122,8 @@ void main() {
     );
   });
 
-  test('durable ledgers store consent metadata without raw goal text', () async {
+  test('durable ledgers store consent metadata without raw goal text',
+      () async {
     final now = DateTime.now().toUtc();
     final candidate = NeuraIntelligenceCandidate(
       id: 'loom-audit-${now.microsecondsSinceEpoch}',
@@ -158,8 +158,8 @@ void main() {
     final approved = await NeuraActionLoom.instance.approve(pending.id);
     await NeuraActionLoom.instance.execute(approved.id);
 
-    final audit = NeuraPrefsCache.prefs
-        .getString('neura.action_loom.ledger.v1')!;
+    final audit =
+        NeuraPrefsCache.prefs.getString('neura.action_loom.ledger.v1')!;
     final executions = NeuraPrefsCache.prefs
         .getString('neura.action_loom.quest_executions.v1')!;
     expect(audit, contains('explicit_user_approval'));

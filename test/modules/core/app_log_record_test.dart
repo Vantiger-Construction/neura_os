@@ -72,7 +72,7 @@ void main() {
       expect(
         sanitized['message'],
         'Bearer [REDACTED] token=[REDACTED] '
-            'https://example.com/fail?[REDACTED]',
+        'https://example.com/fail?[REDACTED]',
       );
       expect(sanitized['stack'], contains(r'C:\Users\<user>\project'));
       expect(sanitized['stack'], contains('/home/<user>/neura'));

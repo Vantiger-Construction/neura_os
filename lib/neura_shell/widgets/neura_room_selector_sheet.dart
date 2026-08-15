@@ -33,7 +33,8 @@ class NeuraRoomSelectorSheet {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Choose a room', style: Theme.of(context).textTheme.titleLarge),
+              Text('Choose a room',
+                  style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 12),
               GridView.count(
                 crossAxisCount: 2,
@@ -85,14 +86,15 @@ class NeuraRoomSelectorSheet {
                 value: state.autoRoomSync,
                 onChanged: (v) => state.setAutoRoomSync(v),
                 title: const Text('Auto-sync room to tabs'),
-                subtitle: const Text('Neura changes rooms when you change tabs'),
+                subtitle:
+                    const Text('Neura changes rooms when you change tabs'),
               ),
-
               SwitchListTile(
                 value: state.showAvatar,
                 onChanged: (v) => state.setShowAvatar(v),
                 title: const Text('Show Neura overlay'),
-                subtitle: const Text('Little floating Neura head on every screen'),
+                subtitle:
+                    const Text('Little floating Neura head on every screen'),
               ),
               const SizedBox(height: 8),
             ],
@@ -128,7 +130,9 @@ class _RoomTile extends StatelessWidget {
             colors: room.gradient,
           ),
           border: Border.all(
-            color: selected ? Colors.white.withValues(alpha: 0.8) : Colors.white.withValues(alpha: 0.12),
+            color: selected
+                ? Colors.white.withValues(alpha: 0.8)
+                : Colors.white.withValues(alpha: 0.12),
             width: selected ? 2 : 1,
           ),
         ),

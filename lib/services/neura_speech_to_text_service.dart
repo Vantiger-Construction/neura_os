@@ -56,8 +56,8 @@ class NeuraSpeechToTextService {
         break;
       case 'onPartial':
         final hypothesis = call.arguments as String? ?? '';
-        _transcriptStream.add(
-            _finalText.isEmpty ? hypothesis : '$_finalText $hypothesis');
+        _transcriptStream
+            .add(_finalText.isEmpty ? hypothesis : '$_finalText $hypothesis');
         break;
       case 'onFinal':
         final phrase = call.arguments as String? ?? '';

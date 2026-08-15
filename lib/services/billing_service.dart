@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
@@ -14,7 +14,8 @@ class BillingService {
 
   /// Whether a premium entitlement is currently active.
   bool get isPremium => purchases.value.any(
-        (p) => p.status == PurchaseStatus.purchased ||
+        (p) =>
+            p.status == PurchaseStatus.purchased ||
             p.status == PurchaseStatus.restored,
       );
 

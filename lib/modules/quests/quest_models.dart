@@ -43,7 +43,9 @@ class Quest {
         id: j['id']?.toString() ?? '',
         title: j['title']?.toString() ?? '',
         details: j['details']?.toString() ?? '',
-        createdAt: DateTime.tryParse(j['createdAt']?.toString() ?? '')?.toLocal() ?? DateTime.now(),
+        createdAt:
+            DateTime.tryParse(j['createdAt']?.toString() ?? '')?.toLocal() ??
+                DateTime.now(),
         archived: (j['archived'] as bool?) ?? false,
       );
 }
@@ -61,20 +63,25 @@ class QuestDone {
 
   static QuestDone fromJson(Map<String, dynamic> j) => QuestDone(
         questId: j['questId']?.toString() ?? '',
-        day: DateTime.tryParse(j['day']?.toString() ?? '')?.toLocal() ?? DateTime.now(),
+        day: DateTime.tryParse(j['day']?.toString() ?? '')?.toLocal() ??
+            DateTime.now(),
       );
 }
 
 DateTime normalizeDay(DateTime d) => DateTime(d.year, d.month, d.day);
 
-String encodeQuestList(List<Quest> list) => jsonEncode(list.map((e) => e.toJson()).toList());
+String encodeQuestList(List<Quest> list) =>
+    jsonEncode(list.map((e) => e.toJson()).toList());
 
 List<Quest> decodeQuestList(String raw) {
   if (raw.trim().isEmpty) return <Quest>[];
   try {
     final decoded = jsonDecode(raw);
     if (decoded is! List) return <Quest>[];
-    final out = decoded.whereType<Map>().map((m) => Quest.fromJson(m.cast<String, dynamic>())).toList();
+    final out = decoded
+        .whereType<Map>()
+        .map((m) => Quest.fromJson(m.cast<String, dynamic>()))
+        .toList();
     out.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     return out;
   } catch (_) {
@@ -82,14 +89,18 @@ List<Quest> decodeQuestList(String raw) {
   }
 }
 
-String encodeDoneList(List<QuestDone> list) => jsonEncode(list.map((e) => e.toJson()).toList());
+String encodeDoneList(List<QuestDone> list) =>
+    jsonEncode(list.map((e) => e.toJson()).toList());
 
 List<QuestDone> decodeDoneList(String raw) {
   if (raw.trim().isEmpty) return <QuestDone>[];
   try {
     final decoded = jsonDecode(raw);
     if (decoded is! List) return <QuestDone>[];
-    final out = decoded.whereType<Map>().map((m) => QuestDone.fromJson(m.cast<String, dynamic>())).toList();
+    final out = decoded
+        .whereType<Map>()
+        .map((m) => QuestDone.fromJson(m.cast<String, dynamic>()))
+        .toList();
     out.sort((a, b) => a.day.compareTo(b.day));
     return out;
   } catch (_) {

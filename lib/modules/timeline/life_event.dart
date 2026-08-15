@@ -23,5 +23,6 @@ class LifeEvent {
         'data': data,
       };
 
-  static String encodeList(List<LifeEvent> list) => jsonEncode(list.map((e) => e.toJson()).toList(growable: false));
+  static String encodeList(List<LifeEvent> list) =>
+      jsonEncode(list.map((e) => e.toJson()).toList(growable: false));
 }

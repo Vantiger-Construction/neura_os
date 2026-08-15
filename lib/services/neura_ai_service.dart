@@ -654,10 +654,7 @@ class NeuraAiService {
         : moodEntries;
     final recentMoods = recentEntries
         .map(
-          (e) => ((e.mood0to10 - 5) / 2.5)
-              .round()
-              .clamp(-2, 2)
-              .toInt(),
+          (e) => ((e.mood0to10 - 5) / 2.5).round().clamp(-2, 2).toInt(),
         )
         .toList(growable: false);
     final signal = DistressDetector().detect(
@@ -672,7 +669,8 @@ class NeuraAiService {
 
     final snapshot = NeuraContextSnapshot(
       now: DateTime.now(),
-      userInFocusMode: FocusController.instance.state.value.mode != FocusMode.off,
+      userInFocusMode:
+          FocusController.instance.state.value.mode != FocusMode.off,
       isMinor: isMinor,
       distressScore: signal.active ? 0.9 : 0.1,
     );
@@ -684,7 +682,8 @@ class NeuraAiService {
       options: const ['send', 'no_thanks'],
     );
 
-    final decision = Guardrails().evaluate(context: snapshot, proposal: proposal);
+    final decision =
+        Guardrails().evaluate(context: snapshot, proposal: proposal);
     if (decision.allow) return null;
 
     if (signal.active) {

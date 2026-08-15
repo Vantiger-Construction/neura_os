@@ -22,7 +22,8 @@ class NeuraRoomMemoryItem {
         'data': data,
       };
 
-  static NeuraRoomMemoryItem fromJson(Map<String, dynamic> j) => NeuraRoomMemoryItem(
+  static NeuraRoomMemoryItem fromJson(Map<String, dynamic> j) =>
+      NeuraRoomMemoryItem(
         at: DateTime.parse(j['at'] as String),
         tag: j['tag'] as String,
         summary: j['summary'] as String,

@@ -24,7 +24,8 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
     final items = await MoodStore.instance.getAll();
     final rows = items.reversed.take(120).map((e) {
       final ts = e.timestamp;
-      final when = '${ts.year}-${ts.month.toString().padLeft(2, '0')}-${ts.day.toString().padLeft(2, '0')} '
+      final when =
+          '${ts.year}-${ts.month.toString().padLeft(2, '0')}-${ts.day.toString().padLeft(2, '0')} '
           '${ts.hour.toString().padLeft(2, '0')}:${ts.minute.toString().padLeft(2, '0')}';
       return _Row(when, e.mood0to10, e.note);
     }).toList();
@@ -39,7 +40,9 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Mood History'),
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
+        actions: [
+          IconButton(onPressed: _load, icon: const Icon(Icons.refresh))
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

@@ -140,8 +140,7 @@ class NeuraIntelligenceController extends ChangeNotifier {
             now: evaluatedAt,
             promptsLastHour: suggestionsLastHour,
             promptsLastDay: suggestionsToday,
-            userInFocusMode:
-                focusMode == 'deepWork' || focusMode == 'windDown',
+            userInFocusMode: focusMode == 'deepWork' || focusMode == 'windDown',
             userSleepingMode: quiet,
             userRecentlyDeclined: recentlyDeclined,
             distressScore: distressScore.clamp(0.0, 1.0).toDouble(),
@@ -165,7 +164,8 @@ class NeuraIntelligenceController extends ChangeNotifier {
           );
         }
       }
-      decisions.add(NeuraCouncilDecision(candidate: candidate, receipt: receipt));
+      decisions
+          .add(NeuraCouncilDecision(candidate: candidate, receipt: receipt));
       _records.add(
         NeuraIntelligenceRecord(
           title: candidate.title,
@@ -192,9 +192,7 @@ class NeuraIntelligenceController extends ChangeNotifier {
       if (!_isCurrent(generation)) break;
       await _appendTimeline('intelligence_evaluated', decision.receipt);
     }
-    return _isCurrent(generation)
-        ? _lastCouncil
-        : const NeuraCouncilResult([]);
+    return _isCurrent(generation) ? _lastCouncil : const NeuraCouncilResult([]);
   }
 
   Future<void> markShown(String receiptId) => _updateOutcome(
@@ -208,9 +206,7 @@ class NeuraIntelligenceController extends ChangeNotifier {
   }) {
     return _updateOutcome(
       receiptId,
-      acted
-          ? NeuraSuggestionOutcome.acted
-          : NeuraSuggestionOutcome.dismissed,
+      acted ? NeuraSuggestionOutcome.acted : NeuraSuggestionOutcome.dismissed,
     );
   }
 

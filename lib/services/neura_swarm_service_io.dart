@@ -16,8 +16,7 @@ class NeuraSwarmService {
   bool _credentialSuspended = false;
   int _credentialGeneration = 0;
   Future<void> _credentialQueue = Future<void>.value();
-  final Set<Future<SwarmOutcome>> _activeReviews =
-      <Future<SwarmOutcome>>{};
+  final Set<Future<SwarmOutcome>> _activeReviews = <Future<SwarmOutcome>>{};
 
   Future<void> init(String apiKey) {
     if (SafeBoot.instance.safeMode.value ||

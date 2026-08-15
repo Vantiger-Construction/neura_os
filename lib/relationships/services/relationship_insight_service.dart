@@ -1,4 +1,3 @@
-
 import '../models/relationship_suggestion.dart';
 
 class RelationshipInsightService {
@@ -35,7 +34,8 @@ class RelationshipInsightService {
     }
 
     if (daysSinceLastContact != null && daysSinceLastContact >= 7) {
-      reasons.add('It’s been over a week since you connected with someone important.');
+      reasons.add(
+          'It’s been over a week since you connected with someone important.');
       return RelationshipSuggestion(
         title: 'Reconnect softly',
         description:

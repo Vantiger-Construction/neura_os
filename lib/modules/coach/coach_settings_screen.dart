@@ -19,42 +19,54 @@ class CoachSettingsScreen extends StatelessWidget {
             children: [
               SwitchListTile(
                 value: prefs.coachEnabled,
-                onChanged: (v) => HumanPrefsController.instance.update(prefs.copyWith(coachEnabled: v)),
+                onChanged: (v) => HumanPrefsController.instance
+                    .update(prefs.copyWith(coachEnabled: v)),
                 secondary: const Icon(Icons.psychology_alt_outlined),
                 title: const Text('Enable Coach'),
-                subtitle: const Text('Let Neura generate short reflections after key moments.'),
+                subtitle: const Text(
+                    'Let Neura generate short reflections after key moments.'),
               ),
               SwitchListTile(
                 value: prefs.coachPopups,
                 onChanged: prefs.coachEnabled
-                    ? (v) => HumanPrefsController.instance.update(prefs.copyWith(coachPopups: v))
+                    ? (v) => HumanPrefsController.instance
+                        .update(prefs.copyWith(coachPopups: v))
                     : null,
                 secondary: const Icon(Icons.chat_bubble_outline),
                 title: const Text('Show popups'),
-                subtitle: const Text('Show the reflection immediately (also saved to Coach Timeline).'),
+                subtitle: const Text(
+                    'Show the reflection immediately (also saved to Coach Timeline).'),
               ),
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.view_timeline_outlined),
                 title: const Text('Coach Timeline'),
-                subtitle: const Text('Browse your reflections and export them.'),
+                subtitle:
+                    const Text('Browse your reflections and export them.'),
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const CoachTimelineScreen()),
+                  MaterialPageRoute(
+                      builder: (_) => const CoachTimelineScreen()),
                 ),
               ),
               ListTile(
                 leading: const Icon(Icons.delete_outline),
                 title: const Text('Clear Coach Timeline'),
-                subtitle: const Text('Delete all coach notes stored on this device.'),
+                subtitle:
+                    const Text('Delete all coach notes stored on this device.'),
                 onTap: () async {
                   final ok = await showDialog<bool>(
                     context: context,
                     builder: (ctx) => AlertDialog(
                       title: const Text('Clear Coach Timeline?'),
-                      content: const Text('This permanently deletes coach notes on this device.'),
+                      content: const Text(
+                          'This permanently deletes coach notes on this device.'),
                       actions: [
-                        TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-                        FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Clear')),
+                        TextButton(
+                            onPressed: () => Navigator.of(ctx).pop(false),
+                            child: const Text('Cancel')),
+                        FilledButton(
+                            onPressed: () => Navigator.of(ctx).pop(true),
+                            child: const Text('Clear')),
                       ],
                     ),
                   );
@@ -62,7 +74,8 @@ class CoachSettingsScreen extends StatelessWidget {
                     await CoachStore.instance.clear();
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Coach Timeline cleared.')),
+                        const SnackBar(
+                            content: Text('Coach Timeline cleared.')),
                       );
                     }
                   }

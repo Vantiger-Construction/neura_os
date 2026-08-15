@@ -29,7 +29,8 @@ class UpdateCheckService {
   UpdateCheckService._();
   static final UpdateCheckService instance = UpdateCheckService._();
 
-  static const _apiUrl = 'https://api.github.com/repos/Vantiger1/neura_os/releases/latest';
+  static const _apiUrl =
+      'https://api.github.com/repos/Vantiger1/neura_os/releases/latest';
 
   /// This build's own release tag, baked in at build time via
   /// --dart-define=BUILD_TAG=beta-win64-YYYY-MM-DD (matching the existing
@@ -41,9 +42,9 @@ class UpdateCheckService {
   Future<AvailableUpdate?> checkForUpdate() async {
     if (_currentTag.isEmpty) return null;
     try {
-      final response = await http
-          .get(Uri.parse(_apiUrl), headers: {'Accept': 'application/vnd.github+json'})
-          .timeout(const Duration(seconds: 10));
+      final response = await http.get(Uri.parse(_apiUrl), headers: {
+        'Accept': 'application/vnd.github+json'
+      }).timeout(const Duration(seconds: 10));
       if (response.statusCode != 200) return null;
 
       final json = jsonDecode(response.body) as Map<String, dynamic>;

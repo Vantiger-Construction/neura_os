@@ -59,7 +59,8 @@ class NeuraRuntimeController {
     // Tiny "welcome back" line based on last memory in that room.
     final line = NeuraRoomMemory.I.composeReturnLine(room);
     if (line != null) {
-      NeuraBus.I.emit(NeuraEvent(NeuraEventType.prompt, room: room, message: line));
+      NeuraBus.I
+          .emit(NeuraEvent(NeuraEventType.prompt, room: room, message: line));
     }
 
     // Room-entry voice clips are disabled: Neura's real synthesized voice

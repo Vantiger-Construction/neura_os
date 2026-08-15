@@ -122,8 +122,7 @@ class NeuraOpportunityRadar {
               subject: questName,
               capabilityId: NeuraCapabilityRegistry.openAppModule,
               title: 'Make the quest smaller',
-              body:
-                  'Momentum is quiet for "$questName". Choose one step that '
+              body: 'Momentum is quiet for "$questName". Choose one step that '
                   'takes less than five minutes.',
               createdAt: now,
               lifetime: const Duration(hours: 24),
@@ -151,8 +150,7 @@ class NeuraOpportunityRadar {
             rule: 'focus_sprint',
             capabilityId: NeuraCapabilityRegistry.openAppModule,
             title: 'Try a 15-minute focus sprint',
-            body:
-                'Your attention signal looks scattered. A short, optional '
+            body: 'Your attention signal looks scattered. A short, optional '
                 'focus sprint can make the next step easier to start.',
             createdAt: now,
             lifetime: const Duration(hours: 2),
@@ -277,8 +275,7 @@ class NeuraOpportunityRadar {
     for (final item in [...first, ...second]) {
       byId[item.id] = item;
     }
-    final merged = byId.values.toList()
-      ..sort((a, b) => a.id.compareTo(b.id));
+    final merged = byId.values.toList()..sort((a, b) => a.id.compareTo(b.id));
     return List.unmodifiable(merged);
   }
 
@@ -346,9 +343,7 @@ class NeuraOpportunityRadar {
     NeuraFusedSignal first,
     NeuraFusedSignal second,
   ) =>
-      ((first.confidence + second.confidence) / 2)
-          .clamp(0.0, 1.0)
-          .toDouble();
+      ((first.confidence + second.confidence) / 2).clamp(0.0, 1.0).toDouble();
 
   static double _rankScore(NeuraIntelligenceCandidate candidate) =>
       (candidate.benefit * 0.38 +
@@ -363,7 +358,8 @@ class NeuraOpportunityRadar {
     String subject,
     Iterable<NeuraEvidenceRef> evidence,
   ) {
-    final evidenceIds = evidence.map((item) => item.id).toSet().toList()..sort();
+    final evidenceIds = evidence.map((item) => item.id).toSet().toList()
+      ..sort();
     final canonical = [
       rule,
       subject.trim().toLowerCase(),

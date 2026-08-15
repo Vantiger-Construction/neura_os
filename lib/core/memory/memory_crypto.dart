@@ -104,8 +104,7 @@ class MemoryCrypto {
     final expectsSecureKey = sp.getBool(_secureKeyMarker) == true;
     String? secureSeed;
     try {
-      secureSeed =
-          (await _secureStorage.read(key: _secureKeySeed))?.trim();
+      secureSeed = (await _secureStorage.read(key: _secureKeySeed))?.trim();
     } catch (_) {
       if (expectsSecureKey) {
         throw StateError(
@@ -180,7 +179,7 @@ class MemoryCrypto {
     }
 
     final encodedSeed = seed;
-    if (encodedSeed == null || encodedSeed.isEmpty) {
+    if (encodedSeed.isEmpty) {
       throw StateError('No Neura memory key is available.');
     }
     final decoded = base64Url.decode(encodedSeed);

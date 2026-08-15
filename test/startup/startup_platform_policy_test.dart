@@ -247,13 +247,11 @@ void main() {
       SafeBoot.instance.safeMode.value = true;
 
       await expectLater(
-        NeuraAiService.instance
-            .streamReply(
-              const [
-                NeuraChatTurn(isUser: true, text: 'Keep this offline.'),
-              ],
-            )
-            .drain<void>(),
+        NeuraAiService.instance.streamReply(
+          const [
+            NeuraChatTurn(isUser: true, text: 'Keep this offline.'),
+          ],
+        ).drain<void>(),
         throwsA(
           isA<StateError>().having(
             (error) => error.message,

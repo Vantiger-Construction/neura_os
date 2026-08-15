@@ -40,8 +40,7 @@ class NeuraProviderCredentials {
   })  : _storage = storage ?? const _NeuraSecureCredentialStorage(),
         _legacyBuildKey = legacyBuildKey ?? _legacyBuildKeyFromEnvironment;
 
-  static final NeuraProviderCredentials instance =
-      NeuraProviderCredentials._();
+  static final NeuraProviderCredentials instance = NeuraProviderCredentials._();
 
   /// Creates an isolated credential owner for deterministic storage tests.
   /// Production code must use [instance].

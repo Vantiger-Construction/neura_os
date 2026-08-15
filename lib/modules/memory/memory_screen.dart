@@ -63,7 +63,9 @@ class _MemoryScreenState extends State<MemoryScreen> {
           'conversations and reflections. This cannot be undone.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () => Navigator.of(context).pop(true),
@@ -86,8 +88,10 @@ class _MemoryScreenState extends State<MemoryScreen> {
   String _label(Map<String, dynamic> node) {
     final type = node['type'] as String? ?? '';
     final payload = node['payload'] as Map<String, dynamic>? ?? {};
-    if (type == 'ACTION:CHAT_MESSAGE') return 'You said: ${payload['text'] ?? ''}';
-    if (type == 'SUGGESTION:CHAT_REPLY') return 'Neura said: ${payload['text'] ?? ''}';
+    if (type == 'ACTION:CHAT_MESSAGE')
+      return 'You said: ${payload['text'] ?? ''}';
+    if (type == 'SUGGESTION:CHAT_REPLY')
+      return 'Neura said: ${payload['text'] ?? ''}';
     if (type == 'ACTION:THERAPY_REFLECTION') {
       return '${payload['promptTitle'] ?? 'Reflection'}: ${payload['text'] ?? ''}';
     }
@@ -97,7 +101,8 @@ class _MemoryScreenState extends State<MemoryScreen> {
   IconData _icon(String type) {
     if (type == 'ACTION:CHAT_MESSAGE') return Icons.person_outline;
     if (type == 'SUGGESTION:CHAT_REPLY') return Icons.smart_toy_outlined;
-    if (type == 'ACTION:THERAPY_REFLECTION') return Icons.self_improvement_outlined;
+    if (type == 'ACTION:THERAPY_REFLECTION')
+      return Icons.self_improvement_outlined;
     return Icons.circle_outlined;
   }
 
@@ -146,7 +151,8 @@ class _MemoryScreenState extends State<MemoryScreen> {
                           final type = node['type'] as String? ?? '';
                           return ListTile(
                             leading: Icon(_icon(type)),
-                            title: Text(_label(node), maxLines: 3, overflow: TextOverflow.ellipsis),
+                            title: Text(_label(node),
+                                maxLines: 3, overflow: TextOverflow.ellipsis),
                             subtitle: Text(node['ts']?.toString() ?? ''),
                           );
                         },

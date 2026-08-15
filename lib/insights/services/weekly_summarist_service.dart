@@ -133,7 +133,8 @@ class WeeklySummaristService {
       final summary = await WeeklySnapshotService.instance.buildSummary();
       if (generation != _dataGeneration) return;
 
-      final prompt = 'week of ${review.weekStart.toIso8601String().substring(0, 10)}: '
+      final prompt =
+          'week of ${review.weekStart.toIso8601String().substring(0, 10)}: '
           'mood avg ${review.moodAvg}/10 (min ${review.moodMin}, max ${review.moodMax}) '
           'across ${review.moodSamples} check-ins; '
           'kindness acts ${review.kindnessActs}; quests done ${review.questDone}; '
@@ -151,10 +152,12 @@ class WeeklySummaristService {
       );
 
       if (generation != _dataGeneration) return;
-      await _save(WeeklyNarrativeState(
-        summaryText: text,
-        generatedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
-      ), generation);
+      await _save(
+          WeeklyNarrativeState(
+            summaryText: text,
+            generatedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
+          ),
+          generation);
     } catch (e, st) {
       if (generation != _dataGeneration) return;
       // Network failure, guardrail block (NeuraGuardrailBlocked), or missing

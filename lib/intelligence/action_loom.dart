@@ -450,7 +450,8 @@ class _QuestPlanExecutor implements NeuraCapabilityExecutor {
       jsonEncode(ordered),
     );
     if (!written) {
-      throw StateError('The durable quest execution ledger could not be saved.');
+      throw StateError(
+          'The durable quest execution ledger could not be saved.');
     }
     if (!_isCurrent(generation)) {
       await NeuraPrefsCache.prefs.remove(_executionKey);
@@ -466,10 +467,12 @@ class _QuestPlanExecutor implements NeuraCapabilityExecutor {
       await _purgeAfterDataWipe();
     } on TimeoutException {
       unawaited(
-        _queue.then<void>(
-          (_) => _purgeAfterDataWipe(),
-          onError: (_, __) => _purgeAfterDataWipe(),
-        ).catchError((_) {}),
+        _queue
+            .then<void>(
+              (_) => _purgeAfterDataWipe(),
+              onError: (_, __) => _purgeAfterDataWipe(),
+            )
+            .catchError((_) {}),
       );
       rethrow;
     }

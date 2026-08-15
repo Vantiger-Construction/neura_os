@@ -34,7 +34,8 @@ class CoachNote {
       };
 
   static CoachNote fromJson(Map<String, dynamic> json) {
-    final srcRaw = (json['source'] as String?) ?? CoachSourceType.weeklyReview.name;
+    final srcRaw =
+        (json['source'] as String?) ?? CoachSourceType.weeklyReview.name;
     final src = CoachSourceType.values.firstWhere(
       (e) => e.name == srcRaw,
       orElse: () => CoachSourceType.weeklyReview,
@@ -43,7 +44,8 @@ class CoachNote {
     final createdRaw = json['createdAt'] as String?;
     DateTime createdAt;
     try {
-      createdAt = createdRaw == null ? DateTime.now() : DateTime.parse(createdRaw);
+      createdAt =
+          createdRaw == null ? DateTime.now() : DateTime.parse(createdRaw);
     } catch (_) {
       createdAt = DateTime.now();
     }
@@ -58,7 +60,8 @@ class CoachNote {
     }
 
     return CoachNote(
-      id: (json['id'] as String?) ?? 'c_${DateTime.now().millisecondsSinceEpoch}',
+      id: (json['id'] as String?) ??
+          'c_${DateTime.now().millisecondsSinceEpoch}',
       createdAt: createdAt,
       source: src,
       title: (json['title'] as String?) ?? '',
@@ -72,7 +75,10 @@ List<CoachNote> decodeCoachNotes(String raw) {
   try {
     final decoded = jsonDecode(raw);
     if (decoded is List) {
-      return decoded.whereType<Map>().map((m) => CoachNote.fromJson(m.cast<String, dynamic>())).toList();
+      return decoded
+          .whereType<Map>()
+          .map((m) => CoachNote.fromJson(m.cast<String, dynamic>()))
+          .toList();
     }
   } catch (_) {}
   return <CoachNote>[];

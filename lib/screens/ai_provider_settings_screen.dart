@@ -11,8 +11,7 @@ class AiProviderSettingsScreen extends StatefulWidget {
       _AiProviderSettingsScreenState();
 }
 
-class _AiProviderSettingsScreenState
-    extends State<AiProviderSettingsScreen> {
+class _AiProviderSettingsScreenState extends State<AiProviderSettingsScreen> {
   final _keyController = TextEditingController();
   bool _obscure = true;
   bool _saving = false;
@@ -26,7 +25,8 @@ class _AiProviderSettingsScreenState
   Future<void> _save() async {
     final error = NeuraProviderCredentials.validate(_keyController.text);
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error)));
       return;
     }
 
@@ -115,7 +115,8 @@ class _AiProviderSettingsScreenState
                 leading: Icon(
                   configured ? Icons.verified_user_outlined : Icons.cloud_off,
                 ),
-                title: Text(configured ? 'Connected securely' : 'Not configured'),
+                title:
+                    Text(configured ? 'Connected securely' : 'Not configured'),
                 subtitle: Text(
                   configured
                       ? 'The key is stored by your operating system and is never displayed.'

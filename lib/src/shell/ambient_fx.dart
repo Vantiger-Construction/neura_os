@@ -15,8 +15,11 @@ class AmbientFx extends StatefulWidget {
   State<AmbientFx> createState() => _AmbientFxState();
 }
 
-class _AmbientFxState extends State<AmbientFx> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
+class _AmbientFxState extends State<AmbientFx>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(seconds: 12))
+        ..repeat();
   final Random _r = Random(7);
   late final List<_Orb> _orbs;
 
@@ -68,7 +71,12 @@ class _Orb {
   final double speed;
   final double phase;
 
-  _Orb({required this.x, required this.y, required this.radius, required this.speed, required this.phase});
+  _Orb(
+      {required this.x,
+      required this.y,
+      required this.radius,
+      required this.speed,
+      required this.phase});
 
   // radius never changes after construction, so the shader can be built once
   // (centered at the origin) and repositioned per frame via canvas.translate
@@ -120,8 +128,10 @@ class _AmbientPainter extends CustomPainter {
     canvas.drawRect(Offset.zero & size, _bgFor(size));
 
     for (final o in orbs) {
-      final dx = (o.x * size.width) + sin((t * 2 * pi * o.speed) + o.phase) * 60;
-      final dy = (o.y * size.height) + cos((t * 2 * pi * o.speed) + o.phase) * 60;
+      final dx =
+          (o.x * size.width) + sin((t * 2 * pi * o.speed) + o.phase) * 60;
+      final dy =
+          (o.y * size.height) + cos((t * 2 * pi * o.speed) + o.phase) * 60;
 
       canvas.save();
       canvas.translate(dx, dy);

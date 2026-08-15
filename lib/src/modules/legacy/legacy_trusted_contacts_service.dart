@@ -1,11 +1,12 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'models/trusted_contact.dart';
 import '../../../startup/neura_prefs_cache.dart';
 
 class LegacyTrustedContactsService {
   LegacyTrustedContactsService._();
 
-  static final LegacyTrustedContactsService instance = LegacyTrustedContactsService._();
+  static final LegacyTrustedContactsService instance =
+      LegacyTrustedContactsService._();
 
   static const String _kKey = 'neura_legacy_trusted_contacts_v1';
 
@@ -21,7 +22,8 @@ class LegacyTrustedContactsService {
           .whereType<Map>()
           .map((m) => TrustedContact.fromMap(m.cast<String, dynamic>()))
           .toList()
-        ..sort((a, b) => a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
+        ..sort((a, b) =>
+            a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
     } catch (_) {
       return const [];
     }

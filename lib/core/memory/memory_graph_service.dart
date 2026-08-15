@@ -35,8 +35,7 @@ class MemoryGraphService {
   Future<Directory> _dir({bool create = true, int? generation}) async {
     final d = await getApplicationDocumentsDirectory();
     final dir = Directory('${d.path}${Platform.pathSeparator}neura_memory');
-    final mayCreate =
-        create && (generation == null || _isCurrent(generation));
+    final mayCreate = create && (generation == null || _isCurrent(generation));
     if (mayCreate && !await dir.exists()) await dir.create(recursive: true);
     return dir;
   }
@@ -309,10 +308,12 @@ class MemoryGraphService {
       await _purgeGraphDirectory();
     } catch (_) {
       unawaited(
-        drain.then<void>(
-          (_) => _purgeGraphDirectory(),
-          onError: (_, __) => _purgeGraphDirectory(),
-        ).catchError((_) {}),
+        drain
+            .then<void>(
+              (_) => _purgeGraphDirectory(),
+              onError: (_, __) => _purgeGraphDirectory(),
+            )
+            .catchError((_) {}),
       );
       rethrow;
     } finally {

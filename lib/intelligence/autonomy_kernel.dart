@@ -82,7 +82,8 @@ class NeuraAutonomyKernel {
       reasons.add('Proactive intelligence is disabled by the user.');
     } else if (policy.safeMode) {
       outcome = NeuraDecisionOutcome.suppressed;
-      reasons.add('Attention Guardian suppresses proactive cards in Safe Mode.');
+      reasons
+          .add('Attention Guardian suppresses proactive cards in Safe Mode.');
     } else if (policy.quietHours) {
       outcome = NeuraDecisionOutcome.suppressed;
       reasons.add('Attention Guardian is honoring quiet hours or a pause.');
@@ -92,13 +93,15 @@ class NeuraAutonomyKernel {
     } else if (capability.approvalMode == NeuraApprovalMode.blocked ||
         capability.risk == NeuraCapabilityRisk.critical) {
       outcome = NeuraDecisionOutcome.blocked;
-      reasons.add('Safety Guardian blocks this capability from autonomous use.');
+      reasons
+          .add('Safety Guardian blocks this capability from autonomous use.');
     } else if (!policy.allowSensitiveSignals &&
         candidate.evidence.any(
           (evidence) => evidence.sensitivity == NeuraSensitivity.sensitive,
         )) {
       outcome = NeuraDecisionOutcome.suppressed;
-      reasons.add('Privacy Guardian excluded sensitive evidence by user policy.');
+      reasons
+          .add('Privacy Guardian excluded sensitive evidence by user policy.');
     } else if ((policy.focusMode == 'deepWork' ||
             policy.focusMode == 'windDown') &&
         candidate.urgency < 0.85) {
@@ -111,7 +114,8 @@ class NeuraAutonomyKernel {
       reasons.add('The user-controlled daily suggestion limit was reached.');
     } else if (policy.suggestionsLastHour >= 2) {
       outcome = NeuraDecisionOutcome.suppressed;
-      reasons.add('Attention Guardian limits Neura to two suggestions per hour.');
+      reasons
+          .add('Attention Guardian limits Neura to two suggestions per hour.');
     } else if (score < 0.38) {
       outcome = NeuraDecisionOutcome.suppressed;
       reasons.add('Expected benefit did not outweigh interruption and risk.');
@@ -122,7 +126,8 @@ class NeuraAutonomyKernel {
         requiresApproval = true;
         reasons.add('This capability requires a fresh user confirmation.');
       } else {
-        reasons.add('The candidate passed privacy, attention, and consent checks.');
+        reasons.add(
+            'The candidate passed privacy, attention, and consent checks.');
       }
     }
 
@@ -143,7 +148,8 @@ class NeuraAutonomyKernel {
       evidenceIds: List.unmodifiable(
         candidate.evidence
             .where(
-              (evidence) => policy.allowSensitiveSignals ||
+              (evidence) =>
+                  policy.allowSensitiveSignals ||
                   evidence.sensitivity != NeuraSensitivity.sensitive,
             )
             .map((evidence) => evidence.id),

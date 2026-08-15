@@ -337,9 +337,8 @@ class NeuraApprovalBroker {
     action
       ..status = NeuraApprovalStatus.denied
       ..reviewedAt = now
-      ..denialReason = reason.trim().isEmpty
-          ? 'Denied by the user.'
-          : reason.trim()
+      ..denialReason =
+          reason.trim().isEmpty ? 'Denied by the user.' : reason.trim()
       ..policyReason = null
       ..resumeAfterPolicyHold = null;
     return action.snapshot();
@@ -373,7 +372,7 @@ class NeuraApprovalBroker {
       }
       rethrow;
     } finally {
-      _submissions.remove(candidateId);
+      final _ = _submissions.remove(candidateId);
     }
   }
 
@@ -465,7 +464,7 @@ class NeuraApprovalBroker {
     try {
       return await _executeInternal(actionId, automatic: automatic);
     } finally {
-      _executions.remove(actionId);
+      final _ = _executions.remove(actionId);
     }
   }
 
@@ -571,7 +570,7 @@ class NeuraApprovalBroker {
     try {
       return await _undoInternal(actionId);
     } finally {
-      _undos.remove(actionId);
+      final _ = _undos.remove(actionId);
     }
   }
 

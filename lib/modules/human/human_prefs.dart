@@ -15,7 +15,8 @@ class HumanPrefs {
   final bool lowStim;
   final bool safeMode;
   final double textScale;
-  final bool allowLearning; // Whether Neura is allowed to learn locally from usage.
+  final bool
+      allowLearning; // Whether Neura is allowed to learn locally from usage.
 
   /// Neura Coach (local reflections)
   final bool coachEnabled;

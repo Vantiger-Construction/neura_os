@@ -38,8 +38,8 @@ class TherapyResponseStore {
   }) async {
     final d = await getApplicationDocumentsDirectory();
     final dir = Directory('${d.path}${Platform.pathSeparator}neura_therapy');
-    final mayCreate = createDirectory &&
-        (generation == null || _isCurrent(generation));
+    final mayCreate =
+        createDirectory && (generation == null || _isCurrent(generation));
     if (mayCreate && !await dir.exists()) await dir.create(recursive: true);
     return File('${dir.path}${Platform.pathSeparator}responses.jsonl');
   }
@@ -117,7 +117,8 @@ class TherapyResponseStore {
     _crypto = null;
     _writeQueue = Future<void>.value();
     if (drainFailure != null) {
-      throw StateError('Therapy journal writer shutdown could not be verified.');
+      throw StateError(
+          'Therapy journal writer shutdown could not be verified.');
     }
   }
 

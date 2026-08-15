@@ -1,7 +1,11 @@
 import 'dart:convert';
 
 class Envelope {
-  const Envelope({required this.kind, required this.id, required this.data, this.version = 1});
+  const Envelope(
+      {required this.kind,
+      required this.id,
+      required this.data,
+      this.version = 1});
   final int version;
   final String kind;
   final String id;
@@ -14,7 +18,7 @@ class Envelope {
         data: Map<String, dynamic>.from(json['data'] as Map? ?? const {}),
       );
 
-  Map<String, dynamic> toJson() => {'v': version, 'kind': kind, 'id': id, 'data': data};
+  Map<String, dynamic> toJson() =>
+      {'v': version, 'kind': kind, 'id': id, 'data': data};
   String encode() => jsonEncode(toJson());
 }
-

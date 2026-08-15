@@ -127,10 +127,8 @@ class NeuraBootstrapLog {
     try {
       final records = await tail(maxRecords: 10000);
       if (records.isEmpty) return null;
-      final stamp = DateTime.now()
-          .toUtc()
-          .toIso8601String()
-          .replaceAll(':', '-');
+      final stamp =
+          DateTime.now().toUtc().toIso8601String().replaceAll(':', '-');
       final exportFile = destinationPath == null
           ? File(
               '${Directory.systemTemp.path}${Platform.pathSeparator}'

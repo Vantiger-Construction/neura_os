@@ -1,5 +1,11 @@
 enum NeuraMood { calm, stressed, sad, energized, tired, neutral }
-enum NeuraIntent { seekingCalm, seekingProgress, seekingSleep, seekingConnection }
+
+enum NeuraIntent {
+  seekingCalm,
+  seekingProgress,
+  seekingSleep,
+  seekingConnection
+}
 
 class JoyPreferenceProfile {
   final bool likesHumor;

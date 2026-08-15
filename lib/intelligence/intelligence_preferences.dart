@@ -52,8 +52,7 @@ class NeuraIntelligencePreferences {
       quietHoursEnabled: quietHoursEnabled ?? this.quietHoursEnabled,
       quietHoursStart:
           (quietHoursStart ?? this.quietHoursStart).clamp(0, 23).toInt(),
-      quietHoursEnd:
-          (quietHoursEnd ?? this.quietHoursEnd).clamp(0, 23).toInt(),
+      quietHoursEnd: (quietHoursEnd ?? this.quietHoursEnd).clamp(0, 23).toInt(),
       pausedUntil: clearPause ? null : pausedUntil ?? this.pausedUntil,
     );
   }
@@ -85,8 +84,7 @@ class NeuraIntelligencePreferences {
       maxDailySuggestions:
           integer('max_daily_suggestions', 3).clamp(1, 6).toInt(),
       quietHoursEnabled: json['quiet_hours_enabled'] == true,
-      quietHoursStart:
-          integer('quiet_hours_start', 22).clamp(0, 23).toInt(),
+      quietHoursStart: integer('quiet_hours_start', 22).clamp(0, 23).toInt(),
       quietHoursEnd: integer('quiet_hours_end', 7).clamp(0, 23).toInt(),
       pausedUntil: DateTime.tryParse(
         json['paused_until']?.toString() ?? '',

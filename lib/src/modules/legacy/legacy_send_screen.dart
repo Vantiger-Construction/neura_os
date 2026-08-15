@@ -175,7 +175,8 @@ class _LegacySendScreenState extends State<LegacySendScreen> {
           content: TextField(
             controller: controller,
             obscureText: true,
-            decoration: const InputDecoration(labelText: 'Enter the passphrase'),
+            decoration:
+                const InputDecoration(labelText: 'Enter the passphrase'),
           ),
           actions: [
             TextButton(

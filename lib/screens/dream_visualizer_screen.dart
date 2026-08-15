@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../dreams/models/dream_entry.dart';
 import '../dreams/services/dream_service.dart';
 
@@ -21,7 +21,11 @@ class _DreamVisualizerScreenState extends State<DreamVisualizerScreen> {
 
   Future<void> _load() async {
     final dreams = await DreamService.instance.loadDreams();
-    if (mounted) setState(() { _dreams = dreams; _loading = false; });
+    if (mounted)
+      setState(() {
+        _dreams = dreams;
+        _loading = false;
+      });
   }
 
   static String _fmtDate(DateTime d) {
@@ -86,8 +90,8 @@ class _DreamVisualizerScreenState extends State<DreamVisualizerScreen> {
                           size: 64, color: cs.onSurfaceVariant),
                       const SizedBox(height: 12),
                       Text('No dreams recorded yet.',
-                          style:
-                              tt.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
+                          style: tt.bodyLarge
+                              ?.copyWith(color: cs.onSurfaceVariant)),
                     ],
                   ),
                 )
@@ -150,7 +154,7 @@ class _DreamVisualizerScreenState extends State<DreamVisualizerScreen> {
                                           Icon(_moodIcon(dream.mood),
                                               size: 16, color: color),
                                           const SizedBox(width: 6),
-                                           Text(
+                                          Text(
                                             _fmtDate(dream.date),
                                             style: tt.labelSmall
                                                 ?.copyWith(color: color),
@@ -162,8 +166,7 @@ class _DreamVisualizerScreenState extends State<DreamVisualizerScreen> {
                                       ),
                                       if (dream.title.isNotEmpty) ...[
                                         const SizedBox(height: 6),
-                                        Text(dream.title,
-                                            style: tt.titleSmall),
+                                        Text(dream.title, style: tt.titleSmall),
                                       ],
                                       if (dream.description.isNotEmpty) ...[
                                         const SizedBox(height: 4),
@@ -182,8 +185,7 @@ class _DreamVisualizerScreenState extends State<DreamVisualizerScreen> {
                                           children: dream.tags
                                               .map((t) => Chip(
                                                     label: Text(t,
-                                                        style:
-                                                            tt.labelSmall),
+                                                        style: tt.labelSmall),
                                                     visualDensity:
                                                         VisualDensity.compact,
                                                     padding: EdgeInsets.zero,

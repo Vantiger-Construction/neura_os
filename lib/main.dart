@@ -27,8 +27,7 @@ bool supportsWindowManagerPlus({
   required bool isWeb,
 }) {
   if (isWeb) return false;
-  return platform == TargetPlatform.windows ||
-      platform == TargetPlatform.macOS;
+  return platform == TargetPlatform.windows || platform == TargetPlatform.macOS;
 }
 
 @visibleForTesting
@@ -360,8 +359,8 @@ Future<void> _exitLaunchSmokeTest(int exitCode) async {
 Future<void> _drainSmokeTestLogs() async {
   try {
     await NeuraErrorPipeline.instance.drain().timeout(
-      const Duration(seconds: 2),
-    );
+          const Duration(seconds: 2),
+        );
   } catch (_) {
     // Exit deterministically even if the diagnostic destination is blocked.
   }

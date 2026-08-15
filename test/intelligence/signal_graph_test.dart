@@ -147,14 +147,18 @@ void main() {
         ),
       ];
 
-      final forward = graph.fuse(
-        observations: observations,
-        now: now,
-      ).signal(NeuraSignalKind.energy)!;
-      final reversed = graph.fuse(
-        observations: observations.reversed,
-        now: now,
-      ).signal(NeuraSignalKind.energy)!;
+      final forward = graph
+          .fuse(
+            observations: observations,
+            now: now,
+          )
+          .signal(NeuraSignalKind.energy)!;
+      final reversed = graph
+          .fuse(
+            observations: observations.reversed,
+            now: now,
+          )
+          .signal(NeuraSignalKind.energy)!;
 
       expect(reversed.numericValue, closeTo(forward.numericValue!, 0.000001));
       expect(reversed.confidence, closeTo(forward.confidence, 0.000001));

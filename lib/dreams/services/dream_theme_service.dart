@@ -1,5 +1,6 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import '../models/dream_entry.dart';
+
 /// Summary of dream themes over a time window.
 import '../../startup/neura_prefs_cache.dart';
 

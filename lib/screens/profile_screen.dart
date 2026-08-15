@@ -57,9 +57,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final user = _client.auth.currentUser;
-    final initial = user?.email?.isNotEmpty == true
-        ? user!.email![0].toUpperCase()
-        : '?';
+    final initial =
+        user?.email?.isNotEmpty == true ? user!.email![0].toUpperCase() : '?';
 
     return Scaffold(
       appBar: AppBar(
@@ -94,8 +93,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child:
-                    Text(_error!, style: const TextStyle(color: Colors.red)),
+                child: Text(_error!, style: const TextStyle(color: Colors.red)),
               ),
             TextField(
               controller: _nameCtrl,

@@ -65,13 +65,15 @@ class _MomentBody extends StatelessWidget {
         final joke = (moment.payload['joke'] ?? '') as String;
         return Text(joke, style: Theme.of(context).textTheme.bodyLarge);
       case JoyMomentType.gratitudeDice:
-        return const Text('Roll (mentally) a number 1–6 and answer the matching prompt.');
+        return const Text(
+            'Roll (mentally) a number 1–6 and answer the matching prompt.');
       case JoyMomentType.creativePrompt:
         return const Text('Write it down anywhere. Perfection is banned.');
       case JoyMomentType.tinyQuest:
         return const Text('Pick one. Do it. Return like a legend.');
       case JoyMomentType.musicMood:
-        return const Text('Play a track that matches your mood. No skipping shame.');
+        return const Text(
+            'Play a track that matches your mood. No skipping shame.');
       case JoyMomentType.breathingGame:
         final pattern = (moment.payload['pattern'] ?? '4-4-4-4') as String;
         return Text('Breathing pattern: $pattern');

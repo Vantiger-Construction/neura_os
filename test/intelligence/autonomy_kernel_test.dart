@@ -130,7 +130,8 @@ void main() {
     expect(receipt.evidenceIds, ['evidence-1']);
     expect(_hasReason(receipt, 'test.specialist supplied'), isTrue);
     expect(_hasReason(receipt, 'readOnly'), isTrue);
-    expect(_hasReason(receipt, 'passed privacy, attention, and consent'), isTrue);
+    expect(
+        _hasReason(receipt, 'passed privacy, attention, and consent'), isTrue);
   });
 }
 
@@ -194,5 +195,6 @@ NeuraEvidenceRef _evidence(
       sensitivity: sensitivity,
     );
 
-bool _hasReason(NeuraDecisionReceipt receipt, String fragment) => receipt.reasons
-    .any((reason) => reason.toLowerCase().contains(fragment.toLowerCase()));
+bool _hasReason(NeuraDecisionReceipt receipt, String fragment) =>
+    receipt.reasons
+        .any((reason) => reason.toLowerCase().contains(fragment.toLowerCase()));

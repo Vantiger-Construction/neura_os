@@ -84,7 +84,8 @@ class NeuraRoomBrain {
     ),
   };
 
-  static NeuraRoomProfile get(NeuraRoomKey room) => profiles[room] ?? profiles[NeuraRoomKey.penthouse]!;
+  static NeuraRoomProfile get(NeuraRoomKey room) =>
+      profiles[room] ?? profiles[NeuraRoomKey.penthouse]!;
 }
 
 /// Maps voice modes to your bundled offline WAV assets.

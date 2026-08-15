@@ -74,8 +74,7 @@ class NeuraRuntimeSignalAdapter {
     Quest? current;
     for (final quest in active) {
       final doneToday = done.any(
-        (item) =>
-            item.questId == quest.id && normalizeDay(item.day) == today,
+        (item) => item.questId == quest.id && normalizeDay(item.day) == today,
       );
       if (!doneToday) {
         current = quest;
@@ -86,8 +85,7 @@ class NeuraRuntimeSignalAdapter {
 
     var mostRecentActivity = selected.createdAt;
     for (final item in done) {
-      if (item.questId == selected.id &&
-          item.day.isAfter(mostRecentActivity)) {
+      if (item.questId == selected.id && item.day.isAfter(mostRecentActivity)) {
         mostRecentActivity = item.day;
       }
     }
@@ -134,9 +132,8 @@ class NeuraRuntimeSignalAdapter {
     DateTime now,
   ) {
     final goals = HumanPrefsController.instance.prefs.value.persona.goals;
-    final weekBucket = now.toUtc().millisecondsSinceEpoch ~/
-        Duration.millisecondsPerDay ~/
-        7;
+    final weekBucket =
+        now.toUtc().millisecondsSinceEpoch ~/ Duration.millisecondsPerDay ~/ 7;
     for (var index = 0; index < goals.length && index < 3; index++) {
       final goal = goals[index].trim();
       if (goal.isEmpty) continue;

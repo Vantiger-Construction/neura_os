@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import '../core/app_log.dart';
 import 'human_prefs.dart';
 import '../../startup/neura_prefs_cache.dart';
@@ -9,7 +9,8 @@ class HumanPrefsController {
 
   static const _key = 'neura.human.prefs.v1';
 
-  final ValueNotifier<HumanPrefs> prefs = ValueNotifier<HumanPrefs>(HumanPrefs.defaults);
+  final ValueNotifier<HumanPrefs> prefs =
+      ValueNotifier<HumanPrefs>(HumanPrefs.defaults);
 
   Future<void> init() async {
     try {

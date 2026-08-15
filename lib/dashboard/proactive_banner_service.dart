@@ -76,8 +76,7 @@ class ProactiveBannerService {
   static const _dismissalsBeforeExtendedCooldown = 3;
   static const _stormSuppressWindow = Duration(hours: 24);
 
-  final NeuraRuntimeSignalAdapter _signals =
-      const NeuraRuntimeSignalAdapter();
+  final NeuraRuntimeSignalAdapter _signals = const NeuraRuntimeSignalAdapter();
   final NeuraOpportunityRadar _radar = const NeuraOpportunityRadar();
   Future<void> _writeQueue = Future<void>.value();
   bool _writesSuspended = false;
@@ -155,9 +154,8 @@ class ProactiveBannerService {
     if (eligible.isEmpty) return null;
 
     final mood = snapshot.value(NeuraSignalKind.mood);
-    final distress = mood == null
-        ? 0.0
-        : ((0.5 - mood) * 1.4).clamp(0.0, 0.7).toDouble();
+    final distress =
+        mood == null ? 0.0 : ((0.5 - mood) * 1.4).clamp(0.0, 0.7).toDouble();
     final council =
         await NeuraIntelligenceController.instance.evaluateCandidates(
       candidates: eligible.map((item) => item.candidate),
@@ -233,11 +231,7 @@ class ProactiveBannerService {
         entries.length > 10 ? entries.sublist(entries.length - 10) : entries;
     return recent
         .map(
-          (entry) =>
-              ((entry.mood0to10 - 5) / 2.5)
-                  .round()
-                  .clamp(-2, 2)
-                  .toInt(),
+          (entry) => ((entry.mood0to10 - 5) / 2.5).round().clamp(-2, 2).toInt(),
         )
         .toList(growable: false);
   }
@@ -357,9 +351,8 @@ class ProactiveBannerService {
     await _enqueueWrite((generation) async {
       final state = await _loadState();
       if (!_isCurrent(generation)) return;
-      final consecutive = acted
-          ? 0
-          : (_coerceInt(state['consecutiveDismissals']) ?? 0) + 1;
+      final consecutive =
+          acted ? 0 : (_coerceInt(state['consecutiveDismissals']) ?? 0) + 1;
       await _saveState({
         ...state,
         'consecutiveDismissals': consecutive,
@@ -407,12 +400,10 @@ class ProactiveBannerService {
     if (_writesSuspended) return Future<void>.value();
     final generation = _dataGeneration;
     final next = _writeQueue.then(
-      (_) => _isCurrent(generation)
-          ? operation(generation)
-          : Future<void>.value(),
-      onError: (_) => _isCurrent(generation)
-          ? operation(generation)
-          : Future<void>.value(),
+      (_) =>
+          _isCurrent(generation) ? operation(generation) : Future<void>.value(),
+      onError: (_) =>
+          _isCurrent(generation) ? operation(generation) : Future<void>.value(),
     );
     _writeQueue = next.then<void>((_) {}, onError: (_) {});
     return next;

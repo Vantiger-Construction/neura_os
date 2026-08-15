@@ -6,19 +6,22 @@ class GoodwillStreakBadge extends StatefulWidget {
   final int streak;
   final bool compact;
 
-  const GoodwillStreakBadge({super.key, required this.streak, this.compact = false});
+  const GoodwillStreakBadge(
+      {super.key, required this.streak, this.compact = false});
 
   @override
   State<GoodwillStreakBadge> createState() => _GoodwillStreakBadgeState();
 }
 
-class _GoodwillStreakBadgeState extends State<GoodwillStreakBadge> with SingleTickerProviderStateMixin {
+class _GoodwillStreakBadgeState extends State<GoodwillStreakBadge>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _pulse;
 
   @override
   void initState() {
     super.initState();
-    _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400));
+    _pulse = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1400));
     if (widget.streak > 0) _pulse.repeat(reverse: true);
   }
 
@@ -45,7 +48,9 @@ class _GoodwillStreakBadgeState extends State<GoodwillStreakBadge> with SingleTi
     final theme = Theme.of(context);
     final active = widget.streak > 0;
 
-    final label = widget.compact ? '${widget.streak}🔥' : 'Goodwill Streak: ${widget.streak}';
+    final label = widget.compact
+        ? '${widget.streak}🔥'
+        : 'Goodwill Streak: ${widget.streak}';
 
     return AnimatedBuilder(
       animation: _pulse,
@@ -58,20 +63,27 @@ class _GoodwillStreakBadgeState extends State<GoodwillStreakBadge> with SingleTi
           scale: scale,
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 220),
-            transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
+            transitionBuilder: (child, anim) =>
+                ScaleTransition(scale: anim, child: child),
             child: Container(
               key: ValueKey<int>(widget.streak),
-              padding: EdgeInsets.symmetric(horizontal: widget.compact ? 8 : 12, vertical: widget.compact ? 4 : 8),
+              padding: EdgeInsets.symmetric(
+                  horizontal: widget.compact ? 8 : 12,
+                  vertical: widget.compact ? 4 : 8),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(999),
-                color: active ? Colors.white.withValues(alpha: 0.10) : Colors.white.withValues(alpha: 0.06),
-                border: Border.all(color: active ? Colors.white24 : Colors.white12),
+                color: active
+                    ? Colors.white.withValues(alpha: 0.10)
+                    : Colors.white.withValues(alpha: 0.06),
+                border:
+                    Border.all(color: active ? Colors.white24 : Colors.white12),
                 boxShadow: active
                     ? [
                         BoxShadow(
                           blurRadius: glow,
                           spreadRadius: 0.5,
-                          color: Colors.white.withValues(alpha: 0.10 + 0.12 * t),
+                          color:
+                              Colors.white.withValues(alpha: 0.10 + 0.12 * t),
                         ),
                       ]
                     : const [],
@@ -79,7 +91,11 @@ class _GoodwillStreakBadgeState extends State<GoodwillStreakBadge> with SingleTi
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(active ? Icons.volunteer_activism : Icons.volunteer_activism_outlined, size: widget.compact ? 16 : 18),
+                  Icon(
+                      active
+                          ? Icons.volunteer_activism
+                          : Icons.volunteer_activism_outlined,
+                      size: widget.compact ? 16 : 18),
                   const SizedBox(width: 6),
                   Text(
                     label,
@@ -95,7 +111,8 @@ class _GoodwillStreakBadgeState extends State<GoodwillStreakBadge> with SingleTi
   }
 }
 
-Future<void> showGoodwillCelebrationDialog(BuildContext context, {required int newStreak}) async {
+Future<void> showGoodwillCelebrationDialog(BuildContext context,
+    {required int newStreak}) async {
   await showDialog<void>(
     context: context,
     builder: (ctx) {
@@ -109,18 +126,24 @@ class _GoodwillCelebrationDialog extends StatefulWidget {
   const _GoodwillCelebrationDialog({required this.streak});
 
   @override
-  State<_GoodwillCelebrationDialog> createState() => _GoodwillCelebrationDialogState();
+  State<_GoodwillCelebrationDialog> createState() =>
+      _GoodwillCelebrationDialogState();
 }
 
-class _GoodwillCelebrationDialogState extends State<_GoodwillCelebrationDialog> with TickerProviderStateMixin {
+class _GoodwillCelebrationDialogState extends State<_GoodwillCelebrationDialog>
+    with TickerProviderStateMixin {
   late final AnimationController _spin;
   late final AnimationController _pop;
 
   @override
   void initState() {
     super.initState();
-    _spin = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat();
-    _pop = AnimationController(vsync: this, duration: const Duration(milliseconds: 520))..forward();
+    _spin = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1200))
+      ..repeat();
+    _pop = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 520))
+      ..forward();
   }
 
   @override

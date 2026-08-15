@@ -17,7 +17,9 @@ class IntentWeaver {
   final _weaveStream = StreamController<IntentWeave>.broadcast();
   Stream<IntentWeave> get weaves => _weaveStream.stream;
 
-  IntentWeaver({this.stabilityThreshold = const Duration(seconds: 30), this.cooldown = const Duration(minutes: 5)});
+  IntentWeaver(
+      {this.stabilityThreshold = const Duration(seconds: 30),
+      this.cooldown = const Duration(minutes: 5)});
 
   void onIntent(IntentVector vector) {
     final top = vector.topIntent;
@@ -29,7 +31,8 @@ class IntentWeaver {
       return;
     }
 
-    if (!_active!.completed && now.difference(_active!.startedAt) >= stabilityThreshold) {
+    if (!_active!.completed &&
+        now.difference(_active!.startedAt) >= stabilityThreshold) {
       _active!.completed = true;
       _lastCompleted = now;
       _weaveStream.add(_active!);

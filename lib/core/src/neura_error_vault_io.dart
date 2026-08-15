@@ -16,7 +16,8 @@ class NeuraErrorVault {
   static bool _suspendedForDataWipe = false;
   static Future<void> _writeQueue = Future<void>.value();
 
-  static File _file() => File('${Directory.systemTemp.path}${Platform.pathSeparator}$_fileName');
+  static File _file() =>
+      File('${Directory.systemTemp.path}${Platform.pathSeparator}$_fileName');
 
   static Future<void> append(NeuraFaultEvent event) {
     if (_suspendedForDataWipe) return Future<void>.value();
@@ -59,9 +60,8 @@ class NeuraErrorVault {
       }
       if (await f.exists()) lines.addAll(await f.readAsLines());
       final take = maxLines.clamp(1, 10000).toInt();
-      final selected = lines.length <= take
-          ? lines
-          : lines.sublist(lines.length - take);
+      final selected =
+          lines.length <= take ? lines : lines.sublist(lines.length - take);
       return selected.map(_sanitizePersistedLine).toList(growable: false);
     } catch (_) {
       return const <String>[];

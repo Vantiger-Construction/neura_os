@@ -191,8 +191,8 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
       ProactiveBannerKind.wellness => Icons.self_improvement_outlined,
       ProactiveBannerKind.focus => Icons.center_focus_strong_outlined,
     };
-    final showWhy = NeuraIntelligenceController
-        .instance.preferences.showDecisionReasons;
+    final showWhy =
+        NeuraIntelligenceController.instance.preferences.showDecisionReasons;
 
     return Card(
       child: Padding(
@@ -206,17 +206,21 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(banner.title, style: Theme.of(context).textTheme.titleSmall),
+                  Text(banner.title,
+                      style: Theme.of(context).textTheme.titleSmall),
                   const SizedBox(height: 4),
-                  Text(banner.body, style: Theme.of(context).textTheme.bodySmall),
+                  Text(banner.body,
+                      style: Theme.of(context).textTheme.bodySmall),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     runSpacing: 4,
                     children: [
-                      TextButton(onPressed: _dismiss, child: const Text('Not now')),
+                      TextButton(
+                          onPressed: _dismiss, child: const Text('Not now')),
                       if (showWhy) ...[
-                        TextButton(onPressed: _showWhy, child: const Text('Why?')),
+                        TextButton(
+                            onPressed: _showWhy, child: const Text('Why?')),
                       ],
                       FilledButton(
                         onPressed: _act,

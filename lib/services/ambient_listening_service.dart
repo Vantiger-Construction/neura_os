@@ -59,7 +59,8 @@ class AmbientListeningService {
     // boot -- flipping it off mid-conversation must stop capture
     // immediately (the one-tap pause requirement), and flipping it on
     // should start listening right away without needing an app restart.
-    AmbientListeningPrefsController.instance.enabled.addListener(_onPrefChanged);
+    AmbientListeningPrefsController.instance.enabled
+        .addListener(_onPrefChanged);
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
   }
   static final AmbientListeningService instance = AmbientListeningService._();
@@ -117,8 +118,7 @@ class AmbientListeningService {
   final ValueNotifier<bool> isLive = ValueNotifier<bool>(false);
 
   int get _preRollCapBytes =>
-      (_kPreRoll.inMilliseconds / 1000 * _sampleRate * _bytesPerSample)
-          .round();
+      (_kPreRoll.inMilliseconds / 1000 * _sampleRate * _bytesPerSample).round();
 
   /// Speaks a short greeting, then -- only if the user has opted in via
   /// Settings -- starts ambient listening. Greeting happens first so
@@ -342,7 +342,8 @@ class AmbientListeningService {
 
   Future<Directory> _dir() async {
     final d = await getApplicationDocumentsDirectory();
-    final dir = Directory('${d.path}${Platform.pathSeparator}neura_ambient_audio');
+    final dir =
+        Directory('${d.path}${Platform.pathSeparator}neura_ambient_audio');
     if (!dir.existsSync()) dir.createSync(recursive: true);
     return dir;
   }
@@ -364,8 +365,7 @@ class AmbientListeningService {
     final file = File('${dir.path}${Platform.pathSeparator}$filename');
     await file.writeAsBytes(encrypted, flush: true);
 
-    final indexFile =
-        File('${dir.path}${Platform.pathSeparator}index.jsonl');
+    final indexFile = File('${dir.path}${Platform.pathSeparator}index.jsonl');
     final line = jsonEncode({
       'filename': filename,
       'timestampMs': ts,

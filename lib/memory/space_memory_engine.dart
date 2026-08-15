@@ -30,7 +30,7 @@ class SpaceMemoryEngine {
   SpaceMemoryEntry? bestFor(String roomId) {
     final list = _mem[roomId];
     if (list == null || list.isEmpty) return null;
-    list.sort((a,b) => b.outcomeScore.compareTo(a.outcomeScore));
+    list.sort((a, b) => b.outcomeScore.compareTo(a.outcomeScore));
     return list.first;
   }
 

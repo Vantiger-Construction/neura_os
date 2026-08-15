@@ -77,8 +77,7 @@ class NeuraDataWipeService {
     'neura_legacy_vault',
   ];
 
-  static final RegExp _sleepRecordingName =
-      RegExp(r'^sleep_[0-9]+\.m4a$');
+  static final RegExp _sleepRecordingName = RegExp(r'^sleep_[0-9]+\.m4a$');
 
   // Every temporary artifact currently produced by Neura. Matching is
   // anchored and only direct children of a platform-provided temp root are

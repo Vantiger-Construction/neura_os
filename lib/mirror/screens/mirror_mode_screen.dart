@@ -130,7 +130,8 @@ class _MirrorModeScreenState extends State<MirrorModeScreen> {
         const Spacer(),
         SizedBox(
           width: double.infinity,
-          child: ElevatedButton(onPressed: _goToReflect, child: const Text('Next')),
+          child: ElevatedButton(
+              onPressed: _goToReflect, child: const Text('Next')),
         ),
         const SizedBox(height: 8),
         const Text(

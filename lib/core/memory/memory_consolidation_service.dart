@@ -18,7 +18,8 @@ class MemoryProfileState {
     required this.generatedAtEpochMs,
   });
 
-  DateTime get generatedAt => DateTime.fromMillisecondsSinceEpoch(generatedAtEpochMs);
+  DateTime get generatedAt =>
+      DateTime.fromMillisecondsSinceEpoch(generatedAtEpochMs);
 
   Map<String, dynamic> toMap() => {
         'profileText': profileText,
@@ -48,7 +49,8 @@ class MemoryProfileState {
 /// feedback loop) -- it lives only in prefs, one snapshot at a time.
 class MemoryConsolidationService {
   MemoryConsolidationService._();
-  static final MemoryConsolidationService instance = MemoryConsolidationService._();
+  static final MemoryConsolidationService instance =
+      MemoryConsolidationService._();
 
   static const _key = 'neura.memory_profile.v1';
   static const _staleAfter = Duration(days: 7);
@@ -104,8 +106,8 @@ class MemoryConsolidationService {
     if (existing != null) return existing;
 
     final generation = _dataGeneration;
-    final future = _consolidateIfDue(generation)
-        .whenComplete(() => _inFlight = null);
+    final future =
+        _consolidateIfDue(generation).whenComplete(() => _inFlight = null);
     _inFlight = future;
     return future;
   }
@@ -130,12 +132,15 @@ class MemoryConsolidationService {
     try {
       final existing = await _load();
       if (generation != _dataGeneration) return;
-      final cutoff = existing?.generatedAt ?? DateTime.now().subtract(const Duration(days: 3650));
-      final nodes = await MemoryGraphService.I.nodesOlderThan(cutoff, limit: 200);
+      final cutoff = existing?.generatedAt ??
+          DateTime.now().subtract(const Duration(days: 3650));
+      final nodes =
+          await MemoryGraphService.I.nodesOlderThan(cutoff, limit: 200);
       if (generation != _dataGeneration) return;
       if (nodes.length < _minNodesToConsolidate) return;
 
-      final excerpts = nodes.map(_summarizeNode).where((s) => s.isNotEmpty).toList();
+      final excerpts =
+          nodes.map(_summarizeNode).where((s) => s.isNotEmpty).toList();
       if (excerpts.length < _minNodesToConsolidate) return;
 
       final prompt = 'Conversation excerpts, oldest first:\n'
@@ -149,10 +154,12 @@ class MemoryConsolidationService {
       );
 
       if (generation != _dataGeneration) return;
-      await _save(MemoryProfileState(
-        profileText: text,
-        generatedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
-      ), generation);
+      await _save(
+          MemoryProfileState(
+            profileText: text,
+            generatedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
+          ),
+          generation);
     } catch (e, st) {
       if (generation != _dataGeneration) return;
       // Network failure, guardrail block, or missing key -- stay "due",

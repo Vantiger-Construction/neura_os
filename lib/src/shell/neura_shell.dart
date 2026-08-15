@@ -29,7 +29,8 @@ class NeuraAmbientShell extends StatelessWidget {
               alignment: Alignment.topCenter,
               child: SafeArea(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: _FocusBanner(),
                 ),
               ),
@@ -49,7 +50,8 @@ class _FocusBanner extends StatelessWidget {
       builder: (context, state, _) {
         if (state.mode == FocusMode.off) return const SizedBox.shrink();
 
-        final accent = state.mode.accent ?? Theme.of(context).colorScheme.primary;
+        final accent =
+            state.mode.accent ?? Theme.of(context).colorScheme.primary;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
@@ -64,7 +66,10 @@ class _FocusBanner extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 '${state.mode.label} Mode',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white),
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(color: Colors.white),
               ),
               const SizedBox(width: 8),
               InkWell(
@@ -72,7 +77,8 @@ class _FocusBanner extends StatelessWidget {
                 onTap: () => FocusController.instance.setMode(FocusMode.off),
                 child: Padding(
                   padding: const EdgeInsets.all(4),
-                  child: Icon(Icons.close, size: 18, color: Colors.white.withValues(alpha: 0.75)),
+                  child: Icon(Icons.close,
+                      size: 18, color: Colors.white.withValues(alpha: 0.75)),
                 ),
               )
             ],

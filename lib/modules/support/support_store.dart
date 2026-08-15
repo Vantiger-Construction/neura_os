@@ -1,4 +1,4 @@
-﻿import 'dart:math';
+import 'dart:math';
 import 'support_models.dart';
 import '../../startup/neura_prefs_cache.dart';
 
@@ -8,7 +8,8 @@ class SupportStore {
 
   static const _key = 'neura.support.trusted_contacts.v1';
 
-  String _id() => 'c_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(1<<32)}';
+  String _id() =>
+      'c_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(1 << 32)}';
 
   Future<List<TrustedContact>> getAll() async {
     final sp = NeuraPrefsCache.prefs;
@@ -20,9 +21,11 @@ class SupportStore {
     await sp.setString(_key, encodeContacts(list));
   }
 
-  Future<void> add({required String name, required String phone, String note = ''}) async {
+  Future<void> add(
+      {required String name, required String phone, String note = ''}) async {
     final list = await getAll();
-    list.add(TrustedContact(id: _id(), name: name.trim(), phone: phone.trim(), note: note.trim()));
+    list.add(TrustedContact(
+        id: _id(), name: name.trim(), phone: phone.trim(), note: note.trim()));
     await _write(list);
   }
 

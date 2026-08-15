@@ -20,7 +20,8 @@ class _TherapyPathScreenState extends State<TherapyPathScreen> {
 
   void _openPrompt(TherapyPrompt prompt) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => TherapyReflectionScreen(prompt: prompt)),
+      MaterialPageRoute(
+          builder: (_) => TherapyReflectionScreen(prompt: prompt)),
     );
   }
 
@@ -38,12 +39,16 @@ class _TherapyPathScreenState extends State<TherapyPathScreen> {
                   .map((m) => ButtonSegment(value: m, label: Text(m)))
                   .toList(),
               selected: {_selectedMethod},
-              onSelectionChanged: (s) => setState(() => _selectedMethod = s.first),
+              onSelectionChanged: (s) =>
+                  setState(() => _selectedMethod = s.first),
             ),
           ),
           Expanded(
             child: ListView(
-              children: prompts.map((p) => TherapyPromptCard(prompt: p, onTap: () => _openPrompt(p))).toList(),
+              children: prompts
+                  .map((p) =>
+                      TherapyPromptCard(prompt: p, onTap: () => _openPrompt(p)))
+                  .toList(),
             ),
           ),
         ],

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../dreams/models/dream_entry.dart';
 import '../dreams/services/dream_service.dart';
 
@@ -24,23 +24,28 @@ class _DreamJournalCalendarScreenState
 
   Future<void> _load() async {
     final dreams = await DreamService.instance.loadDreams();
-    if (mounted) setState(() { _dreams = dreams; _loading = false; });
+    if (mounted)
+      setState(() {
+        _dreams = dreams;
+        _loading = false;
+      });
   }
 
   Map<int, List<DreamEntry>> get _byDay {
     final map = <int, List<DreamEntry>>{};
     for (final d in _dreams) {
-      if (d.date.year == _focusMonth.year && d.date.month == _focusMonth.month) {
+      if (d.date.year == _focusMonth.year &&
+          d.date.month == _focusMonth.month) {
         (map[d.date.day] ??= []).add(d);
       }
     }
     return map;
   }
 
-  void _prevMonth() => setState(() =>
-      _focusMonth = DateTime(_focusMonth.year, _focusMonth.month - 1));
-  void _nextMonth() => setState(() =>
-      _focusMonth = DateTime(_focusMonth.year, _focusMonth.month + 1));
+  void _prevMonth() => setState(
+      () => _focusMonth = DateTime(_focusMonth.year, _focusMonth.month - 1));
+  void _nextMonth() => setState(
+      () => _focusMonth = DateTime(_focusMonth.year, _focusMonth.month + 1));
 
   @override
   Widget build(BuildContext context) {
@@ -128,8 +133,8 @@ class _DreamJournalCalendarScreenState
                               if (entries.isNotEmpty)
                                 Text(
                                   ' \uD83C\uDF19',
-                                  style: tt.labelSmall?.copyWith(
-                                      color: cs.onPrimaryContainer),
+                                  style: tt.labelSmall
+                                      ?.copyWith(color: cs.onPrimaryContainer),
                                 ),
                             ],
                           ),
@@ -170,8 +175,19 @@ class _DreamJournalCalendarScreenState
   }
 
   static String _monthName(int m) => const [
-        '', 'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
+        '',
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December'
       ][m];
 }
 

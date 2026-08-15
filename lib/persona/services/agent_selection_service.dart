@@ -54,7 +54,8 @@ class AgentSelectionService extends ChangeNotifier {
         await prefs.setString(_keyExplicitAgent, agentId);
       }
     } catch (e, st) {
-      await _selfHeal.recordError('AgentSelectionService.setExplicitAgent', e, st);
+      await _selfHeal.recordError(
+          'AgentSelectionService.setExplicitAgent', e, st);
     }
   }
 

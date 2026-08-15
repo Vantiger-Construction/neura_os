@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -58,7 +58,6 @@ bool shouldInitializeNativeNeuraSwarm({
     hasProviderCredential &&
     supportsNativeNeuraSwarm(platform: platform, isWeb: isWeb);
 
-@visibleForTesting
 bool shouldInspectSupabaseSession({
   required bool safeMode,
   required bool configured,
@@ -197,12 +196,10 @@ class NeuraStartupCoordinator {
     await _safe(TimelineVault.instance.initialize, 'TimelineVault');
     _timelineSubscription ??= NeuraEventBus.I.rawStream.listen((event) {
       unawaited(
-        TimelineVault.instance
-            .append(
-              'event_bus',
-              data: {'type': event.runtimeType.toString()},
-            )
-            .catchError((_) {}),
+        TimelineVault.instance.append(
+          'event_bus',
+          data: {'type': event.runtimeType.toString()},
+        ).catchError((_) {}),
       );
     });
     try {

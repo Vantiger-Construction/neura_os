@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 /// Visualises musical learning progress across a set of skill areas.
 ///
@@ -117,8 +117,7 @@ class _MusicGrowthWidgetState extends State<MusicGrowthWidget>
               alignment: Alignment.centerRight,
               child: Text(
                 'Keep practising — every session counts.',
-                style:
-                    tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+                style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
               ),
             ),
           ],

@@ -38,7 +38,8 @@ class _MockPathProvider extends Fake
   @override
   Future<List<String>?> getExternalStoragePaths({
     StorageDirectory? type,
-  }) async => [_tmp];
+  }) async =>
+      [_tmp];
 
   @override
   Future<String?> getDownloadsPath() async => _tmp;

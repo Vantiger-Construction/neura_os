@@ -4,7 +4,8 @@ class JoyMoments {
   static JoyMoment fallback() => const JoyMoment(
         id: 'fallback_calm_breath',
         title: 'One Minute Reset',
-        description: 'A tiny breath reset. No pressure. Just oxygen doing its thing.',
+        description:
+            'A tiny breath reset. No pressure. Just oxygen doing its thing.',
         type: JoyMomentType.breathingGame,
         minutes: 1,
         payload: {'pattern': '4-4-6'},
@@ -44,7 +45,8 @@ class JoyMoments {
           type: JoyMomentType.gentleJoke,
           minutes: 1,
           payload: {
-            'joke': 'Why did the neuron bring a suitcase? It wanted to make more connections.'
+            'joke':
+                'Why did the neuron bring a suitcase? It wanted to make more connections.'
           },
         ),
       const JoyMoment(
@@ -58,10 +60,13 @@ class JoyMoments {
       const JoyMoment(
         id: 'tiny_quest_clean',
         title: 'Tiny Quest',
-        description: 'Pick one micro-action: water, stretch, or tidy one small thing.',
+        description:
+            'Pick one micro-action: water, stretch, or tidy one small thing.',
         type: JoyMomentType.tinyQuest,
         minutes: 3,
-        payload: {'options': ['drink_water', 'stretch_30s', 'tidy_one_item']},
+        payload: {
+          'options': ['drink_water', 'stretch_30s', 'tidy_one_item']
+        },
       ),
     ];
 
@@ -98,7 +103,9 @@ class JoyMoments {
             description: 'Two options: 10-min eyes closed, or a slow walk.',
             type: JoyMomentType.tinyQuest,
             minutes: 2,
-            payload: {'options': ['eyes_closed_10', 'slow_walk_5']},
+            payload: {
+              'options': ['eyes_closed_10', 'slow_walk_5']
+            },
           ),
           ...base.where((m) => m.minutes <= 3),
         ];

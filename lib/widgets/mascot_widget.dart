@@ -52,7 +52,8 @@ class _MascotWidgetState extends State<MascotWidget> {
         final ok = snap.data == true;
 
         if (ok && avatar.assetPath.toLowerCase().endsWith('.json')) {
-          return Lottie.asset(avatar.assetPath, width: widget.size, height: widget.size);
+          return Lottie.asset(avatar.assetPath,
+              width: widget.size, height: widget.size);
         }
 
         return Image.asset(
@@ -71,7 +72,10 @@ class _MascotWidgetState extends State<MascotWidget> {
               alignment: Alignment.center,
               child: Text(
                 'N',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                style: Theme.of(context)
+                    .textTheme
+                    .headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.w800),
               ),
             );
           },

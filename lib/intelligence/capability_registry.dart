@@ -34,8 +34,7 @@ class NeuraCapabilityRegistry {
     NeuraCapabilityDefinition(
       id: openAppModule,
       title: 'Open a Neura module',
-      description:
-          'Navigate only after the user taps the suggestion action.',
+      description: 'Navigate only after the user taps the suggestion action.',
       risk: NeuraCapabilityRisk.reversibleLocal,
       approvalMode: NeuraApprovalMode.none,
       reversible: true,
@@ -111,6 +110,5 @@ class NeuraCapabilityRegistry {
     return List.unmodifiable(result);
   }
 
-  NeuraCapabilityDefinition resolve(String id) =>
-      _capabilities[id] ?? _unknown;
+  NeuraCapabilityDefinition resolve(String id) => _capabilities[id] ?? _unknown;
 }

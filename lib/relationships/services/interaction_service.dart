@@ -30,7 +30,8 @@ class InteractionService {
       _loaded = true;
       return;
     }
-    final list = (jsonDecode(raw) as List<dynamic>).cast<Map<String, dynamic>>();
+    final list =
+        (jsonDecode(raw) as List<dynamic>).cast<Map<String, dynamic>>();
     final loaded = list.map(InteractionRecord.fromJson).toList();
     if (!_isCurrent(generation)) return;
     _cache = loaded;
@@ -82,9 +83,7 @@ class InteractionService {
     final generation = _dataGeneration;
     await _loadIfNeeded(generation);
     if (!_isCurrent(generation)) return null;
-    final list = _cache
-        .where((i) => i.profileId == profileId)
-        .toList()
+    final list = _cache.where((i) => i.profileId == profileId).toList()
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
     return list.isEmpty ? null : list.first;
   }
@@ -103,10 +102,12 @@ class InteractionService {
     } catch (error) {
       failure = error;
       unawaited(
-        drain.then<void>(
-          (_) => _removeStoredState(),
-          onError: (_, __) => _removeStoredState(),
-        ).catchError((_) {}),
+        drain
+            .then<void>(
+              (_) => _removeStoredState(),
+              onError: (_, __) => _removeStoredState(),
+            )
+            .catchError((_) {}),
       );
     }
     try {

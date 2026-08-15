@@ -216,9 +216,7 @@ class AppLog {
     if (file == null || !await file.exists()) return;
     if (await file.length() <= _maxBytes) return;
     for (var index = _maxBackupFiles; index >= 1; index -= 1) {
-      final source = index == 1
-          ? file
-          : File('${file.path}.${index - 1}');
+      final source = index == 1 ? file : File('${file.path}.${index - 1}');
       if (!await source.exists()) continue;
       final destination = File('${file.path}.$index');
       if (await destination.exists()) await destination.delete();

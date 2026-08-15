@@ -108,7 +108,8 @@ void main() {
       expect(result.expand((item) => item.evidence), isNotEmpty);
     });
 
-    test('offers an approval-gated quest draft for a goal with no active quest', () {
+    test('offers an approval-gated quest draft for a goal with no active quest',
+        () {
       final result = radar.scan(
         snapshot: _snapshot(now, [
           _signal(

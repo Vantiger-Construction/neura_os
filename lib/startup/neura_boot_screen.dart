@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -216,8 +216,7 @@ class _NeuraBootScreenState extends State<NeuraBootScreen>
                               ),
                               const SizedBox(height: 14),
                               FilledButton.icon(
-                                onPressed: () =>
-                                    unawaited(_coordinator.boot()),
+                                onPressed: () => unawaited(_coordinator.boot()),
                                 icon: const Icon(Icons.refresh),
                                 label: const Text('Retry startup'),
                               ),

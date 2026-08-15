@@ -15,7 +15,8 @@ class TherapyReflectionScreen extends StatefulWidget {
   const TherapyReflectionScreen({super.key, required this.prompt});
 
   @override
-  State<TherapyReflectionScreen> createState() => _TherapyReflectionScreenState();
+  State<TherapyReflectionScreen> createState() =>
+      _TherapyReflectionScreenState();
 }
 
 class _TherapyReflectionScreenState extends State<TherapyReflectionScreen> {
@@ -44,7 +45,8 @@ class _TherapyReflectionScreenState extends State<TherapyReflectionScreen> {
     if (text.isEmpty || _saving) return;
     setState(() => _saving = true);
     try {
-      final saved = await TherapyResponseStore.I.save(prompt: widget.prompt, text: text);
+      final saved =
+          await TherapyResponseStore.I.save(prompt: widget.prompt, text: text);
       try {
         await MemoryGraphService.I.logUserAction(
           kind: 'THERAPY_REFLECTION',
@@ -82,7 +84,8 @@ class _TherapyReflectionScreenState extends State<TherapyReflectionScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.prompt.instruction, style: Theme.of(context).textTheme.titleMedium),
+            Text(widget.prompt.instruction,
+                style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
             TextField(
               controller: _controller,
@@ -101,7 +104,8 @@ class _TherapyReflectionScreenState extends State<TherapyReflectionScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            Text('Past reflections', style: Theme.of(context).textTheme.titleSmall),
+            Text('Past reflections',
+                style: Theme.of(context).textTheme.titleSmall),
             const Divider(),
             if (_loading)
               const Center(child: CircularProgressIndicator())

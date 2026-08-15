@@ -18,7 +18,8 @@ class NeuraLlmDiagnostics {
   DateTime? lastFailureAt;
   String? lastError;
 
-  bool get healthy => failures == 0 ||
+  bool get healthy =>
+      failures == 0 ||
       (lastSuccessAt != null &&
           (lastFailureAt == null || lastSuccessAt!.isAfter(lastFailureAt!)));
 

@@ -49,15 +49,20 @@ class _LegacyTemplatesScreenState extends State<LegacyTemplatesScreen> {
                 maxLines: 10,
                 decoration: const InputDecoration(
                   labelText: 'Template body',
-                  helperText: 'Placeholders: {contactName}, {capsuleTitle}, {date}, {appName}',
+                  helperText:
+                      'Placeholders: {contactName}, {capsuleTitle}, {date}, {appName}',
                 ),
               ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Save')),
         ],
       ),
     );
@@ -68,14 +73,15 @@ class _LegacyTemplatesScreenState extends State<LegacyTemplatesScreen> {
     if (name.isEmpty || body.isEmpty) return;
 
     final now = DateTime.now();
-    final template = (existing ?? LegacyMessageTemplate(
-          id: 'tpl_user_${now.millisecondsSinceEpoch}',
-          name: name,
-          bodyTemplate: body,
-          createdAt: now,
-          updatedAt: now,
-          isBuiltIn: false,
-        ))
+    final template = (existing ??
+            LegacyMessageTemplate(
+              id: 'tpl_user_${now.millisecondsSinceEpoch}',
+              name: name,
+              bodyTemplate: body,
+              createdAt: now,
+              updatedAt: now,
+              isBuiltIn: false,
+            ))
         .copyWith(name: name, bodyTemplate: body, updatedAt: now);
 
     await LegacyTemplatesService.instance.upsertTemplate(template);
@@ -96,8 +102,12 @@ class _LegacyTemplatesScreenState extends State<LegacyTemplatesScreen> {
         title: const Text('Delete template?'),
         content: Text('"${t.name}"'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete')),
         ],
       ),
     );
@@ -112,10 +122,15 @@ class _LegacyTemplatesScreenState extends State<LegacyTemplatesScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Reset templates?'),
-        content: const Text("This will restore Neura's default templates. Your custom templates will be removed."),
+        content: const Text(
+            "This will restore Neura's default templates. Your custom templates will be removed."),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Reset')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Reset')),
         ],
       ),
     );
@@ -133,7 +148,8 @@ class _LegacyTemplatesScreenState extends State<LegacyTemplatesScreen> {
         actions: [
           IconButton(onPressed: _reload, icon: const Icon(Icons.refresh)),
           IconButton(onPressed: _reset, icon: const Icon(Icons.restart_alt)),
-          IconButton(onPressed: () => _addOrEdit(), icon: const Icon(Icons.add)),
+          IconButton(
+              onPressed: () => _addOrEdit(), icon: const Icon(Icons.add)),
         ],
       ),
       body: FutureBuilder<List<LegacyMessageTemplate>>(
@@ -144,7 +160,9 @@ class _LegacyTemplatesScreenState extends State<LegacyTemplatesScreen> {
           }
           final items = snap.data ?? const [];
           if (items.isEmpty) {
-            return const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('No templates.')));
+            return const Center(
+                child: Padding(
+                    padding: EdgeInsets.all(24), child: Text('No templates.')));
           }
 
           return ListView.builder(
@@ -154,7 +172,8 @@ class _LegacyTemplatesScreenState extends State<LegacyTemplatesScreen> {
               final t = items[i];
               return Card(
                 child: ListTile(
-                  leading: Icon(t.isBuiltIn ? Icons.auto_fix_high : Icons.edit_note),
+                  leading:
+                      Icon(t.isBuiltIn ? Icons.auto_fix_high : Icons.edit_note),
                   title: Text(t.name),
                   subtitle: Text(
                     t.bodyTemplate.replaceAll('\n', '  ').trim(),

@@ -38,7 +38,7 @@ class NeuraSignalObservation {
     required this.observedAt,
     this.numericValue,
     this.label,
-    this.confidence = 1,
+    double confidence = 1,
     this.sensitivity = NeuraSensitivity.routine,
     this.validFor = const Duration(days: 1),
   }) : confidence = confidence.clamp(0.0, 1.0).toDouble();
@@ -54,8 +54,7 @@ class NeuraSignalObservation {
   final NeuraSensitivity sensitivity;
   final Duration validFor;
 
-  bool isExpiredAt(DateTime now) =>
-      !now.isBefore(observedAt.add(validFor));
+  bool isExpiredAt(DateTime now) => !now.isBefore(observedAt.add(validFor));
 }
 
 @immutable
@@ -94,8 +93,7 @@ class NeuraEvidenceRef {
             json['observed_at']?.toString() ?? '',
           )?.toUtc() ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-      confidence:
-          _double(json['confidence'], 0).clamp(0.0, 1.0).toDouble(),
+      confidence: _double(json['confidence'], 0).clamp(0.0, 1.0).toDouble(),
       sensitivity: _enumByName(
         NeuraSensitivity.values,
         json['sensitivity'],
@@ -173,10 +171,10 @@ class NeuraIntelligenceCandidate {
     required this.createdAt,
     required this.expiresAt,
     Iterable<NeuraEvidenceRef> evidence = const [],
-    this.benefit = 0.5,
-    this.urgency = 0.5,
-    this.disruption = 0.5,
-    this.confidence = 0.5,
+    double benefit = 0.5,
+    double urgency = 0.5,
+    double disruption = 0.5,
+    double confidence = 0.5,
     Map<String, Object?> payload = const {},
   })  : evidence = List<NeuraEvidenceRef>.unmodifiable(evidence),
         payload = Map<String, Object?>.unmodifiable(

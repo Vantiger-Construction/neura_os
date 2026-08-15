@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:convert';
 
@@ -49,7 +48,8 @@ class FeedbackService {
       _loaded = true;
       return;
     }
-    final list = (jsonDecode(raw) as List<dynamic>).cast<Map<String, dynamic>>();
+    final list =
+        (jsonDecode(raw) as List<dynamic>).cast<Map<String, dynamic>>();
     final loaded = list.map(SuggestionFeedback.fromJson).toList();
     if (!_isCurrent(generation)) return;
     _cache = loaded;
@@ -106,10 +106,12 @@ class FeedbackService {
     } catch (error) {
       failure = error;
       unawaited(
-        drain.then<void>(
-          (_) => _removeStoredState(),
-          onError: (_, __) => _removeStoredState(),
-        ).catchError((_) {}),
+        drain
+            .then<void>(
+              (_) => _removeStoredState(),
+              onError: (_, __) => _removeStoredState(),
+            )
+            .catchError((_) {}),
       );
     }
     try {

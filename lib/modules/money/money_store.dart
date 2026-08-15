@@ -93,7 +93,8 @@ class MoneyStore {
   Future<({double income, double expense})> thisMonthSummary() async {
     final items = await getAll();
     final now = DateTime.now();
-    final thisMonth = items.where((e) => e.timestamp.year == now.year && e.timestamp.month == now.month);
+    final thisMonth = items.where(
+        (e) => e.timestamp.year == now.year && e.timestamp.month == now.month);
     var income = 0.0;
     var expense = 0.0;
     for (final e in thisMonth) {

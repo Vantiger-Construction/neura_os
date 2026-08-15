@@ -25,7 +25,8 @@ class FocusOfficeScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              Text('Pick a mode', style: Theme.of(context).textTheme.titleMedium),
+              Text('Pick a mode',
+                  style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 10,
@@ -37,9 +38,13 @@ class FocusOfficeScreen extends StatelessWidget {
                     width: 170,
                     child: OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: selected ? (c ?? Theme.of(context).colorScheme.primary) : Colors.white24),
+                        side: BorderSide(
+                            color: selected
+                                ? (c ?? Theme.of(context).colorScheme.primary)
+                                : Colors.white24),
                         backgroundColor: selected ? Colors.white10 : null,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 12),
                       ),
                       onPressed: () => FocusController.instance.setMode(m),
                       icon: Icon(m.icon, color: c),

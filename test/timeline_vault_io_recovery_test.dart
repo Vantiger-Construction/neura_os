@@ -29,13 +29,13 @@ void main() {
     );
     await events.writeAsString(
       '${jsonEncode({
-        'v': 1,
-        'seq': 7,
-        'ts': DateTime.utc(2026, 8, 14).toIso8601String(),
-        'kind': 'before_crash',
-        'source': 'test',
-        'data': const <String, Object?>{},
-      })}\n',
+            'v': 1,
+            'seq': 7,
+            'ts': DateTime.utc(2026, 8, 14).toIso8601String(),
+            'kind': 'before_crash',
+            'source': 'test',
+            'data': const <String, Object?>{},
+          })}\n',
     );
 
     await TimelineVault.instance.initialize();

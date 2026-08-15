@@ -32,8 +32,10 @@ class NeuraOsRoomCard extends StatelessWidget {
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color:
-                      Theme.of(context).colorScheme.secondary.withValues(alpha: 0.15),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .secondary
+                      .withValues(alpha: 0.15),
                 ),
                 child: Icon(icon, size: 26),
               ),

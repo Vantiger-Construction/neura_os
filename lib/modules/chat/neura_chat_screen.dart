@@ -45,7 +45,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   _ChatLine? _activeBotLine;
   int _generationSerial = 0;
 
-  final NeuraSpeechToTextService _voiceInput = NeuraSpeechToTextService.instance;
+  final NeuraSpeechToTextService _voiceInput =
+      NeuraSpeechToTextService.instance;
   final ImagePicker _imagePicker = ImagePicker();
   StreamSubscription<String>? _voiceSub;
   StreamSubscription<String>? _finalPhraseSub;
@@ -594,7 +595,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         );
         if (!approved) return false;
         final applied = NeuraToneRuntime.instance.setTone(tone);
-        await AppLog.instance.info('set_tone', {'tone': tone, 'applied': applied});
+        await AppLog.instance
+            .info('set_tone', {'tone': tone, 'applied': applied});
         return applied;
       default:
         return false;
@@ -883,8 +885,8 @@ class _ChatLine {
   final String? utteranceId;
   final String? imageBase64;
   final String? imageMediaType;
-  int seq;
-  bool interrupted;
+  int seq = 0;
+  bool interrupted = false;
 
   _ChatLine(
     this.isUser,
@@ -893,8 +895,6 @@ class _ChatLine {
     this.utteranceId,
     this.imageBase64,
     this.imageMediaType,
-    this.seq = 0,
-    this.interrupted = false,
   });
 
   factory _ChatLine.user(

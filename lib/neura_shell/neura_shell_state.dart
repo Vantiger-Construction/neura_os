@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -88,8 +88,7 @@ class NeuraShellState extends ChangeNotifier {
     _room = NeuraRoom.fromId(prefs.getString(_kRoomId));
     _showAvatar = prefs.getBool(_kShowAvatar) ?? true;
     _ambientEnabled = prefs.getBool(_kAmbientEnabled) ?? false;
-    _ambientVolume =
-        (prefs.getDouble(_kAmbientVolume) ?? 0.35).clamp(0.0, 1.0);
+    _ambientVolume = (prefs.getDouble(_kAmbientVolume) ?? 0.35).clamp(0.0, 1.0);
     _autoRoomSync = prefs.getBool(_kAutoRoomSync) ?? true;
 
     _loaded = true;
@@ -306,8 +305,7 @@ class NeuraShellState extends ChangeNotifier {
     final prefs = NeuraPrefsCache.prefs;
     await prefs.setDouble(_kAmbientVolume, _ambientVolume);
 
-    if (!SafeBoot.instance.safeMode.value &&
-        _optionalShellServicesActive) {
+    if (!SafeBoot.instance.safeMode.value && _optionalShellServicesActive) {
       await _audio?.setVolume(_ambientVolume);
     }
   }

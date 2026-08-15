@@ -1,4 +1,3 @@
-
 class RelationshipSuggestion {
   final String title;
   final String description;

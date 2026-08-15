@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../../../modules/core/app_log.dart';
 import 'focus_mode.dart';
@@ -21,8 +21,11 @@ class FocusState {
       (m) => m.name == modeName,
       orElse: () => FocusMode.off,
     );
-    final startedAtRaw = (json['startedAt'] as String?) ?? DateTime.now().toIso8601String();
-    return FocusState(mode: mode, startedAt: DateTime.tryParse(startedAtRaw) ?? DateTime.now());
+    final startedAtRaw =
+        (json['startedAt'] as String?) ?? DateTime.now().toIso8601String();
+    return FocusState(
+        mode: mode,
+        startedAt: DateTime.tryParse(startedAtRaw) ?? DateTime.now());
   }
 }
 

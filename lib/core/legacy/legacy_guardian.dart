@@ -8,8 +8,7 @@ class LegacyGuardian {
       case LegacyAccessLevel.ownerOnly:
         return true;
       case LegacyAccessLevel.timedUnlock:
-        return rule.unlockAt != null &&
-            DateTime.now().isAfter(rule.unlockAt!);
+        return rule.unlockAt != null && DateTime.now().isAfter(rule.unlockAt!);
       case LegacyAccessLevel.trustedContact:
         return false; // future external auth
     }

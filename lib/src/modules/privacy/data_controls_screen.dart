@@ -69,7 +69,8 @@ class _DataControlsScreenState extends State<DataControlsScreen> {
     try {
       String? pass;
       if (decrypt) {
-        pass = await _promptPassphrase('Passphrase (used for all encrypted capsules)');
+        pass = await _promptPassphrase(
+            'Passphrase (used for all encrypted capsules)');
         if (pass == null || pass.trim().isEmpty) return;
       }
 
@@ -147,13 +148,13 @@ class _DataControlsScreenState extends State<DataControlsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('All local data wiped. Restart Neura before continuing.'),
+          content:
+              Text('All local data wiped. Restart Neura before continuing.'),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(
           'Wipe incomplete: $e Restart Neura before retrying.',
         ),
@@ -182,19 +183,22 @@ class _DataControlsScreenState extends State<DataControlsScreen> {
                   title: const Text('Export Legacy Vault (.zip) — raw'),
                   subtitle: const Text('Keeps encrypted capsules encrypted.'),
                   leading: const Icon(Icons.archive_outlined),
-                  onTap: _busy ? null : () => _exportLegacyVault(decrypt: false),
+                  onTap:
+                      _busy ? null : () => _exportLegacyVault(decrypt: false),
                 ),
                 const Divider(height: 1),
                 ListTile(
                   title: const Text('Export Legacy Vault (.zip) — decrypted'),
-                  subtitle: const Text('Requires passphrase; assumes shared passphrase.'),
+                  subtitle: const Text(
+                      'Requires passphrase; assumes shared passphrase.'),
                   leading: const Icon(Icons.lock_open),
                   onTap: _busy ? null : () => _exportLegacyVault(decrypt: true),
                 ),
                 const Divider(height: 1),
                 ListTile(
                   title: const Text('Import Legacy Vault (.zip)'),
-                  subtitle: const Text('Adds capsules; never overwrites existing IDs.'),
+                  subtitle: const Text(
+                      'Adds capsules; never overwrites existing IDs.'),
                   leading: const Icon(Icons.unarchive_outlined),
                   onTap: _busy ? null : _importLegacyVault,
                 ),

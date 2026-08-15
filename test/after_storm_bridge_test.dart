@@ -9,7 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('weekly bridge records a storm exactly once without recursion', () async {
+  test('weekly bridge records a storm exactly once without recursion',
+      () async {
     SharedPreferences.setMockInitialValues({});
     await NeuraPrefsCache.init();
 

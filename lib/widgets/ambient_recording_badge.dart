@@ -31,8 +31,8 @@ class AmbientRecordingBadge extends StatelessWidget {
                     MaterialPageRoute(builder: (_) => const SettingsScreen()),
                   ),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
                       color: Colors.red.shade700,
                       borderRadius: BorderRadius.circular(20),

@@ -31,8 +31,8 @@ class TimelineVault {
     var indexedCount = 0;
     if (await _index!.exists()) {
       try {
-        final json = jsonDecode(await _index!.readAsString())
-            as Map<String, dynamic>;
+        final json =
+            jsonDecode(await _index!.readAsString()) as Map<String, dynamic>;
         indexedCount = (json['count'] as num?)?.toInt() ?? 0;
       } catch (_) {}
     }

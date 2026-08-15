@@ -6,11 +6,27 @@ import 'envelope.dart';
 import 'neura_tone.dart';
 
 enum ConversationRole { user, neura }
+
 class ConversationMessage {
-  const ConversationMessage({required this.id, required this.role, required this.text, this.streaming = false, this.interrupted = false});
-  final String id; final ConversationRole role; final String text; final bool streaming; final bool interrupted;
-  ConversationMessage copyWith({String? text, bool? streaming, bool? interrupted}) => ConversationMessage(
-    id: id, role: role, text: text ?? this.text, streaming: streaming ?? this.streaming, interrupted: interrupted ?? this.interrupted);
+  const ConversationMessage(
+      {required this.id,
+      required this.role,
+      required this.text,
+      this.streaming = false,
+      this.interrupted = false});
+  final String id;
+  final ConversationRole role;
+  final String text;
+  final bool streaming;
+  final bool interrupted;
+  ConversationMessage copyWith(
+          {String? text, bool? streaming, bool? interrupted}) =>
+      ConversationMessage(
+          id: id,
+          role: role,
+          text: text ?? this.text,
+          streaming: streaming ?? this.streaming,
+          interrupted: interrupted ?? this.interrupted);
 }
 
 class ConversationController extends ChangeNotifier {
@@ -28,10 +44,16 @@ class ConversationController extends ChangeNotifier {
   List<ConversationMessage> get messages => List.unmodifiable(_messages);
 
   String send(String text) {
-    final clean = text.trim(); if (clean.isEmpty) throw ArgumentError.value(text, 'text', 'must not be empty');
+    final clean = text.trim();
+    if (clean.isEmpty)
+      throw ArgumentError.value(text, 'text', 'must not be empty');
     final id = link.sendUserText(clean);
-    _messages.add(ConversationMessage(id: id, role: ConversationRole.user, text: clean)); notifyListeners(); return id;
+    _messages.add(
+        ConversationMessage(id: id, role: ConversationRole.user, text: clean));
+    notifyListeners();
+    return id;
   }
+
   void enterRoom(String room) => link.enterRoom(room);
   void requestDiagnostics() => link.requestDiagnostics();
 
@@ -49,23 +71,44 @@ class ConversationController extends ChangeNotifier {
       case 'speak_interrupted':
         final id = data['utterance_id'] as String? ?? envelope.id;
         _upsert(id, streaming: false, interrupted: true);
-      case 'set_tone': tone.setFromWire(data['tone'] as String?);
-      case 'dispatch_intent': onDispatchIntent?.call(data);
-      case 'diagnostics': diagnostics = DiagnosticsSnapshot.fromJson(data);
+      case 'set_tone':
+        tone.setFromWire(data['tone'] as String?);
+      case 'dispatch_intent':
+        onDispatchIntent?.call(data);
+      case 'diagnostics':
+        diagnostics = DiagnosticsSnapshot.fromJson(data);
     }
     notifyListeners();
   }
 
-  void _upsert(String id, {String? delta, String? replacement, required bool streaming, bool interrupted = false}) {
-    final index = _messages.indexWhere((message) => message.id == id && message.role == ConversationRole.neura);
+  void _upsert(String id,
+      {String? delta,
+      String? replacement,
+      required bool streaming,
+      bool interrupted = false}) {
+    final index = _messages.indexWhere((message) =>
+        message.id == id && message.role == ConversationRole.neura);
     if (index < 0) {
-      _messages.add(ConversationMessage(id: id, role: ConversationRole.neura, text: replacement ?? delta ?? '', streaming: streaming, interrupted: interrupted));
+      _messages.add(ConversationMessage(
+          id: id,
+          role: ConversationRole.neura,
+          text: replacement ?? delta ?? '',
+          streaming: streaming,
+          interrupted: interrupted));
     } else {
       final old = _messages[index];
-      _messages[index] = old.copyWith(text: replacement ?? '${old.text}${delta ?? ''}', streaming: streaming, interrupted: interrupted);
+      _messages[index] = old.copyWith(
+          text: replacement ?? '${old.text}${delta ?? ''}',
+          streaming: streaming,
+          interrupted: interrupted);
     }
   }
 
-  @override void dispose() { _subscription?.cancel(); _stateSubscription?.cancel(); tone.dispose(); super.dispose(); }
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    _stateSubscription?.cancel();
+    tone.dispose();
+    super.dispose();
+  }
 }
-

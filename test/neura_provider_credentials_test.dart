@@ -60,7 +60,8 @@ void main() {
       expect(restarted.apiKey, isEmpty);
     });
 
-    test('clear fails visibly when secure deletion cannot be verified', () async {
+    test('clear fails visibly when secure deletion cannot be verified',
+        () async {
       final storage = _MemoryCredentialStorage(ignoreDeletes: true);
       final credentials = NeuraProviderCredentials.forTesting(
         storage: storage,

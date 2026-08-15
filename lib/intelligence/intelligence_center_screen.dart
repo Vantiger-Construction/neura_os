@@ -32,7 +32,8 @@ class _NeuraIntelligenceCenterScreenState
       _controller.updatePreferences(preferences).catchError((Object error) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not save intelligence settings.')),
+            const SnackBar(
+                content: Text('Could not save intelligence settings.')),
           );
         }
       }),
@@ -184,7 +185,8 @@ class _NeuraIntelligenceCenterScreenState
                       ),
                       secondary: const Icon(Icons.receipt_long_outlined),
                       title: const Text('Show “Why?” on suggestions'),
-                      subtitle: const Text('Expose score, evidence count, and policy reasons.'),
+                      subtitle: const Text(
+                          'Expose score, evidence count, and policy reasons.'),
                     ),
                     const Divider(height: 1),
                     ListTile(
@@ -214,7 +216,8 @@ class _NeuraIntelligenceCenterScreenState
                       ),
                       secondary: const Icon(Icons.bedtime_outlined),
                       title: const Text('Quiet hours'),
-                      subtitle: const Text('Suppress proactive cards during your chosen window.'),
+                      subtitle: const Text(
+                          'Suppress proactive cards during your chosen window.'),
                     ),
                     if (preferences.quietHoursEnabled)
                       Padding(

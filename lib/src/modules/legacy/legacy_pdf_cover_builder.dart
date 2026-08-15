@@ -15,7 +15,8 @@ class LegacyPdfCoverBuilder {
   static Future<Uint8List> buildCover({required LegacyCapsule capsule}) async {
     final doc = pw.Document();
 
-    final title = capsule.title.trim().isEmpty ? 'Legacy Capsule' : capsule.title.trim();
+    final title =
+        capsule.title.trim().isEmpty ? 'Legacy Capsule' : capsule.title.trim();
     final now = DateTime.now().toLocal();
 
     doc.addPage(
@@ -37,12 +38,16 @@ class LegacyPdfCoverBuilder {
               pw.SizedBox(height: 18),
               pw.Text(
                 'Legacy Delivery Packet',
-                style: pw.TextStyle(fontSize: 30, fontWeight: pw.FontWeight.bold),
+                style:
+                    pw.TextStyle(fontSize: 30, fontWeight: pw.FontWeight.bold),
               ),
               pw.SizedBox(height: 8),
               pw.Text(
                 title,
-                style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800),
+                style: pw.TextStyle(
+                    fontSize: 16,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.grey800),
               ),
               pw.SizedBox(height: 24),
               pw.Container(
@@ -54,7 +59,9 @@ class LegacyPdfCoverBuilder {
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text("What's inside", style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+                    pw.Text("What's inside",
+                        style: pw.TextStyle(
+                            fontSize: 13, fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: 8),
                     pw.Bullet(text: 'capsule.json (message + metadata)'),
                     pw.Bullet(text: 'attachments/ (optional files)'),
@@ -71,14 +78,18 @@ class LegacyPdfCoverBuilder {
               ),
               pw.SizedBox(height: 8),
               pw.Text(
-                capsule.unlockAt == null ? '' : 'Time‑lock: ${capsule.unlockAt!.toLocal()}',
-                style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+                capsule.unlockAt == null
+                    ? ''
+                    : 'Time‑lock: ${capsule.unlockAt!.toLocal()}',
+                style:
+                    const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
               ),
               pw.Spacer(),
               pw.Divider(),
               pw.Text(
                 'Generated: $now',
-                style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+                style:
+                    const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
               ),
             ],
           );
