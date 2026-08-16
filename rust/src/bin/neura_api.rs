@@ -106,10 +106,8 @@ async fn client(socket: WebSocket) {
                 if let Some((old_task, old_id)) = generation.take() {
                     if !old_task.is_finished() {
                         old_task.abort();
-                        let _ = out_tx.send(frame(
-                            "speak_interrupted",
-                            json!({"utterance_id":old_id}),
-                        ));
+                        let _ =
+                            out_tx.send(frame("speak_interrupted", json!({"utterance_id":old_id})));
                     }
                 }
 
@@ -142,10 +140,8 @@ async fn client(socket: WebSocket) {
                         ));
                         tokio::time::sleep(Duration::from_millis(55)).await;
                     }
-                    let _ = stream_tx.send(frame(
-                        "speak",
-                        json!({"utterance_id":id,"text":response}),
-                    ));
+                    let _ =
+                        stream_tx.send(frame("speak", json!({"utterance_id":id,"text":response})));
                 });
                 generation = Some((task, utterance_id));
             }
