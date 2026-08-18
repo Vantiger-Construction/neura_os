@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../avatar/avatar_controller.dart';
+import '../theme/app_theme.dart';
 import 'neura_error_vault.dart';
 import 'neura_event_bus.dart';
 import 'neura_fault_event.dart';
@@ -107,7 +108,7 @@ class _NeuraFriendlyError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = ThemeData.dark();
+    final theme = AppTheme.dark();
     return Material(
       color: theme.scaffoldBackgroundColor,
       child: SafeArea(
