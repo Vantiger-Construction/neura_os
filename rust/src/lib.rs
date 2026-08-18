@@ -7,11 +7,5 @@
 pub mod agents;
 pub mod anthropic_client;
 pub mod api;
+mod frb_generated;
 pub mod orchestrator;
-
-// `flutter_rust_bridge_codegen generate` adds a `mod frb_generated;` line
-// here (and the corresponding generated file) -- not present yet because
-// codegen hasn't been run against this crate in this environment. Run
-// `flutter_rust_bridge_codegen generate` from the repo root before building
-// the Flutter app; `cargo build`/`cargo test` work on this crate as-is
-// without it.
