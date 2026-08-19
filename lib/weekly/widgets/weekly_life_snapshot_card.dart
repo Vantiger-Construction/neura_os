@@ -111,7 +111,7 @@ class _WeeklyLifeSnapshotCardState extends State<WeeklyLifeSnapshotCard> {
                         const Text(
                           'Tap to refresh this snapshot.',
                           style: TextStyle(
-                            color: Colors.white38,
+                            color: Colors.white70,
                             fontSize: 11,
                           ),
                         ),
