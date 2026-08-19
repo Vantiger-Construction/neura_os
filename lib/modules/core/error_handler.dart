@@ -17,7 +17,9 @@ class ErrorHandler {
     FlutterError.onError = (FlutterErrorDetails details) {
       FlutterError.presentError(details);
       _logFlutterError(details);
-      _toast('Neura caught a glitch and filed it under "Cosmic Weirdness."');
+      if (!_isBenignInkResponseRace(details)) {
+        _toast('Neura caught a glitch and filed it under "Cosmic Weirdness."');
+      }
     };
 
     PlatformDispatcher.instance.onError = (error, stack) {
@@ -28,6 +30,21 @@ class ErrorHandler {
       _toast('Parallel universe patch incoming… (kidding, but I logged it).');
       return true;
     };
+  }
+
+  /// Flutter's [MouseTracker]/[InkWell] hover-tracking has a longstanding
+  /// framework race (flutter/flutter#89736 and duplicates): a hover or
+  /// tap-down event can reach an `_InkResponseState` whose element was
+  /// deactivated moments earlier, so `Material.of(context)` null-checks and
+  /// throws. It's caught here, never corrupts state or crashes the app, and
+  /// still gets logged -- only the user-facing "glitch" toast is skipped so
+  /// the app doesn't interrupt the user over an invisible framework hiccup.
+  static bool _isBenignInkResponseRace(FlutterErrorDetails details) {
+    if (details.exceptionAsString() != 'Null check operator used on a null value') {
+      return false;
+    }
+    final stack = (details.stack ?? StackTrace.current).toString();
+    return stack.contains('Material.of') && stack.contains('ink_well.dart');
   }
 
   static void _toast(String msg) {
