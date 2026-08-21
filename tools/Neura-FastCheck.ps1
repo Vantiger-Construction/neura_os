@@ -121,8 +121,9 @@ try {
     }
 
     if (-not $SkipTests) {
-        Invoke-Checked 'startup release gates' {
+        Invoke-Checked 'startup state matrix' {
             flutter test --no-pub `
+                test/startup/startup_platform_policy_test.dart `
                 test/startup/neura_error_pipeline_test.dart `
                 test/startup/neura_error_boundary_test.dart
         }
