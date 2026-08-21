@@ -44,17 +44,38 @@ jobs:
           flutter clean
           flutter pub get
 
-      - name: Format sources and record exact patch
+      - name: Verify committed Dart formatting
         shell: bash
         run: |
+          set -euo pipefail
           dart format lib test
           git diff --no-ext-diff --binary -- lib test > dart-format.patch
+          if ! git diff --quiet -- lib test; then
+            echo "::error::Committed Dart sources are not formatted. Apply dart format lib test and commit the result."
+            exit 1
+          fi
+
+      - name: Verify authored Windows runner contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'messenger, "neura/window_role"' windows/runner/neura_window_role.cpp
+          grep -Fq '"neura_window_role.cpp"' windows/runner/CMakeLists.txt
+          grep -Fq 'window_role_ = std::make_unique<NeuraWindowRole>' windows/runner/flutter_window.cpp
 
       - name: Require zero analyzer errors
         shell: bash
         run: |
           set -o pipefail
           flutter analyze --no-fatal-warnings --no-fatal-infos 2>&1 | tee analyze.log
+
+      - name: Run startup release gates
+        shell: bash
+        run: |
+          set -o pipefail
+          timeout 180s flutter test --reporter expanded \
+            test/startup/neura_error_pipeline_test.dart \
+            test/startup/neura_error_boundary_test.dart 2>&1 | tee startup-tests.log
 
       - name: Run Flutter tests
         shell: bash
@@ -69,6 +90,7 @@ jobs:
           name: Neura-verification-logs
           path: |
             analyze.log
+            startup-tests.log
             tests.log
             dart-format.patch
             pubspec.lock
@@ -104,6 +126,23 @@ jobs:
       - name: Restore dependencies
         shell: pwsh
         run: flutter pub get
+
+      - name: Verify authored Windows runner contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $roleSource = Get-Content -LiteralPath 'windows\runner\neura_window_role.cpp' -Raw
+          $cmake = Get-Content -LiteralPath 'windows\runner\CMakeLists.txt' -Raw
+          $flutterWindow = Get-Content -LiteralPath 'windows\runner\flutter_window.cpp' -Raw
+          if (-not $roleSource.Contains('neura/window_role')) {
+            throw 'Authored Windows runner is missing the neura/window_role channel.'
+          }
+          if (-not $cmake.Contains('"neura_window_role.cpp"')) {
+            throw 'Authored Windows runner does not compile neura_window_role.cpp.'
+          }
+          if (-not $flutterWindow.Contains('window_role_ = std::make_unique<NeuraWindowRole>')) {
+            throw 'Authored Windows runner does not register NeuraWindowRole before plugins.'
+          }
 
       - name: Build Windows release
         shell: pwsh
@@ -228,9 +267,10 @@ jobs:
           2. Run neuro_companion.exe.
           3. Keep the data, DLL, and executable files together.
 
-          This build passed dependency restore, Flutter analysis, Flutter tests,
-          Windows release compilation, runtime-payload validation, and the
-          packaged first-frame launch self-test in the same GitHub workflow.
+          This build passed dependency restore, Flutter analysis, startup release
+          gates, the full Flutter suite, Windows release compilation, authored
+          runner validation, runtime-payload validation, and the packaged
+          first-frame launch self-test in the same GitHub workflow.
 
           Startup diagnostics:
           - %TEMP%\neura_error_vault.jsonl (and .1 through .3)
@@ -245,6 +285,8 @@ jobs:
             commit = $env:GITHUB_SHA
             workflowRun = $env:GITHUB_RUN_ID
             flutter = (flutter --version | Select-Object -First 1)
+            startupReleaseGates = 'passed'
+            authoredWindowsRunner = 'passed'
             launchSmokeTest = 'passed'
             runtimePayload = 'passed'
             builtAtUtc = (Get-Date).ToUniversalTime().ToString('o')
@@ -298,7 +340,7 @@ jobs:
       - name: Restore dependencies
         run: flutter pub get
 
-      - name: Build debug-signed Android APK
+      - name: Build installable Android test APK
         shell: bash
         run: |
           set -o pipefail
@@ -313,7 +355,7 @@ jobs:
         run: |
           set -euo pipefail
           source_apk="build/app/outputs/flutter-apk/app-debug.apk"
-          test -f "$source_apk"
+          test -s "$source_apk"
           output="recovery_downloads/android"
           mkdir -p "$output"
           app_version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n 1)"
@@ -327,9 +369,10 @@ jobs:
           Version: $version
           Commit: $GITHUB_SHA
 
-          This APK is debug-signed so it can be installed for recovery testing.
-          It is not the permanently signed Google Play release. Android may ask
-          you to allow installation from the browser or file manager you use.
+          This APK is debug-signed intentionally so the 1.3 recovery artifact is
+          directly installable during validation. It is not the permanently
+          signed Google Play release. Android may ask you to allow installation
+          from the browser or file manager you use.
           EOF
 
       - name: Upload Android download

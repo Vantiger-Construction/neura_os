@@ -47,6 +47,34 @@ function Get-DependencyFingerprint {
     }
 }
 
+function Assert-AuthoredWindowsRunner {
+    param([Parameter(Mandatory)][string]$ProjectRoot)
+
+    $rolePath = Join-Path $ProjectRoot 'windows\runner\neura_window_role.cpp'
+    $cmakePath = Join-Path $ProjectRoot 'windows\runner\CMakeLists.txt'
+    $flutterWindowPath = Join-Path $ProjectRoot 'windows\runner\flutter_window.cpp'
+
+    foreach ($required in @($rolePath, $cmakePath, $flutterWindowPath)) {
+        if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+            throw "Authored Windows runner file is missing: $required"
+        }
+    }
+
+    $roleSource = Get-Content -LiteralPath $rolePath -Raw
+    $cmake = Get-Content -LiteralPath $cmakePath -Raw
+    $flutterWindow = Get-Content -LiteralPath $flutterWindowPath -Raw
+
+    if (-not $roleSource.Contains('neura/window_role')) {
+        throw 'Authored Windows runner is missing the neura/window_role channel.'
+    }
+    if (-not $cmake.Contains('"neura_window_role.cpp"')) {
+        throw 'Authored Windows runner does not compile neura_window_role.cpp.'
+    }
+    if (-not $flutterWindow.Contains('window_role_ = std::make_unique<NeuraWindowRole>')) {
+        throw 'Authored Windows runner does not register NeuraWindowRole before plugins.'
+    }
+}
+
 $Root = (Resolve-Path -LiteralPath $Root).Path
 $pubspec = Join-Path $Root 'pubspec.yaml'
 if (-not (Test-Path -LiteralPath $pubspec -PathType Leaf)) {
@@ -87,7 +115,18 @@ try {
         flutter analyze --no-pub --no-fatal-warnings --no-fatal-infos
     }
 
+    if ($BuildWindows) {
+        Write-Host "`n=== authored Windows runner contract ===" -ForegroundColor Cyan
+        Assert-AuthoredWindowsRunner -ProjectRoot $Root
+    }
+
     if (-not $SkipTests) {
+        Invoke-Checked 'startup release gates' {
+            flutter test --no-pub `
+                test/startup/neura_error_pipeline_test.dart `
+                test/startup/neura_error_boundary_test.dart
+        }
+
         Invoke-Checked "flutter test (concurrency=$TestConcurrency)" {
             flutter test --no-pub --concurrency $TestConcurrency
         }
