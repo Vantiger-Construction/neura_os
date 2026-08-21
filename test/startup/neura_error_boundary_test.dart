@@ -9,10 +9,6 @@ void main() {
     pipeline.resetForTesting();
   });
 
-  tearDown(() async {
-    await pipeline.drain();
-  });
-
   testWidgets('fatal error renders recovery and can continue safely', (
     tester,
   ) async {
@@ -42,5 +38,7 @@ void main() {
 
     expect(safeModeRequested, isTrue);
     expect(find.text('normal app'), findsOneWidget);
+
+    pipeline.resetForTesting();
   });
 }

@@ -72,10 +72,11 @@ jobs:
       - name: Run startup release gates
         shell: bash
         run: |
-          set -o pipefail
-          timeout 180s flutter test --reporter expanded \
-            test/startup/neura_error_pipeline_test.dart \
-            test/startup/neura_error_boundary_test.dart 2>&1 | tee startup-tests.log
+          set -euo pipefail
+          flutter test --reporter expanded \
+            test/startup/neura_error_pipeline_test.dart 2>&1 | tee startup-tests.log
+          flutter test --reporter expanded --timeout 30s \
+            test/startup/neura_error_boundary_test.dart 2>&1 | tee -a startup-tests.log
 
       - name: Run Flutter tests
         shell: bash
