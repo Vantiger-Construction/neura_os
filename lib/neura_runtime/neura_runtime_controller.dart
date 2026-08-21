@@ -42,6 +42,7 @@ class NeuraRuntimeController {
   Future<void> dispose() async {
     await _sub?.cancel();
     _sub = null;
+    _started = false;
   }
 
   /// Stops the memory watcher so a later runtime event cannot re-persist a
