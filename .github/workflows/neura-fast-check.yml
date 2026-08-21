@@ -30,7 +30,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Verify local tools
-        shell: pwsh
+        shell: powershell
         run: |
           flutter --version
           dart --version
@@ -40,5 +40,5 @@ jobs:
           cargo --version
 
       - name: Run optimized validation
-        shell: pwsh
+        shell: powershell
         run: ./tools/Neura-FastCheck.ps1 -Root . -BuildWindows

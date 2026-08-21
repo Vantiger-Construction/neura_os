@@ -9,7 +9,14 @@ import 'package:neuro_companion/startup/neura_error_redactor.dart';
 void main() {
   final pipeline = NeuraErrorPipeline.instance;
 
-  setUp(pipeline.resetForTesting);
+  setUp(() async {
+    await pipeline.drain();
+    pipeline.resetForTesting();
+  });
+
+  tearDown(() async {
+    await pipeline.drain();
+  });
 
   test('redacts credentials, sensitive URL values, and user paths', () {
     const raw = 'authorization=top-secret '
