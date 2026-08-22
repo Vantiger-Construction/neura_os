@@ -7,13 +7,36 @@ import '../config/supabase_config.dart';
 class AuthService {
   static SupabaseClient? _clientCache;
 
-  static SupabaseClient get _client =>
-      _clientCache ??= Supabase.instance.client;
+  static SupabaseClient? get _clientOrNull {
+    if (!SupabaseConfig.isConfigured) return null;
+    final cached = _clientCache;
+    if (cached != null) return cached;
+    try {
+      return _clientCache = Supabase.instance.client;
+    } catch (_) {
+      return null;
+    }
+  }
 
-  static User? get currentUser => _client.auth.currentUser;
+  static SupabaseClient get _client {
+    final client = _clientOrNull;
+    if (client == null) {
+      throw StateError(
+        'Cloud sign-in is unavailable because Supabase is not initialized.',
+      );
+    }
+    return client;
+  }
 
-  static Stream<User?> get onAuthStateChanged =>
-      _client.auth.onAuthStateChange.map((e) => e.session?.user);
+  static bool get isAvailable => _clientOrNull != null;
+
+  static User? get currentUser => _clientOrNull?.auth.currentUser;
+
+  static Stream<User?> get onAuthStateChanged {
+    final client = _clientOrNull;
+    if (client == null) return Stream<User?>.value(null);
+    return client.auth.onAuthStateChange.map((e) => e.session?.user);
+  }
 
   Future<void> signIn(String email, String pass) =>
       _client.auth.signInWithPassword(email: email, password: pass);
@@ -25,6 +48,11 @@ class AuthService {
       _client.auth.resetPasswordForEmail(email);
 
   Future<void> signOut() => _client.auth.signOut();
+
+  Future<void> updateDisplayName(String displayName) =>
+      _client.auth.updateUser(
+        UserAttributes(data: {'display_name': displayName.trim()}),
+      );
 
   /// Clears only this device's live Supabase session during a local-data
   /// wipe. Other devices remain signed in. Local invalidation happens before
