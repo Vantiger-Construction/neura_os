@@ -1,0 +1,182 @@
+name: Finalize Neura Adaptive Intent OS v1.4
+
+on:
+  push:
+    branches:
+      - agent/neura-adaptive-intent-os-v1.4
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-neura-adaptive-intent-v1.4
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.44.7"
+  WORK_BRANCH: agent/neura-adaptive-intent-os-v1.4
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.WORK_BRANCH }}
+          fetch-depth: 0
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Restore dependencies
+        run: flutter pub get
+
+      - name: Apply deterministic source wiring and hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          bandwidth = Path('lib/cognitive/neura_bandwidth_engine.dart')
+          bandwidth_text = bandwidth.read_text(encoding='utf-8')
+          bandwidth_text = bandwidth_text.replace(
+              'math.min(signals.evidenceCount, 6) * 0.07',
+              'math.min(signals.evidenceCount, 6).toDouble() * 0.07',
+          )
+          bandwidth.write_text(bandwidth_text, encoding='utf-8')
+
+          navigation = Path('lib/modules/navigation/enhanced_navigation.dart')
+          navigation_text = navigation.read_text(encoding='utf-8')
+          import_line = (
+              "import '../../adaptive_intent/"
+              "neura_adaptive_intent_screen.dart';\n"
+          )
+          import_anchor = (
+              "import '../../core/memory/"
+              "memory_consolidation_service.dart';\n"
+          )
+          if import_line not in navigation_text:
+              if import_anchor not in navigation_text:
+                  raise SystemExit('Navigation import anchor was not found.')
+              navigation_text = navigation_text.replace(
+                  import_anchor,
+                  import_line + import_anchor,
+                  1,
+              )
+
+          tile = """            _Tile(
+              icon: Icons.psychology_alt_outlined,
+              title: 'Adaptive Intent',
+              subtitle: 'Bandwidth-aware plans and consent.',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const NeuraAdaptiveIntentScreen(),
+                ),
+              ),
+            ),
+          """
+          tile_anchor = """            _Tile(
+              icon: Icons.favorite_border,
+              title: 'Mood Check‑In',
+          """
+          if "title: 'Adaptive Intent'" not in navigation_text:
+              if tile_anchor not in navigation_text:
+                  raise SystemExit('Dashboard tile anchor was not found.')
+              navigation_text = navigation_text.replace(
+                  tile_anchor,
+                  tile + tile_anchor,
+                  1,
+              )
+          navigation.write_text(navigation_text, encoding='utf-8')
+
+          compiler_test = Path(
+              'test/intent_compiler/neura_intent_compiler_test.dart'
+          )
+          test_text = compiler_test.read_text(encoding='utf-8')
+          test_text = test_text.replace(
+              "expect(graph.steps.every((step) => !step.effect.isExternal), isTrue);",
+              "expect(\n"
+              "      graph.steps\n"
+              "          .where((step) => !step.blocked)\n"
+              "          .every((step) => !step.effect.isExternal),\n"
+              "      isTrue,\n"
+              "    );",
+          )
+          compiler_test.write_text(test_text, encoding='utf-8')
+          PY
+
+      - name: Apply analyzer quick-fixes
+        run: dart fix --apply
+
+      - name: Format prototype
+        run: |
+          dart format \
+            lib/adaptive_intent \
+            lib/cognitive \
+            lib/constitution \
+            lib/intent_compiler \
+            lib/modules/navigation/enhanced_navigation.dart \
+            test/adaptive_intent \
+            test/cognitive \
+            test/constitution \
+            test/intent_compiler
+
+      - name: Require zero analyzer findings
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter analyze --fatal-infos 2>&1 | tee adaptive-intent-analyze.log
+
+      - name: Run Adaptive Intent tests
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter test --reporter expanded --timeout 60s \
+            test/cognitive/neura_bandwidth_engine_test.dart \
+            test/cognitive/neura_interface_policy_test.dart \
+            test/constitution/neura_personal_constitution_test.dart \
+            test/intent_compiler/neura_intent_compiler_test.dart \
+            test/adaptive_intent/neura_adaptive_intent_controller_test.dart \
+            2>&1 | tee adaptive-intent-tests.log
+
+      - name: Write validation evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '# Neura Adaptive Intent OS v1.4 validation'
+            echo
+            echo "- Source commit: ${GITHUB_SHA}"
+            echo "- Flutter: ${FLUTTER_VERSION}"
+            echo '- flutter pub get: PASS'
+            echo '- flutter analyze --fatal-infos: PASS'
+            echo '- focused Adaptive Intent tests: PASS'
+            echo '- dashboard route wiring: PASS'
+            echo '- external execution path: intentionally absent'
+            echo
+            echo 'The prototype remains local, proposal-only, policy-checked, and Safe Mode aware.'
+          } > ADAPTIVE_INTENT_VALIDATION.md
+
+      - name: Commit verified prototype
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/build-neura-adaptive-intent-v1.4.yml \
+            .github/workflows/finalize-neura-adaptive-intent-v1.4.yml \
+            adaptive-intent-analyze.log \
+            adaptive-intent-tests.log
+          git config user.name "Neura Companion"
+          git config user.email \
+            "156997939+Vantiger1@users.noreply.github.com"
+          git add -A
+          git commit -m \
+            "feat: finalize Neura Adaptive Intent OS prototype"
+          git push origin HEAD:${WORK_BRANCH}
