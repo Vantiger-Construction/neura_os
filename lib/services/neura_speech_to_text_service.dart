@@ -61,12 +61,15 @@ class NeuraSpeechToTextService {
         break;
       case 'onFinal':
         final phrase = call.arguments as String? ?? '';
-        if (phrase.isNotEmpty) {
-          _finalText = _finalText.isEmpty ? phrase : '$_finalText $phrase';
+        final completedPhrase = phrase.trim();
+        if (completedPhrase.isNotEmpty) {
+          _finalText = _finalText.isEmpty
+              ? completedPhrase
+              : '$_finalText $completedPhrase';
         }
         _transcriptStream.add(_finalText);
-        if (phrase.trim().isNotEmpty) {
-          _finalPhraseStream.add(_finalText);
+        if (completedPhrase.isNotEmpty) {
+          _finalPhraseStream.add(completedPhrase);
         }
         break;
       case 'onStopped':
