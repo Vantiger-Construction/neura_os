@@ -88,10 +88,12 @@ class _MemoryScreenState extends State<MemoryScreen> {
   String _label(Map<String, dynamic> node) {
     final type = node['type'] as String? ?? '';
     final payload = node['payload'] as Map<String, dynamic>? ?? {};
-    if (type == 'ACTION:CHAT_MESSAGE')
+    if (type == 'ACTION:CHAT_MESSAGE') {
       return 'You said: ${payload['text'] ?? ''}';
-    if (type == 'SUGGESTION:CHAT_REPLY')
+    }
+    if (type == 'SUGGESTION:CHAT_REPLY') {
       return 'Neura said: ${payload['text'] ?? ''}';
+    }
     if (type == 'ACTION:THERAPY_REFLECTION') {
       return '${payload['promptTitle'] ?? 'Reflection'}: ${payload['text'] ?? ''}';
     }
@@ -101,8 +103,9 @@ class _MemoryScreenState extends State<MemoryScreen> {
   IconData _icon(String type) {
     if (type == 'ACTION:CHAT_MESSAGE') return Icons.person_outline;
     if (type == 'SUGGESTION:CHAT_REPLY') return Icons.smart_toy_outlined;
-    if (type == 'ACTION:THERAPY_REFLECTION')
+    if (type == 'ACTION:THERAPY_REFLECTION') {
       return Icons.self_improvement_outlined;
+    }
     return Icons.circle_outlined;
   }
 

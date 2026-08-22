@@ -116,11 +116,15 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     await WeeklySummaristService.instance.maybeGenerateOnAppOpen();
     if (!_optionalHooksAllowed) return;
     if (!NeuraNotificationsPrefsController
-        .instance.prefs.value.weeklyReviewReadyEnabled) return;
+        .instance.prefs.value.weeklyReviewReadyEnabled) {
+      return;
+    }
     final fresh = await WeeklySummaristService.instance.currentIfFresh();
     if (fresh == null) return;
     if (DateTime.now().difference(fresh.generatedAt) >
-        const Duration(minutes: 1)) return;
+        const Duration(minutes: 1)) {
+      return;
+    }
     if (!_optionalHooksAllowed) return;
     await NeuraNotificationsService.instance
         .showWeeklyReviewReadyNotification();
@@ -129,7 +133,9 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
   Future<void> _maybeNotifyLegacyOverdue() async {
     if (!_optionalHooksAllowed) return;
     if (!NeuraNotificationsPrefsController
-        .instance.prefs.value.legacyOverdueEnabled) return;
+        .instance.prefs.value.legacyOverdueEnabled) {
+      return;
+    }
     final overdue = await LegacyDeadmanService.instance.isOverdue();
     if (!overdue || !_optionalHooksAllowed) return;
     await NeuraNotificationsService.instance.showLegacyOverdueNotification();

@@ -27,10 +27,12 @@ class LottieAvatarView extends StatelessWidget {
     final s = controller.signals;
     if (s.isError && variants.containsKey('error')) return variants['error']!;
     if (s.isTalking && variants.containsKey('talk')) return variants['talk']!;
-    if (s.isListening && variants.containsKey('listen'))
+    if (s.isListening && variants.containsKey('listen')) {
       return variants['listen']!;
-    if (s.isThinking && variants.containsKey('think'))
+    }
+    if (s.isThinking && variants.containsKey('think')) {
       return variants['think']!;
+    }
     if (variants.containsKey('idle')) return variants['idle']!;
     return spec.assetPath;
   }

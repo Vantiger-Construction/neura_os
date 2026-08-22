@@ -45,8 +45,9 @@ class ConversationController extends ChangeNotifier {
 
   String send(String text) {
     final clean = text.trim();
-    if (clean.isEmpty)
+    if (clean.isEmpty) {
       throw ArgumentError.value(text, 'text', 'must not be empty');
+    }
     final id = link.sendUserText(clean);
     _messages.add(
         ConversationMessage(id: id, role: ConversationRole.user, text: clean));

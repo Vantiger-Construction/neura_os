@@ -183,18 +183,21 @@ class NeuraCoachEngine {
   }
 
   String _vibeLine({required double humor, required double direct}) {
-    if (humor > 0.75 && direct > 0.65)
+    if (humor > 0.75 && direct > 0.65) {
       return 'Neura says: Nice. Keep going, you magnificent chaos wizard.';
-    if (humor > 0.75)
+    }
+    if (humor > 0.75) {
       return 'Neura says: Proud of you. Also, your future self just high-fived you.';
+    }
     if (direct > 0.7) return 'Neura says: Good. Do that again tomorrow.';
     return 'Neura says: Well done. Small actions build big lives.';
   }
 
   String _nextNudge({required double humor, required double direct}) {
     if (direct > 0.75) return 'Next: choose one tiny follow-up. Then stop.';
-    if (humor > 0.6)
+    if (humor > 0.6) {
       return 'Next: one tiny follow-up. Then go be a human in the real world.';
+    }
     return 'Next: choose one tiny follow-up action.';
   }
 

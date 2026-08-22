@@ -24,11 +24,12 @@ class _DreamJournalCalendarScreenState
 
   Future<void> _load() async {
     final dreams = await DreamService.instance.loadDreams();
-    if (mounted)
+    if (mounted) {
       setState(() {
         _dreams = dreams;
         _loading = false;
       });
+    }
   }
 
   Map<int, List<DreamEntry>> get _byDay {
