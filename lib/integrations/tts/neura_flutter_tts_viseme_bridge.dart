@@ -17,7 +17,6 @@ class NeuraFlutterTtsVisemeBridge {
 
   static Future<void> attach(FlutterTts tts, {NeuraEventBus? bus}) async {
     if (_attached) return;
-    _attached = true;
 
     final b = bus ?? NeuraEventBus.I;
 
@@ -76,5 +75,9 @@ class NeuraFlutterTtsVisemeBridge {
         // Never throw from progress callback.
       }
     });
+
+    // Mark attached only after every callback registration has succeeded so a
+    // transient plugin failure can be retried later in this process.
+    _attached = true;
   }
 }
