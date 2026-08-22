@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/neura-adaptive-intent-os-v1.4
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -41,6 +42,7 @@ jobs:
           set -euo pipefail
           cat .ci/adaptive-intent-payload.part* \
             | base64 --decode > /tmp/adaptive-intent.tar.gz
+          echo "1996dbc3e23905e32cb10849ca0ec16ace019a4aa4c4fc9533dfc9a318eacb8d  /tmp/adaptive-intent.tar.gz" | sha256sum --check
           tar -xzf /tmp/adaptive-intent.tar.gz -C .
           rm -rf .ci/adaptive-intent-payload.part*
 
