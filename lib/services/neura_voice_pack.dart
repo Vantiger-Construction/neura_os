@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -69,41 +69,54 @@ class NeuraVoicePack {
 
   Future<void> init({bool enableMic = true}) async {
     if (_initialized || !audioAllowed) return;
-    _initialized = true;
     _ensurePlayer();
 
     if (enableMic) {
       await startMic();
     }
+    if (!audioAllowed) return;
+    _initialized = true;
   }
 
   Future<void> startMic() async {
     if (_micEnabled || !audioAllowed) return;
     final mic = _mic ??= _VoicePackMicDriver();
-    _micEnabled = true;
-    await mic.start();
-    if (!audioAllowed) {
-      _micEnabled = false;
-      await mic.stop();
-      return;
-    }
-    _micSub = mic.stream.listen((f) {
+    StreamSubscription? newSubscription;
+    try {
+      final started = await mic.start();
+      if (!started) return;
       if (!audioAllowed) {
-        unawaited(stopMic());
+        await mic.stop();
         return;
       }
-      // Mic only drives when no clip is playing
-      if (_playing) return;
-      _out.add(NeuraVoiceFrame(
-        talkLevel: f.talkLevel,
-        rest: f.rest,
-        aa: f.aa,
-        ee: f.ee,
-        oo: f.oo,
-        ff: f.ff,
-        mm: f.mm,
-      ));
-    });
+      newSubscription = mic.stream.listen((f) {
+        if (!audioAllowed) {
+          unawaited(stopMic().catchError((_) {}));
+          return;
+        }
+        // Mic only drives when no clip is playing
+        if (_playing) return;
+        _out.add(NeuraVoiceFrame(
+          talkLevel: f.talkLevel,
+          rest: f.rest,
+          aa: f.aa,
+          ee: f.ee,
+          oo: f.oo,
+          ff: f.ff,
+          mm: f.mm,
+        ));
+      });
+      _micSub = newSubscription;
+      _micEnabled = true;
+    } catch (_) {
+      _micEnabled = false;
+      await newSubscription?.cancel();
+      if (identical(_micSub, newSubscription)) _micSub = null;
+      try {
+        await mic.stop();
+      } catch (_) {}
+      rethrow;
+    }
   }
 
   Future<void> stopMic() async {
@@ -523,8 +536,8 @@ class _VoicePackMicDriver {
   _VoicePackMicDriver({NeuraMicVisemeEngine? engine})
       : engine = engine ?? NeuraMicVisemeEngine();
 
-  Future<void> start() async {
-    if (!await _recorder.hasPermission()) return;
+  Future<bool> start() async {
+    if (!await _recorder.hasPermission()) return false;
     final audioStream = await _recorder.startStream(
       const RecordConfig(
         encoder: AudioEncoder.pcm16bits,
@@ -538,6 +551,7 @@ class _VoicePackMicDriver {
           bytes.buffer, bytes.offsetInBytes, bytes.lengthInBytes ~/ 2);
       _out.add(engine.processPcm16(pcm));
     });
+    return true;
   }
 
   Future<void> stop() async {
