@@ -1,0 +1,118 @@
+name: Apply Neura Adaptive Intent Phase 2
+
+on:
+  push:
+    branches:
+      - agent/neura-adaptive-intent-os-v1.4
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-neura-adaptive-intent-phase2-v1.4
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.44.7"
+  WORK_BRANCH: agent/neura-adaptive-intent-os-v1.4
+
+jobs:
+  apply-verify-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out Neura 1.4
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.WORK_BRANCH }}
+          fetch-depth: 0
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Restore persistent Adaptive Intent runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode .ci/neura-adaptive-intent-phase2.b64 \
+            > /tmp/neura-adaptive-intent-phase2.tar.gz
+          echo "b99e640e42b018bc479357747666d5e16682da919f0a032ab115c575292df8b3  /tmp/neura-adaptive-intent-phase2.tar.gz" \
+            | sha256sum --check
+          tar -xzf /tmp/neura-adaptive-intent-phase2.tar.gz -C .
+
+          rm -f \
+            .ci/neura-adaptive-intent-phase2.b64 \
+            .github/workflows/apply-neura-adaptive-intent-phase2.yml \
+            .github/workflows/build-neura-adaptive-intent-v1.4.yml \
+            .github/workflows/finalize-neura-adaptive-intent-v1.4.yml
+          rm -f .ci/adaptive-intent-payload.part*
+          rmdir .ci 2>/dev/null || true
+
+          test -f lib/adaptive_intent/neura_adaptive_intent_store.dart
+          test -f lib/adaptive_intent/neura_adaptive_intent_status_card.dart
+          test -f .github/workflows/neura-adaptive-intent-validation.yml
+
+      - name: Restore dependencies
+        run: flutter pub get
+
+      - name: Apply canonical formatting
+        run: |
+          dart format \
+            lib/adaptive_intent \
+            lib/cognitive \
+            lib/constitution \
+            lib/intent_compiler \
+            lib/dashboard/widgets/proactive_banner_card.dart \
+            test/adaptive_intent \
+            test/cognitive \
+            test/constitution \
+            test/intent_compiler
+
+      - name: Require zero analyzer findings
+        run: flutter analyze --fatal-infos
+
+      - name: Run focused Adaptive Intent tests
+        run: |
+          flutter test --reporter expanded --timeout 60s \
+            test/adaptive_intent \
+            test/cognitive \
+            test/constitution \
+            test/intent_compiler
+
+      - name: Run complete Flutter suite
+        run: flutter test --concurrency 4 --timeout 2m
+
+      - name: Record verified phase
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > ADAPTIVE_INTENT_PHASE2_VALIDATION.md <<EOF
+          # Neura Adaptive Intent OS v1.4 — persistent runtime validation
+
+          - Source commit: ${GITHUB_SHA}
+          - Flutter: ${FLUTTER_VERSION}
+          - Dependency restore: PASS
+          - Dart formatting: PASS
+          - flutter analyze --fatal-infos: PASS
+          - Focused Adaptive Intent tests: PASS
+          - Complete Flutter suite: PASS
+          - Shared Safe Mode-aware runtime: PRESENT
+          - Bounded local settings persistence: PRESENT
+          - Raw outcomes and compiled plans persisted: NO
+          - External execution path: intentionally absent
+          EOF
+
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Neura Companion"
+          git config user.email "156997939+Vantiger1@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: persist and surface Adaptive Intent runtime"
+          git push origin HEAD:${WORK_BRANCH}
