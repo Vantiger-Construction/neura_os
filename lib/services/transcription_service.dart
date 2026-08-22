@@ -1,4 +1,5 @@
-﻿import 'dart:async';
+import 'dart:async';
+
 import 'package:speech_to_text/speech_to_text.dart';
 
 class TranscriptionService {
@@ -7,7 +8,11 @@ class TranscriptionService {
 
   Future<bool> _ensureInit() async {
     if (_initialized) return true;
-    _initialized = await _stt.initialize(onError: (_) {}, onStatus: (_) {});
+    try {
+      _initialized = await _stt.initialize(onError: (_) {}, onStatus: (_) {});
+    } catch (_) {
+      _initialized = false;
+    }
     return _initialized;
   }
 
@@ -16,18 +21,22 @@ class TranscriptionService {
   Future<String> transcribe(String audioPath) async {
     if (!await _ensureInit()) return '';
     final completer = Completer<String>();
-    await _stt.listen(
-      onResult: (r) {
-        if (r.finalResult && !completer.isCompleted) {
-          completer.complete(r.recognizedWords);
-        }
-      },
-      listenFor: const Duration(seconds: 30),
-      pauseFor: const Duration(seconds: 4),
-      localeId: 'en_US',
-    );
+    try {
+      await _stt.listen(
+        onResult: (r) {
+          if (r.finalResult && !completer.isCompleted) {
+            completer.complete(r.recognizedWords);
+          }
+        },
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 4),
+        localeId: 'en_US',
+      );
+    } catch (_) {
+      return '';
+    }
     return completer.future.timeout(const Duration(seconds: 35), onTimeout: () {
-      _stt.stop();
+      unawaited(_stt.stop().catchError((_) {}));
       return '';
     });
   }
@@ -40,23 +49,33 @@ class TranscriptionService {
   }) async {
     if (!await _ensureInit()) return '';
     final completer = Completer<String>();
-    await _stt.listen(
-      onResult: (r) {
-        onPartial?.call(r.recognizedWords);
-        if (r.finalResult && !completer.isCompleted) {
-          completer.complete(r.recognizedWords);
-        }
-      },
-      listenFor: listenFor,
-      pauseFor: pauseFor,
-      localeId: 'en_US',
-    );
-    return completer.future.timeout(listenFor + const Duration(seconds: 5),
-        onTimeout: () {
-      _stt.stop();
+    try {
+      await _stt.listen(
+        onResult: (r) {
+          onPartial?.call(r.recognizedWords);
+          if (r.finalResult && !completer.isCompleted) {
+            completer.complete(r.recognizedWords);
+          }
+        },
+        listenFor: listenFor,
+        pauseFor: pauseFor,
+        localeId: 'en_US',
+      );
+    } catch (_) {
       return '';
-    });
+    }
+    return completer.future.timeout(
+      listenFor + const Duration(seconds: 5),
+      onTimeout: () {
+        unawaited(_stt.stop().catchError((_) {}));
+        return '';
+      },
+    );
   }
 
-  Future<void> stop() => _stt.stop();
+  Future<void> stop() async {
+    try {
+      await _stt.stop();
+    } catch (_) {}
+  }
 }
