@@ -142,9 +142,11 @@ class WakeWordListenerService {
     if (!listeningAllowed) return;
     final turn = _handleMessage(text);
     _activeTurn = turn;
-    unawaited(turn.whenComplete(() {
-      if (identical(_activeTurn, turn)) _activeTurn = null;
-    }));
+    unawaited(
+      turn.whenComplete(() {
+        if (identical(_activeTurn, turn)) _activeTurn = null;
+      }).catchError((_) {}),
+    );
   }
 
   Future<void> _handleMessage(String text) async {
@@ -160,22 +162,19 @@ class WakeWordListenerService {
       )) {
         buffer.write(delta);
       }
-      if (generation != _dataGeneration) {
-        NeuraEventBus.I.emit(const NeuraThinkingEvent(false));
-        return;
-      }
+      if (generation != _dataGeneration) return;
+
       final reply = buffer.toString();
-      NeuraEventBus.I.emit(const NeuraThinkingEvent(false));
       unawaited(_remember(isUser: true, text: text));
       unawaited(_remember(isUser: false, text: reply));
 
       NeuraEventBus.I.emit(const NeuraTalkingEvent(true));
       await NeuraTtsService.instance.speak(reply);
-      NeuraEventBus.I.emit(const NeuraTalkingEvent(false));
     } catch (e, st) {
-      NeuraEventBus.I.emit(const NeuraThinkingEvent(false));
       await AppLog.instance.caught('wake_word_reply_failed', e, st);
     } finally {
+      NeuraEventBus.I.emit(const NeuraThinkingEvent(false));
+      NeuraEventBus.I.emit(const NeuraTalkingEvent(false));
       _busy = false;
     }
   }
@@ -200,6 +199,8 @@ class WakeWordListenerService {
   }
 
   void _onSafeModeChanged() {
-    if (!listeningAllowed) unawaited(stop());
+    if (!listeningAllowed) {
+      unawaited(stop().catchError((_) {}));
+    }
   }
 }
