@@ -48,7 +48,6 @@ class NeuraNotificationsService {
   Future<void> _initialize({bool allowInSafeMode = false}) async {
     if (!allowInSafeMode && !deliveryAllowed) return;
     if (_initialized) return;
-    _initialized = true;
     try {
       tz_data.initializeTimeZones();
       final plugin = _plugin ??= FlutterLocalNotificationsPlugin();
@@ -65,7 +64,9 @@ class NeuraNotificationsService {
       if (!allowInSafeMode && !deliveryAllowed && _available) {
         await plugin.cancelAll();
       }
+      _initialized = true;
     } catch (e, st) {
+      _initialized = false;
       _available = false;
       await AppLog.instance.caught('notifications_init_failed', e, st);
     }
@@ -194,6 +195,8 @@ class NeuraNotificationsService {
   }
 
   void _onSafeModeChanged() {
-    if (!deliveryAllowed) unawaited(cancelAll());
+    if (!deliveryAllowed) {
+      unawaited(cancelAll().catchError((_) {}));
+    }
   }
 }
