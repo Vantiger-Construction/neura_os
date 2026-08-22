@@ -201,6 +201,8 @@ class NeuraTtsService {
   }
 
   void _onSafeModeChanged() {
-    if (!playbackAllowed) unawaited(stop());
+    if (!playbackAllowed) {
+      unawaited(stop().catchError((_) {}));
+    }
   }
 }
