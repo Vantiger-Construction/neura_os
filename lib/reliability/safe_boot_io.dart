@@ -26,7 +26,6 @@ class SafeBoot {
 
   Future<void> beginBoot() async {
     if (_started) return;
-    _started = true;
     restartRequired.value = false;
     final support = await getApplicationSupportDirectory();
     final directory = Directory(
@@ -56,6 +55,7 @@ class SafeBoot {
     }
     safeMode.value = _preselectedForProcess || _consecutiveFailures >= 2;
     await _write(completed: false);
+    _started = true;
   }
 
   Future<void> completeBoot() async {

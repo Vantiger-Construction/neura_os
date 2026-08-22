@@ -52,7 +52,6 @@ class NeuraTtsService {
   Future<bool> _ensureInit() async {
     if (!playbackAllowed) return false;
     if (_initialized) return true;
-    _initialized = true;
     final tts = _tts ??= FlutterTts();
     await NeuraFlutterTtsVisemeBridge.attach(tts);
     // Without this, speak()'s Future resolves as soon as speech *starts*,
@@ -69,6 +68,7 @@ class NeuraTtsService {
       await tts.stop();
       return false;
     }
+    _initialized = true;
     return true;
   }
 
