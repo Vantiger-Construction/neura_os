@@ -1,0 +1,82 @@
+name: Build Neura Adaptive Intent OS 1.4
+
+on:
+  push:
+    branches:
+      - agent/neura-adaptive-intent-os-v1.4
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-neura-adaptive-intent-v1.4
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: "3.44.7"
+  WORK_BRANCH: agent/neura-adaptive-intent-os-v1.4
+
+jobs:
+  build-format-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out research branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.WORK_BRANCH }}
+          fetch-depth: 0
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Restore Adaptive Intent payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .ci/adaptive-intent-payload.part* \
+            | base64 --decode > /tmp/adaptive-intent.tar.gz
+          tar -xzf /tmp/adaptive-intent.tar.gz -C .
+          rm -rf .ci/adaptive-intent-payload.part*
+
+      - name: Integrate Adaptive Intent with Neura surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .ci/integrate_adaptive_intent.py
+          rm -f .ci/integrate_adaptive_intent.py
+          rmdir .ci 2>/dev/null || true
+
+      - name: Apply canonical Dart formatting
+        run: |
+          dart format \
+            lib/adaptive_intent \
+            test/adaptive_intent \
+            lib/dashboard/widgets/proactive_banner_card.dart \
+            lib/modules/navigation/enhanced_navigation.dart \
+            lib/intelligence/intelligence.dart
+
+      - name: Require zero analyzer findings
+        run: flutter analyze --fatal-infos
+
+      - name: Run focused Adaptive Intent tests
+        run: flutter test --no-pub --reporter expanded --timeout 60s test/adaptive_intent
+
+      - name: Run complete Flutter suite
+        run: flutter test --no-pub --concurrency 4 --timeout 2m
+
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/build-neura-adaptive-intent-v1.4.yml
+          git config user.name "Neura Companion"
+          git config user.email "156997939+Vantiger1@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: build Neura Adaptive Intent OS prototype"
+          git push origin HEAD:${WORK_BRANCH}
