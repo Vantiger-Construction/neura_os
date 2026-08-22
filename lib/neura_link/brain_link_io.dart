@@ -22,6 +22,7 @@ class BrainLink {
   WebSocket? _socket;
   Timer? _retry;
   bool _running = false;
+  bool _disposed = false;
   int _attempt = 0;
   String? _lastRoom;
 
@@ -30,13 +31,16 @@ class BrainLink {
   bool get isConnected => _socket?.readyState == WebSocket.open;
 
   void start() {
+    if (_disposed) {
+      throw StateError('A disposed Neura brain link cannot be restarted.');
+    }
     if (_running) return;
     _running = true;
-    _connect();
+    unawaited(_connect());
   }
 
   Future<void> _connect() async {
-    if (!_running) return;
+    if (!_running || _disposed) return;
     _states.add(
       _attempt == 0
           ? BrainConnectionState.connecting
@@ -46,7 +50,7 @@ class BrainLink {
       final socket = await WebSocket.connect(
         url,
       ).timeout(const Duration(seconds: 8));
-      if (!_running) {
+      if (!_running || _disposed) {
         await socket.close();
         return;
       }
@@ -67,6 +71,7 @@ class BrainLink {
   }
 
   void _receive(dynamic frame) {
+    if (_disposed) return;
     try {
       final decoded = jsonDecode(
         frame is String ? frame : String.fromCharCodes(frame as List<int>),
@@ -85,22 +90,35 @@ class BrainLink {
   void _disconnected(WebSocket socket) {
     if (!identical(_socket, socket)) return;
     _socket = null;
-    if (_running) _scheduleReconnect();
+    if (_running && !_disposed) _scheduleReconnect();
   }
 
   void _scheduleReconnect() {
-    if (!_running || _retry?.isActive == true) return;
+    if (!_running || _disposed || _retry?.isActive == true) return;
     _states.add(BrainConnectionState.reconnecting);
     final seconds = min(maxBackoff.inSeconds, 1 << min(_attempt++, 5));
-    _retry = Timer(Duration(seconds: seconds), _connect);
+    _retry = Timer(Duration(seconds: seconds), () {
+      _retry = null;
+      unawaited(_connect());
+    });
   }
 
   bool send(String kind, Map<String, dynamic> data, {String? id}) {
-    if (!isConnected) return false;
-    _socket!.add(
-      Envelope(kind: kind, id: id ?? _newId(), data: data).encode(),
-    );
-    return true;
+    final socket = _socket;
+    if (_disposed ||
+        socket == null ||
+        socket.readyState != WebSocket.open) {
+      return false;
+    }
+    try {
+      socket.add(
+        Envelope(kind: kind, id: id ?? _newId(), data: data).encode(),
+      );
+      return true;
+    } catch (_) {
+      _disconnected(socket);
+      return false;
+    }
   }
 
   String sendUserText(String text) {
@@ -122,10 +140,19 @@ class BrainLink {
       '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 32)}';
 
   Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
     _running = false;
     _retry?.cancel();
-    await _socket?.close(WebSocketStatus.normalClosure, 'client shutdown');
-    await _events.close();
-    await _states.close();
+    _retry = null;
+    final socket = _socket;
+    _socket = null;
+    if (!_states.isClosed) _states.add(BrainConnectionState.stopped);
+    try {
+      await socket?.close(WebSocketStatus.normalClosure, 'client shutdown');
+    } finally {
+      await _events.close();
+      await _states.close();
+    }
   }
 }

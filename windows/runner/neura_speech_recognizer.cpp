@@ -86,6 +86,12 @@ winrt::Windows::Foundation::IAsyncAction NeuraSpeechRecognizer::EnsureInitialize
 
   completed_token_ = recognizer_.ContinuousRecognitionSession().Completed(
       [this](auto&&, SpeechContinuousRecognitionCompletedEventArgs const&) {
+        // StopListening also has a fallback notification for native stop
+        // failures. Suppress a duplicate callback if that fallback already
+        // completed the Dart-side stop request.
+        if (!listening_) {
+          return;
+        }
         listening_ = false;
         channel_->InvokeMethod("onStopped", nullptr);
       });
@@ -123,15 +129,24 @@ winrt::Windows::Foundation::IAsyncAction NeuraSpeechRecognizer::StartListening()
 
 winrt::Windows::Foundation::IAsyncAction NeuraSpeechRecognizer::StopListening() {
   if (!initialized_ || !listening_) {
+    // Dart may ask to stop while native initialization is failing or while a
+    // previous native completion is still propagating. Always acknowledge
+    // the request so the shared recognizer cannot leave callers hung.
+    channel_->InvokeMethod("onStopped", nullptr);
     co_return;
   }
 
   try {
     co_await recognizer_.ContinuousRecognitionSession().StopAsync();
   } catch (...) {
-    // Best-effort stop; nothing actionable if this fails.
+    // The completion event is not guaranteed after a failed StopAsync. The
+    // fallback below still releases Dart callers and marks this session off.
   }
-  listening_ = false;
+
+  if (listening_) {
+    listening_ = false;
+    channel_->InvokeMethod("onStopped", nullptr);
+  }
 }
 
-#endif  // WINAPI_FAMILY_DESKTOP_APP
+#endif  // WINAPI_FAMILY == WINAPI_FAMILY_DESKTOP_APP

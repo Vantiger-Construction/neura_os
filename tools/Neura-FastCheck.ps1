@@ -122,9 +122,14 @@ try {
 
     if (-not $SkipTests) {
         Invoke-Checked 'startup state matrix' {
-            flutter test --no-pub `
+            flutter test --no-pub --timeout 60s `
                 test/startup/startup_platform_policy_test.dart `
-                test/startup/neura_error_pipeline_test.dart `
+                test/startup/native_speech_safe_mode_test.dart `
+                test/startup/neura_error_pipeline_test.dart
+        }
+
+        Invoke-Checked 'recovery boundary test' {
+            flutter test --no-pub --timeout 30s `
                 test/startup/neura_error_boundary_test.dart
         }
 

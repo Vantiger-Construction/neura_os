@@ -44,14 +44,21 @@ jobs:
       - name: Analyze startup state code
         run: flutter analyze --no-fatal-warnings --no-fatal-infos
 
-      - name: Test all startup and recovery states
+      - name: Test startup, platform, and Safe Mode states
         shell: bash
         run: |
           set -euo pipefail
-          timeout 240s flutter test --reporter expanded \
+          flutter test --reporter expanded --timeout 60s \
             test/startup/startup_platform_policy_test.dart \
-            test/startup/neura_error_pipeline_test.dart \
-            test/startup/neura_error_boundary_test.dart 2>&1 | tee state-matrix.log
+            test/startup/native_speech_safe_mode_test.dart \
+            test/startup/neura_error_pipeline_test.dart 2>&1 | tee state-matrix.log
+
+      - name: Test recovery boundary in isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter test --reporter expanded --timeout 30s \
+            test/startup/neura_error_boundary_test.dart 2>&1 | tee -a state-matrix.log
 
       - name: Upload state matrix evidence
         if: always()
