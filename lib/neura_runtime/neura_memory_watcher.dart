@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'neura_bus.dart';
 import 'neura_room_memory.dart';
@@ -13,41 +14,54 @@ class NeuraMemoryWatcher {
 
   Future<void> start() async {
     if (_started) return;
-    _started = true;
 
     await NeuraRoomMemory.I.load();
 
-    _sub = NeuraBus.I.stream.listen((e) async {
-      final room = e.room ?? NeuraBus.I.currentRoom;
-      switch (e.type) {
+    _sub = NeuraBus.I.stream.listen((event) {
+      unawaited(_handleEvent(event));
+    });
+    _started = true;
+  }
+
+  Future<void> _handleEvent(NeuraEvent event) async {
+    try {
+      final room = event.room ?? NeuraBus.I.currentRoom;
+      switch (event.type) {
         case NeuraEventType.error:
           await NeuraRoomMemory.I.remember(
             room: room,
             tag: 'error',
-            summary: (e.message ?? 'Error occurred'),
-            data: e.data,
+            summary: (event.message ?? 'Error occurred'),
+            data: event.data,
           );
           break;
         case NeuraEventType.success:
           await NeuraRoomMemory.I.remember(
             room: room,
             tag: 'success',
-            summary: (e.message ?? 'Success'),
-            data: e.data,
+            summary: (event.message ?? 'Success'),
+            data: event.data,
           );
           break;
         case NeuraEventType.prompt:
           await NeuraRoomMemory.I.remember(
             room: room,
             tag: 'prompt',
-            summary: (e.message ?? 'Prompt'),
-            data: e.data,
+            summary: (event.message ?? 'Prompt'),
+            data: event.data,
           );
           break;
         default:
           break;
       }
-    });
+    } catch (error, stackTrace) {
+      developer.log(
+        'Neura memory watcher event failed',
+        name: 'neura.memory',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   Future<void> stop() async {
