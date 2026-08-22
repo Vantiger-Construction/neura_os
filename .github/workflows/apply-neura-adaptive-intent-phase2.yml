@@ -27,13 +27,6 @@ jobs:
           ref: ${{ env.WORK_BRANCH }}
           fetch-depth: 0
 
-      - name: Install Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-
       - name: Restore persistent Adaptive Intent runtime
         shell: bash
         run: |
@@ -55,6 +48,24 @@ jobs:
           test -f lib/adaptive_intent/neura_adaptive_intent_store.dart
           test -f lib/adaptive_intent/neura_adaptive_intent_status_card.dart
           test -f .github/workflows/neura-adaptive-intent-validation.yml
+
+      - name: Publish inspectable source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Neura Companion"
+          git config user.email "156997939+Vantiger1@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: stage persistent Adaptive Intent runtime"
+          git push origin HEAD:${WORK_BRANCH}
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
 
       - name: Restore dependencies
         run: flutter pub get
@@ -110,9 +121,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "Neura Companion"
-          git config user.email "156997939+Vantiger1@users.noreply.github.com"
           git add -A
+          if git diff --cached --quiet; then
+            echo "No formatter or validation evidence changes found."
+            exit 1
+          fi
           git diff --cached --check
-          git commit -m "feat: persist and surface Adaptive Intent runtime"
+          git commit -m "test: verify persistent Adaptive Intent runtime"
           git push origin HEAD:${WORK_BRANCH}
