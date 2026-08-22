@@ -82,10 +82,22 @@ jobs:
               ),
             ),
           """
-          tile_anchor = """            _Tile(
-              icon: Icons.favorite_border,
-              title: 'Mood Check‑In',
-          """
+          # ASCII-only anchor: the real title text is "Mood Check‑In"
+          # (note: a Unicode non-breaking hyphen U+2011, not a plain '-').
+          # Embedding that character directly in this inline heredoc script
+          # made the anchor fragile -- on at least one run this exact,
+          # byte-for-byte-verified-present string still failed to match,
+          # almost certainly because python3 invoked via `python3 - <<'PY'`
+          # decodes its own stdin source using the runner's locale rather
+          # than a guaranteed UTF-8 default, unlike source read from a .py
+          # file on disk. Matching only the ASCII-safe prefix below (cutting
+          # off right before the special hyphen) sidesteps that class of
+          # failure entirely while still finding the same, unique tile.
+          tile_anchor = (
+              "            _Tile(\n"
+              "              icon: Icons.favorite_border,\n"
+              "              title: 'Mood Check"
+          )
           if "title: 'Adaptive Intent'" not in navigation_text:
               if tile_anchor not in navigation_text:
                   raise SystemExit('Dashboard tile anchor was not found.')
