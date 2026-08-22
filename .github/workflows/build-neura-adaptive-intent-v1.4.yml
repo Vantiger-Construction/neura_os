@@ -50,6 +50,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ -f intelligence.dart ]]; then
+            mv intelligence.dart lib/intelligence/intelligence.dart
+          fi
+          rm -f .github/workflows/apply-neura-adaptive-intent-v1.4.yml
           python3 .ci/integrate_adaptive_intent.py
           python3 - <<'PY'
           from pathlib import Path
@@ -69,14 +73,18 @@ jobs:
               Path('lib/adaptive_intent/neura_intent_compiler.dart'),
               Path('lib/adaptive_intent/neura_personal_constitution.dart'),
               Path('lib/adaptive_intent/adaptive_intent_screen.dart'),
+              Path('lib/intelligence/intelligence.dart'),
               Path('test/adaptive_intent/neura_bandwidth_engine_test.dart'),
               Path('test/adaptive_intent/neura_intent_compiler_test.dart'),
           ]
           missing = [str(path) for path in required if not path.is_file()]
           if missing:
               raise SystemExit(f'Missing Adaptive Intent source files: {missing}')
+          if Path('intelligence.dart').exists():
+              raise SystemExit('Root-level Intelligence barrel was not relocated.')
           PY
           rm -f .ci/integrate_adaptive_intent.py
+          rm -rf .ci/__pycache__
           rmdir .ci 2>/dev/null || true
 
       - name: Apply canonical Dart formatting
