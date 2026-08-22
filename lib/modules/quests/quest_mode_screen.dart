@@ -254,10 +254,12 @@ class _QuestModeScreenState extends State<QuestModeScreen> {
                       },
                       trailing: PopupMenuButton<String>(
                         onSelected: (v) async {
-                          if (v == 'archive')
+                          if (v == 'archive') {
                             await QuestStore.instance.toggleArchived(q.id);
-                          if (v == 'delete')
+                          }
+                          if (v == 'delete') {
                             await QuestStore.instance.deleteQuest(q.id);
+                          }
                           await _load();
                         },
                         itemBuilder: (ctx) => const [
@@ -283,10 +285,12 @@ class _QuestModeScreenState extends State<QuestModeScreen> {
                             const Text('Tap menu to unarchive or delete.'),
                         trailing: PopupMenuButton<String>(
                           onSelected: (v) async {
-                            if (v == 'unarchive')
+                            if (v == 'unarchive') {
                               await QuestStore.instance.toggleArchived(q.id);
-                            if (v == 'delete')
+                            }
+                            if (v == 'delete') {
                               await QuestStore.instance.deleteQuest(q.id);
+                            }
                             await _load();
                           },
                           itemBuilder: (ctx) => const [

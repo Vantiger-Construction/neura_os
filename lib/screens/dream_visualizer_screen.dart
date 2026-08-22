@@ -21,11 +21,12 @@ class _DreamVisualizerScreenState extends State<DreamVisualizerScreen> {
 
   Future<void> _load() async {
     final dreams = await DreamService.instance.loadDreams();
-    if (mounted)
+    if (mounted) {
       setState(() {
         _dreams = dreams;
         _loading = false;
       });
+    }
   }
 
   static String _fmtDate(DateTime d) {
