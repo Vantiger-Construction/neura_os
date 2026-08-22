@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: build-neura-adaptive-intent-v1.4
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   FLUTTER_VERSION: "3.44.7"
@@ -51,6 +51,31 @@ jobs:
         run: |
           set -euo pipefail
           python3 .ci/integrate_adaptive_intent.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          test_path = Path('test/adaptive_intent/neura_intent_compiler_test.dart')
+          text = test_path.read_text()
+          invalid = "goal: '  Help me   plan\nthis week  ',"
+          valid = r"goal: '  Help me   plan\nthis week  ',"
+          if invalid in text:
+              text = text.replace(invalid, valid, 1)
+          if invalid in text:
+              raise SystemExit('Multiline single-quoted goal fixture remains invalid.')
+          test_path.write_text(text)
+
+          required = [
+              Path('lib/adaptive_intent/neura_bandwidth_engine.dart'),
+              Path('lib/adaptive_intent/neura_intent_compiler.dart'),
+              Path('lib/adaptive_intent/neura_personal_constitution.dart'),
+              Path('lib/adaptive_intent/adaptive_intent_screen.dart'),
+              Path('test/adaptive_intent/neura_bandwidth_engine_test.dart'),
+              Path('test/adaptive_intent/neura_intent_compiler_test.dart'),
+          ]
+          missing = [str(path) for path in required if not path.is_file()]
+          if missing:
+              raise SystemExit(f'Missing Adaptive Intent source files: {missing}')
+          PY
           rm -f .ci/integrate_adaptive_intent.py
           rmdir .ci 2>/dev/null || true
 
