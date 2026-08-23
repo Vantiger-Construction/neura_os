@@ -201,7 +201,7 @@ jobs:
               ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) {
                 $matches += Get-ChildItem -Path (
                   Join-Path $programRoot (
-                    "Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*" +
+                    "Microsoft Visual Studio\*\*\VC\Redist\MSVC\*" +
                     "\x64\Microsoft.VC*.CRT\$runtimeName"
                   )
                 ) -File -ErrorAction SilentlyContinue
