@@ -1,8 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../cognitive/neura_cognitive_state.dart';
 import '../intent_compiler/neura_action_graph.dart';
-import '../reliability/safe_boot.dart';
 import 'neura_adaptive_intent_controller.dart';
 
 class NeuraAdaptiveIntentScreen extends StatefulWidget {
@@ -15,31 +16,44 @@ class NeuraAdaptiveIntentScreen extends StatefulWidget {
 
 class _NeuraAdaptiveIntentScreenState
     extends State<NeuraAdaptiveIntentScreen> {
-  late final NeuraAdaptiveIntentController _controller;
+  final _controller = NeuraAdaptiveIntentController.instance;
   late final TextEditingController _outcomeController;
+  bool _loading = true;
+  Object? _initializationError;
 
   @override
   void initState() {
     super.initState();
-    _controller = NeuraAdaptiveIntentController(
-      safeMode: SafeBoot.instance.safeMode.value,
-    );
     _outcomeController = TextEditingController(
       text: 'Help me organize this week without overwhelming me.',
     );
-    SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
+    unawaited(_initialize());
   }
 
   @override
   void dispose() {
-    SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
     _outcomeController.dispose();
-    _controller.dispose();
     super.dispose();
   }
 
-  void _onSafeModeChanged() {
-    _controller.setSafeMode(SafeBoot.instance.safeMode.value);
+  Future<void> _initialize() async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _initializationError = null;
+      });
+    }
+    try {
+      await _controller.initialize();
+      if (!mounted) return;
+      setState(() => _loading = false);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _initializationError = error;
+      });
+    }
   }
 
   void _compile() {
@@ -50,11 +64,91 @@ class _NeuraAdaptiveIntentScreenState
       );
       return;
     }
-    _controller.compileOutcome(outcome);
+    try {
+      _controller.compileOutcome(outcome);
+    } on StateError {
+      unawaited(_initialize());
+    } on FormatException {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('That outcome could not be compiled safely.'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _confirmReset() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset Adaptive Intent?'),
+        content: const Text(
+          'This restores the local capacity signals and personal constitution '
+          'to their defaults. Compiled goal text is never saved.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _controller.resetPersistedState();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Adaptive Intent settings could not be reset.'),
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Adaptive Intent OS')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final initializationError = _initializationError;
+    if (initializationError != null && !_controller.initialized) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Adaptive Intent OS')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.sync_problem_outlined, size: 42),
+                const SizedBox(height: 12),
+                const Text(
+                  'Adaptive Intent could not load its local settings.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () => unawaited(_initialize()),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
@@ -69,11 +163,29 @@ class _NeuraAdaptiveIntentScreenState
                     _controller.plan == null ? null : _controller.clearPlan,
                 icon: const Icon(Icons.restart_alt),
               ),
+              IconButton(
+                tooltip: 'Reset local Adaptive Intent settings',
+                onPressed: () => unawaited(_confirmReset()),
+                icon: const Icon(Icons.settings_backup_restore),
+              ),
             ],
           ),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              if (_controller.lastPersistenceError != null) ...[
+                const Card(
+                  child: ListTile(
+                    leading: Icon(Icons.save_outlined),
+                    title: Text('Settings are not saved yet'),
+                    subtitle: Text(
+                      'The current session still works. Neura will retry after '
+                      'the next change.',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               _StateCard(controller: _controller),
               const SizedBox(height: 12),
               _SignalCard(controller: _controller),
@@ -99,9 +211,9 @@ class _NeuraAdaptiveIntentScreenState
 }
 
 class _StateCard extends StatelessWidget {
-  final NeuraAdaptiveIntentController controller;
-
   const _StateCard({required this.controller});
+
+  final NeuraAdaptiveIntentController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -170,9 +282,9 @@ class _StateCard extends StatelessWidget {
 }
 
 class _SignalCard extends StatelessWidget {
-  final NeuraAdaptiveIntentController controller;
-
   const _SignalCard({required this.controller});
+
+  final NeuraAdaptiveIntentController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -231,9 +343,9 @@ class _SignalCard extends StatelessWidget {
 }
 
 class _ConstitutionCard extends StatelessWidget {
-  final NeuraAdaptiveIntentController controller;
-
   const _ConstitutionCard({required this.controller});
+
+  final NeuraAdaptiveIntentController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -243,6 +355,7 @@ class _ConstitutionCard extends StatelessWidget {
         leading: const Icon(Icons.gavel_outlined),
         title: const Text('Personal constitution'),
         subtitle: const Text('Machine-enforced boundaries for every plan'),
+        childrenPadding: const EdgeInsets.only(bottom: 12),
         children: [
           SwitchListTile(
             title: const Text('Allow cloud AI steps'),
@@ -256,13 +369,20 @@ class _ConstitutionCard extends StatelessWidget {
           ),
           SwitchListTile(
             title: const Text('Allow external messages'),
-            subtitle: const Text('Preview is always required by default'),
+            subtitle: const Text('A preview remains required by default'),
             value: constitution.allowExternalMessages,
             onChanged: controller.safeMode
                 ? null
                 : (value) => controller.updateConstitution(
                       constitution.copyWith(allowExternalMessages: value),
                     ),
+          ),
+          SwitchListTile(
+            title: const Text('Require external preview'),
+            value: constitution.requireExternalPreview,
+            onChanged: (value) => controller.updateConstitution(
+              constitution.copyWith(requireExternalPreview: value),
+            ),
           ),
           SwitchListTile(
             title: const Text('Allow purchases'),
@@ -290,22 +410,83 @@ class _ConstitutionCard extends StatelessWidget {
                       constitution.copyWith(allowCalendarWrites: value),
                     ),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _HourPicker(
+                    label: 'Work starts',
+                    value: constitution.workHoursStart,
+                    onChanged: (value) => controller.updateConstitution(
+                      constitution.copyWith(workHoursStart: value),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _HourPicker(
+                    label: 'Work ends',
+                    value: constitution.workHoursEnd,
+                    onChanged: (value) => controller.updateConstitution(
+                      constitution.copyWith(workHoursEnd: value),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _IntentCard extends StatelessWidget {
-  final TextEditingController outcomeController;
-  final VoidCallback onCompile;
-  final NeuraBandwidthMode mode;
+class _HourPicker extends StatelessWidget {
+  const _HourPicker({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
 
+  final String label;
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return InputDecorator(
+      decoration: InputDecoration(labelText: label),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<int>(
+          isExpanded: true,
+          value: value.clamp(0, 23).toInt(),
+          items: [
+            for (var hour = 0; hour < 24; hour += 1)
+              DropdownMenuItem(
+                value: hour,
+                child: Text('${hour.toString().padLeft(2, '0')}:00'),
+              ),
+          ],
+          onChanged: (value) {
+            if (value != null) onChanged(value);
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _IntentCard extends StatelessWidget {
   const _IntentCard({
     required this.outcomeController,
     required this.onCompile,
     required this.mode,
   });
+
+  final TextEditingController outcomeController;
+  final VoidCallback onCompile;
+  final NeuraBandwidthMode mode;
 
   @override
   Widget build(BuildContext context) {
@@ -350,9 +531,9 @@ class _IntentCard extends StatelessWidget {
 }
 
 class _PlanCard extends StatelessWidget {
-  final NeuraActionGraph graph;
-
   const _PlanCard({required this.graph});
+
+  final NeuraActionGraph graph;
 
   @override
   Widget build(BuildContext context) {
@@ -412,9 +593,9 @@ class _PlanCard extends StatelessWidget {
 }
 
 class _StepTile extends StatelessWidget {
-  final NeuraActionStep step;
-
   const _StepTile({required this.step});
+
+  final NeuraActionStep step;
 
   @override
   Widget build(BuildContext context) {
@@ -474,15 +655,15 @@ class _StepTile extends StatelessWidget {
 }
 
 class _SignalSlider extends StatelessWidget {
-  final String label;
-  final double value;
-  final ValueChanged<double> onChanged;
-
   const _SignalSlider({
     required this.label,
     required this.value,
     required this.onChanged,
   });
+
+  final String label;
+  final double value;
+  final ValueChanged<double> onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -510,10 +691,10 @@ class _SignalSlider extends StatelessWidget {
 }
 
 class _MetricBar extends StatelessWidget {
+  const _MetricBar({required this.label, required this.value});
+
   final String label;
   final double value;
-
-  const _MetricBar({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
