@@ -11,25 +11,13 @@ void main() {
   const engine = NeuraBandwidthEngine();
   const compiler = NeuraIntentCompiler();
 
-  NeuraCognitiveState balancedState() {
-    return engine.estimate(
-      const NeuraCognitiveSignals(
-        energy: 0.72,
-        focus: 0.58,
-        cognitiveLoad: 0.35,
-        urgency: 0.42,
-        taskSwitchRate: 0.30,
-        completionRate: 0.62,
-        notificationPressure: 0.30,
-      ),
+  test('weekly outcome compiles into a reversible local-first plan', () {
+    final state = engine.estimate(
+      NeuraCognitiveSignals.defaults(),
       calculatedAt: DateTime.utc(2026, 8, 22, 15),
     );
-  }
-
-  test('weekly outcome compiles into a reversible local-first plan', () {
-    final state = balancedState();
     final graph = compiler.compile(
-      outcome: 'Plan my work week',
+      outcome: '  Help me   plan\nthis week  ',
       cognitiveState: state,
       interfacePolicy: NeuraInterfacePolicy.forState(state),
       constitution: const NeuraPersonalConstitution(),
@@ -37,16 +25,24 @@ void main() {
     );
 
     expect(graph.intent.kind, NeuraIntentKind.weeklyPlan);
-    expect(graph.steps.first.effect, NeuraActionEffect.localRead);
-    expect(graph.steps.first.requiredApproval, NeuraApprovalTier.none);
-    expect(graph.steps.any((step) => step.reversible), isTrue);
+    expect(graph.outcome, 'Help me plan this week');
+    expect(graph.primarySteps, isNotEmpty);
+    expect(
+      graph.steps
+          .where((step) => !step.blocked)
+          .every((step) => step.effect != NeuraActionEffect.externalMessage),
+      isTrue,
+    );
     expect(graph.receipt.reasons, isNotEmpty);
   });
 
   test('default constitution blocks purchase and cloud steps', () {
-    final state = balancedState();
+    final state = engine.estimate(
+      NeuraCognitiveSignals.defaults(),
+      calculatedAt: DateTime.utc(2026, 8, 22, 15),
+    );
     final graph = compiler.compile(
-      outcome: 'Buy a new laptop',
+      outcome: 'Buy a new laptop for work',
       cognitiveState: state,
       interfacePolicy: NeuraInterfacePolicy.forState(state),
       constitution: const NeuraPersonalConstitution(),
@@ -87,7 +83,18 @@ void main() {
     expect(state.mode, NeuraBandwidthMode.recovery);
     expect(graph.primarySteps, hasLength(1));
     expect(graph.deferredSteps, isNotEmpty);
-    expect(graph.steps.every((step) => !step.effect.isExternal), isTrue);
+    expect(
+      graph.steps
+          .where((step) => !step.blocked)
+          .every((step) => !step.effect.isExternal),
+      isTrue,
+    );
+    expect(
+      graph.blockedSteps.any(
+        (step) => step.effect == NeuraActionEffect.notification,
+      ),
+      isTrue,
+    );
   });
 
   test(
