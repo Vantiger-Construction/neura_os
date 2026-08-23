@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: neura-adaptive-intent-v1.4-${{ github.event.pull_request.number || github.ref }}
@@ -35,57 +35,8 @@ concurrency:
 
 env:
   FLUTTER_VERSION: "3.44.7"
-  INTEGRATION_BRANCH: agent/neura-adaptive-intent-phase4-integration
 
 jobs:
-  format-clean-integration:
-    name: Format clean integration once
-    if: >-
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/agent/neura-adaptive-intent-phase4-integration' &&
-      github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Check out integration branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.INTEGRATION_BRANCH }}
-          fetch-depth: 0
-
-      - name: Install Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-
-      - name: Restore package language settings
-        run: flutter pub get
-
-      - name: Apply exact package-mode formatting
-        run: |
-          dart format \
-            test/adaptive_intent/neura_adaptive_intent_preferences_test.dart
-
-      - name: Commit formatted test source
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "Neura Companion"
-          git config user.email \
-            "156997939+Vantiger1@users.noreply.github.com"
-          git add \
-            test/adaptive_intent/neura_adaptive_intent_preferences_test.dart
-          if git diff --cached --quiet; then
-            echo "The wipe-race regression is already canonically formatted."
-            exit 0
-          fi
-          git commit -m \
-            "style(adaptive-intent): format wipe-race regression"
-          git push origin HEAD:${INTEGRATION_BRANCH}
-
   validate:
     name: Analyze and test Adaptive Intent
     runs-on: ubuntu-latest
@@ -106,7 +57,9 @@ jobs:
         run: flutter pub get
 
       - name: Require canonical formatting
+        shell: bash
         run: |
+          set +e
           dart format --output=none --set-exit-if-changed \
             lib/adaptive_intent \
             lib/cognitive \
@@ -119,6 +72,15 @@ jobs:
             test/cognitive \
             test/constitution \
             test/intent_compiler
+          status=$?
+          if [[ $status -ne 0 ]]; then
+            dart format \
+              test/adaptive_intent/neura_adaptive_intent_preferences_test.dart
+            echo "Exact package-mode formatter patch:"
+            git diff -- \
+              test/adaptive_intent/neura_adaptive_intent_preferences_test.dart
+          fi
+          exit $status
 
       - name: Require zero analyzer findings
         run: flutter analyze --fatal-infos
