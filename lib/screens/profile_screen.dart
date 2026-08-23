@@ -54,9 +54,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final user = AuthService.currentUser;
-    final initial = user?.email?.isNotEmpty == true
-        ? user!.email![0].toUpperCase()
-        : '?';
+    final initial =
+        user?.email?.isNotEmpty == true ? user!.email![0].toUpperCase() : '?';
     final cloudAvailable = AuthService.isAvailable;
 
     return Scaffold(
@@ -108,9 +107,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _updating || !cloudAvailable || user == null
-                  ? null
-                  : _save,
+              onPressed:
+                  _updating || !cloudAvailable || user == null ? null : _save,
               child: _updating
                   ? const SizedBox(
                       width: 16,
