@@ -28,9 +28,9 @@ class TranscriptionService {
             completer.complete(r.recognizedWords);
           }
         },
-        listenOptions: const SpeechListenOptions(
-          listenFor: Duration(seconds: 30),
-          pauseFor: Duration(seconds: 4),
+        listenOptions: SpeechListenOptions(
+          listenFor: const Duration(seconds: 30),
+          pauseFor: const Duration(seconds: 4),
           localeId: 'en_US',
         ),
       );
