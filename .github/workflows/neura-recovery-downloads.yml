@@ -22,15 +22,15 @@ concurrency:
 
 env:
   FLUTTER_VERSION: "3.44.7"
-  PHASE4_BRANCH: agent/neura-adaptive-intent-phase4-integration
 
 jobs:
   verify:
     name: Analyze and test
     runs-on: ubuntu-latest
     timeout-minutes: 45
+
     steps:
-      - name: Check out the recovery branch
+      - name: Check out source
         uses: actions/checkout@v4
 
       - name: Announce Phase 4 package validation
@@ -42,8 +42,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh pr comment 43 --body \
-            "Windows and Android package validation started: run ${GITHUB_RUN_ID} on ${GITHUB_SHA}."
+          gh pr comment 43 \
+            --repo Vantiger-Construction/neura_os \
+            --body "Windows and Android package validation started: run ${GITHUB_RUN_ID} on ${GITHUB_SHA}."
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -89,16 +90,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          flutter test --reporter expanded \
+          flutter test --no-pub --reporter expanded \
             test/startup/neura_error_pipeline_test.dart 2>&1 | tee startup-tests.log
-          flutter test --reporter expanded --timeout 30s \
+          flutter test --no-pub --reporter expanded --timeout 30s \
             test/startup/neura_error_boundary_test.dart 2>&1 | tee -a startup-tests.log
 
-      - name: Run Flutter tests
+      - name: Run complete Flutter suite
         shell: bash
         run: |
           set -o pipefail
-          flutter test --reporter expanded 2>&1 | tee tests.log
+          flutter test --no-pub --reporter expanded 2>&1 | tee tests.log
 
       - name: Upload verification logs
         if: always()
@@ -119,11 +120,12 @@ jobs:
     needs: verify
     runs-on: windows-latest
     timeout-minutes: 90
+
     steps:
-      - name: Check out the recovery branch
+      - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Install Rust (neura_swarm crate)
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install Flutter
@@ -175,7 +177,7 @@ jobs:
             exit $LASTEXITCODE
           }
 
-      - name: Package Windows download
+      - name: Package and launch-test Windows download
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -229,6 +231,7 @@ jobs:
               throw "Windows runtime payload is incomplete: $required"
             }
           }
+
           $flutterAssets = Join-Path $release 'data\flutter_assets'
           if (-not (Test-Path -LiteralPath $flutterAssets -PathType Container) -or
               -not (Get-ChildItem -LiteralPath $flutterAssets -File -Recurse |
@@ -285,14 +288,9 @@ jobs:
           3. Keep the data, DLL, and executable files together.
 
           This build passed dependency restore, Flutter analysis, startup release
-          gates, the full Flutter suite, Windows release compilation, authored
-          runner validation, runtime-payload validation, and the packaged
-          first-frame launch self-test in the same GitHub workflow.
-
-          Startup diagnostics:
-          - %TEMP%\neura_error_vault.jsonl (and .1 through .3)
-          - %LOCALAPPDATA%\Neura OS\Logs\bootstrap_crash.ndjson (and .old)
-          - %APPDATA%\com.neurocompanion\neuro_companion\neura\logs\neura.log.ndjson
+          gates, the complete Flutter suite, Windows release compilation,
+          authored-runner validation, payload validation, and the packaged
+          sentinel-73 launch smoke test in the same workflow.
           "@ | Set-Content -LiteralPath (Join-Path $release 'README_INSTALL.txt') -Encoding UTF8
 
           [ordered]@{
@@ -337,8 +335,9 @@ jobs:
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 60
+
     steps:
-      - name: Check out the recovery branch
+      - name: Check out source
         uses: actions/checkout@v4
 
       - name: Install Java
@@ -386,10 +385,9 @@ jobs:
           Version: $version
           Commit: $GITHUB_SHA
 
-          This APK is debug-signed intentionally so the Phase 4 recovery artifact is
-          directly installable during validation. It is not the permanently
-          signed Google Play release. Android may ask you to allow installation
-          from the browser or file manager you use.
+          This APK is debug-signed intentionally so the Phase 4 recovery artifact
+          is directly installable during validation. It is not the permanently
+          signed Google Play release.
           EOF
 
       - name: Upload Android download
@@ -421,6 +419,7 @@ jobs:
       - windows
       - android
     runs-on: ubuntu-latest
+
     steps:
       - name: Post package result to PR 43
         env:
@@ -430,5 +429,6 @@ jobs:
           ANDROID_RESULT: ${{ needs.android.result }}
         shell: bash
         run: |
-          gh pr comment 43 --body \
-            "Package validation run ${GITHUB_RUN_ID}: verify=${VERIFY_RESULT}, Windows=${WINDOWS_RESULT}, Android=${ANDROID_RESULT}, commit=${GITHUB_SHA}."
+          gh pr comment 43 \
+            --repo Vantiger-Construction/neura_os \
+            --body "Package validation run ${GITHUB_RUN_ID}: verify=${VERIFY_RESULT}, Windows=${WINDOWS_RESULT}, Android=${ANDROID_RESULT}, commit=${GITHUB_SHA}."
