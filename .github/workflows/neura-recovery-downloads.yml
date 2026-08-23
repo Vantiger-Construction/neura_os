@@ -5,6 +5,7 @@ on:
     branches:
       - agent/build-neura-downloads-20260729
       - agent/neura-intelligence-fabric-v1.3
+      - agent/neura-adaptive-intent-phase4-integration
   pull_request:
     branches:
       - Neura
@@ -12,6 +13,8 @@ on:
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: neura-recovery-downloads-${{ github.ref }}
@@ -19,6 +22,7 @@ concurrency:
 
 env:
   FLUTTER_VERSION: "3.44.7"
+  PHASE4_BRANCH: agent/neura-adaptive-intent-phase4-integration
 
 jobs:
   verify:
@@ -28,6 +32,18 @@ jobs:
     steps:
       - name: Check out the recovery branch
         uses: actions/checkout@v4
+
+      - name: Announce Phase 4 package validation
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/agent/neura-adaptive-intent-phase4-integration'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh pr comment 43 --body \
+            "Windows and Android package validation started: run ${GITHUB_RUN_ID} on ${GITHUB_SHA}."
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -370,7 +386,7 @@ jobs:
           Version: $version
           Commit: $GITHUB_SHA
 
-          This APK is debug-signed intentionally so the 1.3 recovery artifact is
+          This APK is debug-signed intentionally so the Phase 4 recovery artifact is
           directly installable during validation. It is not the permanently
           signed Google Play release. Android may ask you to allow installation
           from the browser or file manager you use.
@@ -393,3 +409,26 @@ jobs:
           path: android-build.log
           if-no-files-found: warn
           retention-days: 14
+
+  report:
+    name: Report Phase 4 package validation
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/agent/neura-adaptive-intent-phase4-integration'
+    needs:
+      - verify
+      - windows
+      - android
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post package result to PR 43
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+          ANDROID_RESULT: ${{ needs.android.result }}
+        shell: bash
+        run: |
+          gh pr comment 43 --body \
+            "Package validation run ${GITHUB_RUN_ID}: verify=${VERIFY_RESULT}, Windows=${WINDOWS_RESULT}, Android=${ANDROID_RESULT}, commit=${GITHUB_SHA}."
