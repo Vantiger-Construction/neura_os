@@ -36,8 +36,7 @@ class _NeuraAdaptiveIntentOnboardingScreenState
   @override
   void initState() {
     super.initState();
-    _preferences =
-        widget.preferencesController ??
+    _preferences = widget.preferencesController ??
         NeuraAdaptiveIntentPreferencesController.instance;
     _runtime = widget.runtime ?? NeuraAdaptiveIntentRuntime.instance;
     unawaited(_initialize());
@@ -253,8 +252,8 @@ class _NeuraAdaptiveIntentOnboardingScreenState
                     _saving
                         ? 'Saving…'
                         : _preferences.enabled
-                        ? 'Save signal choices'
-                        : 'Enable Adaptive Intent',
+                            ? 'Save signal choices'
+                            : 'Enable Adaptive Intent',
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -267,9 +266,8 @@ class _NeuraAdaptiveIntentOnboardingScreenState
                   )
                 else
                   TextButton(
-                    onPressed: _saving
-                        ? null
-                        : () => Navigator.of(context).pop(false),
+                    onPressed:
+                        _saving ? null : () => Navigator.of(context).pop(false),
                     child: const Text('Not now'),
                   ),
               ],

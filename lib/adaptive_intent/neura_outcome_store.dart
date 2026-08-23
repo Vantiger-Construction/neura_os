@@ -68,8 +68,7 @@ abstract interface class NeuraOutcomeStore {
 class NeuraEncryptedOutcomeStore implements NeuraOutcomeStore {
   NeuraEncryptedOutcomeStore({
     NeuraOutcomeCipher cipher = const NeuraMemoryOutcomeCipher(),
-    NeuraOutcomeBackingStore backing =
-        const NeuraPrefsOutcomeBackingStore(),
+    NeuraOutcomeBackingStore backing = const NeuraPrefsOutcomeBackingStore(),
     int maxEntries = 100,
   })  : _cipher = cipher,
         _backing = backing,
@@ -164,15 +163,13 @@ class NeuraEncryptedOutcomeStore implements NeuraOutcomeStore {
       totalLocalSteps: _boundedInt(json['total_local_steps'], 0, 0, 1000),
       completedLocalSteps:
           _boundedInt(json['completed_local_steps'], 0, 0, 1000),
-      deferredLocalSteps:
-          _boundedInt(json['deferred_local_steps'], 0, 0, 1000),
+      deferredLocalSteps: _boundedInt(json['deferred_local_steps'], 0, 0, 1000),
       blockedSteps: _boundedInt(json['blocked_steps'], 0, 0, 1000),
       externalSteps: _boundedInt(json['external_steps'], 0, 0, 1000),
       completionRatio: _unit(json['completion_ratio']),
       perceivedEffort: _unit(json['perceived_effort']),
       satisfaction: _unit(json['satisfaction']),
-      interruptionCount:
-          _boundedInt(json['interruption_count'], 0, 0, 100000),
+      interruptionCount: _boundedInt(json['interruption_count'], 0, 0, 100000),
     );
   }
 
@@ -194,8 +191,6 @@ class NeuraEncryptedOutcomeStore implements NeuraOutcomeStore {
   }
 
   double _unit(Object? raw) {
-    return (raw is num ? raw.toDouble() : 0.0)
-        .clamp(0.0, 1.0)
-        .toDouble();
+    return (raw is num ? raw.toDouble() : 0.0).clamp(0.0, 1.0).toDouble();
   }
 }

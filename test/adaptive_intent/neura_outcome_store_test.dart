@@ -6,7 +6,8 @@ import 'package:neuro_companion/adaptive_intent/neura_outcome_store.dart';
 import 'package:neuro_companion/cognitive/neura_cognitive_state.dart';
 
 void main() {
-  test('encrypted outcome store is bounded and restores derived metrics', () async {
+  test('encrypted outcome store is bounded and restores derived metrics',
+      () async {
     final backing = _MemoryBacking();
     final store = NeuraEncryptedOutcomeStore(
       cipher: const _Base64Cipher(),

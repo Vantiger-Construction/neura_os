@@ -35,7 +35,9 @@ void main() {
     );
   });
 
-  test('bridge fails closed without gesture, in Safe Mode, or for external work', () {
+  test(
+      'bridge fails closed without gesture, in Safe Mode, or for external work',
+      () {
     expect(
       () => bridge.prepare(
         step: _step(),
@@ -96,10 +98,8 @@ NeuraActionStep _step({
 
 NeuraCognitiveState _state(NeuraBandwidthMode mode) {
   return NeuraCognitiveState(
-    availableBandwidth:
-        mode == NeuraBandwidthMode.recovery ? 0.20 : 0.65,
-    cognitiveLoad:
-        mode == NeuraBandwidthMode.recovery ? 0.85 : 0.40,
+    availableBandwidth: mode == NeuraBandwidthMode.recovery ? 0.20 : 0.65,
+    cognitiveLoad: mode == NeuraBandwidthMode.recovery ? 0.85 : 0.40,
     energy: 0.60,
     urgency: 0.45,
     confidence: 0.80,

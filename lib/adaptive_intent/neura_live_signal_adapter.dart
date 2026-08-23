@@ -167,8 +167,8 @@ class NeuraLiveSignalAdapter {
     NeuraLiveSignalClock? clock,
   })  : _moodReader = moodReader ?? _readLatestMoodScore,
         _questReader = questReader ?? _readQuestSnapshot,
-        _focusModeReader =
-            focusModeReader ?? (() => FocusController.instance.state.value.mode),
+        _focusModeReader = focusModeReader ??
+            (() => FocusController.instance.state.value.mode),
         activityTracker =
             activityTracker ?? NeuraAdaptiveActivityTracker.instance,
         _clock = clock ?? DateTime.now;
@@ -183,8 +183,7 @@ class NeuraLiveSignalAdapter {
 
   Future<NeuraLiveSignalSnapshot> collect({
     required NeuraCognitiveSignals baseline,
-    NeuraLiveSignalSourcePolicy policy =
-        const NeuraLiveSignalSourcePolicy(),
+    NeuraLiveSignalSourcePolicy policy = const NeuraLiveSignalSourcePolicy(),
   }) async {
     final now = _clock().toUtc();
     final evidence = <NeuraLiveSignalEvidence>[];
@@ -360,8 +359,7 @@ class NeuraLiveSignalAdapter {
     final now = DateTime.now();
     final cutoff = now.subtract(const Duration(days: 7));
     final active = quests.where((quest) => !quest.archived).length;
-    final recentDone =
-        done.where((item) => !item.day.isBefore(cutoff)).length;
+    final recentDone = done.where((item) => !item.day.isBefore(cutoff)).length;
     return NeuraQuestSignalSnapshot(
       activeQuestCount: active,
       completionsLastSevenDays: recentDone,

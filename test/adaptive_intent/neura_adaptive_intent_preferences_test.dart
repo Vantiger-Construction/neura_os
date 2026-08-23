@@ -2,7 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/adaptive_intent/neura_adaptive_intent_preferences.dart';
 
 void main() {
-  test('Adaptive Intent stays disabled until onboarding is completed', () async {
+  test('Adaptive Intent stays disabled until onboarding is completed',
+      () async {
     final store = _MemoryPreferencesStore();
     final controller = NeuraAdaptiveIntentPreferencesController(store: store);
     addTearDown(controller.dispose);
@@ -48,8 +49,7 @@ void main() {
   });
 }
 
-class _MemoryPreferencesStore
-    implements NeuraAdaptiveIntentPreferencesStore {
+class _MemoryPreferencesStore implements NeuraAdaptiveIntentPreferencesStore {
   NeuraAdaptiveIntentPreferences? value;
 
   @override

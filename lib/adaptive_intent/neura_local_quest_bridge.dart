@@ -73,8 +73,7 @@ class NeuraLocalQuestBridge {
     final evaluatedAt = (now ?? DateTime.now()).toUtc();
     final safeSession = _safeIdPart(sessionId);
     final safeStep = _safeIdPart(step.id);
-    final candidateId =
-        'adaptive-quest:$safeSession:$safeStep:'
+    final candidateId = 'adaptive-quest:$safeSession:$safeStep:'
         '${evaluatedAt.microsecondsSinceEpoch}';
 
     final candidate = intelligence.NeuraIntelligenceCandidate(
@@ -82,8 +81,7 @@ class NeuraLocalQuestBridge {
       capabilityId: capability.id,
       specialistId: specialistId,
       title: 'Create a reversible local quest',
-      body:
-          'Review one on-device quest derived from the selected local plan '
+      body: 'Review one on-device quest derived from the selected local plan '
           'step. Nothing is created until you approve it.',
       createdAt: evaluatedAt,
       expiresAt: evaluatedAt.add(const Duration(minutes: 10)),
@@ -123,7 +121,8 @@ class NeuraLocalQuestBridge {
   bool _isExternal(adaptive.NeuraActionEffect effect) {
     return switch (effect) {
       adaptive.NeuraActionEffect.localRead ||
-      adaptive.NeuraActionEffect.localWrite => false,
+      adaptive.NeuraActionEffect.localWrite =>
+        false,
       _ => true,
     };
   }
@@ -140,9 +139,7 @@ class NeuraLocalQuestBridge {
   }
 
   String _safeIdPart(String raw) {
-    final normalized = raw
-        .trim()
-        .replaceAll(RegExp(r'[^a-zA-Z0-9._-]+'), '-');
+    final normalized = raw.trim().replaceAll(RegExp(r'[^a-zA-Z0-9._-]+'), '-');
     if (normalized.isEmpty) return 'unknown';
     return normalized.length <= 80 ? normalized : normalized.substring(0, 80);
   }

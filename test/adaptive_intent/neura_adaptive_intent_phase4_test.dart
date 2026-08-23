@@ -6,7 +6,8 @@ import 'package:neuro_companion/adaptive_intent/neura_adaptive_plan_session.dart
 import 'package:neuro_companion/adaptive_intent/neura_outcome_store.dart';
 
 void main() {
-  test('derived outcomes survive a runtime restart without raw goal text', () async {
+  test('derived outcomes survive a runtime restart without raw goal text',
+      () async {
     final store = _MemoryOutcomeStore();
 
     final firstController = NeuraAdaptiveIntentController();
@@ -92,8 +93,7 @@ void main() {
 }
 
 class _MemoryOutcomeStore implements NeuraOutcomeStore {
-  List<NeuraPlanOutcomeReceipt> values =
-      <NeuraPlanOutcomeReceipt>[];
+  List<NeuraPlanOutcomeReceipt> values = <NeuraPlanOutcomeReceipt>[];
 
   @override
   Future<void> clear() async {
@@ -113,8 +113,7 @@ class _MemoryOutcomeStore implements NeuraOutcomeStore {
   }
 }
 
-class _MemoryPreferencesStore
-    implements NeuraAdaptiveIntentPreferencesStore {
+class _MemoryPreferencesStore implements NeuraAdaptiveIntentPreferencesStore {
   NeuraAdaptiveIntentPreferences? value;
 
   @override

@@ -18,8 +18,7 @@ class NeuraAdaptiveIntentEntryScreen extends StatefulWidget {
 class _NeuraAdaptiveIntentEntryScreenState
     extends State<NeuraAdaptiveIntentEntryScreen> {
   final _runtime = NeuraAdaptiveIntentRuntime.instance;
-  final _preferences =
-      NeuraAdaptiveIntentPreferencesController.instance;
+  final _preferences = NeuraAdaptiveIntentPreferencesController.instance;
 
   bool _loading = true;
   Object? _error;

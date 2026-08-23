@@ -127,14 +127,14 @@ class NeuraAdaptiveIntentPreferencesController extends ChangeNotifier {
     NeuraAdaptiveIntentPreferencesStore? store,
     NeuraAdaptiveIntentPreferences initial =
         const NeuraAdaptiveIntentPreferences(),
-  }) : _store = store,
-       _preferences = initial,
-       _initialized = store == null;
+  })  : _store = store,
+        _preferences = initial,
+        _initialized = store == null;
 
   static final NeuraAdaptiveIntentPreferencesController instance =
       NeuraAdaptiveIntentPreferencesController(
-        store: const NeuraPrefsAdaptiveIntentPreferencesStore(),
-      );
+    store: const NeuraPrefsAdaptiveIntentPreferencesStore(),
+  );
 
   final NeuraAdaptiveIntentPreferencesStore? _store;
 
@@ -147,8 +147,7 @@ class NeuraAdaptiveIntentPreferencesController extends ChangeNotifier {
   Object? _lastError;
 
   NeuraAdaptiveIntentPreferences get preferences => _preferences;
-  bool get enabled =>
-      _preferences.enabled && _preferences.onboardingComplete;
+  bool get enabled => _preferences.enabled && _preferences.onboardingComplete;
   bool get initialized => _initialized;
   Object? get lastError => _lastError;
 
@@ -204,8 +203,7 @@ class NeuraAdaptiveIntentPreferencesController extends ChangeNotifier {
     return update(
       _preferences.copyWith(
         enabled: value,
-        onboardingComplete:
-            value ? true : _preferences.onboardingComplete,
+        onboardingComplete: value ? true : _preferences.onboardingComplete,
       ),
     );
   }
