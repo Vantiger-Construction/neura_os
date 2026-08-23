@@ -1,6 +1,9 @@
 name: Neura Local Runner Check
 
 on:
+  push:
+    branches:
+      - agent/neura-adaptive-intent-phase4-integration
   pull_request:
     branches: [Neura]
     paths:
@@ -15,12 +18,73 @@ on:
       - '.github/workflows/neura-fast-check.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 concurrency:
   group: neura-local-runner-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  FLUTTER_VERSION: "3.44.7"
+  INTEGRATION_BRANCH: agent/neura-adaptive-intent-phase4-integration
+
 jobs:
+  format-package-sources:
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/agent/neura-adaptive-intent-phase4-integration' &&
+      github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out integration branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.INTEGRATION_BRANCH }}
+          fetch-depth: 0
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Restore package language settings
+        run: flutter pub get
+
+      - name: Apply full package-gate formatting
+        run: |
+          dart format \
+            lib/screens/profile_screen.dart \
+            lib/services/ambient_listening_service.dart \
+            lib/services/auth_service.dart \
+            lib/services/neura_voice_pack.dart
+
+      - name: Commit canonical source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Neura Companion"
+          git config user.email \
+            "156997939+Vantiger1@users.noreply.github.com"
+          git add \
+            lib/screens/profile_screen.dart \
+            lib/services/ambient_listening_service.dart \
+            lib/services/auth_service.dart \
+            lib/services/neura_voice_pack.dart
+          if git diff --cached --quiet; then
+            echo "Package-gate Dart sources are already formatted."
+            exit 0
+          fi
+          git commit -m \
+            "style: apply full package-gate Dart formatting"
+          git push origin HEAD:${INTEGRATION_BRANCH}
+
   validate:
+    if: github.event_name != 'push'
     # Uses the owner's Windows computer instead of paid GitHub-hosted minutes.
     runs-on: [self-hosted, Windows, X64, neura]
     timeout-minutes: 45
