@@ -1,4 +1,4 @@
-name: Neura recovery downloads
+name: Neura Phase 4 package validation
 
 on:
   push:
