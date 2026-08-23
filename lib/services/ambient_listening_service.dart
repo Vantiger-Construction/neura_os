@@ -442,8 +442,8 @@ class AmbientListeningService {
     _silenceTimer = null;
 
     final pcm = _utteranceBuffer.takeBytes();
-    final durationMs = (pcm.length / _bytesPerSample / _sampleRate * 1000)
-        .round();
+    final durationMs =
+        (pcm.length / _bytesPerSample / _sampleRate * 1000).round();
     if (durationMs < _kMinUtterance.inMilliseconds) return;
 
     final generation = _dataGeneration;
