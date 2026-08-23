@@ -298,7 +298,9 @@ class NeuraAdaptivePlanSession {
       );
     }
     if (!abandoned && completedLocal.isEmpty) {
-      throw StateError('A completed session needs at least one completed step.');
+      throw StateError(
+        'A completed session needs at least one completed step.',
+      );
     }
 
     _status = abandoned

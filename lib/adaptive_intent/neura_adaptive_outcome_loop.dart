@@ -69,12 +69,14 @@ class NeuraAdaptiveOutcomeLoop {
     final averageInterruptions = interruptionTotal / count;
     final confidence = (0.35 + count * 0.12).clamp(0.0, 0.95).toDouble();
 
-    final overloaded = abandonedCount > 0 ||
+    final overloaded =
+        abandonedCount > 0 ||
         averageCompletion < 0.45 ||
         averageEffort > 0.75 ||
         averageInterruptions >= 4;
     if (overloaded) {
-      final recovery = currentState.availableBandwidth < 0.40 ||
+      final recovery =
+          currentState.availableBandwidth < 0.40 ||
           currentState.cognitiveLoad > 0.75;
       return NeuraOutcomeAdaptation(
         kind: NeuraOutcomeAdaptationKind.reduceLoad,
@@ -100,7 +102,8 @@ class NeuraAdaptiveOutcomeLoop {
     final lastTwo = recent.length < 2
         ? const <NeuraPlanOutcomeReceipt>[]
         : recent.sublist(recent.length - 2);
-    final sustainedSuccess = lastTwo.length == 2 &&
+    final sustainedSuccess =
+        lastTwo.length == 2 &&
         lastTwo.every(
           (outcome) =>
               outcome.completionRatio >= 0.80 &&

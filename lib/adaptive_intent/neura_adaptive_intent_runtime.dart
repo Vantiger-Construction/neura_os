@@ -16,10 +16,9 @@ class NeuraAdaptiveIntentRuntime extends ChangeNotifier {
        _clock = clock ?? DateTime.now,
        _maxOutcomeHistory = maxOutcomeHistory.clamp(1, 100).toInt();
 
-  static final NeuraAdaptiveIntentRuntime instance =
-      NeuraAdaptiveIntentRuntime(
-        controller: NeuraAdaptiveIntentController.instance,
-      );
+  static final NeuraAdaptiveIntentRuntime instance = NeuraAdaptiveIntentRuntime(
+    controller: NeuraAdaptiveIntentController.instance,
+  );
 
   final NeuraAdaptiveIntentController controller;
   final NeuraAdaptiveOutcomeLoop outcomeLoop;
@@ -29,8 +28,7 @@ class NeuraAdaptiveIntentRuntime extends ChangeNotifier {
   NeuraAdaptivePlanSession? _session;
   NeuraPlanOutcomeReceipt? _lastOutcome;
   NeuraOutcomeAdaptation? _lastAdaptation;
-  final List<NeuraPlanOutcomeReceipt> _outcomes =
-      <NeuraPlanOutcomeReceipt>[];
+  final List<NeuraPlanOutcomeReceipt> _outcomes = <NeuraPlanOutcomeReceipt>[];
 
   NeuraAdaptivePlanSession? get session => _session;
   NeuraPlanOutcomeReceipt? get lastOutcome => _lastOutcome;
@@ -43,8 +41,7 @@ class NeuraAdaptiveIntentRuntime extends ChangeNotifier {
     DateTime? now,
   }) async {
     final current = _session;
-    if (current != null &&
-        current.status == NeuraPlanSessionStatus.active) {
+    if (current != null && current.status == NeuraPlanSessionStatus.active) {
       throw StateError('Finish or discard the active Adaptive Intent session.');
     }
     await controller.initialize();
@@ -54,10 +51,7 @@ class NeuraAdaptiveIntentRuntime extends ChangeNotifier {
 
     final startedAt = (now ?? _clock()).toUtc();
     final graph = controller.compileOutcome(outcome, now: startedAt);
-    final next = NeuraAdaptivePlanSession.start(
-      graph,
-      startedAt: startedAt,
-    );
+    final next = NeuraAdaptivePlanSession.start(graph, startedAt: startedAt);
     _session = next;
     notifyListeners();
     return next;
@@ -80,11 +74,7 @@ class NeuraAdaptiveIntentRuntime extends ChangeNotifier {
     notifyListeners();
   }
 
-  void deferStep(
-    String stepId, {
-    required bool userGesture,
-    DateTime? at,
-  }) {
+  void deferStep(String stepId, {required bool userGesture, DateTime? at}) {
     final current = _requireSession();
     current.deferStep(
       stepId,
@@ -95,11 +85,7 @@ class NeuraAdaptiveIntentRuntime extends ChangeNotifier {
     notifyListeners();
   }
 
-  void resumeStep(
-    String stepId, {
-    required bool userGesture,
-    DateTime? at,
-  }) {
+  void resumeStep(String stepId, {required bool userGesture, DateTime? at}) {
     final current = _requireSession();
     current.resumeStep(
       stepId,

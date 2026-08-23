@@ -54,10 +54,7 @@ void main() {
     addTearDown(runtime.dispose);
     addTearDown(controller.dispose);
 
-    await expectLater(
-      runtime.startSession('Plan my week'),
-      throwsStateError,
-    );
+    await expectLater(runtime.startSession('Plan my week'), throwsStateError);
     expect(runtime.session, isNull);
   });
 }

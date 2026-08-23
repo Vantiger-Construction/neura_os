@@ -87,10 +87,10 @@ class _NeuraAdaptiveIntentStatusCardState
                           initializationFailed
                               ? 'Local settings could not be loaded. Tap to retry.'
                               : '${(state.availableBandwidth * 100).round()}% '
-                                  'available bandwidth • '
-                                  '${_controller.interfacePolicy.maxPrimaryActions} '
-                                  'primary action'
-                                  '${_controller.interfacePolicy.maxPrimaryActions == 1 ? '' : 's'}',
+                                    'available bandwidth • '
+                                    '${_controller.interfacePolicy.maxPrimaryActions} '
+                                    'primary action'
+                                    '${_controller.interfacePolicy.maxPrimaryActions == 1 ? '' : 's'}',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                         const SizedBox(height: 8),
