@@ -36,12 +36,7 @@ class NeuraFaultSystem {
             '(${payload['phase'] ?? 'runtime'})',
       );
 
-      _handle(
-        bus,
-        controller,
-        event,
-        recoveryDuration,
-      );
+      _handle(bus, controller, event, recoveryDuration);
     });
   }
 
@@ -55,21 +50,13 @@ class NeuraFaultSystem {
     bus.emit(event);
 
     // Vault it best-effort without blocking recovery.
-    unawaited(
-      NeuraErrorVault.append(event).catchError((_) {}),
-    );
+    unawaited(NeuraErrorVault.append(event).catchError((_) {}));
 
     // Drive avatar recovery best-effort.
-    _pulseAvatar(
-      controller,
-      recoveryDuration,
-    );
+    _pulseAvatar(controller, recoveryDuration);
   }
 
-  static void _pulseAvatar(
-    AvatarController controller,
-    Duration duration,
-  ) {
+  static void _pulseAvatar(AvatarController controller, Duration duration) {
     try {
       controller.setError(true);
       controller.pulseBlink();
