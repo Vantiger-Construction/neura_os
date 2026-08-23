@@ -50,7 +50,8 @@ class _NeuraAdaptiveIntentStatusCardState
       animation: _controller,
       builder: (context, _) {
         final state = _controller.state;
-        final error = _initializationError;
+        final initializationFailed =
+            _initializationError != null && !_controller.initialized;
         return Card(
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
@@ -83,13 +84,13 @@ class _NeuraAdaptiveIntentStatusCardState
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          error == null
-                              ? '${(state.availableBandwidth * 100).round()}% '
+                          initializationFailed
+                              ? 'Local settings could not be loaded. Tap to retry.'
+                              : '${(state.availableBandwidth * 100).round()}% '
                                   'available bandwidth • '
                                   '${_controller.interfacePolicy.maxPrimaryActions} '
                                   'primary action'
-                                  '${_controller.interfacePolicy.maxPrimaryActions == 1 ? '' : 's'}'
-                              : 'Local settings could not be loaded. Tap to retry.',
+                                  '${_controller.interfacePolicy.maxPrimaryActions == 1 ? '' : 's'}',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                         const SizedBox(height: 8),
