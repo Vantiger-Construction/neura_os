@@ -57,9 +57,7 @@ jobs:
         run: flutter pub get
 
       - name: Require canonical formatting
-        shell: bash
         run: |
-          set +e
           dart format --output=none --set-exit-if-changed \
             lib/adaptive_intent \
             lib/cognitive \
@@ -72,15 +70,6 @@ jobs:
             test/cognitive \
             test/constitution \
             test/intent_compiler
-          status=$?
-          if [[ $status -ne 0 ]]; then
-            dart format \
-              test/adaptive_intent/neura_adaptive_intent_preferences_test.dart
-            echo "Exact package-mode formatter patch:"
-            git diff -- \
-              test/adaptive_intent/neura_adaptive_intent_preferences_test.dart
-          fi
-          exit $status
 
       - name: Require zero analyzer findings
         run: flutter analyze --fatal-infos
