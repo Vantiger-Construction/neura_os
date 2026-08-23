@@ -25,6 +25,29 @@ system.
 8. **Adaptive Outcome Loop** — converts privacy-safe completion evidence into a
    conservative recommendation to reduce load, maintain the current policy, or
    protect a focused outcome.
+9. **Active Session UI** — starts one local plan, exposes only valid state
+   transitions, collects derived feedback, and displays the resulting outcome
+   receipt and next-mode recommendation.
+
+## Active Session UI
+
+The dashboard's Adaptive Intent card now has a dedicated plan-session control.
+The session screen can:
+
+- start one bounded local plan;
+- show pending, completed, deferred, blocked, and review-only steps;
+- require a direct user gesture for every progress change;
+- request explicit confirmation before recording approval-gated local changes;
+- complete or defer safe local steps;
+- resume deferred steps;
+- collect perceived effort, satisfaction, and interruption counts;
+- finish or abandon a session;
+- display a derived outcome receipt and conservative next-mode recommendation.
+
+External, cloud, calendar, notification, message, and purchase effects are not
+executed by this UI. They remain review-only or blocked by policy. Safe Mode
+disables session creation and progress changes; it still permits discarding the
+in-memory session authority.
 
 ## Plan-session safety boundary
 
@@ -102,4 +125,5 @@ Focused coverage includes all bandwidth modes, Safe Mode overrides, persisted
 state expiry, constitution boundaries, plan-session transitions, direct-gesture
 and approval requirements, privacy-safe outcome receipts, overloaded-session
 reduction, repeated-success focus protection, one-session runtime authority,
-and data-wipe reset behavior.
+active-session widget behavior, Safe Mode UI refusal, and data-wipe reset
+behavior.
