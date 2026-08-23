@@ -1,0 +1,58 @@
+name: Format Neura Adaptive Intent Phase 3 Once
+
+on:
+  push:
+    branches:
+      - agent/neura-adaptive-intent-os-v1.4
+
+permissions:
+  contents: write
+
+concurrency:
+  group: format-neura-adaptive-intent-phase3-once
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.44.7"
+  WORK_BRANCH: agent/neura-adaptive-intent-os-v1.4
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.WORK_BRANCH }}
+          fetch-depth: 0
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Apply canonical Dart formatting
+        run: |
+          dart format \
+            lib/adaptive_intent \
+            test/adaptive_intent
+
+      - name: Commit formatting and remove one-time workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/format-neura-adaptive-intent-phase3-once.yml
+          git config user.name "Neura Companion"
+          git config user.email "156997939+Vantiger1@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No formatting changes were required."
+            exit 0
+          fi
+          git commit -m "style(adaptive-intent): format active plan runtime"
+          git push origin HEAD:${WORK_BRANCH}

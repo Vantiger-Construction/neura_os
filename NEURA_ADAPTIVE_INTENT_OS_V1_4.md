@@ -12,15 +12,51 @@ system.
 2. **Adaptive Interface Policy** — controls visible action count, information
    density, proactive behavior, and minimum consent strength.
 3. **Intent-to-Outcome Compiler** — converts a requested outcome into a
-   dependency-safe, explainable action graph.
+   bounded, explainable action graph.
 4. **Personal Constitution** — enforces local/cloud, communication, purchase,
    calendar, work-hour, preview, and sensitive-content boundaries.
 5. **Decision Receipts** — explain the selected mode, policy blocks, approvals,
    confidence, and why each plan was produced.
 6. **Persistent local runtime** — shares one Safe Mode-aware controller across
    the dashboard and Adaptive Intent screen.
+7. **Deterministic Plan Sessions** — track user-directed local progress through
+   pending, completed, deferred, blocked, completed-session, and abandoned
+   states.
+8. **Adaptive Outcome Loop** — converts privacy-safe completion evidence into a
+   conservative recommendation to reduce load, maintain the current policy, or
+   protect a focused outcome.
 
-## Phase 2 integration
+## Plan-session safety boundary
+
+A Plan Session is progress tracking, not an executor.
+
+- Every progress change requires a direct user gesture.
+- Approval-gated local steps require an explicit approval flag.
+- Blocked steps cannot be changed.
+- Deferred steps must be resumed before completion.
+- External effects cannot be marked complete by the local session engine.
+- Safe Mode blocks session creation and progress changes.
+- Only one active session is allowed in the Adaptive Intent runtime.
+- Closing a session produces a derived receipt without storing the requested
+  outcome, step title, step description, message text, or other raw plan copy.
+
+The runtime keeps outcome receipts in memory only. A local-data wipe clears the
+active session, derived history, last adaptation, and compiled plan.
+
+## Outcome adaptation
+
+The Outcome Loop examines at most five recent derived receipts.
+
+It recommends **Reduce Load** when completion is low, reported effort is high,
+interruptions are excessive, or a session was abandoned. It recommends
+**Protect Focus** only after two repeated high-completion, high-satisfaction,
+manageable-effort sessions and adequate current bandwidth. Otherwise it keeps
+the existing policy.
+
+An adaptation is an explainable recommendation. It cannot execute an action,
+change a calendar, contact another person, purchase anything, or call cloud AI.
+
+## Persistent Phase 2 integration
 
 - Capacity signals and constitution settings are persisted locally through
   Neura's cached SharedPreferences service.
@@ -29,20 +65,17 @@ system.
 - Constitution choices remain until the user changes or resets them.
 - Raw goals, compiled plans, action text, and decision graphs are never written
   to the Adaptive Intent settings store.
-- Safe Mode changes immediately invalidate the current plan and force Recovery
-  policy across every screen using the shared controller.
-- The main dashboard now always shows an Adaptive Intent status card. It remains
-  visible even when no proactive Intelligence Fabric suggestion is available.
+- Safe Mode changes immediately invalidate the current compiled plan and force
+  Recovery policy across every screen using the shared controller.
+- The dashboard always shows an Adaptive Intent status card.
 - Initialization failures are retryable and do not poison the controller for
   the rest of the process.
 - Rapid slider changes use a bounded persistence debounce rather than writing
   every intermediate value.
-- The implementation is maintained as normal reviewed source files; temporary
-  staged payloads and self-modifying build workflows have been removed.
 
-## Safety boundary
+## External-action boundary
 
-The v1.4 prototype remains proposal-only. It does not:
+The v1.4 runtime still does not:
 
 - send messages;
 - modify calendars;
@@ -51,30 +84,22 @@ The v1.4 prototype remains proposal-only. It does not:
 - execute Action Loom operations.
 
 A later phase can translate an explicitly selected, policy-allowed local step
-into an Action Loom proposal with exact payload binding and fresh authorization.
-Unknown, blocked, critical, or external steps must continue to fail closed.
-
-## Local demo
-
-Open Neura's dashboard and select the **Adaptive Intent** status card. Adjust
-the local capacity signals, review the resulting mode, choose constitution
-boundaries and work hours, and compile an outcome.
+into an Action Loom proposal with exact payload binding and fresh
+authorization. Unknown, blocked, critical, or external steps must continue to
+fail closed.
 
 ## Validation
 
-Focused tests cover:
+The PR validation workflow requires:
 
-- Recovery, Simplified, Balanced, and Deep Focus state selection;
-- Safe Mode overrides and live Safe Mode binding;
-- interface policy mapping;
-- cloud, message, purchase, calendar, sensitive-content, preview, and work-hour
-  boundaries;
-- adaptive plan compilation and decision receipts;
-- controller invalidation when signals or Safe Mode change;
-- fresh-state restore and stale-signal expiry;
-- retry after a transient local-store initialization failure;
-- proof that compiled goal text is not persisted.
+- canonical Dart formatting;
+- `flutter analyze --fatal-infos`;
+- the complete Cognitive, Constitution, Intent Compiler, and Adaptive Intent
+  test directories;
+- Neura's complete Flutter test suite.
 
-The PR validation workflow requires canonical formatting, zero analyzer
-findings, the focused Adaptive Intent suite, and Neura's complete Flutter test
-suite before this research branch can be considered ready for review.
+Focused coverage includes all bandwidth modes, Safe Mode overrides, persisted
+state expiry, constitution boundaries, plan-session transitions, direct-gesture
+and approval requirements, privacy-safe outcome receipts, overloaded-session
+reduction, repeated-success focus protection, one-session runtime authority,
+and data-wipe reset behavior.
