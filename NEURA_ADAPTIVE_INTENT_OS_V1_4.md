@@ -5,6 +5,13 @@ complexity, planning depth, and consent requirements to a practical estimate of
 the user's available cognitive bandwidth. It is not a medical diagnostic
 system.
 
+## Package milestone
+
+The research package now identifies as **1.4.0+6** and includes the active-plan
+session and outcome-feedback UI. The pull request remains draft until the
+latest canonical-format, analyzer, focused-test, and complete-suite gates all
+pass on the same commit.
+
 ## Current technology
 
 1. **Cognitive Bandwidth Engine** — estimates Recovery, Simplified, Balanced,
