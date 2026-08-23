@@ -63,9 +63,9 @@ class NeuraPlanOutcomeReceipt {
     required double perceivedEffort,
     required double satisfaction,
     required this.interruptionCount,
-  }) : completionRatio = completionRatio.clamp(0.0, 1.0).toDouble(),
-       perceivedEffort = perceivedEffort.clamp(0.0, 1.0).toDouble(),
-       satisfaction = satisfaction.clamp(0.0, 1.0).toDouble();
+  })  : completionRatio = completionRatio.clamp(0.0, 1.0).toDouble(),
+        perceivedEffort = perceivedEffort.clamp(0.0, 1.0).toDouble(),
+        satisfaction = satisfaction.clamp(0.0, 1.0).toDouble();
 
   Map<String, Object?> toJson() {
     return <String, Object?>{
@@ -127,8 +127,8 @@ class NeuraAdaptivePlanSession {
       final status = step.blocked
           ? NeuraPlanStepStatus.blocked
           : step.deferred
-          ? NeuraPlanStepStatus.deferred
-          : NeuraPlanStepStatus.pending;
+              ? NeuraPlanStepStatus.deferred
+              : NeuraPlanStepStatus.pending;
       progress[id] = NeuraPlanStepProgress(
         step: step,
         status: status,
@@ -306,9 +306,8 @@ class NeuraAdaptivePlanSession {
     _status = abandoned
         ? NeuraPlanSessionStatus.abandoned
         : NeuraPlanSessionStatus.completed;
-    final completionRatio = local.isEmpty
-        ? 0.0
-        : completedLocal.length / local.length;
+    final completionRatio =
+        local.isEmpty ? 0.0 : completedLocal.length / local.length;
     final receipt = NeuraPlanOutcomeReceipt(
       sessionId: id,
       startedAt: startedAt,

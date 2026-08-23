@@ -116,12 +116,12 @@ class _NeuraAdaptiveIntentStatusCardState
                                     initializationFailed
                                         ? 'Local settings could not be loaded. Tap to retry.'
                                         : session != null
-                                        ? '$completed of $total local steps completed'
-                                        : '${(state.availableBandwidth * 100).round()}% '
-                                              'available bandwidth • '
-                                              '${_controller.interfacePolicy.maxPrimaryActions} '
-                                              'primary action'
-                                              '${_controller.interfacePolicy.maxPrimaryActions == 1 ? '' : 's'}',
+                                            ? '$completed of $total local steps completed'
+                                            : '${(state.availableBandwidth * 100).round()}% '
+                                                'available bandwidth • '
+                                                '${_controller.interfacePolicy.maxPrimaryActions} '
+                                                'primary action'
+                                                '${_controller.interfacePolicy.maxPrimaryActions == 1 ? '' : 's'}',
                                     style: Theme.of(
                                       context,
                                     ).textTheme.bodySmall,

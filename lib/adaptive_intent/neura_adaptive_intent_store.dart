@@ -28,30 +28,31 @@ class NeuraAdaptiveIntentSnapshot {
   }
 
   Map<String, Object?> toJson() => {
-    'v': 1,
-    'saved_at': savedAt.toUtc().toIso8601String(),
-    'signals': {
-      'energy': signals.energy,
-      'focus': signals.focus,
-      'cognitive_load': signals.cognitiveLoad,
-      'urgency': signals.urgency,
-      'task_switch_rate': signals.taskSwitchRate,
-      'completion_rate': signals.completionRate,
-      'notification_pressure': signals.notificationPressure,
-      'evidence_count': signals.evidenceCount,
-      'includes_self_report': signals.includesSelfReport,
-    },
-    'constitution': {
-      'allow_cloud_ai': constitution.allowCloudAi,
-      'allow_external_messages': constitution.allowExternalMessages,
-      'allow_purchases': constitution.allowPurchases,
-      'allow_calendar_writes': constitution.allowCalendarWrites,
-      'keep_sensitive_content_local': constitution.keepSensitiveContentLocal,
-      'require_external_preview': constitution.requireExternalPreview,
-      'work_hours_start': constitution.workHoursStart,
-      'work_hours_end': constitution.workHoursEnd,
-    },
-  };
+        'v': 1,
+        'saved_at': savedAt.toUtc().toIso8601String(),
+        'signals': {
+          'energy': signals.energy,
+          'focus': signals.focus,
+          'cognitive_load': signals.cognitiveLoad,
+          'urgency': signals.urgency,
+          'task_switch_rate': signals.taskSwitchRate,
+          'completion_rate': signals.completionRate,
+          'notification_pressure': signals.notificationPressure,
+          'evidence_count': signals.evidenceCount,
+          'includes_self_report': signals.includesSelfReport,
+        },
+        'constitution': {
+          'allow_cloud_ai': constitution.allowCloudAi,
+          'allow_external_messages': constitution.allowExternalMessages,
+          'allow_purchases': constitution.allowPurchases,
+          'allow_calendar_writes': constitution.allowCalendarWrites,
+          'keep_sensitive_content_local':
+              constitution.keepSensitiveContentLocal,
+          'require_external_preview': constitution.requireExternalPreview,
+          'work_hours_start': constitution.workHoursStart,
+          'work_hours_end': constitution.workHoursEnd,
+        },
+      };
 
   factory NeuraAdaptiveIntentSnapshot.fromJson(Map<String, Object?> json) {
     final rawSignals = json['signals'];
@@ -122,8 +123,7 @@ class NeuraAdaptiveIntentSnapshot {
         ),
         workHoursEnd: boundedInt(constitutionJson, 'work_hours_end', 20, 0, 23),
       ),
-      savedAt:
-          DateTime.tryParse(json['saved_at']?.toString() ?? '')?.toUtc() ??
+      savedAt: DateTime.tryParse(json['saved_at']?.toString() ?? '')?.toUtc() ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
     );
   }

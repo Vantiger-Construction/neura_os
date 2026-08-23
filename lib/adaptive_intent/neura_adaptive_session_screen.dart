@@ -86,8 +86,7 @@ class _NeuraAdaptiveSessionScreenState
   Future<void> _completeStep(NeuraPlanStepProgress progress) async {
     var approved = progress.step.requiredApproval == NeuraApprovalTier.none;
     if (!approved) {
-      approved =
-          await showDialog<bool>(
+      approved = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
               title: const Text('Confirm local plan change'),

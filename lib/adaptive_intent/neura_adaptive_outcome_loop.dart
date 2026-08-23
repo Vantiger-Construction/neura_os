@@ -18,8 +18,8 @@ class NeuraOutcomeAdaptation {
     required this.suppressProactiveSuggestions,
     required double confidence,
     List<String> reasons = const <String>[],
-  }) : confidence = confidence.clamp(0.0, 1.0).toDouble(),
-       reasons = List<String>.unmodifiable(reasons);
+  })  : confidence = confidence.clamp(0.0, 1.0).toDouble(),
+        reasons = List<String>.unmodifiable(reasons);
 }
 
 class NeuraAdaptiveOutcomeLoop {
@@ -30,9 +30,8 @@ class NeuraAdaptiveOutcomeLoop {
     required NeuraCognitiveState currentState,
   }) {
     final all = history.toList(growable: false);
-    final recent = all.length <= 5
-        ? all
-        : all.sublist(all.length - 5, all.length);
+    final recent =
+        all.length <= 5 ? all : all.sublist(all.length - 5, all.length);
     if (recent.isEmpty) {
       return NeuraOutcomeAdaptation(
         kind: NeuraOutcomeAdaptationKind.maintain,
@@ -69,14 +68,12 @@ class NeuraAdaptiveOutcomeLoop {
     final averageInterruptions = interruptionTotal / count;
     final confidence = (0.35 + count * 0.12).clamp(0.0, 0.95).toDouble();
 
-    final overloaded =
-        abandonedCount > 0 ||
+    final overloaded = abandonedCount > 0 ||
         averageCompletion < 0.45 ||
         averageEffort > 0.75 ||
         averageInterruptions >= 4;
     if (overloaded) {
-      final recovery =
-          currentState.availableBandwidth < 0.40 ||
+      final recovery = currentState.availableBandwidth < 0.40 ||
           currentState.cognitiveLoad > 0.75;
       return NeuraOutcomeAdaptation(
         kind: NeuraOutcomeAdaptationKind.reduceLoad,
@@ -102,8 +99,7 @@ class NeuraAdaptiveOutcomeLoop {
     final lastTwo = recent.length < 2
         ? const <NeuraPlanOutcomeReceipt>[]
         : recent.sublist(recent.length - 2);
-    final sustainedSuccess =
-        lastTwo.length == 2 &&
+    final sustainedSuccess = lastTwo.length == 2 &&
         lastTwo.every(
           (outcome) =>
               outcome.completionRatio >= 0.80 &&

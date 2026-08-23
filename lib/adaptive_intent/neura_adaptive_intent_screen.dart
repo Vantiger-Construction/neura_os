@@ -158,9 +158,8 @@ class _NeuraAdaptiveIntentScreenState extends State<NeuraAdaptiveIntentScreen> {
             actions: [
               IconButton(
                 tooltip: 'Clear compiled plan',
-                onPressed: _controller.plan == null
-                    ? null
-                    : _controller.clearPlan,
+                onPressed:
+                    _controller.plan == null ? null : _controller.clearPlan,
                 icon: const Icon(Icons.restart_alt),
               ),
               IconButton(
@@ -364,8 +363,8 @@ class _ConstitutionCard extends StatelessWidget {
             onChanged: controller.safeMode
                 ? null
                 : (value) => controller.updateConstitution(
-                    constitution.copyWith(allowCloudAi: value),
-                  ),
+                      constitution.copyWith(allowCloudAi: value),
+                    ),
           ),
           SwitchListTile(
             title: const Text('Allow external messages'),
@@ -374,8 +373,8 @@ class _ConstitutionCard extends StatelessWidget {
             onChanged: controller.safeMode
                 ? null
                 : (value) => controller.updateConstitution(
-                    constitution.copyWith(allowExternalMessages: value),
-                  ),
+                      constitution.copyWith(allowExternalMessages: value),
+                    ),
           ),
           SwitchListTile(
             title: const Text('Require external preview'),
@@ -391,8 +390,8 @@ class _ConstitutionCard extends StatelessWidget {
             onChanged: controller.safeMode
                 ? null
                 : (value) => controller.updateConstitution(
-                    constitution.copyWith(allowPurchases: value),
-                  ),
+                      constitution.copyWith(allowPurchases: value),
+                    ),
           ),
           SwitchListTile(
             title: const Text('Keep sensitive content local'),
@@ -407,8 +406,8 @@ class _ConstitutionCard extends StatelessWidget {
             onChanged: controller.safeMode
                 ? null
                 : (value) => controller.updateConstitution(
-                    constitution.copyWith(allowCalendarWrites: value),
-                  ),
+                      constitution.copyWith(allowCalendarWrites: value),
+                    ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
@@ -599,8 +598,8 @@ class _StepTile extends StatelessWidget {
     final color = step.blocked
         ? Theme.of(context).colorScheme.error
         : step.deferred
-        ? Theme.of(context).colorScheme.secondary
-        : Theme.of(context).colorScheme.primary;
+            ? Theme.of(context).colorScheme.secondary
+            : Theme.of(context).colorScheme.primary;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: DecoratedBox(

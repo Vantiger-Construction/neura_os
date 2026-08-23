@@ -12,9 +12,9 @@ class NeuraAdaptiveIntentRuntime extends ChangeNotifier {
     NeuraAdaptiveOutcomeLoop outcomeLoop = const NeuraAdaptiveOutcomeLoop(),
     NeuraAdaptiveRuntimeClock? clock,
     int maxOutcomeHistory = 20,
-  }) : outcomeLoop = outcomeLoop,
-       _clock = clock ?? DateTime.now,
-       _maxOutcomeHistory = maxOutcomeHistory.clamp(1, 100).toInt();
+  })  : outcomeLoop = outcomeLoop,
+        _clock = clock ?? DateTime.now,
+        _maxOutcomeHistory = maxOutcomeHistory.clamp(1, 100).toInt();
 
   static final NeuraAdaptiveIntentRuntime instance = NeuraAdaptiveIntentRuntime(
     controller: NeuraAdaptiveIntentController.instance,
