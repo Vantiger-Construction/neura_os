@@ -158,11 +158,11 @@ class _GratitudeStarsScreenState extends State<GratitudeStarsScreen> {
                             decoration: InputDecoration(
                               hintText: 'e.g. My dog, the sun, my family…',
                               hintStyle: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.35)),
+                                  color: Colors.white.withValues(alpha: 0.7)),
                               counterStyle:
-                                  const TextStyle(color: Colors.white38),
+                                  const TextStyle(color: Colors.white70),
                               filled: true,
-                              fillColor: Colors.white.withValues(alpha: 0.06),
+                              fillColor: Colors.white.withValues(alpha: 0.12),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                                 borderSide: BorderSide.none,
@@ -191,7 +191,7 @@ class _GratitudeStarsScreenState extends State<GratitudeStarsScreen> {
                               'No stars yet!\nType something above to earn your first ⭐',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.4),
+                                  color: Colors.white.withValues(alpha: 0.75),
                                   fontSize: 15),
                             ),
                           )
@@ -201,8 +201,9 @@ class _GratitudeStarsScreenState extends State<GratitudeStarsScreen> {
                             itemBuilder: (ctx, i) {
                               final e = _entries[i];
                               return Card(
-                                color: Colors.white.withValues(alpha: 0.06),
-                                margin: const EdgeInsets.symmetric(vertical: 4),
+                                color: Colors.white.withValues(alpha: 0.12),
+                                margin:
+                                    const EdgeInsets.symmetric(vertical: 4),
                                 shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12)),
                                 child: ListTile(
@@ -214,7 +215,7 @@ class _GratitudeStarsScreenState extends State<GratitudeStarsScreen> {
                                   subtitle: Text(
                                     _formatDate(e.createdAt),
                                     style: const TextStyle(
-                                        color: Colors.white38, fontSize: 11),
+                                        color: Colors.white70, fontSize: 11),
                                   ),
                                 ),
                               );

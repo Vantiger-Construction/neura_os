@@ -15,8 +15,14 @@ import '../reliability/safe_boot.dart';
 import 'ambient_listening_prefs.dart';
 import 'neura_tts_service.dart';
 
-/// The proactive greeting remains disabled because the first native Windows
-/// TTS call can race the floating mascot engine and terminate the process.
+/// Whether [AmbientListeningService.greetAndStartListening] speaks at boot.
+///
+/// It remains disabled pending a physical Windows confirmation of the
+/// Dart-side completion workaround in [NeuraTtsService]. Debugging for issue
+/// #32 disproved the earlier mascot-window race theory and isolated the native
+/// flutter_tts speak/completion path as the likely crash source. Keeping the
+/// greeting off prevents an unverified native audio path from expanding into a
+/// startup failure while normal opt-in ambient capture remains available.
 const bool kEnableProactiveGreetingTts = false;
 
 /// Opt-in, voice-activity-triggered ambient recording encrypted at rest.
@@ -111,6 +117,9 @@ class AmbientListeningService {
 
   Future<void> greetAndStartListening() async {
     if (!captureAllowed) return;
+    // Wait for the mascot window's native engine/window creation to settle.
+    // This still avoids unrelated secondary-engine plugin startup races, but
+    // it is not treated as a fix for issue #32's flutter_tts crash.
     await MascotWindowService.I.initialCreationSettled;
     if (!captureAllowed) return;
 
@@ -392,8 +401,8 @@ class AmbientListeningService {
     _silenceTimer = null;
 
     final pcm = _utteranceBuffer.takeBytes();
-    final durationMs =
-        (pcm.length / _bytesPerSample / _sampleRate * 1000).round();
+    final durationMs = (pcm.length / _bytesPerSample / _sampleRate * 1000)
+        .round();
     if (durationMs < _kMinUtterance.inMilliseconds) return;
 
     final generation = _dataGeneration;

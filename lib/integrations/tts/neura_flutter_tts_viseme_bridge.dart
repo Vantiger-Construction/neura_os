@@ -7,15 +7,25 @@
 
 import 'package:flutter_tts/flutter_tts.dart';
 
+import '../../avatar/viseme/neura_viseme_engine.dart';
 import '../../core/neura_event_bus.dart';
 import '../../core/neura_events.dart';
 import '../../core/neura_events_extra.dart';
-import '../../avatar/viseme/neura_viseme_engine.dart';
 
 class NeuraFlutterTtsVisemeBridge {
   static bool _attached = false;
 
-  static Future<void> attach(FlutterTts tts, {NeuraEventBus? bus}) async {
+  /// [onCompletion], [onCancel], and [onError] run alongside the bridge's
+  /// event-bus emissions. flutter_tts supports only one handler of each kind,
+  /// so services that also need lifecycle signals must use these hooks instead
+  /// of replacing the bridge's handlers.
+  static Future<void> attach(
+    FlutterTts tts, {
+    NeuraEventBus? bus,
+    void Function()? onCompletion,
+    void Function()? onCancel,
+    void Function(dynamic message)? onError,
+  }) async {
     if (_attached) return;
 
     final b = bus ?? NeuraEventBus.I;
@@ -23,7 +33,7 @@ class NeuraFlutterTtsVisemeBridge {
     // Start / completion are the most reliable.
     tts.setStartHandler(() {
       b.emit(const NeuraTalkingEvent(true));
-      // default "talking starts": open mouth a bit
+      // Default "talking starts": open mouth a bit.
       b.emit(const NeuraMouthOpenEvent(0.25));
       b.emit(const NeuraVisemeEvent(NeuraViseme.AI));
     });
@@ -32,14 +42,16 @@ class NeuraFlutterTtsVisemeBridge {
       b.emit(const NeuraTalkingEvent(false));
       b.emit(const NeuraMouthOpenEvent(0.0));
       b.emit(const NeuraVisemeEvent(NeuraViseme.rest));
-      // small blink on finish feels alive
+      // A small blink on finish feels alive.
       b.emit(const NeuraPulseEvent.blink());
+      onCompletion?.call();
     });
 
     tts.setCancelHandler(() {
       b.emit(const NeuraTalkingEvent(false));
       b.emit(const NeuraMouthOpenEvent(0.0));
       b.emit(const NeuraVisemeEvent(NeuraViseme.rest));
+      onCancel?.call();
     });
 
     tts.setErrorHandler((message) {
@@ -47,36 +59,39 @@ class NeuraFlutterTtsVisemeBridge {
       b.emit(const NeuraMouthOpenEvent(0.0));
       b.emit(const NeuraVisemeEvent(NeuraViseme.rest));
       b.emit(NeuraErrorEvent('TTS error: $message', hint: 'flutter_tts'));
+      onError?.call(message);
     });
 
-    // Progress handler gives substring positions in the original text for many platforms.
-    // We'll sample a tiny slice and infer a viseme.
+    // Progress gives substring positions in the original text on many
+    // platforms. Sample a small fragment and infer a viseme.
     tts.setProgressHandler((String text, int start, int end, String word) {
       try {
         final safeStart = start.clamp(0, text.length);
         final safeEnd = end.clamp(0, text.length);
-        String frag;
+        String fragment;
         if (safeEnd > safeStart) {
-          frag = text.substring(safeStart, safeEnd);
+          fragment = text.substring(safeStart, safeEnd);
         } else if (word.isNotEmpty) {
-          frag = word;
+          fragment = word;
         } else {
-          frag = text.isEmpty
+          fragment = text.isEmpty
               ? ''
               : text.substring(
-                  safeStart, (safeStart + 1).clamp(0, text.length));
+                  safeStart,
+                  (safeStart + 1).clamp(0, text.length),
+                );
         }
 
-        final v = NeuraVisemeEngine.inferFromFragment(frag);
-        final open = NeuraVisemeEngine.mouthOpenFromFragment(frag);
-        b.emit(NeuraVisemeEvent(v));
+        final viseme = NeuraVisemeEngine.inferFromFragment(fragment);
+        final open = NeuraVisemeEngine.mouthOpenFromFragment(fragment);
+        b.emit(NeuraVisemeEvent(viseme));
         b.emit(NeuraMouthOpenEvent(open));
       } catch (_) {
-        // Never throw from progress callback.
+        // Never throw from a native progress callback.
       }
     });
 
-    // Mark attached only after every callback registration has succeeded so a
+    // Mark attached only after every callback registration succeeds so a
     // transient plugin failure can be retried later in this process.
     _attached = true;
   }
