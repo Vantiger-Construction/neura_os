@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../adaptive_intent/neura_adaptive_intent_status_card.dart';
 import '../../intelligence/action_review_screen.dart';
 import '../../intelligence/neura_intelligence_controller.dart';
 import '../../joy_engine/joy_screen.dart';
@@ -12,9 +13,11 @@ import '../../relationships/screens/relationship_list_screen.dart';
 import '../../src/modules/focus/focus_office_screen.dart';
 import '../proactive_banner_service.dart';
 
-/// Surfaces an unprompted, dismissible Joy Moment or relationship nudge at
-/// the top of the dashboard -- see [ProactiveBannerService] for the
-/// suppression/cooldown logic behind when this actually shows anything.
+/// Surfaces Adaptive Intent state plus an optional, dismissible proactive card.
+///
+/// Adaptive Intent is always available from the dashboard. The optional
+/// intelligence suggestion below it still follows suppression and cooldown
+/// policy in [ProactiveBannerService].
 class ProactiveBannerCard extends StatefulWidget {
   const ProactiveBannerCard({super.key});
 
@@ -99,26 +102,23 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
             builder: (_) => NeuraActionReviewScreen(
               candidate: banner.candidate,
               receipt: banner.receipt,
-              onResolved: (acted) => _recordOutcome(
-                banner,
-                acted: acted,
-              ),
+              onResolved: (acted) => _recordOutcome(banner, acted: acted),
             ),
           ),
         );
       } else {
-        await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const QuestModeScreen()),
-        );
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const QuestModeScreen()));
       }
     } else if (banner.kind == ProactiveBannerKind.wellness) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const SupportCenterScreen()),
-      );
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const SupportCenterScreen()));
     } else if (banner.kind == ProactiveBannerKind.focus) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const FocusOfficeScreen()),
-      );
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const FocusOfficeScreen()));
     }
   }
 
@@ -182,7 +182,9 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
   @override
   Widget build(BuildContext context) {
     final banner = _banner;
-    if (banner == null || _dismissed) return const SizedBox.shrink();
+    if (banner == null || _dismissed) {
+      return const NeuraAdaptiveIntentStatusCard();
+    }
 
     final icon = switch (banner.kind) {
       ProactiveBannerKind.joy => Icons.emoji_emotions_outlined,
@@ -194,48 +196,64 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
     final showWhy =
         NeuraIntelligenceController.instance.preferences.showDecisionReasons;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(banner.title,
-                      style: Theme.of(context).textTheme.titleSmall),
-                  const SizedBox(height: 4),
-                  Text(banner.body,
-                      style: Theme.of(context).textTheme.bodySmall),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const NeuraAdaptiveIntentStatusCard(),
+        const SizedBox(height: 8),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      TextButton(
-                          onPressed: _dismiss, child: const Text('Not now')),
-                      if (showWhy) ...[
-                        TextButton(
-                            onPressed: _showWhy, child: const Text('Why?')),
-                      ],
-                      FilledButton(
-                        onPressed: _act,
-                        child: Text(
-                          banner.receipt.requiresApproval ? 'Review' : 'Open',
-                        ),
+                      Text(
+                        banner.title,
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        banner.body,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          TextButton(
+                            onPressed: _dismiss,
+                            child: const Text('Not now'),
+                          ),
+                          if (showWhy)
+                            TextButton(
+                              onPressed: _showWhy,
+                              child: const Text('Why?'),
+                            ),
+                          FilledButton(
+                            onPressed: _act,
+                            child: Text(
+                              banner.receipt.requiresApproval
+                                  ? 'Review'
+                                  : 'Open',
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
