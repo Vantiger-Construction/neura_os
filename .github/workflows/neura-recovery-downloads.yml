@@ -370,8 +370,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source_apk="build/app/outputs/flutter-apk/app-debug.apk"
-          test -s "$source_apk"
+          source_apk="$(find build/app/outputs -type f -name '*.apk' -size +0c -print -quit)"
+          if [[ -z "$source_apk" ]]; then
+            echo "::error::Flutter completed without producing a non-empty APK."
+            find build/app/outputs -maxdepth 5 -type f -print || true
+            exit 1
+          fi
           output="recovery_downloads/android"
           mkdir -p "$output"
           app_version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n 1)"
