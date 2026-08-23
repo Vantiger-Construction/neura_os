@@ -1,0 +1,88 @@
+name: Apply Neura Adaptive Intent Phase 4
+
+on:
+  push:
+    branches:
+      - agent/neura-adaptive-intent-os-v1.4
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-neura-adaptive-intent-phase4
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.44.7"
+  WORK_BRANCH: agent/neura-adaptive-intent-os-v1.4
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+
+    steps:
+      - name: Check out Phase 4 branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.WORK_BRANCH }}
+          fetch-depth: 0
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Apply deterministic Phase 4 integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .ci/apply_neura_adaptive_intent_phase4.py
+
+      - name: Restore package language settings
+        run: flutter pub get
+
+      - name: Apply canonical package-mode formatting
+        run: |
+          dart format \
+            lib/adaptive_intent \
+            lib/cognitive \
+            lib/constitution \
+            lib/intent_compiler \
+            lib/dashboard/widgets/proactive_banner_card.dart \
+            lib/modules/navigation/enhanced_navigation.dart \
+            lib/src/core/data_wipe_service.dart \
+            test/adaptive_intent \
+            test/cognitive \
+            test/constitution \
+            test/intent_compiler
+
+      - name: Require zero analyzer findings
+        run: flutter analyze --fatal-infos
+
+      - name: Run Adaptive Intent Phase 4 tests
+        run: |
+          flutter test --reporter expanded --timeout 90s \
+            test/cognitive \
+            test/constitution \
+            test/intent_compiler \
+            test/adaptive_intent
+
+      - name: Run complete Neura Flutter suite
+        run: flutter test --concurrency 4 --timeout 2m
+
+      - name: Commit verified Phase 4 implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/apply-neura-adaptive-intent-phase4.yml
+          git config user.name "Neura Companion"
+          git config user.email \
+            "156997939+Vantiger1@users.noreply.github.com"
+          git add -A
+          git commit -m \
+            "feat(adaptive-intent): build real-beta Phase 4"
+          git push origin HEAD:${WORK_BRANCH}
