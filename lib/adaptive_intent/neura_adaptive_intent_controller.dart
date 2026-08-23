@@ -15,8 +15,8 @@ typedef NeuraAdaptiveIntentClock = DateTime Function();
 
 class NeuraAdaptiveIntentController extends ChangeNotifier {
   NeuraAdaptiveIntentController({
-    NeuraBandwidthEngine bandwidthEngine = const NeuraBandwidthEngine(),
-    NeuraIntentCompiler intentCompiler = const NeuraIntentCompiler(),
+    this.bandwidthEngine = const NeuraBandwidthEngine(),
+    this.intentCompiler = const NeuraIntentCompiler(),
     NeuraCognitiveSignals? signals,
     NeuraPersonalConstitution constitution = const NeuraPersonalConstitution(),
     bool? safeMode,
@@ -25,9 +25,7 @@ class NeuraAdaptiveIntentController extends ChangeNotifier {
     NeuraAdaptiveIntentClock? clock,
     Duration signalMaxAge = const Duration(hours: 12),
     Duration persistDelay = const Duration(milliseconds: 250),
-  })  : bandwidthEngine = bandwidthEngine,
-        intentCompiler = intentCompiler,
-        _signals = (signals ?? NeuraCognitiveSignals.defaults()).normalized(),
+  })  : _signals = (signals ?? NeuraCognitiveSignals.defaults()).normalized(),
         _constitution = constitution.normalized(),
         _safeModeListenable = safeModeListenable,
         _safeMode = safeMode ?? safeModeListenable?.value ?? false,
