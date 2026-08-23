@@ -33,6 +33,19 @@ class NeuraPersonalConstitution {
     this.workHoursEnd = 20,
   });
 
+  NeuraPersonalConstitution normalized() {
+    return NeuraPersonalConstitution(
+      allowCloudAi: allowCloudAi,
+      allowExternalMessages: allowExternalMessages,
+      allowPurchases: allowPurchases,
+      allowCalendarWrites: allowCalendarWrites,
+      keepSensitiveContentLocal: keepSensitiveContentLocal,
+      requireExternalPreview: requireExternalPreview,
+      workHoursStart: workHoursStart.clamp(0, 23).toInt(),
+      workHoursEnd: workHoursEnd.clamp(0, 23).toInt(),
+    );
+  }
+
   NeuraPersonalConstitution copyWith({
     bool? allowCloudAi,
     bool? allowExternalMessages,
@@ -55,7 +68,7 @@ class NeuraPersonalConstitution {
           requireExternalPreview ?? this.requireExternalPreview,
       workHoursStart: workHoursStart ?? this.workHoursStart,
       workHoursEnd: workHoursEnd ?? this.workHoursEnd,
-    );
+    ).normalized();
   }
 
   NeuraConstitutionDecision evaluate(
