@@ -1,0 +1,347 @@
+name: Finalize Neura Adaptive Intent Phase 4 v3
+
+on:
+  push:
+    branches:
+      - agent/neura-adaptive-intent-os-v1.4
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-neura-adaptive-intent-phase4
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.44.7"
+  WORK_BRANCH: agent/neura-adaptive-intent-os-v1.4
+
+jobs:
+  finalize-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+
+    steps:
+      - name: Check out Phase 4 branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.WORK_BRANCH }}
+          fetch-depth: 0
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Apply self-contained Phase 4 integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8')
+
+          stage = Path('.ci/neura-adaptive-intent-phase4')
+          staged = {
+              'runtime.dart':
+                  'lib/adaptive_intent/neura_adaptive_intent_runtime.dart',
+              'status_card.dart':
+                  'lib/adaptive_intent/neura_adaptive_intent_status_card.dart',
+              'session_screen.dart':
+                  'lib/adaptive_intent/neura_adaptive_session_screen.dart',
+              'adaptive_intent.dart':
+                  'lib/adaptive_intent/adaptive_intent.dart',
+              'README.md': 'NEURA_ADAPTIVE_INTENT_OS_V1_4.md',
+          }
+          for source_name, destination in staged.items():
+              source = stage / source_name
+              if source.is_file():
+                  write(destination, source.read_text(encoding='utf-8'))
+
+          required = [
+              Path('lib/adaptive_intent/neura_adaptive_intent_preferences.dart'),
+              Path('lib/adaptive_intent/neura_live_signal_adapter.dart'),
+              Path('lib/adaptive_intent/neura_outcome_store.dart'),
+              Path('lib/adaptive_intent/neura_local_quest_bridge.dart'),
+              Path('lib/adaptive_intent/neura_adaptive_intent_onboarding.dart'),
+              Path('lib/adaptive_intent/neura_adaptive_intent_entry_screen.dart'),
+              Path('test/adaptive_intent/neura_adaptive_intent_preferences_test.dart'),
+              Path('test/adaptive_intent/neura_live_signal_adapter_test.dart'),
+              Path('test/adaptive_intent/neura_outcome_store_test.dart'),
+              Path('test/adaptive_intent/neura_local_quest_bridge_test.dart'),
+              Path('test/adaptive_intent/neura_adaptive_intent_phase4_test.dart'),
+          ]
+          missing = [str(path) for path in required if not path.is_file()]
+          if missing:
+              raise SystemExit(f'Missing Phase 4 files: {missing}')
+
+          live_path = 'lib/adaptive_intent/neura_live_signal_adapter.dart'
+          live = read(live_path)
+          live = live.replace(
+              'final quests = await QuestStore.instance.getQuests();',
+              'final List<Quest> quests = '
+              'await QuestStore.instance.getQuests();',
+          )
+          live = live.replace(
+              'final done = await QuestStore.instance.getDone();',
+              'final List<QuestDone> done = '
+              'await QuestStore.instance.getDone();',
+          )
+          write(live_path, live)
+
+          controller_path = (
+              'lib/adaptive_intent/neura_adaptive_intent_controller.dart'
+          )
+          controller = read(controller_path)
+          if 'int? evidenceCount' not in controller:
+              old = '''    double? completionRate,
+              double? notificationPressure,
+            }) {'''
+              new = '''    double? completionRate,
+              double? notificationPressure,
+              int? evidenceCount,
+              bool? includesSelfReport,
+            }) {'''
+              if old not in controller:
+                  raise SystemExit('Controller signature anchor missing.')
+              controller = controller.replace(old, new, 1)
+          if 'evidenceCount: evidenceCount' not in controller:
+              old = '''      completionRate: completionRate,
+                notificationPressure: notificationPressure,
+              );'''
+              new = '''      completionRate: completionRate,
+                notificationPressure: notificationPressure,
+                evidenceCount: evidenceCount,
+                includesSelfReport: includesSelfReport,
+              );'''
+              if old not in controller:
+                  raise SystemExit('Controller copyWith anchor missing.')
+              controller = controller.replace(old, new, 1)
+          write(controller_path, controller)
+
+          nav_path = 'lib/modules/navigation/enhanced_navigation.dart'
+          nav = read(nav_path)
+          old_import = (
+              "import '../../adaptive_intent/"
+              "neura_adaptive_intent_screen.dart';\n"
+          )
+          entry_import = (
+              "import '../../adaptive_intent/"
+              "neura_adaptive_intent_entry_screen.dart';\n"
+          )
+          tracker_import = (
+              "import '../../adaptive_intent/"
+              "neura_live_signal_adapter.dart';\n"
+          )
+          if old_import in nav:
+              nav = nav.replace(old_import, entry_import, 1)
+          if entry_import not in nav:
+              anchor = (
+                  "import '../../core/memory/"
+                  "memory_consolidation_service.dart';\n"
+              )
+              if anchor not in nav:
+                  raise SystemExit('Navigation import anchor missing.')
+              nav = nav.replace(anchor, entry_import + anchor, 1)
+          if tracker_import not in nav:
+              nav = nav.replace(
+                  entry_import,
+                  entry_import + tracker_import,
+                  1,
+              )
+          nav = nav.replace(
+              'const NeuraAdaptiveIntentScreen()',
+              'const NeuraAdaptiveIntentEntryScreen()',
+          )
+          if 'primary_tab_$i' not in nav:
+              anchor = '''  void _onTab(int i) {
+              setState(() => _index = i);'''
+              replacement = '''  void _onTab(int i) {
+              NeuraAdaptiveActivityTracker.instance.recordSurfaceVisit(
+                'primary_tab_$i',
+              );
+              setState(() => _index = i);'''
+              if anchor not in nav:
+                  raise SystemExit('Navigation tab anchor missing.')
+              nav = nav.replace(anchor, replacement, 1)
+          write(nav_path, nav)
+
+          wipe_path = 'lib/src/core/data_wipe_service.dart'
+          wipe = read(wipe_path)
+          runtime_import = (
+              "import '../../adaptive_intent/"
+              "neura_adaptive_intent_runtime.dart';\n"
+          )
+          if runtime_import not in wipe:
+              anchor = "import '../../core/memory/memory_crypto.dart';\n"
+              if anchor not in wipe:
+                  raise SystemExit('Data-wipe import anchor missing.')
+              wipe = wipe.replace(anchor, runtime_import + anchor, 1)
+          if "'adaptive intent shutdown'" not in wipe:
+              anchor = '''    // Drain persistent writers and release cached file paths before removing
+              // their parent directories.
+          '''
+              block = '''    await _attempt(
+              failures,
+              'adaptive intent shutdown',
+              NeuraAdaptiveIntentRuntime.instance.resetAfterDataWipe,
+            );
+          '''
+              if anchor not in wipe:
+                  raise SystemExit('Data-wipe reset anchor missing.')
+              wipe = wipe.replace(anchor, anchor + block, 1)
+          resume = (
+              '    NeuraAdaptiveIntentRuntime.instance.'
+              'resumeAfterDataWipe();\n'
+          )
+          if resume not in wipe:
+              anchor = (
+                  '    ProactiveBannerService.instance.'
+                  'resumeAfterDataWipe();\n'
+              )
+              if anchor not in wipe:
+                  raise SystemExit('Data-wipe resume anchor missing.')
+              wipe = wipe.replace(anchor, resume + anchor, 1)
+          write(wipe_path, wipe)
+
+          workflow_path = (
+              '.github/workflows/neura-adaptive-intent-validation.yml'
+          )
+          workflow = read(workflow_path)
+          path_anchor = (
+              '      - "lib/dashboard/widgets/'
+              'proactive_banner_card.dart"\n'
+          )
+          nav_line = (
+              '      - "lib/modules/navigation/'
+              'enhanced_navigation.dart"\n'
+          )
+          wipe_line = '      - "lib/src/core/data_wipe_service.dart"\n'
+          if nav_line not in workflow:
+              if path_anchor not in workflow:
+                  raise SystemExit('Validation path anchor missing.')
+              workflow = workflow.replace(
+                  path_anchor,
+                  path_anchor + nav_line + wipe_line,
+                  1,
+              )
+          format_anchor = (
+              '            lib/dashboard/widgets/'
+              'proactive_banner_card.dart \\\n'
+          )
+          format_lines = (
+              '            lib/modules/navigation/'
+              'enhanced_navigation.dart \\\n'
+              '            lib/src/core/data_wipe_service.dart \\\n'
+          )
+          if 'lib/src/core/data_wipe_service.dart \\' not in workflow:
+              if format_anchor not in workflow:
+                  raise SystemExit('Validation format anchor missing.')
+              workflow = workflow.replace(
+                  format_anchor,
+                  format_anchor + format_lines,
+                  1,
+              )
+          write(workflow_path, workflow)
+
+          pubspec_path = 'pubspec.yaml'
+          pubspec = read(pubspec_path)
+          if 'version: 1.4.0+7' not in pubspec:
+              if 'version: 1.4.0+6' not in pubspec:
+                  raise SystemExit('Expected 1.4 package version missing.')
+              pubspec = pubspec.replace(
+                  'version: 1.4.0+6',
+                  'version: 1.4.0+7',
+                  1,
+              )
+          write(pubspec_path, pubspec)
+
+          if stage.exists():
+              shutil.rmtree(stage)
+          Path('.ci/apply_neura_adaptive_intent_phase4.py').unlink(
+              missing_ok=True,
+          )
+          PY
+
+      - name: Restore package language settings
+        run: flutter pub get
+
+      - name: Apply safe analyzer fixes
+        run: dart fix --apply
+
+      - name: Apply canonical package-mode formatting
+        run: |
+          dart format \
+            lib/adaptive_intent \
+            lib/cognitive \
+            lib/constitution \
+            lib/intent_compiler \
+            lib/dashboard/widgets/proactive_banner_card.dart \
+            lib/modules/navigation/enhanced_navigation.dart \
+            lib/src/core/data_wipe_service.dart \
+            test/adaptive_intent \
+            test/cognitive \
+            test/constitution \
+            test/intent_compiler
+
+      - name: Require zero analyzer findings
+        run: flutter analyze --fatal-infos
+
+      - name: Run Adaptive Intent Phase 4 tests
+        run: |
+          flutter test --reporter expanded --timeout 90s \
+            test/cognitive \
+            test/constitution \
+            test/intent_compiler \
+            test/adaptive_intent
+
+      - name: Run complete Neura Flutter suite
+        run: flutter test --concurrency 4 --timeout 2m
+
+      - name: Record validation and commit verified Phase 4
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > ADAPTIVE_INTENT_PHASE4_VALIDATION.md <<EOF
+          # Neura Adaptive Intent OS Phase 4 validation
+
+          - Source SHA: ${GITHUB_SHA}
+          - GitHub Actions run: ${GITHUB_RUN_ID}
+          - Flutter: ${FLUTTER_VERSION}
+          - Package: 1.4.0+7
+          - Package-mode Dart formatting: PASS
+          - flutter analyze --fatal-infos: PASS
+          - focused Cognitive/Constitution/Intent/Adaptive Intent tests: PASS
+          - complete Neura Flutter suite: PASS
+          - live signal sources: opt-in, normalized, local values only
+          - outcome history: bounded and AES-GCM encrypted at rest
+          - executable capability: reversible local quest after fresh approval
+          - external, cloud, calendar, purchase, message, and money executors: absent
+          EOF
+          rm -rf .ci/neura-adaptive-intent-phase4
+          rm -f .ci/apply_neura_adaptive_intent_phase4.py
+          rm -f \
+            .github/workflows/apply-neura-adaptive-intent-phase4.yml \
+            .github/workflows/finalize-neura-adaptive-intent-phase4.yml \
+            .github/workflows/finalize-neura-adaptive-intent-phase4-v2.yml \
+            .github/workflows/finalize-neura-adaptive-intent-phase4-v3.yml
+          git config user.name "Neura Companion"
+          git config user.email \
+            "156997939+Vantiger1@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Phase 4 is already fully integrated and verified."
+            exit 0
+          fi
+          git commit -m \
+            "feat(adaptive-intent): build real-beta Phase 4"
+          git push origin HEAD:${WORK_BRANCH}
