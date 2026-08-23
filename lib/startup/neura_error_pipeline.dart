@@ -8,9 +8,8 @@ import 'neura_bootstrap_log.dart';
 import 'neura_error_redactor.dart';
 import 'neura_isolate_error_listener.dart';
 
-typedef NeuraStructuredErrorSink = Future<void> Function(
-  Map<String, Object?> payload,
-);
+typedef NeuraStructuredErrorSink =
+    Future<void> Function(Map<String, Object?> payload);
 typedef NeuraErrorNotice = void Function();
 typedef NeuraErrorObserver = void Function(Map<String, Object?> payload);
 
@@ -71,9 +70,7 @@ class NeuraErrorPipeline {
     // event loops. The isolate listener adds coverage for errors delivered
     // directly by the root isolate. Dedupe suppresses double delivery.
     try {
-      _isolateErrorListener = NeuraIsolateErrorListener.attach(
-        _onIsolateError,
-      );
+      _isolateErrorListener = NeuraIsolateErrorListener.attach(_onIsolateError);
     } catch (error, stackTrace) {
       _isolateErrorListener?.close();
       _isolateErrorListener = null;
@@ -143,6 +140,7 @@ class NeuraErrorPipeline {
     required bool fatal,
     required String phase,
     String? errorType,
+    bool suppressNotice = false,
   }) {
     try {
       final sanitizedErrorType = NeuraErrorRedactor.tag(
@@ -155,9 +153,7 @@ class NeuraErrorPipeline {
         // Never persist error.toString(): provider/plugin exceptions can echo
         // prompts, credentials, filenames, or other arbitrary user content.
         'message': 'An unexpected $sanitizedErrorType was contained.',
-        'stack': NeuraErrorRedactor.stack(
-          _safeStackToString(stackTrace),
-        ),
+        'stack': NeuraErrorRedactor.stack(_safeStackToString(stackTrace)),
         'fatal': fatal,
         'phase': NeuraErrorRedactor.tag(phase),
       };
@@ -193,7 +189,7 @@ class NeuraErrorPipeline {
         }
       }
 
-      if (phase == 'runtime') _notice?.call();
+      if (phase == 'runtime' && !suppressNotice) _notice?.call();
     } catch (_) {
       // The error reporter is the last line of defense and must never throw.
     }
@@ -210,6 +206,7 @@ class NeuraErrorPipeline {
       source: 'flutter_framework',
       fatal: false,
       phase: 'runtime',
+      suppressNotice: _isBenignInkResponseRace(details),
     );
 
     final previous = _previousFlutterHandler;
@@ -222,6 +219,22 @@ class NeuraErrorPipeline {
     } catch (_) {
       // Console presentation cannot be allowed to escape the error handler.
     }
+  }
+
+  /// Flutter's [MouseTracker]/[InkWell] hover-tracking has a longstanding
+  /// framework race (flutter/flutter#89736 and duplicates): a hover or
+  /// tap-down event can reach an `_InkResponseState` whose element was
+  /// deactivated moments earlier, so `Material.of(context)` null-checks and
+  /// throws. It's still captured and logged for diagnostics -- only the
+  /// user-facing notice is skipped so the app doesn't interrupt the user
+  /// over an invisible framework hiccup.
+  bool _isBenignInkResponseRace(FlutterErrorDetails details) {
+    if (details.exceptionAsString() !=
+        'Null check operator used on a null value') {
+      return false;
+    }
+    final stack = (details.stack ?? StackTrace.current).toString();
+    return stack.contains('Material.of') && stack.contains('ink_well.dart');
   }
 
   bool _onPlatformError(Object error, StackTrace stackTrace) {
@@ -312,17 +325,19 @@ class NeuraErrorPipeline {
   void _enqueueAppLog(Map<String, Object?> payload) {
     final sink = _appLogSink;
     if (sink == null) return;
-    _sinkWrites = _sinkWrites.then((_) async {
-      try {
-        await sink(payload);
-      } catch (_) {
-        // AppLog can become unavailable after a successful handoff (disk
-        // full, revoked storage, data-wipe suspension). Preserve the already
-        // sanitized record in the independent bounded bootstrap log. A later
-        // record still retries AppLog through the same sink.
-        await NeuraBootstrapLog.append(payload);
-      }
-    }).catchError((_) {});
+    _sinkWrites = _sinkWrites
+        .then((_) async {
+          try {
+            await sink(payload);
+          } catch (_) {
+            // AppLog can become unavailable after a successful handoff (disk
+            // full, revoked storage, data-wipe suspension). Preserve the already
+            // sanitized record in the independent bounded bootstrap log. A later
+            // record still retries AppLog through the same sink.
+            await NeuraBootstrapLog.append(payload);
+          }
+        })
+        .catchError((_) {});
   }
 
   @visibleForTesting
@@ -433,10 +448,7 @@ class _NeuraRecoveryApp extends StatelessWidget {
                     const SizedBox(height: 22),
                     const Text(
                       'Bootstrap diagnostic log',
-                      style: TextStyle(
-                        color: Colors.white54,
-                        fontSize: 12,
-                      ),
+                      style: TextStyle(color: Colors.white54, fontSize: 12),
                     ),
                     const SizedBox(height: 6),
                     SelectionArea(
