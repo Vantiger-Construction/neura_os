@@ -157,12 +157,13 @@ class NeuraVoicePack {
     }
   }
 
-  Future<void> _handleMicStreamError(
-    Object error,
-    StackTrace stack,
-  ) async {
+  Future<void> _handleMicStreamError(Object error, StackTrace stack) async {
     try {
-      await AppLog.instance.caught('voice_pack_mic_stream_failed', error, stack);
+      await AppLog.instance.caught(
+        'voice_pack_mic_stream_failed',
+        error,
+        stack,
+      );
     } finally {
       try {
         await stopMic();
@@ -457,12 +458,12 @@ class NeuraVisemeWeights {
     weights.rest = values.containsKey('rest')
         ? number('rest')
         : (1.0 -
-                (weights.aa +
-                    weights.ee +
-                    weights.oo +
-                    weights.ff +
-                    weights.mm))
-            .clamp(0.0, 1.0);
+                  (weights.aa +
+                      weights.ee +
+                      weights.oo +
+                      weights.ff +
+                      weights.mm))
+              .clamp(0.0, 1.0);
     weights.normalize();
     return weights;
   }
@@ -482,10 +483,7 @@ class NeuraVisemeTimeline {
     return frames[index];
   }
 
-  NeuraVisemeWeights sample(
-    double seconds, {
-    required double talkLevel,
-  }) {
+  NeuraVisemeWeights sample(double seconds, {required double talkLevel}) {
     final frame = _frameAt(seconds);
     final base = NeuraVisemeWeights.fromMap({
       'rest': frame.rest,
@@ -502,9 +500,10 @@ class NeuraVisemeTimeline {
     base.oo *= 0.35 + 0.65 * level;
     base.ff *= 0.50 + 0.50 * level;
     base.mm *= 0.70 + 0.30 * (1.0 - level);
-    base.rest =
-        (1.0 - (base.aa + base.ee + base.oo + base.ff + base.mm))
-            .clamp(0.0, 1.0);
+    base.rest = (1.0 - (base.aa + base.ee + base.oo + base.ff + base.mm)).clamp(
+      0.0,
+      1.0,
+    );
     base.normalize();
     return base;
   }
@@ -514,8 +513,7 @@ class NeuraVisemeTimeline {
     final list = object['frames'] as List<dynamic>? ?? const [];
     final frames = list
         .map(
-          (value) =>
-              NeuraVisemeWeights.fromMap(value as Map<String, dynamic>),
+          (value) => NeuraVisemeWeights.fromMap(value as Map<String, dynamic>),
         )
         .toList(growable: false);
     return NeuraVisemeTimeline(fps: fps, frames: frames);
@@ -562,8 +560,7 @@ class NeuraVisemeFallback {
     final ffPulse = 0.5 + 0.5 * math.sin(_phase * 3.1 + 2.1);
 
     final open = (level * 0.95 + 0.05).clamp(0.0, 1.0);
-    final targetMm =
-        (0.10 + 0.25 * mmPulse * (1.0 - level)).clamp(0.0, 0.35);
+    final targetMm = (0.10 + 0.25 * mmPulse * (1.0 - level)).clamp(0.0, 0.35);
     final targetFf = (0.05 + 0.25 * ffPulse).clamp(0.0, 0.30);
     final vowelEnergy = (open * (1.0 - targetMm)).clamp(0.0, 1.0);
     final sum = (aMix + eMix + oMix).clamp(0.001, 3.0);
@@ -571,8 +568,10 @@ class NeuraVisemeFallback {
     final targetEe = vowelEnergy * (eMix / sum);
     final targetOo = vowelEnergy * (oMix / sum) * 1.05;
     final targetRest =
-        (1.0 - (targetAa + targetEe + targetOo + targetFf + targetMm))
-            .clamp(0.0, 1.0);
+        (1.0 - (targetAa + targetEe + targetOo + targetFf + targetMm)).clamp(
+          0.0,
+          1.0,
+        );
 
     _weights.mm = _lerp(_weights.mm, targetMm, dt);
     _weights.ff = _lerp(_weights.ff, targetFf, dt);
@@ -650,29 +649,27 @@ class NeuraMicVisemeEngine {
     _talkSmoothed = _lerp(_talkSmoothed, gated, smooth);
     final attack = ((_rmsSmoothed - _previousRms) * 6.0).clamp(0.0, 1.0);
     _previousRms = _rmsSmoothed;
-    final fricative =
-        ((_zcrSmoothed - noiseZcrThresh) / 0.20).clamp(0.0, 1.0);
+    final fricative = ((_zcrSmoothed - noiseZcrThresh) / 0.20).clamp(0.0, 1.0);
 
     if (_talkSmoothed < 0.05) {
       const mm = 0.12;
       return const _MicFrame(0.0, 1.0 - mm, 0, 0, 0, 0, mm);
     }
 
-    final vowelEnergy =
-        (_talkSmoothed * (1.0 - fricative * 0.55)).clamp(0.0, 1.0);
+    final vowelEnergy = (_talkSmoothed * (1.0 - fricative * 0.55)).clamp(
+      0.0,
+      1.0,
+    );
     final seconds = DateTime.now().millisecondsSinceEpoch / 1000.0;
     final aMix = (0.5 + 0.5 * math.sin(seconds * 6.0)).clamp(0.0, 1.0);
-    final eMix =
-        (0.5 + 0.5 * math.sin(seconds * 7.3 + 1.1)).clamp(0.0, 1.0);
-    final oMix =
-        (0.5 + 0.5 * math.sin(seconds * 5.1 + 2.2)).clamp(0.0, 1.0);
+    final eMix = (0.5 + 0.5 * math.sin(seconds * 7.3 + 1.1)).clamp(0.0, 1.0);
+    final oMix = (0.5 + 0.5 * math.sin(seconds * 5.1 + 2.2)).clamp(0.0, 1.0);
     final sum = (aMix + eMix + oMix).clamp(0.001, 3.0);
 
     var aa = vowelEnergy * (aMix / sum) * 1.10;
     var ee = vowelEnergy * (eMix / sum);
     var oo = vowelEnergy * (oMix / sum) * 1.05;
-    var ff =
-        (_talkSmoothed * (0.15 + 0.85 * fricative)).clamp(0.0, 0.55);
+    var ff = (_talkSmoothed * (0.15 + 0.85 * fricative)).clamp(0.0, 0.55);
     var mm = (attack * mmAttack).clamp(0.0, 0.65);
     var rest = (1.0 - (aa + ee + oo + ff + mm)).clamp(0.0, 1.0);
 
@@ -703,7 +700,7 @@ class _VoicePackMicDriver {
   StreamSubscription<Uint8List>? _audioSub;
 
   _VoicePackMicDriver({NeuraMicVisemeEngine? engine})
-      : engine = engine ?? NeuraMicVisemeEngine();
+    : engine = engine ?? NeuraMicVisemeEngine();
 
   Future<bool> start() async {
     if (_audioSub != null) return true;
