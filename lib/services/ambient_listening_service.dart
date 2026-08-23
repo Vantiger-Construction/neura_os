@@ -22,8 +22,9 @@ const bool kEnableProactiveGreetingTts = false;
 /// Opt-in, voice-activity-triggered ambient recording encrypted at rest.
 class AmbientListeningService {
   AmbientListeningService._() {
-    AmbientListeningPrefsController.instance.enabled
-        .addListener(_onPrefChanged);
+    AmbientListeningPrefsController.instance.enabled.addListener(
+      _onPrefChanged,
+    );
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
   }
 
@@ -32,8 +33,7 @@ class AmbientListeningService {
   bool get captureAllowed => !SafeBoot.instance.safeMode.value;
 
   bool get _captureRequested =>
-      captureAllowed &&
-      AmbientListeningPrefsController.instance.enabled.value;
+      captureAllowed && AmbientListeningPrefsController.instance.enabled.value;
 
   static const double _kListenThreshold = 0.12;
   static const double _kFloor = -50.0;
@@ -69,8 +69,7 @@ class AmbientListeningService {
   final ValueNotifier<bool> isLive = ValueNotifier<bool>(false);
 
   int get _preRollCapBytes =>
-      (_kPreRoll.inMilliseconds / 1000 * _sampleRate * _bytesPerSample)
-          .round();
+      (_kPreRoll.inMilliseconds / 1000 * _sampleRate * _bytesPerSample).round();
 
   bool _startStillWanted(int generation) =>
       generation == _lifecycleGeneration && _captureRequested;
@@ -208,18 +207,12 @@ class AmbientListeningService {
       invalidated = invalidated || generation != _lifecycleGeneration;
       _starting = false;
       if (invalidated && _captureRequested && !_running) {
-        _runLifecycle(
-          start(),
-          'ambient_listening_restart_after_toggle_failed',
-        );
+        _runLifecycle(start(), 'ambient_listening_restart_after_toggle_failed');
       }
     }
   }
 
-  Future<void> _handleAudioStreamError(
-    Object error,
-    StackTrace stack,
-  ) async {
+  Future<void> _handleAudioStreamError(Object error, StackTrace stack) async {
     try {
       await AppLog.instance.caught(
         'ambient_listening_stream_failed',
@@ -350,8 +343,10 @@ class AmbientListeningService {
         final recorder = _recorder;
         if (recorder == null) return;
         final amplitude = await recorder.getAmplitude();
-        normalized =
-            ((amplitude.current - _kFloor) / (-_kFloor)).clamp(0.0, 1.0);
+        normalized = ((amplitude.current - _kFloor) / (-_kFloor)).clamp(
+          0.0,
+          1.0,
+        );
       } catch (_) {
         normalized = 0.0;
       }
@@ -397,8 +392,8 @@ class AmbientListeningService {
     _silenceTimer = null;
 
     final pcm = _utteranceBuffer.takeBytes();
-    final durationMs =
-        (pcm.length / _bytesPerSample / _sampleRate * 1000).round();
+    final durationMs = (pcm.length / _bytesPerSample / _sampleRate * 1000)
+        .round();
     if (durationMs < _kMinUtterance.inMilliseconds) return;
 
     final generation = _dataGeneration;
@@ -465,11 +460,7 @@ class AmbientListeningService {
     return _crypto ??= await MemoryCrypto.demo();
   }
 
-  Future<void> _persist(
-    Uint8List wav,
-    int durationMs,
-    int generation,
-  ) async {
+  Future<void> _persist(Uint8List wav, int durationMs, int generation) async {
     if (!_persistStillAllowed(generation)) return;
     final crypto = await _ensureCrypto();
     if (!_persistStillAllowed(generation)) return;
