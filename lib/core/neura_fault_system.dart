@@ -31,8 +31,7 @@ class NeuraFaultSystem {
       final event = NeuraFaultEvent(
         message: payload['message']?.toString() ?? userFacingMessage,
         stack: payload['stack']?.toString(),
-        source:
-            '${payload['source'] ?? 'unknown'} '
+        source: '${payload['source'] ?? 'unknown'} '
             '(${payload['phase'] ?? 'runtime'})',
       );
 
