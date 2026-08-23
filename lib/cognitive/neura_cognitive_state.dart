@@ -64,6 +64,20 @@ class NeuraCognitiveSignals {
     );
   }
 
+  NeuraCognitiveSignals normalized() {
+    return NeuraCognitiveSignals(
+      energy: _unit(energy),
+      focus: _unit(focus),
+      cognitiveLoad: _unit(cognitiveLoad),
+      urgency: _unit(urgency),
+      taskSwitchRate: _unit(taskSwitchRate),
+      completionRate: _unit(completionRate),
+      notificationPressure: _unit(notificationPressure),
+      evidenceCount: evidenceCount.clamp(0, 20).toInt(),
+      includesSelfReport: includesSelfReport,
+    );
+  }
+
   NeuraCognitiveSignals copyWith({
     double? energy,
     double? focus,
@@ -86,8 +100,10 @@ class NeuraCognitiveSignals {
           notificationPressure ?? this.notificationPressure,
       evidenceCount: evidenceCount ?? this.evidenceCount,
       includesSelfReport: includesSelfReport ?? this.includesSelfReport,
-    );
+    ).normalized();
   }
+
+  static double _unit(double value) => value.clamp(0.0, 1.0).toDouble();
 }
 
 class NeuraCognitiveState {
