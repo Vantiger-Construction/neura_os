@@ -3,11 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../cognitive/neura_cognitive_state.dart';
+import '../intent_compiler/neura_action_graph.dart';
 import 'neura_adaptive_intent_controller.dart';
 import 'neura_adaptive_intent_runtime.dart';
 import 'neura_adaptive_intent_screen.dart';
-import 'neura_adaptive_session_screen.dart';
 import 'neura_adaptive_plan_session.dart';
+import 'neura_adaptive_session_screen.dart';
 
 class NeuraAdaptiveIntentStatusCard extends StatefulWidget {
   const NeuraAdaptiveIntentStatusCard({super.key});

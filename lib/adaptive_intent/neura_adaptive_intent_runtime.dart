@@ -9,11 +9,10 @@ typedef NeuraAdaptiveRuntimeClock = DateTime Function();
 class NeuraAdaptiveIntentRuntime extends ChangeNotifier {
   NeuraAdaptiveIntentRuntime({
     required this.controller,
-    NeuraAdaptiveOutcomeLoop outcomeLoop = const NeuraAdaptiveOutcomeLoop(),
+    this.outcomeLoop = const NeuraAdaptiveOutcomeLoop(),
     NeuraAdaptiveRuntimeClock? clock,
     int maxOutcomeHistory = 20,
-  })  : outcomeLoop = outcomeLoop,
-        _clock = clock ?? DateTime.now,
+  })  : _clock = clock ?? DateTime.now,
         _maxOutcomeHistory = maxOutcomeHistory.clamp(1, 100).toInt();
 
   static final NeuraAdaptiveIntentRuntime instance = NeuraAdaptiveIntentRuntime(
