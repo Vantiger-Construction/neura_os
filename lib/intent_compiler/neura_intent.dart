@@ -26,10 +26,17 @@ class NeuraIntent {
 class NeuraIntentClassifier {
   const NeuraIntentClassifier();
 
+  static const maxOutcomeLength = 600;
+
   NeuraIntent classify(String outcome) {
-    final clean = outcome.trim();
+    final clean = outcome.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (clean.isEmpty) {
       throw ArgumentError.value(outcome, 'outcome', 'must not be empty');
+    }
+    if (clean.length > maxOutcomeLength) {
+      throw const FormatException(
+        'Adaptive Intent outcomes must be 600 characters or fewer.',
+      );
     }
 
     final normalized = clean.toLowerCase();
