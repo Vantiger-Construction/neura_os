@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/adaptive_intent/neura_adaptive_intent_preferences.dart';
 
@@ -47,6 +49,30 @@ void main() {
     expect(controller.enabled, isFalse);
     expect(store.value, isNull);
   });
+
+  test('data wipe wins over an in-flight enrollment write', () async {
+    final store = _BlockingPreferencesStore();
+    final controller = NeuraAdaptiveIntentPreferencesController(store: store);
+    addTearDown(controller.dispose);
+
+    final update = controller.completeOnboarding(
+      useMoodSignal: true,
+      useFocusSignal: true,
+      useQuestSignal: true,
+      useActivitySignal: true,
+    );
+    await store.saveStarted.future;
+
+    final wipe = controller.resetAfterDataWipe();
+    store.release();
+
+    await update;
+    await wipe;
+
+    expect(controller.enabled, isFalse);
+    expect(controller.preferences.onboardingComplete, isFalse);
+    expect(store.value, isNull);
+  });
 }
 
 class _MemoryPreferencesStore implements NeuraAdaptiveIntentPreferencesStore {
@@ -62,6 +88,32 @@ class _MemoryPreferencesStore implements NeuraAdaptiveIntentPreferencesStore {
 
   @override
   Future<void> save(NeuraAdaptiveIntentPreferences preferences) async {
+    value = preferences;
+  }
+}
+
+class _BlockingPreferencesStore
+    implements NeuraAdaptiveIntentPreferencesStore {
+  final saveStarted = Completer<void>();
+  final _releaseSave = Completer<void>();
+  NeuraAdaptiveIntentPreferences? value;
+
+  void release() {
+    if (!_releaseSave.isCompleted) _releaseSave.complete();
+  }
+
+  @override
+  Future<void> clear() async {
+    value = null;
+  }
+
+  @override
+  Future<NeuraAdaptiveIntentPreferences?> load() async => value;
+
+  @override
+  Future<void> save(NeuraAdaptiveIntentPreferences preferences) async {
+    if (!saveStarted.isCompleted) saveStarted.complete();
+    await _releaseSave.future;
     value = preferences;
   }
 }

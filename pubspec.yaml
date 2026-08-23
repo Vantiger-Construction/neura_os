@@ -1,6 +1,6 @@
 name: neuro_companion
 description: A lightweight mental wellness assistant.
-version: 1.4.0+6
+version: 1.4.0+7
 environment:
   sdk: '>=3.0.0 <4.0.0'
 dependencies:

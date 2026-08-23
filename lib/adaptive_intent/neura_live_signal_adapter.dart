@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import '../cognitive/neura_cognitive_state.dart';
 import '../modules/mood/mood_store.dart';
-import '../modules/quests/quest_models.dart';
 import '../modules/quests/quest_store.dart';
 import '../src/modules/focus/focus_controller.dart';
 import '../src/modules/focus/focus_mode.dart';
@@ -354,8 +353,8 @@ class NeuraLiveSignalAdapter {
   }
 
   static Future<NeuraQuestSignalSnapshot> _readQuestSnapshot() async {
-    final quests = await QuestStore.instance.getQuests();
-    final done = await QuestStore.instance.getDone();
+    final List<Quest> quests = await QuestStore.instance.getQuests();
+    final List<QuestDone> done = await QuestStore.instance.getDone();
     final now = DateTime.now();
     final cutoff = now.subtract(const Duration(days: 7));
     final active = quests.where((quest) => !quest.archived).length;

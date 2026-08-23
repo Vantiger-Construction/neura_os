@@ -130,6 +130,8 @@ class NeuraAdaptiveIntentController extends ChangeNotifier {
     double? taskSwitchRate,
     double? completionRate,
     double? notificationPressure,
+    int? evidenceCount,
+    bool? includesSelfReport,
   }) {
     _requireReady();
     _signals = _signals.copyWith(
@@ -140,6 +142,8 @@ class NeuraAdaptiveIntentController extends ChangeNotifier {
       taskSwitchRate: taskSwitchRate,
       completionRate: completionRate,
       notificationPressure: notificationPressure,
+      evidenceCount: evidenceCount,
+      includesSelfReport: includesSelfReport,
     );
     _plan = null;
     _recalculate();

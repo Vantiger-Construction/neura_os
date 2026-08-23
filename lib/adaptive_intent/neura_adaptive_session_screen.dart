@@ -3,15 +3,23 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../cognitive/neura_cognitive_state.dart';
+import '../intelligence/action_review_screen.dart';
 import '../intent_compiler/neura_action_graph.dart';
+import 'neura_adaptive_intent_onboarding.dart';
 import 'neura_adaptive_intent_runtime.dart';
 import 'neura_adaptive_outcome_loop.dart';
 import 'neura_adaptive_plan_session.dart';
+import 'neura_local_quest_bridge.dart';
 
 class NeuraAdaptiveSessionScreen extends StatefulWidget {
-  const NeuraAdaptiveSessionScreen({this.runtime, super.key});
+  const NeuraAdaptiveSessionScreen({
+    this.runtime,
+    this.questBridge,
+    super.key,
+  });
 
   final NeuraAdaptiveIntentRuntime? runtime;
+  final NeuraLocalQuestBridge? questBridge;
 
   @override
   State<NeuraAdaptiveSessionScreen> createState() =>
@@ -21,8 +29,11 @@ class NeuraAdaptiveSessionScreen extends StatefulWidget {
 class _NeuraAdaptiveSessionScreenState
     extends State<NeuraAdaptiveSessionScreen> {
   late final NeuraAdaptiveIntentRuntime _runtime;
+  late final NeuraLocalQuestBridge _questBridge;
   late final TextEditingController _outcomeController;
+
   bool _loading = true;
+  bool _finishing = false;
   Object? _initializationError;
   double _perceivedEffort = 0.50;
   double _satisfaction = 0.70;
@@ -32,9 +43,11 @@ class _NeuraAdaptiveSessionScreenState
   void initState() {
     super.initState();
     _runtime = widget.runtime ?? NeuraAdaptiveIntentRuntime.instance;
+    _questBridge = widget.questBridge ?? NeuraLocalQuestBridge.instance;
     _outcomeController = TextEditingController(
       text: 'Organize my next three priorities without overwhelming me.',
     );
+    _runtime.recordSurfaceVisit('adaptive_session');
     unawaited(_initialize());
   }
 
@@ -52,7 +65,7 @@ class _NeuraAdaptiveSessionScreenState
       });
     }
     try {
-      await _runtime.controller.initialize();
+      await _runtime.initialize();
       if (!mounted) return;
       setState(() => _loading = false);
     } catch (error) {
@@ -61,6 +74,20 @@ class _NeuraAdaptiveSessionScreenState
         _loading = false;
         _initializationError = error;
       });
+    }
+  }
+
+  Future<void> _openOnboarding() async {
+    final enabled = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => NeuraAdaptiveIntentOnboardingScreen(
+          preferencesController: _runtime.preferencesController,
+          runtime: _runtime,
+        ),
+      ),
+    );
+    if (enabled == true && mounted) {
+      setState(() {});
     }
   }
 
@@ -78,7 +105,9 @@ class _NeuraAdaptiveSessionScreenState
       _showMessage(
         _runtime.controller.safeMode
             ? 'Safe Mode blocks active planning sessions.'
-            : 'Finish or discard the current session before starting another.',
+            : !_runtime.featureEnabled
+                ? 'Enable Adaptive Intent before starting a session.'
+                : 'Finish or discard the current session before starting another.',
       );
     }
   }
@@ -118,7 +147,9 @@ class _NeuraAdaptiveSessionScreenState
         approvalGranted: approved,
       );
     } on StateError {
-      _showMessage('That step cannot be completed in the current state.');
+      _showMessage(
+        'That step cannot be completed in the current state.',
+      );
     }
   }
 
@@ -138,18 +169,67 @@ class _NeuraAdaptiveSessionScreenState
     }
   }
 
-  void _finishSession() {
+  Future<void> _reviewAsQuest(
+    NeuraPlanStepProgress progress,
+  ) async {
+    final session = _runtime.session;
+    if (session == null) return;
+
     try {
-      _runtime.finishSession(
+      final proposal = _questBridge.prepare(
+        step: progress.step,
+        sessionId: session.id,
+        cognitiveState: _runtime.controller.state,
+        safeMode: _runtime.controller.safeMode,
+        userGesture: true,
+      );
+      var acted = false;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => NeuraActionReviewScreen(
+            candidate: proposal.candidate,
+            receipt: proposal.receipt,
+            onResolved: (value) => acted = value,
+          ),
+        ),
+      );
+      if (acted) {
+        _showMessage(
+          'The approved local quest was created. It can be undone '
+          'from the action review receipt.',
+        );
+      }
+    } on StateError {
+      _showMessage(
+        'This step cannot be prepared as a quest right now.',
+      );
+    } on FormatException {
+      _showMessage('This step does not contain a valid quest goal.');
+    }
+  }
+
+  Future<void> _finishSession() async {
+    if (_finishing) return;
+    setState(() => _finishing = true);
+    try {
+      await _runtime.finishSessionAndPersist(
         userGesture: true,
         perceivedEffort: _perceivedEffort,
         satisfaction: _satisfaction,
         interruptionCount: _interruptions,
       );
+      if (_runtime.lastPersistenceError != null) {
+        _showMessage(
+          'The session finished, but its encrypted outcome history '
+          'could not be verified.',
+        );
+      }
     } on StateError {
       _showMessage(
         'Complete or defer each local step before finishing the session.',
       );
+    } finally {
+      if (mounted) setState(() => _finishing = false);
     }
   }
 
@@ -159,9 +239,9 @@ class _NeuraAdaptiveSessionScreenState
       builder: (context) => AlertDialog(
         title: const Text('End this session?'),
         content: const Text(
-          'Neura will record only derived completion, effort, satisfaction, '
-          'and interruption counts. The plan text is not added to the outcome '
-          'receipt.',
+          'Neura stores only encrypted derived completion, effort, '
+          'satisfaction, and interruption values. The plan text is not '
+          'added to the outcome receipt.',
         ),
         actions: [
           TextButton(
@@ -183,8 +263,9 @@ class _NeuraAdaptiveSessionScreenState
       return;
     }
 
+    setState(() => _finishing = true);
     try {
-      _runtime.finishSession(
+      await _runtime.finishSessionAndPersist(
         userGesture: true,
         abandoned: true,
         perceivedEffort: _perceivedEffort,
@@ -193,7 +274,17 @@ class _NeuraAdaptiveSessionScreenState
       );
     } on StateError {
       _showMessage('The session could not be ended safely.');
+    } finally {
+      if (mounted) setState(() => _finishing = false);
     }
+  }
+
+  void _changeInterruptions(int next) {
+    final bounded = next.clamp(0, 99).toInt();
+    if (bounded > _interruptions) {
+      _runtime.recordInterruption();
+    }
+    setState(() => _interruptions = bounded);
   }
 
   void _showMessage(String message) {
@@ -212,7 +303,7 @@ class _NeuraAdaptiveSessionScreenState
       );
     }
 
-    if (_initializationError != null && !_runtime.controller.initialized) {
+    if (_initializationError != null && !_runtime.initialized) {
       return Scaffold(
         appBar: AppBar(title: const Text('Adaptive Plan Session')),
         body: Center(
@@ -224,7 +315,7 @@ class _NeuraAdaptiveSessionScreenState
                 const Icon(Icons.sync_problem_outlined, size: 42),
                 const SizedBox(height: 12),
                 const Text(
-                  'The local Adaptive Intent settings could not be loaded.',
+                  'The local Adaptive Intent services could not be loaded.',
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 12),
@@ -246,19 +337,26 @@ class _NeuraAdaptiveSessionScreenState
         animation: _runtime,
         builder: (context, _) {
           final session = _runtime.session;
+          final enabled = _runtime.featureEnabled;
           return Scaffold(
             appBar: AppBar(title: const Text('Adaptive Plan Session')),
             body: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                if (!enabled) ...[
+                  _EnrollmentCard(
+                    onEnable: () => unawaited(_openOnboarding()),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 if (_runtime.controller.safeMode) ...[
                   const Card(
                     child: ListTile(
                       leading: Icon(Icons.health_and_safety_outlined),
                       title: Text('Safe Mode is active'),
                       subtitle: Text(
-                        'Progress changes and new sessions are blocked. You '
-                        'may discard the current in-memory session.',
+                        'Progress changes and new sessions are blocked. '
+                        'You may discard the current in-memory session.',
                       ),
                     ),
                   ),
@@ -269,12 +367,14 @@ class _NeuraAdaptiveSessionScreenState
                     _OutcomeCard(
                       outcome: _runtime.lastOutcome!,
                       adaptation: _runtime.lastAdaptation,
+                      encryptedHistoryAvailable:
+                          _runtime.lastPersistenceError == null,
                     ),
                     const SizedBox(height: 12),
                   ],
                   _StartSessionCard(
                     controller: _outcomeController,
-                    enabled: !_runtime.controller.safeMode,
+                    enabled: enabled && !_runtime.controller.safeMode,
                     onStart: () => unawaited(_startSession()),
                   ),
                 ] else ...[
@@ -283,10 +383,15 @@ class _NeuraAdaptiveSessionScreenState
                   for (final progress in session.progress) ...[
                     _ProgressCard(
                       progress: progress,
-                      safeMode: _runtime.controller.safeMode,
+                      safeMode: _runtime.controller.safeMode || !enabled,
                       onComplete: () => unawaited(_completeStep(progress)),
                       onDefer: () => _deferStep(progress),
                       onResume: () => _resumeStep(progress),
+                      onCreateQuest: progress.step.effect ==
+                                  NeuraActionEffect.localWrite &&
+                              !progress.step.blocked
+                          ? () => unawaited(_reviewAsQuest(progress))
+                          : null,
                     ),
                     const SizedBox(height: 8),
                   ],
@@ -295,22 +400,22 @@ class _NeuraAdaptiveSessionScreenState
                     perceivedEffort: _perceivedEffort,
                     satisfaction: _satisfaction,
                     interruptions: _interruptions,
-                    enabled: !_runtime.controller.safeMode,
+                    enabled:
+                        enabled && !_runtime.controller.safeMode && !_finishing,
                     onEffortChanged: (value) {
                       setState(() => _perceivedEffort = value);
                     },
                     onSatisfactionChanged: (value) {
                       setState(() => _satisfaction = value);
                     },
-                    onInterruptionsChanged: (value) {
-                      setState(() => _interruptions = value);
-                    },
+                    onInterruptionsChanged: _changeInterruptions,
                   ),
                   const SizedBox(height: 12),
                   _SessionActions(
                     session: session,
-                    safeMode: _runtime.controller.safeMode,
-                    onFinish: _finishSession,
+                    safeMode: _runtime.controller.safeMode || !enabled,
+                    busy: _finishing,
+                    onFinish: () => unawaited(_finishSession()),
                     onEnd: () => unawaited(_endSession()),
                   ),
                 ],
@@ -319,6 +424,29 @@ class _NeuraAdaptiveSessionScreenState
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _EnrollmentCard extends StatelessWidget {
+  const _EnrollmentCard({required this.onEnable});
+
+  final VoidCallback onEnable;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.privacy_tip_outlined),
+        title: const Text('Adaptive Intent is off'),
+        subtitle: const Text(
+          'Choose which local signals Neura may use before starting.',
+        ),
+        trailing: FilledButton(
+          onPressed: onEnable,
+          child: const Text('Set up'),
+        ),
       ),
     );
   }
@@ -349,7 +477,7 @@ class _StartSessionCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             const Text(
-              'Neura will compile a proposal and track only user-directed '
+              'Neura compiles a proposal and tracks only user-directed '
               'local progress. External steps remain review-only.',
             ),
             const SizedBox(height: 12),
@@ -411,6 +539,7 @@ class _ProgressCard extends StatelessWidget {
     required this.onComplete,
     required this.onDefer,
     required this.onResume,
+    required this.onCreateQuest,
   });
 
   final NeuraPlanStepProgress progress;
@@ -418,6 +547,7 @@ class _ProgressCard extends StatelessWidget {
   final VoidCallback onComplete;
   final VoidCallback onDefer;
   final VoidCallback onResume;
+  final VoidCallback? onCreateQuest;
 
   @override
   Widget build(BuildContext context) {
@@ -465,7 +595,9 @@ class _ProgressCard extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 step.blockReason!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                ),
               ),
             ],
             if (!step.blocked &&
@@ -503,6 +635,15 @@ class _ProgressCard extends StatelessWidget {
                       label: const Text('Complete'),
                     ),
                   ],
+                  if (onCreateQuest != null)
+                    OutlinedButton.icon(
+                      key: ValueKey(
+                        'adaptive-session-quest-${progress.step.id}',
+                      ),
+                      onPressed: safeMode ? null : onCreateQuest,
+                      icon: const Icon(Icons.flag_outlined),
+                      label: const Text('Review as quest'),
+                    ),
                 ],
               ),
             ],
@@ -539,7 +680,9 @@ class _FeedbackCard extends StatelessWidget {
         initiallyExpanded: true,
         leading: const Icon(Icons.insights_outlined),
         title: const Text('Session feedback'),
-        subtitle: const Text('Derived values only; plan text is excluded'),
+        subtitle: const Text(
+          'Encrypted derived values only; plan text is excluded',
+        ),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
           _FeedbackSlider(
@@ -606,7 +749,10 @@ class _FeedbackSlider extends StatelessWidget {
             onChanged: enabled ? onChanged : null,
           ),
         ),
-        SizedBox(width: 42, child: Text('${(value * 100).round()}%')),
+        SizedBox(
+          width: 42,
+          child: Text('${(value * 100).round()}%'),
+        ),
       ],
     );
   }
@@ -616,12 +762,14 @@ class _SessionActions extends StatelessWidget {
   const _SessionActions({
     required this.session,
     required this.safeMode,
+    required this.busy,
     required this.onFinish,
     required this.onEnd,
   });
 
   final NeuraAdaptivePlanSession session;
   final bool safeMode;
+  final bool busy;
   final VoidCallback onFinish;
   final VoidCallback onEnd;
 
@@ -636,7 +784,7 @@ class _SessionActions extends StatelessWidget {
     final hasCompleted = local.any(
       (item) => item.status == NeuraPlanStepStatus.completed,
     );
-    final canFinish = !safeMode && !hasPending && hasCompleted;
+    final canFinish = !safeMode && !busy && !hasPending && hasCompleted;
 
     return Card(
       child: Padding(
@@ -649,13 +797,15 @@ class _SessionActions extends StatelessWidget {
               key: const ValueKey('adaptive-session-finish'),
               onPressed: canFinish ? onFinish : null,
               icon: const Icon(Icons.flag_outlined),
-              label: const Text('Finish session'),
+              label: Text(busy ? 'Saving…' : 'Finish session'),
             ),
             OutlinedButton.icon(
               key: const ValueKey('adaptive-session-end'),
-              onPressed: onEnd,
+              onPressed: busy ? null : onEnd,
               icon: const Icon(Icons.stop_circle_outlined),
-              label: Text(safeMode ? 'Discard session' : 'End session'),
+              label: Text(
+                safeMode ? 'Discard session' : 'End session',
+              ),
             ),
           ],
         ),
@@ -665,10 +815,15 @@ class _SessionActions extends StatelessWidget {
 }
 
 class _OutcomeCard extends StatelessWidget {
-  const _OutcomeCard({required this.outcome, required this.adaptation});
+  const _OutcomeCard({
+    required this.outcome,
+    required this.adaptation,
+    required this.encryptedHistoryAvailable,
+  });
 
   final NeuraPlanOutcomeReceipt outcome;
   final NeuraOutcomeAdaptation? adaptation;
+  final bool encryptedHistoryAvailable;
 
   @override
   Widget build(BuildContext context) {
@@ -689,12 +844,18 @@ class _OutcomeCard extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
+                Icon(
+                  encryptedHistoryAvailable
+                      ? Icons.lock_outline
+                      : Icons.sync_problem_outlined,
+                ),
               ],
             ),
             const SizedBox(height: 10),
             Text(
-              '${outcome.completedLocalSteps} of ${outcome.totalLocalSteps} '
-              'local steps completed • ${outcome.deferredLocalSteps} deferred',
+              '${outcome.completedLocalSteps} of '
+              '${outcome.totalLocalSteps} local steps completed • '
+              '${outcome.deferredLocalSteps} deferred',
             ),
             const SizedBox(height: 6),
             Text(

@@ -10,16 +10,20 @@ on:
       - "lib/constitution/**"
       - "lib/intent_compiler/**"
       - "lib/dashboard/widgets/proactive_banner_card.dart"
+      - "lib/modules/navigation/enhanced_navigation.dart"
+      - "lib/src/core/data_wipe_service.dart"
       - "test/adaptive_intent/**"
       - "test/cognitive/**"
       - "test/constitution/**"
       - "test/intent_compiler/**"
       - "NEURA_ADAPTIVE_INTENT_OS_V1_4.md"
+      - "ADAPTIVE_INTENT_PHASE4_VALIDATION.md"
       - "pubspec.yaml"
       - ".github/workflows/neura-adaptive-intent-validation.yml"
   push:
     branches:
       - agent/neura-adaptive-intent-os-v1.4
+      - agent/neura-adaptive-intent-phase4-integration
   workflow_dispatch:
 
 permissions:
@@ -60,6 +64,8 @@ jobs:
             lib/constitution \
             lib/intent_compiler \
             lib/dashboard/widgets/proactive_banner_card.dart \
+            lib/modules/navigation/enhanced_navigation.dart \
+            lib/src/core/data_wipe_service.dart \
             test/adaptive_intent \
             test/cognitive \
             test/constitution \
