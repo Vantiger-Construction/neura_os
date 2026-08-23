@@ -26,6 +26,9 @@ void main() {
     ];
 
     expect(secondFrame, isNot(equals(firstFrame)));
-    expect(secondFrame.reduce((left, right) => left + right), closeTo(1.0, 1e-9));
+    expect(
+      secondFrame.reduce((left, right) => left + right),
+      closeTo(1.0, 1e-9),
+    );
   });
 }
