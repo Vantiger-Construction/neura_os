@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../cognitive/neura_cognitive_state.dart';
 import '../modules/mood/mood_store.dart';
+import '../modules/quests/quest_models.dart';
 import '../modules/quests/quest_store.dart';
 import '../src/modules/focus/focus_controller.dart';
 import '../src/modules/focus/focus_mode.dart';
