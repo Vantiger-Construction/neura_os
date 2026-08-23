@@ -69,7 +69,8 @@ void main() {
     expect(receipt.status, NeuraPlanSessionStatus.completed);
     expect(receipt.completedLocalSteps, 2);
     expect(receipt.deferredLocalSteps, 1);
-    expect(receipt.externalSteps, 1);
+    expect(receipt.blockedSteps, 1);
+    expect(receipt.externalSteps, 0);
     expect(receipt.completionRatio, closeTo(2 / 3, 0.0001));
 
     final encoded = receipt.toJson().toString();
