@@ -69,9 +69,7 @@ class _NeuraAdaptiveIntentStatusCardState
             (item) => !item.step.blocked && !item.step.effect.isExternal,
           );
           final completed = localProgress
-              ?.where(
-                (item) => item.status == NeuraPlanStepStatus.completed,
-              )
+              ?.where((item) => item.status == NeuraPlanStepStatus.completed)
               .length;
           final total = localProgress?.length;
 

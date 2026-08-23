@@ -199,9 +199,9 @@ class _NeuraAdaptiveSessionScreenState
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -469,7 +469,8 @@ class _ProgressCard extends StatelessWidget {
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ],
-            if (!step.blocked && !external &&
+            if (!step.blocked &&
+                !external &&
                 progress.status != NeuraPlanStepStatus.completed) ...[
               const SizedBox(height: 10),
               Wrap(
@@ -606,10 +607,7 @@ class _FeedbackSlider extends StatelessWidget {
             onChanged: enabled ? onChanged : null,
           ),
         ),
-        SizedBox(
-          width: 42,
-          child: Text('${(value * 100).round()}%'),
-        ),
+        SizedBox(width: 42, child: Text('${(value * 100).round()}%')),
       ],
     );
   }
