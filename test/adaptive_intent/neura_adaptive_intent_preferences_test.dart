@@ -92,8 +92,7 @@ class _MemoryPreferencesStore implements NeuraAdaptiveIntentPreferencesStore {
   }
 }
 
-class _BlockingPreferencesStore
-    implements NeuraAdaptiveIntentPreferencesStore {
+class _BlockingPreferencesStore implements NeuraAdaptiveIntentPreferencesStore {
   final saveStarted = Completer<void>();
   final _releaseSave = Completer<void>();
   NeuraAdaptiveIntentPreferences? value;
