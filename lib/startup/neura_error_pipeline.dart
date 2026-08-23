@@ -8,8 +8,8 @@ import 'neura_bootstrap_log.dart';
 import 'neura_error_redactor.dart';
 import 'neura_isolate_error_listener.dart';
 
-typedef NeuraStructuredErrorSink =
-    Future<void> Function(Map<String, Object?> payload);
+typedef NeuraStructuredErrorSink = Future<void> Function(
+    Map<String, Object?> payload);
 typedef NeuraErrorNotice = void Function();
 typedef NeuraErrorObserver = void Function(Map<String, Object?> payload);
 
@@ -325,19 +325,17 @@ class NeuraErrorPipeline {
   void _enqueueAppLog(Map<String, Object?> payload) {
     final sink = _appLogSink;
     if (sink == null) return;
-    _sinkWrites = _sinkWrites
-        .then((_) async {
-          try {
-            await sink(payload);
-          } catch (_) {
-            // AppLog can become unavailable after a successful handoff (disk
-            // full, revoked storage, data-wipe suspension). Preserve the already
-            // sanitized record in the independent bounded bootstrap log. A later
-            // record still retries AppLog through the same sink.
-            await NeuraBootstrapLog.append(payload);
-          }
-        })
-        .catchError((_) {});
+    _sinkWrites = _sinkWrites.then((_) async {
+      try {
+        await sink(payload);
+      } catch (_) {
+        // AppLog can become unavailable after a successful handoff (disk
+        // full, revoked storage, data-wipe suspension). Preserve the already
+        // sanitized record in the independent bounded bootstrap log. A later
+        // record still retries AppLog through the same sink.
+        await NeuraBootstrapLog.append(payload);
+      }
+    }).catchError((_) {});
   }
 
   @visibleForTesting
