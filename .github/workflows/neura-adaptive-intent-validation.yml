@@ -1,0 +1,80 @@
+name: Neura Adaptive Intent 1.4 Validation
+
+on:
+  pull_request:
+    branches:
+      - agent/neura-intelligence-fabric-v1.3
+    paths:
+      - "lib/adaptive_intent/**"
+      - "lib/cognitive/**"
+      - "lib/constitution/**"
+      - "lib/intent_compiler/**"
+      - "lib/dashboard/widgets/proactive_banner_card.dart"
+      - "test/adaptive_intent/**"
+      - "test/cognitive/**"
+      - "test/constitution/**"
+      - "test/intent_compiler/**"
+      - "NEURA_ADAPTIVE_INTENT_OS_V1_4.md"
+      - "pubspec.yaml"
+      - ".github/workflows/neura-adaptive-intent-validation.yml"
+  push:
+    branches:
+      - agent/neura-adaptive-intent-os-v1.4
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-adaptive-intent-v1.4-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.44.7"
+
+jobs:
+  validate:
+    name: Analyze and test Adaptive Intent
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Restore dependencies
+        run: flutter pub get
+
+      - name: Require canonical formatting
+        run: |
+          dart format --output=none --set-exit-if-changed \
+            lib/adaptive_intent \
+            lib/cognitive \
+            lib/constitution \
+            lib/intent_compiler \
+            lib/dashboard/widgets/proactive_banner_card.dart \
+            test/adaptive_intent \
+            test/cognitive \
+            test/constitution \
+            test/intent_compiler
+
+      - name: Require zero analyzer findings
+        run: flutter analyze --fatal-infos
+
+      - name: Run focused Adaptive Intent tests
+        run: |
+          flutter test --no-pub --reporter expanded --timeout 60s \
+            test/cognitive \
+            test/constitution \
+            test/intent_compiler \
+            test/adaptive_intent
+
+      - name: Run complete Flutter suite
+        run: flutter test --no-pub --concurrency 4 --timeout 2m
