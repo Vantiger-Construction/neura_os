@@ -50,8 +50,8 @@ class AuthService {
   Future<void> signOut() => _client.auth.signOut();
 
   Future<void> updateDisplayName(String displayName) => _client.auth.updateUser(
-    UserAttributes(data: {'display_name': displayName.trim()}),
-  );
+        UserAttributes(data: {'display_name': displayName.trim()}),
+      );
 
   /// Clears only this device's live Supabase session during a local-data
   /// wipe. Other devices remain signed in. Local invalidation happens before

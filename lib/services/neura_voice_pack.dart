@@ -458,12 +458,12 @@ class NeuraVisemeWeights {
     weights.rest = values.containsKey('rest')
         ? number('rest')
         : (1.0 -
-                  (weights.aa +
-                      weights.ee +
-                      weights.oo +
-                      weights.ff +
-                      weights.mm))
-              .clamp(0.0, 1.0);
+                (weights.aa +
+                    weights.ee +
+                    weights.oo +
+                    weights.ff +
+                    weights.mm))
+            .clamp(0.0, 1.0);
     weights.normalize();
     return weights;
   }
@@ -569,9 +569,9 @@ class NeuraVisemeFallback {
     final targetOo = vowelEnergy * (oMix / sum) * 1.05;
     final targetRest =
         (1.0 - (targetAa + targetEe + targetOo + targetFf + targetMm)).clamp(
-          0.0,
-          1.0,
-        );
+      0.0,
+      1.0,
+    );
 
     _weights.mm = _lerp(_weights.mm, targetMm, dt);
     _weights.ff = _lerp(_weights.ff, targetFf, dt);
@@ -700,7 +700,7 @@ class _VoicePackMicDriver {
   StreamSubscription<Uint8List>? _audioSub;
 
   _VoicePackMicDriver({NeuraMicVisemeEngine? engine})
-    : engine = engine ?? NeuraMicVisemeEngine();
+      : engine = engine ?? NeuraMicVisemeEngine();
 
   Future<bool> start() async {
     if (_audioSub != null) return true;
