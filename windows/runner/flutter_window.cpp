@@ -3,6 +3,9 @@
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
+#include <screen_retriever_windows/screen_retriever_windows_plugin_c_api.h>
+#include <window_manager_plus/window_manager_plus_plugin.h>
+
 #include "neura_native_diagnostics.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project,
@@ -22,54 +25,95 @@ bool FlutterWindow::OnCreate() {
   // creation / destruction in the startup path.
   flutter_controller_ = std::make_unique<flutter::FlutterViewController>(
       frame.right - frame.left, frame.bottom - frame.top, project_);
+
   // Ensure that basic setup of the controller was successful.
   if (!flutter_controller_->engine() || !flutter_controller_->view()) {
     RecordNeuraNativeBreadcrumb("flutter_controller_create_failed");
     return false;
   }
+
   RecordNeuraNativeBreadcrumb("flutter_controller_created");
 
+  auto* engine = flutter_controller_->engine();
+
   // Dart asks for this role immediately after attaching its dependency-free
-  // bootstrap frame. Install the channel as soon as the engine messenger
-  // exists, before registering the much larger plugin set, so discovery cannot
-  // race registration. NeuraWindowRole uses only Flutter's standard method
-  // codec and the runner diagnostics sink; it has no plugin dependency.
+  // bootstrap frame. Install the channel before registering plugins so window
+  // role discovery cannot race the larger plugin registration sequence.
   window_role_ = std::make_unique<NeuraWindowRole>(
-      flutter_controller_->engine()->messenger(), window_id_, is_mascot_);
+      engine->messenger(), window_id_, is_mascot_);
+
   RecordNeuraNativeBreadcrumb("window_role_channel_registered");
 
-  RegisterPlugins(flutter_controller_->engine());
-  // The engine or a plugin may install its own unhandled-exception filter.
-  // Reassert Neura's pass-through logger after registration; the handler logs
-  // a privacy-safe breadcrumb and still returns EXCEPTION_CONTINUE_SEARCH so
-  // normal Windows crash reporting remains intact.
+  if (is_mascot_) {
+    // The floating avatar window runs its own, second Flutter engine.
+    //
+    // Several Windows Flutter plugins keep registration state in process-wide
+    // globals instead of per-engine state. Registering the complete plugin set
+    // again for the mascot can therefore overwrite method-channel/plugin state
+    // owned by the primary window.
+    //
+    // flutter_tts is the most important example. The mascot does not use TTS,
+    // record, secure storage, printing, auth, etc., so those plugins should not
+    // be registered on this engine.
+    //
+    // The mascot currently uses only:
+    //
+    //   - window_manager_plus
+    //   - screen_retriever
+    //
+    // Keep its plugin surface intentionally narrow.
+    WindowManagerPlusPluginRegisterWithRegistrar(
+        engine->GetRegistrarForPlugin("WindowManagerPlusPlugin"));
+
+    ScreenRetrieverWindowsPluginCApiRegisterWithRegistrar(
+        engine->GetRegistrarForPlugin(
+            "ScreenRetrieverWindowsPluginCApi"));
+  } else {
+    // The primary application window owns the normal complete plugin set.
+    RegisterPlugins(engine);
+  }
+
+  // A Flutter plugin can install its own process exception filter during
+  // registration. Reassert Neura's native diagnostics handler afterward.
+  //
+  // Neura's handler only records a privacy-safe breadcrumb and returns
+  // EXCEPTION_CONTINUE_SEARCH, so normal Windows crash reporting and debugging
+  // behavior remain intact.
   InstallNeuraNativeCrashHandlers();
+
   RecordNeuraNativeBreadcrumb("plugins_registered");
-  speech_recognizer_ = std::make_unique<NeuraSpeechRecognizer>(
-      flutter_controller_->engine()->messenger());
+
+  // Native speech recognition bridge.
+  speech_recognizer_ =
+      std::make_unique<NeuraSpeechRecognizer>(engine->messenger());
+
   RecordNeuraNativeBreadcrumb("native_channels_registered");
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([this]() {
-    RecordNeuraNativeBreadcrumb(is_mascot_ ? "mascot_first_frame"
-                                           : "primary_first_frame");
+    RecordNeuraNativeBreadcrumb(
+        is_mascot_ ? "mascot_first_frame" : "primary_first_frame");
+
     this->Show();
   });
 
-  // Flutter can complete the first frame before the "show window" callback is
-  // registered. The following call ensures a frame is pending to ensure the
-  // window is shown. It is a no-op if the first frame hasn't completed yet.
+  // Flutter can complete its first frame before the show callback is
+  // registered. ForceRedraw ensures a frame remains pending in that case.
   flutter_controller_->ForceRedraw();
 
   return true;
 }
 
 void FlutterWindow::OnDestroy() {
-  // Both custom channel owners retain the engine's BinaryMessenger. Release
-  // them before destroying the FlutterViewController/engine so no teardown
-  // callback can dereference a messenger that has already gone away.
+  // Both custom channel owners retain the engine's BinaryMessenger.
+  //
+  // Destroy them before destroying FlutterViewController / FlutterEngine so a
+  // teardown callback can never dereference a messenger whose engine has
+  // already been released.
   window_role_.reset();
   speech_recognizer_.reset();
+
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -77,15 +121,17 @@ void FlutterWindow::OnDestroy() {
   Win32Window::OnDestroy();
 }
 
-LRESULT
-FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
-                              WPARAM const wparam,
-                              LPARAM const lparam) noexcept {
-  // Give Flutter, including plugins, an opportunity to handle window messages.
+LRESULT FlutterWindow::MessageHandler(HWND hwnd,
+                                      UINT const message,
+                                      WPARAM const wparam,
+                                      LPARAM const lparam) noexcept {
+  // Give Flutter and registered plugins the first chance to handle Windows
+  // messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =
-        flutter_controller_->HandleTopLevelWindowProc(hwnd, message, wparam,
-                                                      lparam);
+        flutter_controller_->HandleTopLevelWindowProc(
+            hwnd, message, wparam, lparam);
+
     if (result) {
       return *result;
     }
@@ -93,14 +139,18 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
 
   switch (message) {
     case WM_FONTCHANGE:
-      // A font broadcast can arrive while a window is being torn down. The
-      // controller is deliberately released in OnDestroy, so never
-      // dereference it from a late native message.
+      // A font-change broadcast can arrive while a window is being destroyed.
+      // OnDestroy deliberately releases the controller, so guard both the
+      // controller and engine before dereferencing them.
       if (flutter_controller_ && flutter_controller_->engine()) {
         flutter_controller_->engine()->ReloadSystemFonts();
       }
       break;
   }
 
-  return Win32Window::MessageHandler(hwnd, message, wparam, lparam);
+  return Win32Window::MessageHandler(
+      hwnd,
+      message,
+      wparam,
+      lparam);
 }

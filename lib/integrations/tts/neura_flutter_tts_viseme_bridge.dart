@@ -15,7 +15,19 @@ import '../../avatar/viseme/neura_viseme_engine.dart';
 class NeuraFlutterTtsVisemeBridge {
   static bool _attached = false;
 
-  static Future<void> attach(FlutterTts tts, {NeuraEventBus? bus}) async {
+  /// [onCompletion], [onCancel], and [onError] fire alongside this bridge's
+  /// own event-bus emissions -- flutter_tts only supports one handler of
+  /// each kind, so callers that also need completion/cancel/error signals
+  /// (e.g. to resolve a Dart-side speak() completion future) must go
+  /// through these hooks rather than calling setCompletionHandler etc.
+  /// themselves, which would silently replace this bridge's handler.
+  static Future<void> attach(
+    FlutterTts tts, {
+    NeuraEventBus? bus,
+    void Function()? onCompletion,
+    void Function()? onCancel,
+    void Function(dynamic message)? onError,
+  }) async {
     if (_attached) return;
 
     final b = bus ?? NeuraEventBus.I;
@@ -34,12 +46,14 @@ class NeuraFlutterTtsVisemeBridge {
       b.emit(const NeuraVisemeEvent(NeuraViseme.rest));
       // small blink on finish feels alive
       b.emit(const NeuraPulseEvent.blink());
+      onCompletion?.call();
     });
 
     tts.setCancelHandler(() {
       b.emit(const NeuraTalkingEvent(false));
       b.emit(const NeuraMouthOpenEvent(0.0));
       b.emit(const NeuraVisemeEvent(NeuraViseme.rest));
+      onCancel?.call();
     });
 
     tts.setErrorHandler((message) {
@@ -47,6 +61,7 @@ class NeuraFlutterTtsVisemeBridge {
       b.emit(const NeuraMouthOpenEvent(0.0));
       b.emit(const NeuraVisemeEvent(NeuraViseme.rest));
       b.emit(NeuraErrorEvent('TTS error: $message', hint: 'flutter_tts'));
+      onError?.call(message);
     });
 
     // Progress handler gives substring positions in the original text for many platforms.

@@ -26,14 +26,22 @@ class NeuraFaultSystem {
 
     final pipeline = NeuraErrorPipeline.instance;
     pipeline.installGlobalHandlers();
+
     pipeline.addObserver((payload) {
       final event = NeuraFaultEvent(
         message: payload['message']?.toString() ?? userFacingMessage,
         stack: payload['stack']?.toString(),
-        source: '${payload['source'] ?? 'unknown'} '
+        source:
+            '${payload['source'] ?? 'unknown'} '
             '(${payload['phase'] ?? 'runtime'})',
       );
-      _handle(bus, controller, event, recoveryDuration);
+
+      _handle(
+        bus,
+        controller,
+        event,
+        recoveryDuration,
+      );
     });
   }
 
@@ -43,30 +51,40 @@ class NeuraFaultSystem {
     NeuraFaultEvent event,
     Duration recoveryDuration,
   ) {
-    // Emit event for the rest of the system
+    // Emit event for the rest of the system.
     bus.emit(event);
 
-    // Vault it (best-effort)
-    unawaited(NeuraErrorVault.append(event));
+    // Vault it best-effort without blocking recovery.
+    unawaited(
+      NeuraErrorVault.append(event).catchError((_) {}),
+    );
 
-    // Drive avatar recovery (best-effort, never throws)
-    _pulseAvatar(controller, recoveryDuration);
+    // Drive avatar recovery best-effort.
+    _pulseAvatar(
+      controller,
+      recoveryDuration,
+    );
   }
 
-  static void _pulseAvatar(AvatarController controller, Duration dur) {
+  static void _pulseAvatar(
+    AvatarController controller,
+    Duration duration,
+  ) {
     try {
       controller.setError(true);
       controller.pulseBlink();
       controller.pulseWave();
     } catch (_) {
-      // ignore
+      // Avatar recovery must never throw into the error pipeline.
     }
 
     unawaited(
-      Future<void>.delayed(dur).then((_) {
+      Future<void>.delayed(duration).then((_) {
         try {
           controller.setError(false);
-        } catch (_) {}
+        } catch (_) {
+          // Avatar recovery must remain best-effort.
+        }
       }),
     );
   }

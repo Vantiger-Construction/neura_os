@@ -36,7 +36,7 @@ class NeuraTtsService {
   bool _initialized = false;
   bool enabled = true;
   String? _selectedVoiceName;
-  bool get playbackAllowed => !SafeBoot.instance.safeMode.value;
+  Completer<void>? _speakCompleter;
 
   /// The currently active voice's display name, or null before init / if
   /// nothing has been explicitly picked yet (Settings screen uses this to
@@ -49,20 +49,25 @@ class NeuraTtsService {
     await _ensureInit();
   }
 
-  Future<bool> _ensureInit() async {
-    if (!playbackAllowed) return false;
-    if (_initialized) return true;
-    final tts = _tts ??= FlutterTts();
-    await NeuraFlutterTtsVisemeBridge.attach(tts);
-    // Without this, speak()'s Future resolves as soon as speech *starts*,
-    // not when it finishes (platform-dependent default). Callers — notably
-    // the chat screen's hands-free continuous mode — await speak() and rely
-    // on it not returning until Neura is actually done talking, or the mic
-    // restarts while she's still audibly speaking and picks up her own
-    // voice through the speakers.
-    await tts.awaitSpeakCompletion(true);
-    await tts.setSpeechRate(0.5);
-    await tts.setPitch(1.05);
+  Future<void> _ensureInit() async {
+    if (_initialized) return;
+    _initialized = true;
+    // Completion is awaited on the Dart side via [_speakCompleter], not via
+    // flutter_tts's native awaitSpeakCompletion(true) -- that native
+    // completion-wait path is a documented source of crashes on Windows
+    // (github.com/dlutton/flutter_tts#217; the crash tracked in issue #32
+    // matches this exact code path: an access violation inside flutter_tts's
+    // Windows speak()/coroutine implementation). The completion signal below
+    // comes from the same setCompletionHandler callback either way -- this
+    // just avoids the native blocking-wait implementation entirely.
+    await NeuraFlutterTtsVisemeBridge.attach(
+      _tts,
+      onCompletion: () => _completeSpeak(),
+      onCancel: () => _completeSpeak(),
+      onError: (_) => _completeSpeak(),
+    );
+    await _tts.setSpeechRate(0.5);
+    await _tts.setPitch(1.05);
     await _applySavedOrDefaultVoice();
     if (!playbackAllowed) {
       await tts.stop();
@@ -70,6 +75,11 @@ class NeuraTtsService {
     }
     _initialized = true;
     return true;
+  }
+
+  void _completeSpeak() {
+    final completer = _speakCompleter;
+    if (completer != null && !completer.isCompleted) completer.complete();
   }
 
   /// English voices available on this system, for the Settings voice picker.
@@ -185,13 +195,22 @@ class NeuraTtsService {
     }
   }
 
+  /// Speaks [text] and doesn't return until Neura is actually done talking
+  /// (or the utterance is cancelled/errors) -- callers, notably the chat
+  /// screen's hands-free continuous mode, rely on this so the mic doesn't
+  /// restart while she's still audibly speaking and pick up her own voice
+  /// through the speakers. Waited for via a Dart-side [Completer] fed by
+  /// [NeuraFlutterTtsVisemeBridge]'s completion/cancel/error callbacks,
+  /// rather than flutter_tts's native awaitSpeakCompletion(true) -- see the
+  /// comment on [_ensureInit] for why.
   Future<void> speak(String text) async {
-    if (!playbackAllowed || !enabled || text.trim().isEmpty) return;
-    if (!await _ensureInit()) return;
-    final tts = _tts!;
-    await tts.stop();
-    if (!playbackAllowed) return;
-    await tts.speak(text);
+    if (!enabled || text.trim().isEmpty) return;
+    await _ensureInit();
+    await _tts.stop();
+    final completer = Completer<void>();
+    _speakCompleter = completer;
+    await _tts.speak(text);
+    await completer.future;
   }
 
   Future<void> stop() async {

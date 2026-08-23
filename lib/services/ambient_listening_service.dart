@@ -15,8 +15,50 @@ import '../reliability/safe_boot.dart';
 import 'ambient_listening_prefs.dart';
 import 'neura_tts_service.dart';
 
-/// The proactive greeting remains disabled because the first native Windows
-/// TTS call can race the floating mascot engine and terminate the process.
+/// Whether [AmbientListeningService.greetAndStartListening] actually speaks
+/// its greeting at boot.
+///
+/// Disabled by default as of this build.
+///
+/// CORRECTED DIAGNOSIS (2026-08-17, see issue #32): every call to
+/// `speak()` crashes the process with an access violation in
+/// flutter_tts_plugin.dll (0xC0000005), consistently at the same code
+/// offset -- this is NOT the "mascot window vs. first native call" boot
+/// race that three prior patches (PR #28, 10f6d83, 778064c) assumed and
+/// tried to work around. That theory has been disproven by direct testing:
+/// the crash reproduces 100% of the time with the mascot window's second
+/// engine disabled entirely (no second engine, no second window, ever
+/// created), and with the mascot window enabled but fully settled 20+
+/// seconds before the crash. The bug is inside flutter_tts's own Windows
+/// WinRT `speak()`/`asyncSpeak()` coroutine implementation
+/// (SpeechSynthesizer -> MediaPlayer playback path) and fires on plain,
+/// ordinary use -- boot timing and the mascot window are not involved.
+///
+/// This means chat replies, wake-word spoken replies, and Voice Lab --
+/// anything that calls [NeuraTtsService.instance.speak] -- likely hit the
+/// exact same crash on their first invocation in a session. That has NOT
+/// been directly confirmed (no UI-driving tooling was available to trigger
+/// them), but they go through the identical `speak()` code path with no
+/// special-casing, so treat that as a live, unverified risk, not a
+/// solved/safe area. `getVoices()`/`setVoice()` (used by
+/// NeuraStartupCoordinator's TtsWarmup step) do NOT hit this crash --
+/// they're synchronous WinRT calls with no coroutine/MediaPlayer
+/// involvement, which is consistent with the corrected diagnosis above and
+/// with warmup having shipped safely across many prior betas.
+///
+/// Given a native access violation can't be caught by Dart exception
+/// handling (it kills the process outright, not just the call), skipping
+/// the call entirely remains the only mitigation actually confirmed
+/// crash-free for this one call site.
+///
+/// Do not flip this back to true on the theory that the mascot-window race
+/// has been "fixed" (see the scoped-plugin-registration fix in
+/// windows/runner/flutter_window.cpp -- a real, separate bug worth keeping,
+/// but confirmed NOT to fix this crash). The real fix needs either a
+/// working flutter_tts alternative on Windows, a patched/forked
+/// flutter_tts Windows plugin, or full native debugging with proper PDBs
+/// to pin down the exact use-after-free/lifetime bug in its coroutine
+/// handling.
 const bool kEnableProactiveGreetingTts = false;
 
 /// Opt-in, voice-activity-triggered ambient recording encrypted at rest.
@@ -110,7 +152,15 @@ class AmbientListeningService {
   }
 
   Future<void> greetAndStartListening() async {
-    if (!captureAllowed) return;
+    // Wait for the mascot window's own native engine/window creation to
+    // settle first -- this avoids an unrelated audioplayers
+    // MissingPluginException race (see NeuraShellState._spawnMascotWhenReady)
+    // and is harmless to keep. It does NOT protect against the
+    // flutter_tts_plugin.dll crash below: that was originally blamed on
+    // this exact mascot-window timing, but direct testing (2026-08-17,
+    // issue #32) disproved it -- the crash reproduces identically even with
+    // the mascot window disabled entirely. See the corrected diagnosis on
+    // kEnableProactiveGreetingTts above.
     await MascotWindowService.I.initialCreationSettled;
     if (!captureAllowed) return;
 

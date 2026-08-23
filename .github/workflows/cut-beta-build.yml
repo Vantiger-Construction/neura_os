@@ -1,0 +1,49 @@
+name: Cut Neura beta build
+
+# Manual, on-demand build of a beta release package on a fresh GitHub-hosted
+# Windows runner. Exists because the maintainer's own machine can run out of
+# local disk space for the Rust + Flutter build; this gives a clean box with
+# plenty of headroom. Runs the same BUILD_ALL_NEURA_UPGRADES.ps1 script used
+# for local beta cuts, so the output matches what a local build produces.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Windows beta package
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Rust (neura_swarm crate)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Enable Windows desktop
+        shell: pwsh
+        run: flutter config --enable-windows-desktop
+
+      - name: Run beta build script
+        shell: pwsh
+        run: |
+          & .\BUILD_ALL_NEURA_UPGRADES.ps1 -Root "${{ github.workspace }}" -SkipTests:$false
+
+      - name: Upload beta package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: neura-beta-dist
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 7

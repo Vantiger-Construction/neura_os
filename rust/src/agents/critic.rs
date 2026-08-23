@@ -39,8 +39,8 @@ pub async fn review(
         "Recent conversation:\n{transcript}\n\nAssistant's reply to review:\n{draft_reply}"
     );
 
-    let raw = anthropic_client::complete(base_url, api_key, SYSTEM_PROMPT, &user_message, 256)
-        .await?;
+    let raw =
+        anthropic_client::complete(base_url, api_key, SYSTEM_PROMPT, &user_message, 256).await?;
 
     Ok(parse_verdict(&raw))
 }
