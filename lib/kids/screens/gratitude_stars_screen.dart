@@ -255,13 +255,13 @@ class _GratitudeEntry {
   const _GratitudeEntry({required this.text, required this.createdAt});
 
   Map<String, dynamic> toMap() => {
-    'text': text,
-    'createdAt': createdAt.toIso8601String(),
-  };
+        'text': text,
+        'createdAt': createdAt.toIso8601String(),
+      };
 
   factory _GratitudeEntry.fromMap(Map<String, dynamic> m) => _GratitudeEntry(
-    text: m['text'] as String? ?? '',
-    createdAt:
-        DateTime.tryParse(m['createdAt'] as String? ?? '') ?? DateTime.now(),
-  );
+        text: m['text'] as String? ?? '',
+        createdAt: DateTime.tryParse(m['createdAt'] as String? ?? '') ??
+            DateTime.now(),
+      );
 }
