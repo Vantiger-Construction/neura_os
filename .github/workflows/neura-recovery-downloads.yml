@@ -276,6 +276,14 @@ jobs:
           $zipName = "NeuraCompanion_Windows_x64_$version.zip"
           $zipPath = Join-Path $output $zipName
 
+          $workflowBundle = Join-Path $release 'SOURCE_WORKFLOWS'
+          New-Item -ItemType Directory -Path $workflowBundle -Force | Out-Null
+          Copy-Item -Path '.github\\workflows\\*.yml' -Destination $workflowBundle
+          if (-not (Get-ChildItem -LiteralPath $workflowBundle -File -Filter '*.yml' |
+              Select-Object -First 1)) {
+            throw 'Source workflow bundle is missing from the Windows package.'
+          }
+
           @"
           Neura Companion - Windows x64 recovery build
 
@@ -291,6 +299,9 @@ jobs:
           gates, the complete Flutter suite, Windows release compilation,
           authored-runner validation, payload validation, and the packaged
           sentinel-73 launch smoke test in the same workflow.
+
+          SOURCE_WORKFLOWS contains the repository CI workflow files used to
+          reproduce and audit the validation gates.
           "@ | Set-Content -LiteralPath (Join-Path $release 'README_INSTALL.txt') -Encoding UTF8
 
           [ordered]@{
@@ -382,6 +393,9 @@ jobs:
           version="${app_version%%+*}-recovery.${GITHUB_RUN_NUMBER}"
           apk_name="NeuraCompanion_Android_${version}_debug-signed.apk"
           cp "$source_apk" "$output/$apk_name"
+          mkdir -p "$output/SOURCE_WORKFLOWS"
+          cp .github/workflows/*.yml "$output/SOURCE_WORKFLOWS/"
+          compgen -G "$output/SOURCE_WORKFLOWS/*.yml" > /dev/null
           sha256sum "$output/$apk_name" | sed "s#  $output/#  #" > "$output/SHA256SUMS.txt"
           cat > "$output/README_INSTALL.txt" <<EOF
           Neura Companion - Android recovery test build
@@ -392,6 +406,9 @@ jobs:
           This APK is debug-signed intentionally so the Phase 4 recovery artifact
           is directly installable during validation. It is not the permanently
           signed Google Play release.
+
+          SOURCE_WORKFLOWS contains the repository CI workflow files used to
+          reproduce and audit the validation gates.
           EOF
 
       - name: Upload Android download
