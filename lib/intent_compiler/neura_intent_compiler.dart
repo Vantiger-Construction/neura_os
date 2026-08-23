@@ -32,9 +32,8 @@ class NeuraIntentCompiler {
       );
 
       var blocked = !constitutionDecision.allowed;
-      var blockReason = constitutionDecision.allowed
-          ? null
-          : constitutionDecision.reason;
+      var blockReason =
+          constitutionDecision.allowed ? null : constitutionDecision.reason;
 
       if (!blocked &&
           step.effect.isExternal &&

@@ -143,13 +143,14 @@ class NeuraPersonalConstitution {
       NeuraActionEffect.localRead => NeuraApprovalTier.none,
       NeuraActionEffect.localWrite ||
       NeuraActionEffect.notification ||
-      NeuraActionEffect.calendar => NeuraApprovalTier.confirm,
-      NeuraActionEffect.externalMessage =>
-        requireExternalPreview
-            ? NeuraApprovalTier.elevated
-            : NeuraApprovalTier.confirm,
+      NeuraActionEffect.calendar =>
+        NeuraApprovalTier.confirm,
+      NeuraActionEffect.externalMessage => requireExternalPreview
+          ? NeuraApprovalTier.elevated
+          : NeuraApprovalTier.confirm,
       NeuraActionEffect.purchase ||
-      NeuraActionEffect.cloudRequest => NeuraApprovalTier.elevated,
+      NeuraActionEffect.cloudRequest =>
+        NeuraApprovalTier.elevated,
     };
 
     return NeuraConstitutionDecision(

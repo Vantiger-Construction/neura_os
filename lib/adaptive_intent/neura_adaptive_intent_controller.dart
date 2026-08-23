@@ -25,25 +25,25 @@ class NeuraAdaptiveIntentController extends ChangeNotifier {
     NeuraAdaptiveIntentClock? clock,
     Duration signalMaxAge = const Duration(hours: 12),
     Duration persistDelay = const Duration(milliseconds: 250),
-  }) : bandwidthEngine = bandwidthEngine,
-       intentCompiler = intentCompiler,
-       _signals = (signals ?? NeuraCognitiveSignals.defaults()).normalized(),
-       _constitution = constitution.normalized(),
-       _safeModeListenable = safeModeListenable,
-       _safeMode = safeMode ?? safeModeListenable?.value ?? false,
-       _store = store,
-       _clock = clock ?? DateTime.now,
-       _signalMaxAge = signalMaxAge,
-       _persistDelay = persistDelay,
-       _initialized = store == null {
+  })  : bandwidthEngine = bandwidthEngine,
+        intentCompiler = intentCompiler,
+        _signals = (signals ?? NeuraCognitiveSignals.defaults()).normalized(),
+        _constitution = constitution.normalized(),
+        _safeModeListenable = safeModeListenable,
+        _safeMode = safeMode ?? safeModeListenable?.value ?? false,
+        _store = store,
+        _clock = clock ?? DateTime.now,
+        _signalMaxAge = signalMaxAge,
+        _persistDelay = persistDelay,
+        _initialized = store == null {
     _recalculate();
   }
 
   static final NeuraAdaptiveIntentController instance =
       NeuraAdaptiveIntentController(
-        store: const NeuraPrefsAdaptiveIntentStore(),
-        safeModeListenable: SafeBoot.instance.safeMode,
-      );
+    store: const NeuraPrefsAdaptiveIntentStore(),
+    safeModeListenable: SafeBoot.instance.safeMode,
+  );
 
   final NeuraBandwidthEngine bandwidthEngine;
   final NeuraIntentCompiler intentCompiler;
