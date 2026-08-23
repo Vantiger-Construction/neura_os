@@ -352,10 +352,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
+          cache: gradle
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2
@@ -367,10 +368,19 @@ jobs:
       - name: Restore dependencies
         run: flutter pub get
 
+      - name: Preinstall required Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-33"
+
       - name: Build installable Android test APK
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           app_version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n 1)"
           build_name="${app_version%%+*}"
           flutter build apk --debug \
