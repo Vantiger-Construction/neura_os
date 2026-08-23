@@ -31,7 +31,7 @@ class NeuraBandwidthEngine {
     final bandwidth = _clamp01(resources * (1 - strain * 0.65));
     final confidence = _clamp01(
       0.34 +
-          math.min(signals.evidenceCount, 6) * 0.07 +
+          math.min(signals.evidenceCount, 6).toDouble() * 0.07 +
           (signals.includesSelfReport ? 0.18 : 0),
     );
 
