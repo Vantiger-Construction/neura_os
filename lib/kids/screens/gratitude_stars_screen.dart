@@ -202,8 +202,7 @@ class _GratitudeStarsScreenState extends State<GratitudeStarsScreen> {
                               final e = _entries[i];
                               return Card(
                                 color: Colors.white.withValues(alpha: 0.12),
-                                margin:
-                                    const EdgeInsets.symmetric(vertical: 4),
+                                margin: const EdgeInsets.symmetric(vertical: 4),
                                 shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12)),
                                 child: ListTile(

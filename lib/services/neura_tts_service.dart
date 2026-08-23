@@ -197,10 +197,7 @@ class NeuraTtsService {
           .where(
             (voice) =>
                 voice['gender']?.toString().toLowerCase() == 'female' &&
-                (voice['locale']
-                        ?.toString()
-                        .toLowerCase()
-                        .startsWith('en') ??
+                (voice['locale']?.toString().toLowerCase().startsWith('en') ??
                     false),
           )
           .toList();
