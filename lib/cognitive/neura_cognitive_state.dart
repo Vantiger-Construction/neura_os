@@ -1,9 +1,4 @@
-enum NeuraBandwidthMode {
-  recovery,
-  simplified,
-  balanced,
-  deepFocus,
-}
+enum NeuraBandwidthMode { recovery, simplified, balanced, deepFocus }
 
 extension NeuraBandwidthModePresentation on NeuraBandwidthMode {
   String get label {
@@ -96,8 +91,7 @@ class NeuraCognitiveSignals {
       urgency: urgency ?? this.urgency,
       taskSwitchRate: taskSwitchRate ?? this.taskSwitchRate,
       completionRate: completionRate ?? this.completionRate,
-      notificationPressure:
-          notificationPressure ?? this.notificationPressure,
+      notificationPressure: notificationPressure ?? this.notificationPressure,
       evidenceCount: evidenceCount ?? this.evidenceCount,
       includesSelfReport: includesSelfReport ?? this.includesSelfReport,
     ).normalized();

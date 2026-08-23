@@ -14,8 +14,7 @@ class NeuraAdaptiveIntentScreen extends StatefulWidget {
       _NeuraAdaptiveIntentScreenState();
 }
 
-class _NeuraAdaptiveIntentScreenState
-    extends State<NeuraAdaptiveIntentScreen> {
+class _NeuraAdaptiveIntentScreenState extends State<NeuraAdaptiveIntentScreen> {
   final _controller = NeuraAdaptiveIntentController.instance;
   late final TextEditingController _outcomeController;
   bool _loading = true;
@@ -159,8 +158,9 @@ class _NeuraAdaptiveIntentScreenState
             actions: [
               IconButton(
                 tooltip: 'Clear compiled plan',
-                onPressed:
-                    _controller.plan == null ? null : _controller.clearPlan,
+                onPressed: _controller.plan == null
+                    ? null
+                    : _controller.clearPlan,
                 icon: const Icon(Icons.restart_alt),
               ),
               IconButton(
@@ -364,8 +364,8 @@ class _ConstitutionCard extends StatelessWidget {
             onChanged: controller.safeMode
                 ? null
                 : (value) => controller.updateConstitution(
-                      constitution.copyWith(allowCloudAi: value),
-                    ),
+                    constitution.copyWith(allowCloudAi: value),
+                  ),
           ),
           SwitchListTile(
             title: const Text('Allow external messages'),
@@ -374,8 +374,8 @@ class _ConstitutionCard extends StatelessWidget {
             onChanged: controller.safeMode
                 ? null
                 : (value) => controller.updateConstitution(
-                      constitution.copyWith(allowExternalMessages: value),
-                    ),
+                    constitution.copyWith(allowExternalMessages: value),
+                  ),
           ),
           SwitchListTile(
             title: const Text('Require external preview'),
@@ -391,8 +391,8 @@ class _ConstitutionCard extends StatelessWidget {
             onChanged: controller.safeMode
                 ? null
                 : (value) => controller.updateConstitution(
-                      constitution.copyWith(allowPurchases: value),
-                    ),
+                    constitution.copyWith(allowPurchases: value),
+                  ),
           ),
           SwitchListTile(
             title: const Text('Keep sensitive content local'),
@@ -407,8 +407,8 @@ class _ConstitutionCard extends StatelessWidget {
             onChanged: controller.safeMode
                 ? null
                 : (value) => controller.updateConstitution(
-                      constitution.copyWith(allowCalendarWrites: value),
-                    ),
+                    constitution.copyWith(allowCalendarWrites: value),
+                  ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
@@ -546,10 +546,7 @@ class _PlanCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              graph.outcome,
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text(graph.outcome, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 4),
             Text(
               'Intent: ${graph.intent.kind.name} • '
@@ -602,8 +599,8 @@ class _StepTile extends StatelessWidget {
     final color = step.blocked
         ? Theme.of(context).colorScheme.error
         : step.deferred
-            ? Theme.of(context).colorScheme.secondary
-            : Theme.of(context).colorScheme.primary;
+        ? Theme.of(context).colorScheme.secondary
+        : Theme.of(context).colorScheme.primary;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: DecoratedBox(
@@ -625,13 +622,11 @@ class _StepTile extends StatelessWidget {
                 children: [
                   Chip(label: Text(step.effect.label)),
                   Chip(
-                    label: Text(
-                      switch (step.requiredApproval) {
-                        NeuraApprovalTier.none => 'No approval',
-                        NeuraApprovalTier.confirm => 'Confirm',
-                        NeuraApprovalTier.elevated => 'Elevated approval',
-                      },
-                    ),
+                    label: Text(switch (step.requiredApproval) {
+                      NeuraApprovalTier.none => 'No approval',
+                      NeuraApprovalTier.confirm => 'Confirm',
+                      NeuraApprovalTier.elevated => 'Elevated approval',
+                    }),
                   ),
                   if (step.deferred) const Chip(label: Text('Deferred')),
                   if (step.reversible) const Chip(label: Text('Reversible')),
@@ -641,9 +636,7 @@ class _StepTile extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   step.blockReason!,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ],
             ],
@@ -680,10 +673,7 @@ class _SignalSlider extends StatelessWidget {
         ),
         SizedBox(
           width: 44,
-          child: Text(
-            '${(value * 100).round()}%',
-            textAlign: TextAlign.end,
-          ),
+          child: Text('${(value * 100).round()}%', textAlign: TextAlign.end),
         ),
       ],
     );

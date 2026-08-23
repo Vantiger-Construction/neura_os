@@ -37,8 +37,8 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
 
   Future<void> _load() async {
     try {
-      final banner =
-          await ProactiveBannerService.instance.maybeGetBannerOnAppOpen();
+      final banner = await ProactiveBannerService.instance
+          .maybeGetBannerOnAppOpen();
       if (!mounted) return;
       setState(() => _banner = banner);
       if (banner != null) {
@@ -102,26 +102,23 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
             builder: (_) => NeuraActionReviewScreen(
               candidate: banner.candidate,
               receipt: banner.receipt,
-              onResolved: (acted) => _recordOutcome(
-                banner,
-                acted: acted,
-              ),
+              onResolved: (acted) => _recordOutcome(banner, acted: acted),
             ),
           ),
         );
       } else {
-        await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const QuestModeScreen()),
-        );
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const QuestModeScreen()));
       }
     } else if (banner.kind == ProactiveBannerKind.wellness) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const SupportCenterScreen()),
-      );
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const SupportCenterScreen()));
     } else if (banner.kind == ProactiveBannerKind.focus) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const FocusOfficeScreen()),
-      );
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const FocusOfficeScreen()));
     }
   }
 

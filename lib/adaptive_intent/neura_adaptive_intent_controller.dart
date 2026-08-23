@@ -18,33 +18,32 @@ class NeuraAdaptiveIntentController extends ChangeNotifier {
     NeuraBandwidthEngine bandwidthEngine = const NeuraBandwidthEngine(),
     NeuraIntentCompiler intentCompiler = const NeuraIntentCompiler(),
     NeuraCognitiveSignals? signals,
-    NeuraPersonalConstitution constitution =
-        const NeuraPersonalConstitution(),
+    NeuraPersonalConstitution constitution = const NeuraPersonalConstitution(),
     bool? safeMode,
     ValueListenable<bool>? safeModeListenable,
     NeuraAdaptiveIntentStore? store,
     NeuraAdaptiveIntentClock? clock,
     Duration signalMaxAge = const Duration(hours: 12),
     Duration persistDelay = const Duration(milliseconds: 250),
-  })  : bandwidthEngine = bandwidthEngine,
-        intentCompiler = intentCompiler,
-        _signals = (signals ?? NeuraCognitiveSignals.defaults()).normalized(),
-        _constitution = constitution.normalized(),
-        _safeModeListenable = safeModeListenable,
-        _safeMode = safeMode ?? safeModeListenable?.value ?? false,
-        _store = store,
-        _clock = clock ?? DateTime.now,
-        _signalMaxAge = signalMaxAge,
-        _persistDelay = persistDelay,
-        _initialized = store == null {
+  }) : bandwidthEngine = bandwidthEngine,
+       intentCompiler = intentCompiler,
+       _signals = (signals ?? NeuraCognitiveSignals.defaults()).normalized(),
+       _constitution = constitution.normalized(),
+       _safeModeListenable = safeModeListenable,
+       _safeMode = safeMode ?? safeModeListenable?.value ?? false,
+       _store = store,
+       _clock = clock ?? DateTime.now,
+       _signalMaxAge = signalMaxAge,
+       _persistDelay = persistDelay,
+       _initialized = store == null {
     _recalculate();
   }
 
   static final NeuraAdaptiveIntentController instance =
       NeuraAdaptiveIntentController(
-    store: const NeuraPrefsAdaptiveIntentStore(),
-    safeModeListenable: SafeBoot.instance.safeMode,
-  );
+        store: const NeuraPrefsAdaptiveIntentStore(),
+        safeModeListenable: SafeBoot.instance.safeMode,
+      );
 
   final NeuraBandwidthEngine bandwidthEngine;
   final NeuraIntentCompiler intentCompiler;
@@ -110,10 +109,7 @@ class NeuraAdaptiveIntentController extends ChangeNotifier {
       final snapshot = await store.load();
       if (snapshot != null) {
         _constitution = snapshot.constitution.normalized();
-        if (snapshot.hasFreshSignalsAt(
-          _clock(),
-          maxAge: _signalMaxAge,
-        )) {
+        if (snapshot.hasFreshSignalsAt(_clock(), maxAge: _signalMaxAge)) {
           _signals = snapshot.signals.normalized();
         }
       }
@@ -170,10 +166,7 @@ class NeuraAdaptiveIntentController extends ChangeNotifier {
     notifyListeners();
   }
 
-  NeuraActionGraph compileOutcome(
-    String outcome, {
-    DateTime? now,
-  }) {
+  NeuraActionGraph compileOutcome(String outcome, {DateTime? now}) {
     _requireReady();
     _plan = intentCompiler.compile(
       outcome: outcome,

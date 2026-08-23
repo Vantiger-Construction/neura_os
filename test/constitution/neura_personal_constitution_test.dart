@@ -28,24 +28,21 @@ void main() {
     final at = DateTime.utc(2026, 8, 22, 15);
 
     expect(
-      defaultConstitution.evaluate(
-        action(NeuraActionEffect.purchase),
-        at: at,
-      ).allowed,
+      defaultConstitution
+          .evaluate(action(NeuraActionEffect.purchase), at: at)
+          .allowed,
       isFalse,
     );
     expect(
-      defaultConstitution.evaluate(
-        action(NeuraActionEffect.externalMessage),
-        at: at,
-      ).allowed,
+      defaultConstitution
+          .evaluate(action(NeuraActionEffect.externalMessage), at: at)
+          .allowed,
       isFalse,
     );
     expect(
-      defaultConstitution.evaluate(
-        action(NeuraActionEffect.cloudRequest),
-        at: at,
-      ).allowed,
+      defaultConstitution
+          .evaluate(action(NeuraActionEffect.cloudRequest), at: at)
+          .allowed,
       isFalse,
     );
   });

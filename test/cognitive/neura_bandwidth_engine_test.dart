@@ -73,10 +73,7 @@ void main() {
       evidenceCount: 1,
       includesSelfReport: false,
     );
-    final dense = sparse.copyWith(
-      evidenceCount: 7,
-      includesSelfReport: true,
-    );
+    final dense = sparse.copyWith(evidenceCount: 7, includesSelfReport: true);
 
     expect(
       engine.estimate(dense).confidence,

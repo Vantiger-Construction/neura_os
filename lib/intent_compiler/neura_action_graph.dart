@@ -32,11 +32,7 @@ extension NeuraActionEffectPolicy on NeuraActionEffect {
   }
 }
 
-enum NeuraApprovalTier {
-  none,
-  confirm,
-  elevated,
-}
+enum NeuraApprovalTier { none, confirm, elevated }
 
 NeuraApprovalTier stricterApproval(
   NeuraApprovalTier first,
@@ -155,8 +151,7 @@ class NeuraActionGraph {
   bool get requiresApproval {
     return steps.any(
       (step) =>
-          !step.blocked &&
-          step.requiredApproval != NeuraApprovalTier.none,
+          !step.blocked && step.requiredApproval != NeuraApprovalTier.none,
     );
   }
 }

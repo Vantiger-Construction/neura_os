@@ -90,28 +90,31 @@ void main() {
     expect(graph.steps.every((step) => !step.effect.isExternal), isTrue);
   });
 
-  test('Safe Mode blocks external message even when constitution allows it', () {
-    final state = engine.estimate(
-      NeuraCognitiveSignals.defaults(),
-      safeMode: true,
-      calculatedAt: DateTime.utc(2026, 8, 22, 15),
-    );
-    final graph = compiler.compile(
-      outcome: 'Send a message to my client',
-      cognitiveState: state,
-      interfacePolicy: NeuraInterfacePolicy.forState(state, safeMode: true),
-      constitution: const NeuraPersonalConstitution(
-        allowExternalMessages: true,
-      ),
-      safeMode: true,
-      now: DateTime.utc(2026, 8, 22, 15),
-    );
+  test(
+    'Safe Mode blocks external message even when constitution allows it',
+    () {
+      final state = engine.estimate(
+        NeuraCognitiveSignals.defaults(),
+        safeMode: true,
+        calculatedAt: DateTime.utc(2026, 8, 22, 15),
+      );
+      final graph = compiler.compile(
+        outcome: 'Send a message to my client',
+        cognitiveState: state,
+        interfacePolicy: NeuraInterfacePolicy.forState(state, safeMode: true),
+        constitution: const NeuraPersonalConstitution(
+          allowExternalMessages: true,
+        ),
+        safeMode: true,
+        now: DateTime.utc(2026, 8, 22, 15),
+      );
 
-    expect(
-      graph.blockedSteps.any(
-        (step) => step.effect == NeuraActionEffect.externalMessage,
-      ),
-      isTrue,
-    );
-  });
+      expect(
+        graph.blockedSteps.any(
+          (step) => step.effect == NeuraActionEffect.externalMessage,
+        ),
+        isTrue,
+      );
+    },
+  );
 }

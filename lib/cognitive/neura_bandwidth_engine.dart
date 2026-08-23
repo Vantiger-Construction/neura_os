@@ -111,7 +111,9 @@ class NeuraBandwidthEngine {
       reasons.add('Frequent task switching favors fewer visible choices.');
     }
     if (notificationPressure >= 0.65) {
-      reasons.add('Notification pressure should be reduced before adding work.');
+      reasons.add(
+        'Notification pressure should be reduced before adding work.',
+      );
     }
     if (reasons.isEmpty) {
       reasons.add(

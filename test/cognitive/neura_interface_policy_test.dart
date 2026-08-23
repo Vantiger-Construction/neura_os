@@ -45,9 +45,6 @@ void main() {
 
     expect(policy.externalEffectsAllowed, isTrue);
     expect(policy.minimumApprovalTier, NeuraApprovalTier.confirm);
-    expect(
-      policy.automationDepth,
-      NeuraAutomationDepth.localAfterConfirmation,
-    );
+    expect(policy.automationDepth, NeuraAutomationDepth.localAfterConfirmation);
   });
 }

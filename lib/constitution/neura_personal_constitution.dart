@@ -89,7 +89,8 @@ class NeuraPersonalConstitution {
         action.effect == NeuraActionEffect.cloudRequest) {
       return const NeuraConstitutionDecision(
         allowed: false,
-        reason: 'Sensitive content is constitutionally restricted to local use.',
+        reason:
+            'Sensitive content is constitutionally restricted to local use.',
         requiredApproval: NeuraApprovalTier.elevated,
       );
     }
@@ -132,7 +133,8 @@ class NeuraPersonalConstitution {
         !_insideWorkHours(at.hour)) {
       return const NeuraConstitutionDecision(
         allowed: false,
-        reason: 'External work actions are blocked outside configured work hours.',
+        reason:
+            'External work actions are blocked outside configured work hours.',
         requiredApproval: NeuraApprovalTier.elevated,
       );
     }
@@ -146,8 +148,8 @@ class NeuraPersonalConstitution {
         requireExternalPreview
             ? NeuraApprovalTier.elevated
             : NeuraApprovalTier.confirm,
-      NeuraActionEffect.purchase || NeuraActionEffect.cloudRequest =>
-        NeuraApprovalTier.elevated,
+      NeuraActionEffect.purchase ||
+      NeuraActionEffect.cloudRequest => NeuraApprovalTier.elevated,
     };
 
     return NeuraConstitutionDecision(

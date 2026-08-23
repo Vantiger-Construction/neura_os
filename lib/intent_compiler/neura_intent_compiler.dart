@@ -7,9 +7,7 @@ import 'neura_intent.dart';
 class NeuraIntentCompiler {
   final NeuraIntentClassifier classifier;
 
-  const NeuraIntentCompiler({
-    this.classifier = const NeuraIntentClassifier(),
-  });
+  const NeuraIntentCompiler({this.classifier = const NeuraIntentClassifier()});
 
   NeuraActionGraph compile({
     required String outcome,
@@ -34,8 +32,9 @@ class NeuraIntentCompiler {
       );
 
       var blocked = !constitutionDecision.allowed;
-      var blockReason =
-          constitutionDecision.allowed ? null : constitutionDecision.reason;
+      var blockReason = constitutionDecision.allowed
+          ? null
+          : constitutionDecision.reason;
 
       if (!blocked &&
           step.effect.isExternal &&
@@ -68,8 +67,7 @@ class NeuraIntentCompiler {
     final approvalCount = evaluated
         .where(
           (step) =>
-              !step.blocked &&
-              step.requiredApproval != NeuraApprovalTier.none,
+              !step.blocked && step.requiredApproval != NeuraApprovalTier.none,
         )
         .length;
     final reasons = <String>[
@@ -156,7 +154,8 @@ class NeuraIntentCompiler {
       _step(
         id: 'week-review',
         title: 'Review local commitments',
-        description: 'Collect deadlines and unfinished items without changing them.',
+        description:
+            'Collect deadlines and unfinished items without changing them.',
         effect: NeuraActionEffect.localRead,
         approval: NeuraApprovalTier.none,
         minutes: 3,
@@ -176,7 +175,8 @@ class NeuraIntentCompiler {
       _step(
         id: 'week-blocks',
         title: 'Draft focus blocks',
-        description: 'Prepare calendar blocks but do not add them without approval.',
+        description:
+            'Prepare calendar blocks but do not add them without approval.',
         effect: NeuraActionEffect.calendar,
         approval: NeuraApprovalTier.confirm,
         minutes: 4,
@@ -202,7 +202,8 @@ class NeuraIntentCompiler {
       _step(
         id: 'focus-finish-line',
         title: 'Name the finish line',
-        description: 'Turn the outcome into one observable completion condition.',
+        description:
+            'Turn the outcome into one observable completion condition.',
         effect: NeuraActionEffect.localWrite,
         approval: NeuraApprovalTier.confirm,
         minutes: 2,
@@ -212,7 +213,8 @@ class NeuraIntentCompiler {
       _step(
         id: 'focus-protect',
         title: 'Draft a protected focus block',
-        description: 'Prepare a reversible notification pause for the work block.',
+        description:
+            'Prepare a reversible notification pause for the work block.',
         effect: NeuraActionEffect.notification,
         approval: NeuraApprovalTier.confirm,
         minutes: 1,
@@ -223,7 +225,8 @@ class NeuraIntentCompiler {
       _step(
         id: 'focus-queue',
         title: 'Create a distraction queue',
-        description: 'Capture unrelated thoughts locally without switching tasks.',
+        description:
+            'Capture unrelated thoughts locally without switching tasks.',
         effect: NeuraActionEffect.localWrite,
         approval: NeuraApprovalTier.confirm,
         minutes: 1,
@@ -258,7 +261,8 @@ class NeuraIntentCompiler {
       _step(
         id: 'organize-next',
         title: 'Choose the next physical action',
-        description: 'Select one small action instead of exposing the full backlog.',
+        description:
+            'Select one small action instead of exposing the full backlog.',
         effect: NeuraActionEffect.localWrite,
         approval: NeuraApprovalTier.confirm,
         minutes: 2,
@@ -328,7 +332,8 @@ class NeuraIntentCompiler {
       _step(
         id: 'purchase-complete',
         title: 'Complete the purchase',
-        description: 'A transaction can occur only after fresh elevated approval.',
+        description:
+            'A transaction can occur only after fresh elevated approval.',
         effect: NeuraActionEffect.purchase,
         approval: NeuraApprovalTier.elevated,
         minutes: 2,
@@ -353,7 +358,8 @@ class NeuraIntentCompiler {
       _step(
         id: 'research-cloud',
         title: 'Request outside information',
-        description: 'Use cloud research only when the constitution permits it.',
+        description:
+            'Use cloud research only when the constitution permits it.',
         effect: NeuraActionEffect.cloudRequest,
         approval: NeuraApprovalTier.elevated,
         minutes: 8,
@@ -388,7 +394,8 @@ class NeuraIntentCompiler {
       _step(
         id: 'general-constraints',
         title: 'Identify local constraints',
-        description: 'Review time, energy, dependencies, and safety boundaries.',
+        description:
+            'Review time, energy, dependencies, and safety boundaries.',
         effect: NeuraActionEffect.localRead,
         approval: NeuraApprovalTier.none,
         minutes: 3,
@@ -398,7 +405,8 @@ class NeuraIntentCompiler {
       _step(
         id: 'general-next',
         title: 'Choose one reversible next step',
-        description: 'Start with the smallest action that creates useful evidence.',
+        description:
+            'Start with the smallest action that creates useful evidence.',
         effect: NeuraActionEffect.localWrite,
         approval: NeuraApprovalTier.confirm,
         minutes: 3,

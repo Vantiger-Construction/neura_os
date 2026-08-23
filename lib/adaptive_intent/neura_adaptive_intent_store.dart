@@ -28,35 +28,32 @@ class NeuraAdaptiveIntentSnapshot {
   }
 
   Map<String, Object?> toJson() => {
-        'v': 1,
-        'saved_at': savedAt.toUtc().toIso8601String(),
-        'signals': {
-          'energy': signals.energy,
-          'focus': signals.focus,
-          'cognitive_load': signals.cognitiveLoad,
-          'urgency': signals.urgency,
-          'task_switch_rate': signals.taskSwitchRate,
-          'completion_rate': signals.completionRate,
-          'notification_pressure': signals.notificationPressure,
-          'evidence_count': signals.evidenceCount,
-          'includes_self_report': signals.includesSelfReport,
-        },
-        'constitution': {
-          'allow_cloud_ai': constitution.allowCloudAi,
-          'allow_external_messages': constitution.allowExternalMessages,
-          'allow_purchases': constitution.allowPurchases,
-          'allow_calendar_writes': constitution.allowCalendarWrites,
-          'keep_sensitive_content_local':
-              constitution.keepSensitiveContentLocal,
-          'require_external_preview': constitution.requireExternalPreview,
-          'work_hours_start': constitution.workHoursStart,
-          'work_hours_end': constitution.workHoursEnd,
-        },
-      };
+    'v': 1,
+    'saved_at': savedAt.toUtc().toIso8601String(),
+    'signals': {
+      'energy': signals.energy,
+      'focus': signals.focus,
+      'cognitive_load': signals.cognitiveLoad,
+      'urgency': signals.urgency,
+      'task_switch_rate': signals.taskSwitchRate,
+      'completion_rate': signals.completionRate,
+      'notification_pressure': signals.notificationPressure,
+      'evidence_count': signals.evidenceCount,
+      'includes_self_report': signals.includesSelfReport,
+    },
+    'constitution': {
+      'allow_cloud_ai': constitution.allowCloudAi,
+      'allow_external_messages': constitution.allowExternalMessages,
+      'allow_purchases': constitution.allowPurchases,
+      'allow_calendar_writes': constitution.allowCalendarWrites,
+      'keep_sensitive_content_local': constitution.keepSensitiveContentLocal,
+      'require_external_preview': constitution.requireExternalPreview,
+      'work_hours_start': constitution.workHoursStart,
+      'work_hours_end': constitution.workHoursEnd,
+    },
+  };
 
-  factory NeuraAdaptiveIntentSnapshot.fromJson(
-    Map<String, Object?> json,
-  ) {
+  factory NeuraAdaptiveIntentSnapshot.fromJson(Map<String, Object?> json) {
     final rawSignals = json['signals'];
     final signalJson = rawSignals is Map
         ? Map<String, Object?>.from(rawSignals)
@@ -93,8 +90,10 @@ class NeuraAdaptiveIntentSnapshot {
         urgency: unit('urgency', defaults.urgency),
         taskSwitchRate: unit('task_switch_rate', defaults.taskSwitchRate),
         completionRate: unit('completion_rate', defaults.completionRate),
-        notificationPressure:
-            unit('notification_pressure', defaults.notificationPressure),
+        notificationPressure: unit(
+          'notification_pressure',
+          defaults.notificationPressure,
+        ),
         evidenceCount: boundedInt(
           signalJson,
           'evidence_count',
@@ -102,16 +101,14 @@ class NeuraAdaptiveIntentSnapshot {
           0,
           20,
         ),
-        includesSelfReport:
-            signalJson['includes_self_report'] != false,
+        includesSelfReport: signalJson['includes_self_report'] != false,
       ),
       constitution: NeuraPersonalConstitution(
         allowCloudAi: constitutionJson['allow_cloud_ai'] == true,
         allowExternalMessages:
             constitutionJson['allow_external_messages'] == true,
         allowPurchases: constitutionJson['allow_purchases'] == true,
-        allowCalendarWrites:
-            constitutionJson['allow_calendar_writes'] != false,
+        allowCalendarWrites: constitutionJson['allow_calendar_writes'] != false,
         keepSensitiveContentLocal:
             constitutionJson['keep_sensitive_content_local'] != false,
         requireExternalPreview:
@@ -123,15 +120,10 @@ class NeuraAdaptiveIntentSnapshot {
           0,
           23,
         ),
-        workHoursEnd: boundedInt(
-          constitutionJson,
-          'work_hours_end',
-          20,
-          0,
-          23,
-        ),
+        workHoursEnd: boundedInt(constitutionJson, 'work_hours_end', 20, 0, 23),
       ),
-      savedAt: DateTime.tryParse(json['saved_at']?.toString() ?? '')?.toUtc() ??
+      savedAt:
+          DateTime.tryParse(json['saved_at']?.toString() ?? '')?.toUtc() ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
     );
   }
