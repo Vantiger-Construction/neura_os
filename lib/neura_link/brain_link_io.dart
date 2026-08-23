@@ -105,15 +105,11 @@ class BrainLink {
 
   bool send(String kind, Map<String, dynamic> data, {String? id}) {
     final socket = _socket;
-    if (_disposed ||
-        socket == null ||
-        socket.readyState != WebSocket.open) {
+    if (_disposed || socket == null || socket.readyState != WebSocket.open) {
       return false;
     }
     try {
-      socket.add(
-        Envelope(kind: kind, id: id ?? _newId(), data: data).encode(),
-      );
+      socket.add(Envelope(kind: kind, id: id ?? _newId(), data: data).encode());
       return true;
     } catch (_) {
       _disconnected(socket);
