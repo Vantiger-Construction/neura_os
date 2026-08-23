@@ -37,6 +37,8 @@ system.
   the rest of the process.
 - Rapid slider changes use a bounded persistence debounce rather than writing
   every intermediate value.
+- The implementation is maintained as normal reviewed source files; temporary
+  staged payloads and self-modifying build workflows have been removed.
 
 ## Safety boundary
 
