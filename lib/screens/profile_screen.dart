@@ -40,9 +40,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       await AuthService().updateDisplayName(_nameCtrl.text);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Profile updated')));
       }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -54,8 +54,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final user = AuthService.currentUser;
-    final initial =
-        user?.email?.isNotEmpty == true ? user!.email![0].toUpperCase() : '?';
+    final initial = user?.email?.isNotEmpty == true
+        ? user!.email![0].toUpperCase()
+        : '?';
     final cloudAvailable = AuthService.isAvailable;
 
     return Scaffold(
@@ -90,7 +91,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              user?.email ?? (cloudAvailable ? '' : 'Cloud profile unavailable'),
+              user?.email ??
+                  (cloudAvailable ? '' : 'Cloud profile unavailable'),
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 16),
@@ -106,7 +108,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _updating || !cloudAvailable || user == null ? null : _save,
+              onPressed: _updating || !cloudAvailable || user == null
+                  ? null
+                  : _save,
               child: _updating
                   ? const SizedBox(
                       width: 16,
