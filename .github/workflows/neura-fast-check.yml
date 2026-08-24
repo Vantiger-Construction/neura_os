@@ -188,7 +188,11 @@ jobs:
           dart --version
           git --version
           cargo --version
-          nuget help | Select-Object -First 1
+          $nugetOutput = & nuget help 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            throw "nuget help failed with exit code $LASTEXITCODE."
+          }
+          Write-Host ($nugetOutput | Select-Object -First 1)
 
       - name: Run optimized validation
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
