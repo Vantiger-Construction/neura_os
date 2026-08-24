@@ -37,7 +37,10 @@ class ErrorHandler {
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(content: Text(msg), duration: const Duration(seconds: 3)),
+        SnackBar(
+          content: Text(msg),
+          duration: const Duration(seconds: 3),
+        ),
       );
   }
 }

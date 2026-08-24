@@ -250,6 +250,10 @@ class NeuraAdaptiveIntentPreferencesController extends ChangeNotifier {
 
     try {
       await _store?.save(next);
+      // A data wipe waits for this queue and clears the backing store after it
+      // drains. Do not let a write that started before suspension re-enable the
+      // in-memory feature while that wipe is completing.
+      if (_writesSuspended) return;
       _preferences = next;
       _lastError = null;
       if (!_disposed) notifyListeners();
@@ -279,6 +283,9 @@ class NeuraAdaptiveIntentPreferencesController extends ChangeNotifier {
       clearFailure = error;
     }
 
+    // Reassert the disabled defaults after draining because a save that was
+    // already in flight may have completed while suspension was being latched.
+    _preferences = const NeuraAdaptiveIntentPreferences();
     _initialized = _store == null;
     _initializeFuture = null;
     _writeQueue = Future<void>.value();

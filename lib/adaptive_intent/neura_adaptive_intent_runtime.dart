@@ -372,7 +372,9 @@ class NeuraAdaptiveIntentRuntime extends ChangeNotifier {
   }) async {
     try {
       await previous;
-    } catch (_) {}
+    } catch (_) {
+      // A later valid outcome may recover after a previous failed write.
+    }
     if (!_isCurrent(generation)) return;
 
     try {

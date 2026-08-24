@@ -1,0 +1,134 @@
+name: Verify fixed Neura Phase 4 packages once
+
+on:
+  push:
+    branches:
+      - agent/neura-adaptive-intent-phase4-integration
+    paths:
+      - .github/workflows/verify-neura-phase4-packaging-once.yml
+
+permissions:
+  actions: read
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: verify-neura-phase4-packaging-once
+  cancel-in-progress: false
+
+env:
+  WORK_BRANCH: agent/neura-adaptive-intent-phase4-integration
+
+jobs:
+  witness:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out validation head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.WORK_BRANCH }}
+          fetch-depth: 0
+
+      - name: Locate matching permanent package run
+        id: package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id=''
+          for _ in $(seq 1 60); do
+            run_id="$(gh run list \
+              --workflow neura-recovery-downloads.yml \
+              --branch "${WORK_BRANCH}" \
+              --commit "${GITHUB_SHA}" \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId // empty')"
+            if [[ -n "$run_id" ]]; then
+              break
+            fi
+            sleep 5
+          done
+          if [[ -z "$run_id" ]]; then
+            echo '::error::The permanent package run was not created.'
+            exit 1
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "Watching package run $run_id for $GITHUB_SHA"
+
+      - name: Require Windows and Android package success
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.package.outputs.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh run watch "$RUN_ID" --exit-status; then
+            gh run view "$RUN_ID" --log-failed > package-failures.log || true
+            gh pr comment 43 --body \
+              "Phase 4 package validation failed in run ${RUN_ID} on ${GITHUB_SHA}. The failed-job log is attached to the run and must be fixed before evidence is recorded."
+            exit 1
+          fi
+          results="$(gh run view "$RUN_ID" \
+            --json jobs \
+            --jq '[.jobs[] | {name, conclusion}]')"
+          echo "$results"
+          for required in \
+            'Analyze and test' \
+            'Build Windows x64' \
+            'Build Android installable APK'; do
+            conclusion="$(jq -r \
+              --arg name "$required" \
+              '.[] | select(.name == $name) | .conclusion' \
+              <<< "$results")"
+            if [[ "$conclusion" != 'success' ]]; then
+              echo "::error::$required concluded $conclusion"
+              exit 1
+            fi
+          done
+
+      - name: Record package evidence and remove one-time witness
+        env:
+          RUN_ID: ${{ steps.package.outputs.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > PHASE4_PACKAGE_VALIDATION.md <<EOF
+          # Neura Adaptive Intent OS 1.4 package validation
+
+          - Source commit: ${GITHUB_SHA}
+          - GitHub Actions run: ${RUN_ID}
+          - Flutter package: 1.4.0+7
+          - Dependency restore: PASS
+          - Full Dart formatting gate: PASS
+          - Flutter analyzer: PASS
+          - Startup recovery gates: PASS
+          - Complete Flutter suite: PASS
+          - Windows x64 release build: PASS
+          - Authored Windows runner contract: PASS
+          - Windows runtime payload and launch self-test: PASS
+          - Android installable debug APK: PASS
+          EOF
+          rm -f .github/workflows/verify-neura-phase4-packaging-once.yml
+          git config user.name 'Neura Companion'
+          git config user.email \
+            '156997939+Vantiger1@users.noreply.github.com'
+          git add \
+            PHASE4_PACKAGE_VALIDATION.md \
+            .github/workflows/verify-neura-phase4-packaging-once.yml
+          git commit -m 'ci: record verified Windows and Android Phase 4 packages'
+          git push origin HEAD:${WORK_BRANCH}
+
+      - name: Report verified package gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.package.outputs.run_id }}
+        shell: bash
+        run: |
+          gh pr comment 43 --body \
+            "Phase 4 package validation passed on ${GITHUB_SHA}: analyzer, startup gates, complete Flutter suite, Windows x64 package, and Android APK all succeeded in run ${RUN_ID}."

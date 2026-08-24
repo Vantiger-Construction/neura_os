@@ -28,9 +28,11 @@ class TranscriptionService {
             completer.complete(r.recognizedWords);
           }
         },
-        listenFor: const Duration(seconds: 30),
-        pauseFor: const Duration(seconds: 4),
-        localeId: 'en_US',
+        listenOptions: SpeechListenOptions(
+          listenFor: const Duration(seconds: 30),
+          pauseFor: const Duration(seconds: 4),
+          localeId: 'en_US',
+        ),
       );
     } catch (_) {
       return '';
@@ -57,9 +59,11 @@ class TranscriptionService {
             completer.complete(r.recognizedWords);
           }
         },
-        listenFor: listenFor,
-        pauseFor: pauseFor,
-        localeId: 'en_US',
+        listenOptions: SpeechListenOptions(
+          listenFor: listenFor,
+          pauseFor: pauseFor,
+          localeId: 'en_US',
+        ),
       );
     } catch (_) {
       return '';

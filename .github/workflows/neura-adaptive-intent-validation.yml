@@ -10,16 +10,28 @@ on:
       - "lib/constitution/**"
       - "lib/intent_compiler/**"
       - "lib/dashboard/widgets/proactive_banner_card.dart"
+      - "lib/modules/navigation/enhanced_navigation.dart"
+      - "lib/src/core/data_wipe_service.dart"
+      - "lib/core/neura_fault_system.dart"
+      - "lib/integrations/tts/neura_flutter_tts_viseme_bridge.dart"
+      - "lib/kids/screens/gratitude_stars_screen.dart"
+      - "lib/modules/core/error_handler.dart"
+      - "lib/services/ambient_listening_service.dart"
+      - "lib/services/neura_tts_service.dart"
+      - "android/gradle/wrapper/gradle-wrapper.properties"
+      - "windows/runner/**"
       - "test/adaptive_intent/**"
       - "test/cognitive/**"
       - "test/constitution/**"
       - "test/intent_compiler/**"
       - "NEURA_ADAPTIVE_INTENT_OS_V1_4.md"
+      - "ADAPTIVE_INTENT_PHASE4_VALIDATION.md"
       - "pubspec.yaml"
       - ".github/workflows/neura-adaptive-intent-validation.yml"
   push:
     branches:
       - agent/neura-adaptive-intent-os-v1.4
+      - agent/neura-adaptive-intent-phase4-integration
   workflow_dispatch:
 
 permissions:
@@ -42,6 +54,15 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Reject unresolved merge markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git grep -n -E '^(<<<<<<<|>>>>>>>)' -- .; then
+            echo "::error::Unresolved merge conflict markers are committed."
+            exit 1
+          fi
+
       - name: Install Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -60,6 +81,14 @@ jobs:
             lib/constitution \
             lib/intent_compiler \
             lib/dashboard/widgets/proactive_banner_card.dart \
+            lib/modules/navigation/enhanced_navigation.dart \
+            lib/src/core/data_wipe_service.dart \
+            lib/core/neura_fault_system.dart \
+            lib/integrations/tts/neura_flutter_tts_viseme_bridge.dart \
+            lib/kids/screens/gratitude_stars_screen.dart \
+            lib/modules/core/error_handler.dart \
+            lib/services/ambient_listening_service.dart \
+            lib/services/neura_tts_service.dart \
             test/adaptive_intent \
             test/cognitive \
             test/constitution \

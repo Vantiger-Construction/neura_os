@@ -41,9 +41,8 @@ class _GratitudeStarsScreenState extends State<GratitudeStarsScreen> {
         final list = json.decode(raw) as List<dynamic>;
         for (final item in list) {
           if (item is Map) {
-            _entries.add(
-              _GratitudeEntry.fromMap(Map<String, dynamic>.from(item)),
-            );
+            _entries
+                .add(_GratitudeEntry.fromMap(Map<String, dynamic>.from(item)));
           }
         }
       } catch (_) {}
@@ -74,10 +73,8 @@ class _GratitudeStarsScreenState extends State<GratitudeStarsScreen> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A2E),
-        title: const Text(
-          '⭐ Amazing!',
-          style: TextStyle(color: Colors.amber, fontSize: 22),
-        ),
+        title: const Text('⭐ Amazing!',
+            style: TextStyle(color: Colors.amber, fontSize: 22)),
         content: Text(
           '"$text"\n\nYou earned a star! Great job!',
           style: const TextStyle(color: Colors.white70),
@@ -133,24 +130,20 @@ class _GratitudeStarsScreenState extends State<GratitudeStarsScreen> {
                   ),
                   Container(
                     margin: const EdgeInsets.symmetric(vertical: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 8,
-                    ),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                     decoration: BoxDecoration(
                       color: Colors.amber.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: Colors.amber.withValues(alpha: 0.4),
-                      ),
+                          color: Colors.amber.withValues(alpha: 0.4)),
                     ),
                     child: Text(
                       '${_entries.length} ⭐ collected',
                       style: const TextStyle(
-                        color: Colors.amber,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
+                          color: Colors.amber,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16),
                     ),
                   ),
                   Padding(
@@ -165,11 +158,9 @@ class _GratitudeStarsScreenState extends State<GratitudeStarsScreen> {
                             decoration: InputDecoration(
                               hintText: 'e.g. My dog, the sun, my family…',
                               hintStyle: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.35),
-                              ),
-                              counterStyle: const TextStyle(
-                                color: Colors.white70,
-                              ),
+                                  color: Colors.white.withValues(alpha: 0.7)),
+                              counterStyle:
+                                  const TextStyle(color: Colors.white70),
                               filled: true,
                               fillColor: Colors.white.withValues(alpha: 0.12),
                               border: OutlineInputBorder(
@@ -200,9 +191,8 @@ class _GratitudeStarsScreenState extends State<GratitudeStarsScreen> {
                               'No stars yet!\nType something above to earn your first ⭐',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.75),
-                                fontSize: 15,
-                              ),
+                                  color: Colors.white.withValues(alpha: 0.75),
+                                  fontSize: 15),
                             ),
                           )
                         : ListView.builder(
@@ -214,23 +204,17 @@ class _GratitudeStarsScreenState extends State<GratitudeStarsScreen> {
                                 color: Colors.white.withValues(alpha: 0.12),
                                 margin: const EdgeInsets.symmetric(vertical: 4),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
+                                    borderRadius: BorderRadius.circular(12)),
                                 child: ListTile(
-                                  leading: const Text(
-                                    '⭐',
-                                    style: TextStyle(fontSize: 22),
-                                  ),
-                                  title: Text(
-                                    e.text,
-                                    style: const TextStyle(color: Colors.white),
-                                  ),
+                                  leading: const Text('⭐',
+                                      style: TextStyle(fontSize: 22)),
+                                  title: Text(e.text,
+                                      style:
+                                          const TextStyle(color: Colors.white)),
                                   subtitle: Text(
                                     _formatDate(e.createdAt),
                                     style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 11,
-                                    ),
+                                        color: Colors.white70, fontSize: 11),
                                   ),
                                 ),
                               );

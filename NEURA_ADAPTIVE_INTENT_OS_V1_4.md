@@ -1,136 +1,93 @@
-# Neura Adaptive Intent OS — v1.4 research prototype
+# Neura Adaptive Intent OS — 1.4 real-beta foundation
 
-This branch develops a local-first Neura computing layer that adapts interface
-complexity, planning depth, and consent requirements to a practical estimate of
-the user's available cognitive bandwidth. It is not a medical diagnostic
-system.
+Neura Adaptive Intent OS is a local-first computing layer that changes plan
+size, information density, and consent strength according to a practical,
+explainable estimate of the user's available cognitive bandwidth. It is not a
+medical diagnostic system.
 
-## Package milestone
+The research package now identifies as **1.4.0+7**.
 
-The research package now identifies as **1.4.0+6** and includes the active-plan
-session and outcome-feedback UI. The pull request remains draft until the
-latest canonical-format, analyzer, focused-test, and complete-suite gates all
-pass on the same commit.
+## Product-facing Phase 4
 
-## Current technology
+Phase 4 replaces the remaining demonstration-only boundaries with four
+production-facing components.
 
-1. **Cognitive Bandwidth Engine** — estimates Recovery, Simplified, Balanced,
-   or Deep Focus mode from explicit, privacy-safe capacity signals.
-2. **Adaptive Interface Policy** — controls visible action count, information
-   density, proactive behavior, and minimum consent strength.
-3. **Intent-to-Outcome Compiler** — converts a requested outcome into a
-   bounded, explainable action graph.
-4. **Personal Constitution** — enforces local/cloud, communication, purchase,
-   calendar, work-hour, preview, and sensitive-content boundaries.
-5. **Decision Receipts** — explain the selected mode, policy blocks, approvals,
-   confidence, and why each plan was produced.
-6. **Persistent local runtime** — shares one Safe Mode-aware controller across
-   the dashboard and Adaptive Intent screen.
-7. **Deterministic Plan Sessions** — track user-directed local progress through
-   pending, completed, deferred, blocked, completed-session, and abandoned
-   states.
-8. **Adaptive Outcome Loop** — converts privacy-safe completion evidence into a
-   conservative recommendation to reduce load, maintain the current policy, or
-   protect a focused outcome.
-9. **Active Session UI** — starts one local plan, exposes only valid state
-   transitions, collects derived feedback, and displays the resulting outcome
-   receipt and next-mode recommendation.
+### 1. Live local signals
 
-## Active Session UI
+The live adapter can use only normalized, privacy-safe values selected during
+onboarding:
 
-The dashboard's Adaptive Intent card now has a dedicated plan-session control.
-The session screen can:
+- the most recent 0–10 mood score and timestamp;
+- the user-selected Focus Mode;
+- active-quest and recent quest-completion counts;
+- bounded in-app surface-switch and interruption counts.
 
-- start one bounded local plan;
-- show pending, completed, deferred, blocked, and review-only steps;
-- require a direct user gesture for every progress change;
-- request explicit confirmation before recording approval-gated local changes;
-- complete or defer safe local steps;
-- resume deferred steps;
-- collect perceived effort, satisfaction, and interruption counts;
-- finish or abandon a session;
-- display a derived outcome receipt and conservative next-mode recommendation.
+The adapter does not place mood notes, journals, therapy text, dreams, messages,
+memory content, quest titles, or other raw personal copy into the Cognitive
+Bandwidth Engine. Each source can be disabled independently. Source failures
+degrade locally instead of preventing Neura from starting.
 
-External, cloud, calendar, notification, message, and purchase effects are not
-executed by this UI. They remain review-only or blocked by policy. Safe Mode
-disables session creation and progress changes; it still permits discarding the
-in-memory session authority.
+### 2. Encrypted outcome learning
 
-## Plan-session safety boundary
+Derived outcome receipts are now stored in a bounded encrypted local history
+using Neura's OS-backed AES-GCM key. A receipt contains only:
 
-A Plan Session is progress tracking, not an executor.
+- session and timing identifiers;
+- selected bandwidth mode;
+- completed, deferred, blocked, and external step counts;
+- completion ratio;
+- perceived effort;
+- satisfaction;
+- interruption count.
 
-- Every progress change requires a direct user gesture.
-- Approval-gated local steps require an explicit approval flag.
-- Blocked steps cannot be changed.
-- Deferred steps must be resumed before completion.
-- External effects cannot be marked complete by the local session engine.
-- Safe Mode blocks session creation and progress changes.
-- Only one active session is allowed in the Adaptive Intent runtime.
-- Closing a session produces a derived receipt without storing the requested
-  outcome, step title, step description, message text, or other raw plan copy.
+Raw goals, plan text, step titles, step descriptions, messages, journal text,
+and therapy text are not written to the outcome history. The history is capped
+at 100 records, loaded across restarts, and cleared before the device encryption
+key is removed during a full local-data wipe.
 
-The runtime keeps outcome receipts in memory only. A local-data wipe clears the
-active session, derived history, last adaptation, and compiled plan.
+### 3. One real reversible action
 
-## Outcome adaptation
+Adaptive Intent can prepare one executable capability:
 
-The Outcome Loop examines at most five recent derived receipts.
+> Create a reversible local quest from one explicitly selected local-write step.
 
-It recommends **Reduce Load** when completion is low, reported effort is high,
-interruptions are excessive, or a session was abandoned. It recommends
-**Protect Focus** only after two repeated high-completion, high-satisfaction,
-manageable-effort sessions and adequate current bandwidth. Otherwise it keeps
-the existing policy.
+The bridge does not execute the quest. It verifies the current cognitive mode,
+Safe Mode, the step type, the Capability Registry classification, reversibility,
+absence of external effects, and a direct user gesture. It then creates an
+`askApproval` candidate for the existing Action Review screen.
 
-An adaptation is an explainable recommendation. It cannot execute an action,
-change a calendar, contact another person, purchase anything, or call cloud AI.
+The existing Action Loom remains the authority for exact payload binding, fresh
+approval, Safe Mode and policy revalidation, idempotent execution, durable
+action metadata, crash recovery, and undo. No second executor was introduced.
 
-## Persistent Phase 2 integration
+### 4. Opt-in onboarding and controls
 
-- Capacity signals and constitution settings are persisted locally through
-  Neura's cached SharedPreferences service.
-- Signal readings expire after 12 hours so yesterday's low-energy or
-  high-pressure state does not silently control a new day.
-- Constitution choices remain until the user changes or resets them.
-- Raw goals, compiled plans, action text, and decision graphs are never written
-  to the Adaptive Intent settings store.
-- Safe Mode changes immediately invalidate the current compiled plan and force
-  Recovery policy across every screen using the shared controller.
-- The dashboard always shows an Adaptive Intent status card.
-- Initialization failures are retryable and do not poison the controller for
-  the rest of the process.
-- Rapid slider changes use a bounded persistence debounce rather than writing
-  every intermediate value.
+Adaptive Intent is off by default. Onboarding explains what it does, what it
+does not do, what is stored, and which signal sources are available. Users can
+enable or disable each source, turn the feature off, and clear all associated
+local data through Neura's existing data controls.
 
-## External-action boundary
+Disabling the feature revokes an active in-memory session. Safe Mode blocks new
+sessions, progress changes, live action preparation, and outcome mutation.
 
-The v1.4 runtime still does not:
+## Still blocked
 
-- send messages;
-- modify calendars;
-- purchase anything;
-- call cloud AI;
-- execute Action Loom operations.
+Adaptive Intent cannot autonomously send a message, contact another person,
+change a calendar, schedule an external notification, purchase anything, move
+money, call cloud AI, or execute an unknown capability. Those effects remain
+blocked or review-only.
 
-A later phase can translate an explicitly selected, policy-allowed local step
-into an Action Loom proposal with exact payload binding and fresh
-authorization. Unknown, blocked, critical, or external steps must continue to
-fail closed.
+## Validation contract
 
-## Validation
+The Neura 1.4 workflow requires, on the same commit:
 
-The PR validation workflow requires:
+1. `flutter pub get`;
+2. canonical package-mode Dart formatting;
+3. `flutter analyze --fatal-infos`;
+4. all Cognitive, Constitution, Intent Compiler, and Adaptive Intent tests;
+5. Neura's complete Flutter test suite.
 
-- canonical Dart formatting;
-- `flutter analyze --fatal-infos`;
-- the complete Cognitive, Constitution, Intent Compiler, and Adaptive Intent
-  test directories;
-- Neura's complete Flutter test suite.
-
-Focused coverage includes all bandwidth modes, Safe Mode overrides, persisted
-state expiry, constitution boundaries, plan-session transitions, direct-gesture
-and approval requirements, privacy-safe outcome receipts, overloaded-session
-reduction, repeated-success focus protection, one-session runtime authority,
-active-session widget behavior, Safe Mode UI refusal, and data-wipe reset
-behavior.
+Phase 4 adds focused coverage for enrollment, disabled-source behavior, live
+signal fusion, encrypted bounded outcome restoration, data-wipe clearing, Safe
+Mode refusal, exact local-quest proposal shape, approval requirements, and
+runtime restoration without raw-goal persistence.

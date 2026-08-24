@@ -41,8 +41,11 @@ class NeuraTtsService {
 
   bool get playbackAllowed => !SafeBoot.instance.safeMode.value;
 
+  /// The currently active voice's display name, or null before initialization
+  /// or when no voice has been explicitly selected.
   String? get selectedVoiceName => _selectedVoiceName;
 
+  /// Forces the native TTS engine to initialize without speaking anything.
   Future<void> warmUp() async {
     await _ensureInit();
   }
@@ -75,6 +78,9 @@ class NeuraTtsService {
       onError: (_) => _completeSpeak(),
     );
 
+    // Do not use flutter_tts.awaitSpeakCompletion(true). On Windows that
+    // selects a crash-prone native completion path. speak() keeps the same
+    // wait-until-finished contract through the Dart-side completer above.
     await tts.setSpeechRate(0.5);
     await tts.setPitch(1.05);
     await _applySavedOrDefaultVoice();
@@ -96,6 +102,7 @@ class NeuraTtsService {
     }
   }
 
+  /// English voices available on this system, for the Settings voice picker.
   Future<List<NeuraVoiceOption>> availableVoices() async {
     if (!await _ensureInit()) return const [];
     if (!playbackAllowed) return const [];
@@ -122,6 +129,7 @@ class NeuraTtsService {
     }
   }
 
+  /// Persists and immediately applies the chosen voice.
   Future<void> setVoice(NeuraVoiceOption voice) async {
     if (!await _ensureInit()) return;
     if (!playbackAllowed) return;
@@ -132,9 +140,12 @@ class NeuraTtsService {
       final prefs = NeuraPrefsCache.prefs;
       await prefs.setString(_kVoiceNameKey, voice.name);
       await prefs.setString(_kVoiceLocaleKey, voice.locale);
-    } catch (_) {}
+    } catch (_) {
+      // Selection still applies for this session even if persistence fails.
+    }
   }
 
+  /// Speaks [sampleText] in [voice] without persisting it as the chosen voice.
   Future<void> previewVoice(NeuraVoiceOption voice, String sampleText) async {
     if (!await _ensureInit()) return;
     if (!playbackAllowed || sampleText.trim().isEmpty) return;
@@ -147,6 +158,7 @@ class NeuraTtsService {
     await tts.speak(sampleText);
   }
 
+  /// Re-applies the persisted/selected voice after a preview.
   Future<void> restoreSelectedVoice() async {
     if (!await _ensureInit()) return;
     await _applySavedOrDefaultVoice();
@@ -166,11 +178,14 @@ class NeuraTtsService {
         _selectedVoiceName = savedName;
         return;
       }
-    } catch (_) {}
+    } catch (_) {
+      // Fall through to the default picker.
+    }
 
     await _selectFemaleVoice();
   }
 
+  /// Picks the best available female English voice on this system.
   Future<void> _selectFemaleVoice() async {
     final tts = _tts;
     if (!playbackAllowed || tts == null) return;
@@ -200,9 +215,14 @@ class NeuraTtsService {
         'locale': natural['locale'].toString(),
       });
       _selectedVoiceName = natural['name'].toString();
-    } catch (_) {}
+    } catch (_) {
+      // Fall back silently to the system default voice.
+    }
   }
 
+  /// Speaks [text] and does not return until speech completes, is cancelled,
+  /// or reports an error. Completion is awaited in Dart rather than through
+  /// flutter_tts's crash-prone native awaitSpeakCompletion implementation.
   Future<void> speak(String text) async {
     if (!playbackAllowed || !enabled || text.trim().isEmpty) return;
     if (!await _ensureInit()) return;
@@ -235,6 +255,7 @@ class NeuraTtsService {
     try {
       await tts.stop();
     } finally {
+      // Some native implementations do not reliably emit the cancel callback.
       _completeSpeak();
     }
   }

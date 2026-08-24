@@ -25,6 +25,7 @@ import '../../screens/monthly_dream_show_screen.dart';
 import '../../screens/dream_visualizer_screen.dart';
 import '../../screens/journal_prompt_screen.dart';
 import '../../screens/voice_journal_screen.dart';
+import '../../adaptive_intent/neura_live_signal_adapter.dart';
 import '../../core/memory/memory_consolidation_service.dart';
 import '../../dashboard/widgets/proactive_banner_card.dart';
 import '../../intelligence/intelligence_center_screen.dart';
@@ -190,6 +191,9 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
   }
 
   void _onTab(int i) {
+    NeuraAdaptiveActivityTracker.instance.recordSurfaceVisit(
+      'primary_tab_$i',
+    );
     setState(() => _index = i);
 
     // Optional magic: sync rooms to tabs, so the OS "moves" with you.

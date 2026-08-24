@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../adaptive_intent/neura_adaptive_intent_runtime.dart';
 import '../../core/memory/memory_crypto.dart';
 import '../../core/memory/memory_consolidation_service.dart';
 import '../../core/memory/memory_graph_service.dart';
@@ -202,6 +203,11 @@ class NeuraDataWipeService {
     // their parent directories.
     await _attempt(
       failures,
+      'adaptive intent shutdown',
+      NeuraAdaptiveIntentRuntime.instance.resetAfterDataWipe,
+    );
+    await _attempt(
+      failures,
       'proactive banner cache reset',
       ProactiveBannerService.instance.resetAfterDataWipe,
     );
@@ -295,6 +301,7 @@ class NeuraDataWipeService {
       throw NeuraDataWipeException(List<String>.unmodifiable(failures));
     }
     MemoryCrypto.resumeAfterDataWipe();
+    NeuraAdaptiveIntentRuntime.instance.resumeAfterDataWipe();
     ProactiveBannerService.instance.resumeAfterDataWipe();
     NeuraActionLoom.instance.resumeAfterDataWipe();
     NeuraIntelligenceController.instance.resumeAfterDataWipe();

@@ -26,7 +26,6 @@ class NeuraFaultSystem {
 
     final pipeline = NeuraErrorPipeline.instance;
     pipeline.installGlobalHandlers();
-
     pipeline.addObserver((payload) {
       final event = NeuraFaultEvent(
         message: payload['message']?.toString() ?? userFacingMessage,
@@ -34,7 +33,6 @@ class NeuraFaultSystem {
         source: '${payload['source'] ?? 'unknown'} '
             '(${payload['phase'] ?? 'runtime'})',
       );
-
       _handle(bus, controller, event, recoveryDuration);
     });
   }
@@ -45,32 +43,30 @@ class NeuraFaultSystem {
     NeuraFaultEvent event,
     Duration recoveryDuration,
   ) {
-    // Emit event for the rest of the system.
+    // Emit event for the rest of the system
     bus.emit(event);
 
-    // Vault it best-effort without blocking recovery.
-    unawaited(NeuraErrorVault.append(event).catchError((_) {}));
+    // Vault it (best-effort)
+    unawaited(NeuraErrorVault.append(event));
 
-    // Drive avatar recovery best-effort.
+    // Drive avatar recovery (best-effort, never throws)
     _pulseAvatar(controller, recoveryDuration);
   }
 
-  static void _pulseAvatar(AvatarController controller, Duration duration) {
+  static void _pulseAvatar(AvatarController controller, Duration dur) {
     try {
       controller.setError(true);
       controller.pulseBlink();
       controller.pulseWave();
     } catch (_) {
-      // Avatar recovery must never throw into the error pipeline.
+      // ignore
     }
 
     unawaited(
-      Future<void>.delayed(duration).then((_) {
+      Future<void>.delayed(dur).then((_) {
         try {
           controller.setError(false);
-        } catch (_) {
-          // Avatar recovery must remain best-effort.
-        }
+        } catch (_) {}
       }),
     );
   }
