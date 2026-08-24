@@ -60,14 +60,8 @@ jobs:
           $releaseBase = "https://github.com/jqlang/jq/releases/download/jq-$env:JQ_VERSION"
 
           New-Item -ItemType Directory -Path $toolDir -Force | Out-Null
-          Invoke-WebRequest \
-            -Uri "$releaseBase/jq-windows-amd64.exe" \
-            -OutFile $jqPath \
-            -UseBasicParsing
-          Invoke-WebRequest \
-            -Uri "$releaseBase/sha256sum.txt" \
-            -OutFile $checksumPath \
-            -UseBasicParsing
+          Invoke-WebRequest -Uri "$releaseBase/jq-windows-amd64.exe" -OutFile $jqPath -UseBasicParsing
+          Invoke-WebRequest -Uri "$releaseBase/sha256sum.txt" -OutFile $checksumPath -UseBasicParsing
 
           $checksumLine = Get-Content -LiteralPath $checksumPath |
             Where-Object { $_ -match '\s+jq-windows-amd64\.exe$' } |
