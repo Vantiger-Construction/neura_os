@@ -46,14 +46,40 @@ jobs:
 
           $drives = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' |
             Sort-Object -Property FreeSpace -Descending)
+
+          # Per-run Flutter outputs are disposable. Clear stale run folders
+          # before measuring capacity, but preserve the SDK, Pub/Rust caches,
+          # and Cargo target cache.
+          foreach ($drive in $drives) {
+            $staleBuildRoot = Join-Path "$($drive.DeviceID)\" 'neura-actions\builds'
+            if (Test-Path -LiteralPath $staleBuildRoot -PathType Container) {
+              Get-ChildItem -LiteralPath $staleBuildRoot -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -ne "$env:GITHUB_RUN_ID" } |
+                Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+          # Prefer the already verified pinned SDK even when the drive is now
+          # below the larger first-install threshold.
           $toolDrive = $drives |
-            Where-Object { $_.FreeSpace -ge 5GB } |
+            Where-Object {
+              $flutterBat = Join-Path "$($_.DeviceID)\" (
+                "neura-actions\toolchains\flutter-$env:FLUTTER_VERSION\bin\flutter.bat"
+              )
+              Test-Path -LiteralPath $flutterBat -PathType Leaf
+            } |
             Select-Object -First 1
+
+          if (-not $toolDrive) {
+            $toolDrive = $drives |
+              Where-Object { $_.FreeSpace -ge 4GB } |
+              Select-Object -First 1
+          }
           if (-not $toolDrive) {
             $report = $drives | ForEach-Object {
               '{0} free={1:N2} GB' -f $_.DeviceID, ($_.FreeSpace / 1GB)
             }
-            throw "No fixed drive has 5 GB free for the Windows-only Flutter toolchain. $($report -join '; ')"
+            throw "No fixed drive has an installed Flutter SDK or 4 GB free for a new Windows-only toolchain. $($report -join '; ')"
           }
 
           $buildDrive = $drives |
@@ -62,11 +88,11 @@ jobs:
             } |
             Select-Object -First 1
           if (-not $buildDrive) {
-            if ($toolDrive.FreeSpace -lt 8GB) {
+            if ($toolDrive.FreeSpace -lt 6GB) {
               $report = $drives | ForEach-Object {
                 '{0} free={1:N2} GB' -f $_.DeviceID, ($_.FreeSpace / 1GB)
               }
-              throw "No separate 3 GB build drive and no 8 GB combined drive are available. $($report -join '; ')"
+              throw "No separate 3 GB build drive and no 6 GB combined drive are available. $($report -join '; ')"
             }
             $buildDrive = $toolDrive
           }
