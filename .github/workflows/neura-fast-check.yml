@@ -21,7 +21,6 @@ concurrency:
 
 env:
   FLUTTER_VERSION: '3.44.7'
-  JQ_VERSION: '1.8.2'
 
 jobs:
   validate:
@@ -32,9 +31,9 @@ jobs:
     steps:
       - name: Prepare local runner storage
         id: storage
-        # The previous attempt left a truncated Flutter SDK on C:. Remove only
-        # that versioned partial install, then use the fixed drive with the
-        # most free space for all large, reproducible build/toolchain data.
+        # The laptop has multiple small fixed drives. Keep the source checkout
+        # on C:, install reusable toolchains on the roomiest drive, and place
+        # generated build/Rust output on the next-roomiest drive.
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
         run: |
           $ErrorActionPreference = 'Stop'
@@ -45,29 +44,46 @@ jobs:
             Remove-Item -LiteralPath $partialFlutter -Recurse -Force
           }
 
-          $drives = Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' |
-            Sort-Object -Property FreeSpace -Descending
-          $selected = $drives |
-            Where-Object { $_.FreeSpace -ge 12GB } |
+          $drives = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' |
+            Sort-Object -Property FreeSpace -Descending)
+          $toolDrive = $drives |
+            Where-Object { $_.FreeSpace -ge 5GB } |
             Select-Object -First 1
-          if (-not $selected) {
+          if (-not $toolDrive) {
             $report = $drives | ForEach-Object {
               '{0} free={1:N2} GB' -f $_.DeviceID, ($_.FreeSpace / 1GB)
             }
-            throw "No fixed drive has the required 12 GB free. $($report -join '; ')"
+            throw "No fixed drive has 5 GB free for the Windows-only Flutter toolchain. $($report -join '; ')"
           }
 
-          $root = Join-Path "$($selected.DeviceID)\" 'neura-actions'
-          $flutterCache = Join-Path $root "flutter\stable-$env:FLUTTER_VERSION-x64"
-          $pubCache = Join-Path $root 'pub-cache'
-          $cargoHome = Join-Path $root 'cargo-home'
-          $rustupHome = Join-Path $root 'rustup-home'
-          $cargoTarget = Join-Path $root 'cargo-target'
-          $tempRoot = Join-Path $root 'temp'
-          $buildTarget = Join-Path $root "builds\$env:GITHUB_RUN_ID"
+          $buildDrive = $drives |
+            Where-Object {
+              $_.DeviceID -ne $toolDrive.DeviceID -and $_.FreeSpace -ge 3GB
+            } |
+            Select-Object -First 1
+          if (-not $buildDrive) {
+            if ($toolDrive.FreeSpace -lt 8GB) {
+              $report = $drives | ForEach-Object {
+                '{0} free={1:N2} GB' -f $_.DeviceID, ($_.FreeSpace / 1GB)
+              }
+              throw "No separate 3 GB build drive and no 8 GB combined drive are available. $($report -join '; ')"
+            }
+            $buildDrive = $toolDrive
+          }
+
+          $toolRoot = Join-Path "$($toolDrive.DeviceID)\" 'neura-actions\toolchains'
+          $buildRoot = Join-Path "$($buildDrive.DeviceID)\" 'neura-actions'
+          $flutterRoot = Join-Path $toolRoot "flutter-$env:FLUTTER_VERSION"
+          $pubCache = Join-Path $toolRoot 'pub-cache'
+          $cargoHome = Join-Path $toolRoot 'cargo-home'
+          $rustupHome = Join-Path $toolRoot 'rustup-home'
+          $cargoTarget = Join-Path $buildRoot 'cargo-target'
+          $tempRoot = Join-Path $buildRoot 'temp'
+          $buildTarget = Join-Path $buildRoot "builds\$env:GITHUB_RUN_ID"
 
           foreach ($path in @(
-            $root,
+            $toolRoot,
+            $buildRoot,
             $pubCache,
             $cargoHome,
             $rustupHome,
@@ -78,9 +94,7 @@ jobs:
             New-Item -ItemType Directory -Path $path -Force | Out-Null
           }
 
-          "flutter_cache=$flutterCache" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "pub_cache=$pubCache" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "NEURA_ACTIONS_ROOT=$root" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "NEURA_FLUTTER_ROOT=$flutterRoot" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           "PUB_CACHE=$pubCache" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           "CARGO_HOME=$cargoHome" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           "RUSTUP_HOME=$rustupHome" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
@@ -89,8 +103,9 @@ jobs:
           "TMP=$tempRoot" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           "NEURA_BUILD_TARGET=$buildTarget" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
-          Write-Host ('Selected {0} with {1:N2} GB free.' -f $selected.DeviceID, ($selected.FreeSpace / 1GB))
-          Write-Host "Flutter SDK: $flutterCache"
+          Write-Host ('Toolchain drive {0}: {1:N2} GB free.' -f $toolDrive.DeviceID, ($toolDrive.FreeSpace / 1GB))
+          Write-Host ('Build drive {0}: {1:N2} GB free.' -f $buildDrive.DeviceID, ($buildDrive.FreeSpace / 1GB))
+          Write-Host "Flutter root: $flutterRoot"
           Write-Host "Build output: $buildTarget"
 
       - name: Check out source
@@ -107,62 +122,45 @@ jobs:
           New-Item -ItemType Junction -Path $buildLink -Target $env:NEURA_BUILD_TARGET | Out-Null
           Write-Host "Build junction: $buildLink -> $env:NEURA_BUILD_TARGET"
 
-      - name: Expose Git Bash to actions
-        # Git is already installed on the machine, but a Windows service may
-        # inherit only Git's cmd directory. Composite setup actions call bash.
-        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
-        run: |
-          $gitExe = (Get-Command git -ErrorAction Stop).Source
-          $gitRoot = Split-Path -Parent (Split-Path -Parent $gitExe)
-          $bashDir = Join-Path $gitRoot 'bin'
-          $bashExe = Join-Path $bashDir 'bash.exe'
-          if (-not (Test-Path -LiteralPath $bashExe -PathType Leaf)) {
-            throw "Git Bash was not found at $bashExe"
-          }
-          $bashDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          Write-Host "Added Git Bash to subsequent-step PATH: $bashDir"
-
-      - name: Install jq
-        # subosito/flutter-action uses jq during version resolution. Keep the
-        # self-hosted runner reproducible and verify the official release hash.
+      - name: Install pinned Windows Flutter SDK
+        # A shallow pinned clone followed by Windows-only precache is much
+        # smaller than the 1.77 GB all-platform Windows release archive.
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
         run: |
           $ErrorActionPreference = 'Stop'
-          $toolDir = Join-Path $env:NEURA_ACTIONS_ROOT "jq\$env:JQ_VERSION\x64"
-          $jqPath = Join-Path $toolDir 'jq.exe'
-          $checksumPath = Join-Path $env:TEMP 'jq-sha256sum.txt'
-          $releaseBase = "https://github.com/jqlang/jq/releases/download/jq-$env:JQ_VERSION"
+          $flutterBat = Join-Path $env:NEURA_FLUTTER_ROOT 'bin\flutter.bat'
 
-          New-Item -ItemType Directory -Path $toolDir -Force | Out-Null
-          Invoke-WebRequest -Uri "$releaseBase/jq-windows-amd64.exe" -OutFile $jqPath -UseBasicParsing
-          Invoke-WebRequest -Uri "$releaseBase/sha256sum.txt" -OutFile $checksumPath -UseBasicParsing
-
-          $checksumLine = Get-Content -LiteralPath $checksumPath |
-            Where-Object { $_ -match '\s+jq-windows-amd64\.exe$' } |
-            Select-Object -First 1
-          if ([string]::IsNullOrWhiteSpace($checksumLine)) {
-            throw 'jq release checksum entry was not found.'
+          if (-not (Test-Path -LiteralPath $flutterBat -PathType Leaf)) {
+            if (Test-Path -LiteralPath $env:NEURA_FLUTTER_ROOT) {
+              Remove-Item -LiteralPath $env:NEURA_FLUTTER_ROOT -Recurse -Force
+            }
+            git -c core.longpaths=true clone \
+              --depth 1 \
+              --branch $env:FLUTTER_VERSION \
+              --single-branch \
+              https://github.com/flutter/flutter.git \
+              $env:NEURA_FLUTTER_ROOT
+            if ($LASTEXITCODE -ne 0) {
+              throw "Flutter $env:FLUTTER_VERSION clone failed with exit code $LASTEXITCODE."
+            }
           }
 
-          $expected = ($checksumLine -split '\s+')[0].ToLowerInvariant()
-          $actual = (Get-FileHash -LiteralPath $jqPath -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne $expected) {
-            throw "jq checksum mismatch: expected $expected, got $actual"
+          $flutterBin = Join-Path $env:NEURA_FLUTTER_ROOT 'bin'
+          $flutterBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH = "$flutterBin;$env:PATH"
+
+          & $flutterBat config --no-analytics --enable-windows-desktop
+          if ($LASTEXITCODE -ne 0) {
+            throw "flutter config failed with exit code $LASTEXITCODE."
           }
-
-          $toolDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          & $jqPath --version
-
-      - name: Install Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          architecture: x64
-          cache: false
-          cache-path: ${{ steps.storage.outputs.flutter_cache }}
-          pub-cache: false
-          pub-cache-path: ${{ steps.storage.outputs.pub_cache }}
+          & $flutterBat precache --windows
+          if ($LASTEXITCODE -ne 0) {
+            throw "flutter precache --windows failed with exit code $LASTEXITCODE."
+          }
+          & $flutterBat --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "flutter --version failed with exit code $LASTEXITCODE."
+          }
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -182,7 +180,6 @@ jobs:
           dart --version
           git --version
           cargo --version
-          jq --version
           nuget help | Select-Object -First 1
 
       - name: Run optimized validation
