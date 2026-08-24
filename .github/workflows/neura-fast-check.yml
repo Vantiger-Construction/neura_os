@@ -20,96 +20,68 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  FLUTTER_VERSION: '3.44.7'
+  FLUTTER_VERSION: "3.44.7"
 
 jobs:
   validate:
     # Uses the owner's Windows computer instead of paid GitHub-hosted minutes.
     runs-on: [self-hosted, Windows, X64, neura]
-    timeout-minutes: 90
+    timeout-minutes: 75
+
+    defaults:
+      run:
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
 
     steps:
       - name: Prepare local runner storage
         id: storage
-        # The laptop has multiple small fixed drives. Keep the source checkout
-        # on C:, install reusable toolchains on the roomiest drive, and place
-        # generated build/Rust output on the next-roomiest drive.
-        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $partialFlutter = Join-Path $env:RUNNER_TOOL_CACHE "flutter\stable-$env:FLUTTER_VERSION-x64"
-          if (Test-Path -LiteralPath $partialFlutter) {
-            Write-Host "Removing truncated Flutter SDK: $partialFlutter"
-            Remove-Item -LiteralPath $partialFlutter -Recurse -Force
+          # Remove incomplete SDKs left by the former full-archive bootstrap.
+          $oldToolCache = Join-Path $env:RUNNER_TOOL_CACHE (
+            "flutter\stable-$env:FLUTTER_VERSION-x64"
+          )
+          if (Test-Path -LiteralPath $oldToolCache) {
+            Remove-Item -LiteralPath $oldToolCache -Recurse -Force
           }
 
-          $drives = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' |
-            Sort-Object -Property FreeSpace -Descending)
-
-          # Per-run Flutter outputs are disposable. Clear stale run folders
-          # before measuring capacity, but preserve the SDK, Pub/Rust caches,
-          # and Cargo target cache.
-          foreach ($drive in $drives) {
-            $staleBuildRoot = Join-Path "$($drive.DeviceID)\" 'neura-actions\builds'
-            if (Test-Path -LiteralPath $staleBuildRoot -PathType Container) {
-              Get-ChildItem -LiteralPath $staleBuildRoot -Directory -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -ne "$env:GITHUB_RUN_ID" } |
-                Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-            }
-          }
-
-          # Prefer the already verified pinned SDK even when the drive is now
-          # below the larger first-install threshold.
-          $toolDrive = $drives |
-            Where-Object {
-              $flutterBat = Join-Path "$($_.DeviceID)\" (
-                "neura-actions\toolchains\flutter-$env:FLUTTER_VERSION\bin\flutter.bat"
-              )
-              Test-Path -LiteralPath $flutterBat -PathType Leaf
-            } |
+          $drives = Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' |
+            Sort-Object -Property FreeSpace -Descending
+          $selected = $drives |
+            Where-Object { $_.FreeSpace -ge 5GB } |
             Select-Object -First 1
-
-          if (-not $toolDrive) {
-            $toolDrive = $drives |
-              Where-Object { $_.FreeSpace -ge 4GB } |
-              Select-Object -First 1
-          }
-          if (-not $toolDrive) {
+          if (-not $selected) {
             $report = $drives | ForEach-Object {
               '{0} free={1:N2} GB' -f $_.DeviceID, ($_.FreeSpace / 1GB)
             }
-            throw "No fixed drive has an installed Flutter SDK or 4 GB free for a new Windows-only toolchain. $($report -join '; ')"
+            throw "No fixed drive has 5 GB free. $($report -join '; ')"
           }
 
-          $buildDrive = $drives |
-            Where-Object {
-              $_.DeviceID -ne $toolDrive.DeviceID -and $_.FreeSpace -ge 3GB
-            } |
-            Select-Object -First 1
-          if (-not $buildDrive) {
-            if ($toolDrive.FreeSpace -lt 6GB) {
-              $report = $drives | ForEach-Object {
-                '{0} free={1:N2} GB' -f $_.DeviceID, ($_.FreeSpace / 1GB)
-              }
-              throw "No separate 3 GB build drive and no 6 GB combined drive are available. $($report -join '; ')"
+          $root = Join-Path "$($selected.DeviceID)\" 'neura-actions'
+          $flutterSdk = Join-Path $root "flutter\$env:FLUTTER_VERSION"
+          $pubCache = Join-Path $root 'pub-cache'
+          $cargoHome = Join-Path $root 'cargo-home'
+          $rustupHome = Join-Path $root 'rustup-home'
+          $cargoTarget = Join-Path $root 'cargo-target'
+          $tempRoot = Join-Path $root 'temp'
+          $buildTarget = Join-Path $root "builds\$env:GITHUB_RUN_ID"
+
+          # Build and temporary outputs are disposable. Keep the pinned SDK and
+          # dependency caches so later local checks are much smaller and faster.
+          foreach ($disposable in @(
+            (Join-Path $root 'builds'),
+            $tempRoot,
+            $cargoTarget
+          )) {
+            if (Test-Path -LiteralPath $disposable) {
+              Remove-Item -LiteralPath $disposable -Recurse -Force
             }
-            $buildDrive = $toolDrive
           }
-
-          $toolRoot = Join-Path "$($toolDrive.DeviceID)\" 'neura-actions\toolchains'
-          $buildRoot = Join-Path "$($buildDrive.DeviceID)\" 'neura-actions'
-          $flutterRoot = Join-Path $toolRoot "flutter-$env:FLUTTER_VERSION"
-          $pubCache = Join-Path $toolRoot 'pub-cache'
-          $cargoHome = Join-Path $toolRoot 'cargo-home'
-          $rustupHome = Join-Path $toolRoot 'rustup-home'
-          $cargoTarget = Join-Path $buildRoot 'cargo-target'
-          $tempRoot = Join-Path $buildRoot 'temp'
-          $buildTarget = Join-Path $buildRoot "builds\$env:GITHUB_RUN_ID"
 
           foreach ($path in @(
-            $toolRoot,
-            $buildRoot,
+            $root,
+            (Split-Path -Parent $flutterSdk),
             $pubCache,
             $cargoHome,
             $rustupHome,
@@ -120,80 +92,107 @@ jobs:
             New-Item -ItemType Directory -Path $path -Force | Out-Null
           }
 
-          "NEURA_FLUTTER_ROOT=$flutterRoot" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "PUB_CACHE=$pubCache" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "CARGO_HOME=$cargoHome" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "RUSTUP_HOME=$rustupHome" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "CARGO_TARGET_DIR=$cargoTarget" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "TEMP=$tempRoot" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "TMP=$tempRoot" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          "NEURA_BUILD_TARGET=$buildTarget" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "flutter_sdk=$flutterSdk" |
+            Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "build_target=$buildTarget" |
+            Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "NEURA_ACTIONS_ROOT=$root" |
+            Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "PUB_CACHE=$pubCache" |
+            Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "CARGO_HOME=$cargoHome" |
+            Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "RUSTUP_HOME=$rustupHome" |
+            Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "CARGO_TARGET_DIR=$cargoTarget" |
+            Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "TEMP=$tempRoot" |
+            Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "TMP=$tempRoot" |
+            Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "NEURA_BUILD_TARGET=$buildTarget" |
+            Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
-          Write-Host ('Toolchain drive {0}: {1:N2} GB free.' -f $toolDrive.DeviceID, ($toolDrive.FreeSpace / 1GB))
-          Write-Host ('Build drive {0}: {1:N2} GB free.' -f $buildDrive.DeviceID, ($buildDrive.FreeSpace / 1GB))
-          Write-Host "Flutter root: $flutterRoot"
+          Write-Host (
+            'Selected {0} with {1:N2} GB free.' -f
+              $selected.DeviceID,
+              ($selected.FreeSpace / 1GB)
+          )
+          Write-Host "Flutter SDK: $flutterSdk"
           Write-Host "Build output: $buildTarget"
 
       - name: Check out source
         uses: actions/checkout@v4
 
       - name: Relocate Flutter build output
-        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
-        run: |
-          $buildLink = Join-Path $env:GITHUB_WORKSPACE 'build'
-          if (Test-Path -LiteralPath $buildLink) {
-            Remove-Item -LiteralPath $buildLink -Recurse -Force
-          }
-          New-Item -ItemType Directory -Path $env:NEURA_BUILD_TARGET -Force | Out-Null
-          New-Item -ItemType Junction -Path $buildLink -Target $env:NEURA_BUILD_TARGET | Out-Null
-          Write-Host "Build junction: $buildLink -> $env:NEURA_BUILD_TARGET"
-
-      - name: Expose Git Bash to setup actions
-        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
-        run: |
-          $gitExe = (Get-Command git -ErrorAction Stop).Source
-          $gitRoot = Split-Path -Parent (Split-Path -Parent $gitExe)
-          $bashDir = Join-Path $gitRoot 'bin'
-          $bashExe = Join-Path $bashDir 'bash.exe'
-          if (-not (Test-Path -LiteralPath $bashExe -PathType Leaf)) {
-            throw "Git Bash was not found at $bashExe"
-          }
-          $bashDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          Write-Host "Added Git Bash to subsequent-step PATH: $bashDir"
-
-      - name: Install pinned Windows Flutter SDK
-        # A shallow pinned clone followed by Windows-only precache is much
-        # smaller than the 1.77 GB all-platform Windows release archive.
-        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
         run: |
           $ErrorActionPreference = 'Stop'
-          $flutterBat = Join-Path $env:NEURA_FLUTTER_ROOT 'bin\flutter.bat'
+          $repoBuild = Join-Path $env:GITHUB_WORKSPACE 'build'
+          if (Test-Path -LiteralPath $repoBuild) {
+            Remove-Item -LiteralPath $repoBuild -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $env:NEURA_BUILD_TARGET -Force |
+            Out-Null
+          New-Item -ItemType Junction \
+            -Path $repoBuild \
+            -Target $env:NEURA_BUILD_TARGET |
+            Out-Null
 
-          if (-not (Test-Path -LiteralPath $flutterBat -PathType Leaf)) {
-            if (Test-Path -LiteralPath $env:NEURA_FLUTTER_ROOT) {
-              Remove-Item -LiteralPath $env:NEURA_FLUTTER_ROOT -Recurse -Force
-            }
-            git -c core.longpaths=true clone --depth 1 --branch $env:FLUTTER_VERSION --single-branch https://github.com/flutter/flutter.git $env:NEURA_FLUTTER_ROOT
-            if ($LASTEXITCODE -ne 0) {
-              throw "Flutter $env:FLUTTER_VERSION clone failed with exit code $LASTEXITCODE."
+      - name: Install pinned Windows Flutter SDK
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sdk = '${{ steps.storage.outputs.flutter_sdk }}'
+          $flutter = Join-Path $sdk 'bin\flutter.bat'
+          $valid = $false
+
+          if (Test-Path -LiteralPath $flutter -PathType Leaf) {
+            try {
+              $installed = (& $flutter --version 2>&1 | Out-String)
+              $valid = $installed.Contains("Flutter $env:FLUTTER_VERSION")
+            } catch {
+              $valid = $false
             }
           }
 
-          $flutterBin = Join-Path $env:NEURA_FLUTTER_ROOT 'bin'
-          $flutterBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          $env:PATH = "$flutterBin;$env:PATH"
+          if (-not $valid) {
+            if (Test-Path -LiteralPath $sdk) {
+              Remove-Item -LiteralPath $sdk -Recurse -Force
+            }
+            New-Item -ItemType Directory -Path (Split-Path -Parent $sdk) -Force |
+              Out-Null
 
-          & $flutterBat config --no-analytics --enable-windows-desktop
+            # A shallow tagged clone plus Windows-only precache is much smaller
+            # than the 1.77 GB all-platform Windows archive and fits this runner.
+            & git clone \
+              --depth 1 \
+              --filter=blob:none \
+              --single-branch \
+              --branch $env:FLUTTER_VERSION \
+              https://github.com/flutter/flutter.git \
+              $sdk
+            if ($LASTEXITCODE -ne 0) {
+              throw "Flutter clone failed with exit code $LASTEXITCODE."
+            }
+          }
+
+          $flutterBin = Join-Path $sdk 'bin'
+          $flutterBin | Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH = "$flutterBin;$env:PATH"
+          & git config --global --add safe.directory $sdk
+
+          & $flutter config --no-analytics --enable-windows-desktop
           if ($LASTEXITCODE -ne 0) {
             throw "flutter config failed with exit code $LASTEXITCODE."
           }
-          & $flutterBat precache --windows
+          & $flutter precache --windows
           if ($LASTEXITCODE -ne 0) {
             throw "flutter precache --windows failed with exit code $LASTEXITCODE."
           }
-          & $flutterBat --version
-          if ($LASTEXITCODE -ne 0) {
-            throw "flutter --version failed with exit code $LASTEXITCODE."
+
+          $version = (& $flutter --version 2>&1 | Out-String)
+          Write-Host $version
+          if (-not $version.Contains("Flutter $env:FLUTTER_VERSION")) {
+            throw "Expected Flutter $env:FLUTTER_VERSION."
           }
 
       - name: Install Rust
@@ -201,25 +200,29 @@ jobs:
 
       - name: Install NuGet
         uses: NuGet/setup-nuget@v2
-        with:
-          nuget-version: latest
 
       - name: Verify local tools
-        # The self-hosted machine enforces signed PowerShell scripts. GitHub
-        # Actions writes each `run` block to an unsigned temporary .ps1 file,
-        # so use a process-scoped bypass without changing machine policy.
-        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
         run: |
+          $ErrorActionPreference = 'Stop'
           flutter --version
           dart --version
           git --version
           cargo --version
-          $nugetOutput = & nuget help 2>&1
-          if ($LASTEXITCODE -ne 0) {
-            throw "nuget help failed with exit code $LASTEXITCODE."
-          }
-          Write-Host ($nugetOutput | Select-Object -First 1)
+          nuget help | Select-Object -First 1
 
       - name: Run optimized validation
-        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
-        run: ./tools/Neura-FastCheck.ps1 -Root . -BuildWindows
+        run: |
+          & .\tools\Neura-FastCheck.ps1 -Root . -BuildWindows
+
+      - name: Clean disposable local-runner output
+        if: always()
+        run: |
+          $repoBuild = Join-Path $env:GITHUB_WORKSPACE 'build'
+          if (Test-Path -LiteralPath $repoBuild) {
+            Remove-Item -LiteralPath $repoBuild -Force -ErrorAction SilentlyContinue
+          }
+          if ($env:NEURA_BUILD_TARGET -and
+              (Test-Path -LiteralPath $env:NEURA_BUILD_TARGET)) {
+            Remove-Item -LiteralPath $env:NEURA_BUILD_TARGET \
+              -Recurse -Force -ErrorAction SilentlyContinue
+          }
