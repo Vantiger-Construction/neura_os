@@ -19,6 +19,9 @@ concurrency:
   group: neura-local-runner-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  FLUTTER_VERSION: '3.44.7'
+
 jobs:
   validate:
     # Uses the owner's Windows computer instead of paid GitHub-hosted minutes.
@@ -29,6 +32,21 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install NuGet
+        uses: NuGet/setup-nuget@v2
+        with:
+          nuget-version: latest
+
       - name: Verify local tools
         # The self-hosted machine enforces signed PowerShell scripts. GitHub
         # Actions writes each `run` block to an unsigned temporary .ps1 file,
@@ -38,9 +56,7 @@ jobs:
           flutter --version
           dart --version
           git --version
-          # neura_swarm (rust/) needs cargo on this machine's PATH.
           cargo --version
-          # The authored Windows runner fetches C++/WinRT through NuGet.
           nuget help | Select-Object -First 1
 
       - name: Run optimized validation
