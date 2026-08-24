@@ -28,71 +28,87 @@ class NeuraFlutterTtsVisemeBridge {
   }) async {
     if (_attached) return;
 
-    final b = bus ?? NeuraEventBus.I;
+    final eventBus = bus ?? NeuraEventBus.I;
 
-    // Start / completion are the most reliable.
     tts.setStartHandler(() {
-      b.emit(const NeuraTalkingEvent(true));
-      // Default "talking starts": open mouth a bit.
-      b.emit(const NeuraMouthOpenEvent(0.25));
-      b.emit(const NeuraVisemeEvent(NeuraViseme.AI));
+      eventBus.emit(const NeuraTalkingEvent(true));
+      eventBus.emit(const NeuraMouthOpenEvent(0.25));
+      eventBus.emit(const NeuraVisemeEvent(NeuraViseme.AI));
     });
 
     tts.setCompletionHandler(() {
-      b.emit(const NeuraTalkingEvent(false));
-      b.emit(const NeuraMouthOpenEvent(0.0));
-      b.emit(const NeuraVisemeEvent(NeuraViseme.rest));
-      // A small blink on finish feels alive.
-      b.emit(const NeuraPulseEvent.blink());
+      _emitRestState(eventBus);
+      eventBus.emit(const NeuraPulseEvent.blink());
       onCompletion?.call();
     });
 
     tts.setCancelHandler(() {
-      b.emit(const NeuraTalkingEvent(false));
-      b.emit(const NeuraMouthOpenEvent(0.0));
-      b.emit(const NeuraVisemeEvent(NeuraViseme.rest));
+      _emitRestState(eventBus);
       onCancel?.call();
     });
 
     tts.setErrorHandler((message) {
-      b.emit(const NeuraTalkingEvent(false));
-      b.emit(const NeuraMouthOpenEvent(0.0));
-      b.emit(const NeuraVisemeEvent(NeuraViseme.rest));
-      b.emit(NeuraErrorEvent('TTS error: $message', hint: 'flutter_tts'));
+      _emitRestState(eventBus);
+      eventBus.emit(
+        NeuraErrorEvent(
+          'TTS error: $message',
+          hint: 'flutter_tts',
+        ),
+      );
       onError?.call(message);
     });
 
-    // Progress gives substring positions in the original text on many
-    // platforms. Sample a small fragment and infer a viseme.
+    // Many platforms report the spoken substring through this callback. Keep
+    // every index inside the source text before deriving the current viseme.
     tts.setProgressHandler((String text, int start, int end, String word) {
       try {
-        final safeStart = start.clamp(0, text.length);
-        final safeEnd = end.clamp(0, text.length);
-        String fragment;
-        if (safeEnd > safeStart) {
-          fragment = text.substring(safeStart, safeEnd);
-        } else if (word.isNotEmpty) {
-          fragment = word;
-        } else {
-          fragment = text.isEmpty
-              ? ''
-              : text.substring(
-                  safeStart,
-                  (safeStart + 1).clamp(0, text.length),
-                );
-        }
+        final safeStart = start.clamp(0, text.length).toInt();
+        final safeEnd = end.clamp(0, text.length).toInt();
+        final fragment = _extractFragment(
+          text: text,
+          start: safeStart,
+          end: safeEnd,
+          word: word,
+        );
 
         final viseme = NeuraVisemeEngine.inferFromFragment(fragment);
         final open = NeuraVisemeEngine.mouthOpenFromFragment(fragment);
-        b.emit(NeuraVisemeEvent(viseme));
-        b.emit(NeuraMouthOpenEvent(open));
+        eventBus.emit(NeuraVisemeEvent(viseme));
+        eventBus.emit(NeuraMouthOpenEvent(open));
       } catch (_) {
-        // Never throw from a native progress callback.
+        // Native progress callbacks must never propagate an exception.
       }
     });
 
     // Mark attached only after every callback registration succeeds so a
     // transient plugin failure can be retried later in this process.
     _attached = true;
+  }
+
+  static void _emitRestState(NeuraEventBus bus) {
+    bus.emit(const NeuraTalkingEvent(false));
+    bus.emit(const NeuraMouthOpenEvent(0.0));
+    bus.emit(const NeuraVisemeEvent(NeuraViseme.rest));
+  }
+
+  static String _extractFragment({
+    required String text,
+    required int start,
+    required int end,
+    required String word,
+  }) {
+    if (text.isEmpty) return word;
+
+    if (end > start) {
+      return text.substring(start, end);
+    }
+
+    if (word.isNotEmpty) return word;
+    if (start >= text.length) return '';
+
+    final nextIndex = (start + 1).clamp(0, text.length).toInt();
+    if (nextIndex <= start) return '';
+
+    return text.substring(start, nextIndex);
   }
 }
