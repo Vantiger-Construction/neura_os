@@ -162,19 +162,25 @@ class NeuraTtsService {
 
   Future<void> setSpeechRate(double value) async {
     _speechRate = value.clamp(0.25, 0.75);
-    await NeuraPrefsCache.prefs.setDouble(_kSpeechRateKey, _speechRate);
+    try {
+      await NeuraPrefsCache.prefs.setDouble(_kSpeechRateKey, _speechRate);
+    } catch (_) {}
     if (await _ensureInit()) await _tts!.setSpeechRate(_speechRate);
   }
 
   Future<void> setPitch(double value) async {
     _pitch = value.clamp(0.5, 2.0);
-    await NeuraPrefsCache.prefs.setDouble(_kPitchKey, _pitch);
+    try {
+      await NeuraPrefsCache.prefs.setDouble(_kPitchKey, _pitch);
+    } catch (_) {}
     if (await _ensureInit()) await _tts!.setPitch(_pitch);
   }
 
   Future<void> setVolume(double value) async {
     _volume = value.clamp(0.0, 1.0);
-    await NeuraPrefsCache.prefs.setDouble(_kVolumeKey, _volume);
+    try {
+      await NeuraPrefsCache.prefs.setDouble(_kVolumeKey, _volume);
+    } catch (_) {}
     if (await _ensureInit()) await _tts!.setVolume(_volume);
   }
 
@@ -183,12 +189,9 @@ class NeuraTtsService {
     if (!await _ensureInit()) return;
     if (!playbackAllowed || sampleText.trim().isEmpty) return;
 
-    final tts = _tts!;
-    await tts.setVoice({'name': voice.name, 'locale': voice.locale});
+    await _tts!.setVoice({'name': voice.name, 'locale': voice.locale});
     if (!playbackAllowed) return;
-    await tts.stop();
-    if (!playbackAllowed) return;
-    await tts.speak(sampleText);
+    await speak(sampleText);
   }
 
   /// Re-applies the persisted/selected voice after a preview.
