@@ -368,15 +368,6 @@ jobs:
       - name: Restore dependencies
         run: flutter pub get
 
-      - name: Preinstall required Android SDK
-        shell: bash
-        run: |
-          set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-33"
-
       - name: Build installable Android test APK
         shell: bash
         run: |
