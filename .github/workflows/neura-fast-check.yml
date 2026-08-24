@@ -134,12 +134,7 @@ jobs:
             if (Test-Path -LiteralPath $env:NEURA_FLUTTER_ROOT) {
               Remove-Item -LiteralPath $env:NEURA_FLUTTER_ROOT -Recurse -Force
             }
-            git -c core.longpaths=true clone \
-              --depth 1 \
-              --branch $env:FLUTTER_VERSION \
-              --single-branch \
-              https://github.com/flutter/flutter.git \
-              $env:NEURA_FLUTTER_ROOT
+            git -c core.longpaths=true clone --depth 1 --branch $env:FLUTTER_VERSION --single-branch https://github.com/flutter/flutter.git $env:NEURA_FLUTTER_ROOT
             if ($LASTEXITCODE -ne 0) {
               throw "Flutter $env:FLUTTER_VERSION clone failed with exit code $LASTEXITCODE."
             }
