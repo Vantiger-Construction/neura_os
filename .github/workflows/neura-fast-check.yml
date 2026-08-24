@@ -21,6 +21,7 @@ concurrency:
 
 env:
   FLUTTER_VERSION: '3.44.7'
+  JQ_VERSION: '1.8.2'
 
 jobs:
   validate:
@@ -47,6 +48,43 @@ jobs:
           $bashDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           Write-Host "Added Git Bash to subsequent-step PATH: $bashDir"
 
+      - name: Install jq
+        # subosito/flutter-action uses jq during version resolution. Keep the
+        # self-hosted runner reproducible and verify the official release hash.
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $toolDir = Join-Path $env:RUNNER_TOOL_CACHE "jq\$env:JQ_VERSION\x64"
+          $jqPath = Join-Path $toolDir 'jq.exe'
+          $checksumPath = Join-Path $env:RUNNER_TEMP 'jq-sha256sum.txt'
+          $releaseBase = "https://github.com/jqlang/jq/releases/download/jq-$env:JQ_VERSION"
+
+          New-Item -ItemType Directory -Path $toolDir -Force | Out-Null
+          Invoke-WebRequest \
+            -Uri "$releaseBase/jq-windows-amd64.exe" \
+            -OutFile $jqPath \
+            -UseBasicParsing
+          Invoke-WebRequest \
+            -Uri "$releaseBase/sha256sum.txt" \
+            -OutFile $checksumPath \
+            -UseBasicParsing
+
+          $checksumLine = Get-Content -LiteralPath $checksumPath |
+            Where-Object { $_ -match '\s+jq-windows-amd64\.exe$' } |
+            Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($checksumLine)) {
+            throw 'jq release checksum entry was not found.'
+          }
+
+          $expected = ($checksumLine -split '\s+')[0].ToLowerInvariant()
+          $actual = (Get-FileHash -LiteralPath $jqPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "jq checksum mismatch: expected $expected, got $actual"
+          }
+
+          $toolDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $jqPath --version
+
       - name: Install Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -72,6 +110,7 @@ jobs:
           dart --version
           git --version
           cargo --version
+          jq --version
           nuget help | Select-Object -First 1
 
       - name: Run optimized validation
