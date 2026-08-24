@@ -32,6 +32,21 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Expose Git Bash to actions
+        # Git is already installed on the machine, but a Windows service may
+        # inherit only Git's cmd directory. Composite setup actions call bash.
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        run: |
+          $gitExe = (Get-Command git -ErrorAction Stop).Source
+          $gitRoot = Split-Path -Parent (Split-Path -Parent $gitExe)
+          $bashDir = Join-Path $gitRoot 'bin'
+          $bashExe = Join-Path $bashDir 'bash.exe'
+          if (-not (Test-Path -LiteralPath $bashExe -PathType Leaf)) {
+            throw "Git Bash was not found at $bashExe"
+          }
+          $bashDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "Added Git Bash to subsequent-step PATH: $bashDir"
+
       - name: Install Flutter
         uses: subosito/flutter-action@v2
         with:
