@@ -36,11 +36,14 @@ function Get-DependencyFingerprint {
 
     $sha = [System.Security.Cryptography.SHA256]::Create()
     try {
-        $bytes = foreach ($file in $inputs) {
-            [System.IO.File]::ReadAllBytes($file)
-        }
         $all = [System.Collections.Generic.List[byte]]::new()
-        foreach ($chunk in $bytes) { $all.AddRange($chunk) }
+        foreach ($file in $inputs) {
+            # PowerShell normally enumerates byte arrays written to the
+            # pipeline. Keep each file payload strongly typed so AddRange
+            # receives IEnumerable[byte], not one scalar byte at a time.
+            [byte[]]$chunk = [System.IO.File]::ReadAllBytes($file)
+            $all.AddRange($chunk)
+        }
         return ([BitConverter]::ToString($sha.ComputeHash($all.ToArray()))).Replace('-', '').ToLowerInvariant()
     } finally {
         $sha.Dispose()
