@@ -122,6 +122,19 @@ jobs:
           New-Item -ItemType Junction -Path $buildLink -Target $env:NEURA_BUILD_TARGET | Out-Null
           Write-Host "Build junction: $buildLink -> $env:NEURA_BUILD_TARGET"
 
+      - name: Expose Git Bash to setup actions
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        run: |
+          $gitExe = (Get-Command git -ErrorAction Stop).Source
+          $gitRoot = Split-Path -Parent (Split-Path -Parent $gitExe)
+          $bashDir = Join-Path $gitRoot 'bin'
+          $bashExe = Join-Path $bashDir 'bash.exe'
+          if (-not (Test-Path -LiteralPath $bashExe -PathType Leaf)) {
+            throw "Git Bash was not found at $bashExe"
+          }
+          $bashDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "Added Git Bash to subsequent-step PATH: $bashDir"
+
       - name: Install pinned Windows Flutter SDK
         # A shallow pinned clone followed by Windows-only precache is much
         # smaller than the 1.77 GB all-platform Windows release archive.
