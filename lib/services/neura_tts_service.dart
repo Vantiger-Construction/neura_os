@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_tts/flutter_tts.dart';
 
 import '../integrations/tts/neura_flutter_tts_viseme_bridge.dart';
+import 'neura_audio_focus.dart';
 import '../reliability/safe_boot.dart';
 import '../startup/neura_prefs_cache.dart';
 
@@ -31,6 +32,9 @@ class NeuraTtsService {
 
   static const _kVoiceNameKey = 'neura.tts.voice_name';
   static const _kVoiceLocaleKey = 'neura.tts.voice_locale';
+  static const _kSpeechRateKey = 'neura.tts.speech_rate';
+  static const _kPitchKey = 'neura.tts.pitch';
+  static const _kVolumeKey = 'neura.tts.volume';
 
   FlutterTts? _tts;
   Future<bool>? _initialization;
@@ -38,12 +42,18 @@ class NeuraTtsService {
   bool enabled = true;
   String? _selectedVoiceName;
   Completer<void>? _speakCompleter;
+  double _speechRate = 0.5;
+  double _pitch = 1.05;
+  double _volume = 1.0;
 
   bool get playbackAllowed => !SafeBoot.instance.safeMode.value;
 
   /// The currently active voice's display name, or null before initialization
   /// or when no voice has been explicitly selected.
   String? get selectedVoiceName => _selectedVoiceName;
+  double get speechRate => _speechRate;
+  double get pitch => _pitch;
+  double get volume => _volume;
 
   /// Forces the native TTS engine to initialize without speaking anything.
   Future<void> warmUp() async {
@@ -81,8 +91,13 @@ class NeuraTtsService {
     // Do not use flutter_tts.awaitSpeakCompletion(true). On Windows that
     // selects a crash-prone native completion path. speak() keeps the same
     // wait-until-finished contract through the Dart-side completer above.
-    await tts.setSpeechRate(0.5);
-    await tts.setPitch(1.05);
+    final prefs = NeuraPrefsCache.prefsOrNull;
+    _speechRate = (prefs?.getDouble(_kSpeechRateKey) ?? 0.5).clamp(0.25, 0.75);
+    _pitch = (prefs?.getDouble(_kPitchKey) ?? 1.05).clamp(0.5, 2.0);
+    _volume = (prefs?.getDouble(_kVolumeKey) ?? 1.0).clamp(0.0, 1.0);
+    await tts.setSpeechRate(_speechRate);
+    await tts.setPitch(_pitch);
+    await tts.setVolume(_volume);
     await _applySavedOrDefaultVoice();
 
     if (!playbackAllowed) {
@@ -143,6 +158,24 @@ class NeuraTtsService {
     } catch (_) {
       // Selection still applies for this session even if persistence fails.
     }
+  }
+
+  Future<void> setSpeechRate(double value) async {
+    _speechRate = value.clamp(0.25, 0.75);
+    await NeuraPrefsCache.prefs.setDouble(_kSpeechRateKey, _speechRate);
+    if (await _ensureInit()) await _tts!.setSpeechRate(_speechRate);
+  }
+
+  Future<void> setPitch(double value) async {
+    _pitch = value.clamp(0.5, 2.0);
+    await NeuraPrefsCache.prefs.setDouble(_kPitchKey, _pitch);
+    if (await _ensureInit()) await _tts!.setPitch(_pitch);
+  }
+
+  Future<void> setVolume(double value) async {
+    _volume = value.clamp(0.0, 1.0);
+    await NeuraPrefsCache.prefs.setDouble(_kVolumeKey, _volume);
+    if (await _ensureInit()) await _tts!.setVolume(_volume);
   }
 
   /// Speaks [sampleText] in [voice] without persisting it as the chosen voice.
@@ -234,11 +267,13 @@ class NeuraTtsService {
 
     final completer = Completer<void>();
     _speakCompleter = completer;
+    final focusLease = NeuraAudioFocus.instance.acquireSpeech();
     try {
       final result = await tts.speak(text);
       if (result == 0) _completeSpeak();
       await completer.future;
     } finally {
+      focusLease.release();
       if (identical(_speakCompleter, completer)) {
         _speakCompleter = null;
       }
