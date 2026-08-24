@@ -19,112 +19,126 @@ class NeuraVoiceOption {
   });
 }
 
-/// Speaks Neura's chat replies aloud. Wires the existing (previously unused)
-/// [NeuraFlutterTtsVisemeBridge] so avatar mouth/viseme events fire on
-/// NeuraEventBus alongside actual speech — free lip-sync plumbing for
-/// whenever Rive is re-enabled.
+/// Speaks Neura's chat replies aloud. Wires the existing
+/// [NeuraFlutterTtsVisemeBridge] so avatar mouth/viseme events fire on the
+/// Neura event bus alongside actual speech.
 class NeuraTtsService {
   NeuraTtsService._() {
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
   }
+
   static final NeuraTtsService instance = NeuraTtsService._();
 
   static const _kVoiceNameKey = 'neura.tts.voice_name';
   static const _kVoiceLocaleKey = 'neura.tts.voice_locale';
 
   FlutterTts? _tts;
+  Future<bool>? _initialization;
   bool _initialized = false;
   bool enabled = true;
   String? _selectedVoiceName;
   Completer<void>? _speakCompleter;
 
-  /// The currently active voice's display name, or null before init / if
-  /// nothing has been explicitly picked yet (Settings screen uses this to
-  /// highlight the active choice).
+  bool get playbackAllowed => !SafeBoot.instance.safeMode.value;
+
   String? get selectedVoiceName => _selectedVoiceName;
 
-  /// Forces the native TTS engine to initialize now, without speaking
-  /// anything -- see call site in NeuraStartupCoordinator for why.
   Future<void> warmUp() async {
     await _ensureInit();
   }
 
-  Future<void> _ensureInit() async {
-    if (_initialized) return;
-    _initialized = true;
-    // Completion is awaited on the Dart side via [_speakCompleter], not via
-    // flutter_tts's native awaitSpeakCompletion(true) -- that native
-    // completion-wait path is a documented source of crashes on Windows
-    // (github.com/dlutton/flutter_tts#217; the crash tracked in issue #32
-    // matches this exact code path: an access violation inside flutter_tts's
-    // Windows speak()/coroutine implementation). The completion signal below
-    // comes from the same setCompletionHandler callback either way -- this
-    // just avoids the native blocking-wait implementation entirely.
+  Future<bool> _ensureInit() {
+    if (!playbackAllowed) return Future<bool>.value(false);
+    if (_initialized) return Future<bool>.value(true);
+
+    final existing = _initialization;
+    if (existing != null) return existing;
+
+    late final Future<bool> operation;
+    operation = _initialize().whenComplete(() {
+      if (identical(_initialization, operation)) {
+        _initialization = null;
+      }
+    });
+    _initialization = operation;
+    return operation;
+  }
+
+  Future<bool> _initialize() async {
+    if (!playbackAllowed) return false;
+
+    final tts = _tts ??= FlutterTts();
     await NeuraFlutterTtsVisemeBridge.attach(
-      _tts,
-      onCompletion: () => _completeSpeak(),
-      onCancel: () => _completeSpeak(),
+      tts,
+      onCompletion: _completeSpeak,
+      onCancel: _completeSpeak,
       onError: (_) => _completeSpeak(),
     );
-    await _tts.setSpeechRate(0.5);
-    await _tts.setPitch(1.05);
+
+    await tts.setSpeechRate(0.5);
+    await tts.setPitch(1.05);
     await _applySavedOrDefaultVoice();
+
     if (!playbackAllowed) {
       await tts.stop();
+      _completeSpeak();
       return false;
     }
+
     _initialized = true;
     return true;
   }
 
   void _completeSpeak() {
     final completer = _speakCompleter;
-    if (completer != null && !completer.isCompleted) completer.complete();
+    if (completer != null && !completer.isCompleted) {
+      completer.complete();
+    }
   }
 
-  /// English voices available on this system, for the Settings voice picker.
   Future<List<NeuraVoiceOption>> availableVoices() async {
     if (!await _ensureInit()) return const [];
     if (!playbackAllowed) return const [];
+
     try {
       final voices = await _tts!.getVoices as List<dynamic>;
       return voices
           .cast<Map<dynamic, dynamic>>()
-          .where((v) =>
-              v['locale']?.toString().toLowerCase().startsWith('en') ?? false)
-          .map((v) => NeuraVoiceOption(
-                name: v['name'].toString(),
-                locale: v['locale'].toString(),
-                gender: v['gender']?.toString() ?? 'unknown',
-              ))
+          .where(
+            (voice) =>
+                voice['locale']?.toString().toLowerCase().startsWith('en') ??
+                false,
+          )
+          .map(
+            (voice) => NeuraVoiceOption(
+              name: voice['name'].toString(),
+              locale: voice['locale'].toString(),
+              gender: voice['gender']?.toString() ?? 'unknown',
+            ),
+          )
           .toList();
     } catch (_) {
       return const [];
     }
   }
 
-  /// Persists and immediately applies the chosen voice.
   Future<void> setVoice(NeuraVoiceOption voice) async {
     if (!await _ensureInit()) return;
     if (!playbackAllowed) return;
+
     await _tts!.setVoice({'name': voice.name, 'locale': voice.locale});
     _selectedVoiceName = voice.name;
     try {
       final prefs = NeuraPrefsCache.prefs;
       await prefs.setString(_kVoiceNameKey, voice.name);
       await prefs.setString(_kVoiceLocaleKey, voice.locale);
-    } catch (_) {
-      // Selection still applies for this session even if persisting fails.
-    }
+    } catch (_) {}
   }
 
-  /// Speaks [sampleText] in [voice] without persisting it as the chosen
-  /// voice — lets the Settings screen let you audition voices before
-  /// committing. Call [restoreSelectedVoice] afterwards (e.g. on screen
-  /// dispose) so real chat replies go back to using the saved choice.
   Future<void> previewVoice(NeuraVoiceOption voice, String sampleText) async {
     if (!await _ensureInit()) return;
-    if (!playbackAllowed) return;
+    if (!playbackAllowed || sampleText.trim().isEmpty) return;
+
     final tts = _tts!;
     await tts.setVoice({'name': voice.name, 'locale': voice.locale});
     if (!playbackAllowed) return;
@@ -133,18 +147,15 @@ class NeuraTtsService {
     await tts.speak(sampleText);
   }
 
-  /// Re-applies the persisted/selected voice — used to undo the effect of
-  /// [previewVoice] once the user leaves the voice picker without selecting.
   Future<void> restoreSelectedVoice() async {
     if (!await _ensureInit()) return;
     await _applySavedOrDefaultVoice();
   }
 
-  /// Applies a previously-saved voice choice if there is one, otherwise
-  /// falls back to auto-picking a female voice.
   Future<void> _applySavedOrDefaultVoice() async {
     final tts = _tts;
     if (!playbackAllowed || tts == null) return;
+
     try {
       final prefs = NeuraPrefsCache.prefsOrNull;
       final savedName = prefs?.getString(_kVoiceNameKey);
@@ -155,33 +166,32 @@ class NeuraTtsService {
         _selectedVoiceName = savedName;
         return;
       }
-    } catch (_) {
-      // Fall through to the default picker below.
-    }
+    } catch (_) {}
+
     await _selectFemaleVoice();
   }
 
-  /// Picks the best available female English voice on this system. Windows
-  /// only ships "Zira" out of the box (no neural/natural voices installed by
-  /// default) — if the user later installs a Windows "Natural" voice (e.g.
-  /// Aria) via Settings > Time & language > Speech, this will prefer it,
-  /// since natural voices sound far less robotic than the built-in ones.
   Future<void> _selectFemaleVoice() async {
     final tts = _tts;
     if (!playbackAllowed || tts == null) return;
+
     try {
       final voices = await tts.getVoices as List<dynamic>;
       final female = voices
           .cast<Map<dynamic, dynamic>>()
-          .where((v) =>
-              (v['gender']?.toString().toLowerCase() == 'female') &&
-              (v['locale']?.toString().toLowerCase().startsWith('en') ?? false))
+          .where(
+            (voice) =>
+                voice['gender']?.toString().toLowerCase() == 'female' &&
+                (voice['locale']?.toString().toLowerCase().startsWith('en') ??
+                    false),
+          )
           .toList();
       if (female.isEmpty) return;
 
-      // Prefer a "Natural"/neural voice by name if one is installed.
       final natural = female.firstWhere(
-        (v) => v['name']?.toString().toLowerCase().contains('natural') ?? false,
+        (voice) =>
+            voice['name']?.toString().toLowerCase().contains('natural') ??
+            false,
         orElse: () => female.first,
       );
       if (!playbackAllowed) return;
@@ -190,33 +200,43 @@ class NeuraTtsService {
         'locale': natural['locale'].toString(),
       });
       _selectedVoiceName = natural['name'].toString();
-    } catch (_) {
-      // Fall back silently to the system default voice.
-    }
+    } catch (_) {}
   }
 
-  /// Speaks [text] and doesn't return until Neura is actually done talking
-  /// (or the utterance is cancelled/errors) -- callers, notably the chat
-  /// screen's hands-free continuous mode, rely on this so the mic doesn't
-  /// restart while she's still audibly speaking and pick up her own voice
-  /// through the speakers. Waited for via a Dart-side [Completer] fed by
-  /// [NeuraFlutterTtsVisemeBridge]'s completion/cancel/error callbacks,
-  /// rather than flutter_tts's native awaitSpeakCompletion(true) -- see the
-  /// comment on [_ensureInit] for why.
   Future<void> speak(String text) async {
-    if (!enabled || text.trim().isEmpty) return;
-    await _ensureInit();
-    await _tts.stop();
+    if (!playbackAllowed || !enabled || text.trim().isEmpty) return;
+    if (!await _ensureInit()) return;
+
+    final tts = _tts!;
+    await tts.stop();
+    _completeSpeak();
+    if (!playbackAllowed) return;
+
     final completer = Completer<void>();
     _speakCompleter = completer;
-    await _tts.speak(text);
-    await completer.future;
+    try {
+      final result = await tts.speak(text);
+      if (result == 0) _completeSpeak();
+      await completer.future;
+    } finally {
+      if (identical(_speakCompleter, completer)) {
+        _speakCompleter = null;
+      }
+    }
   }
 
   Future<void> stop() async {
     final tts = _tts;
-    if (!_initialized || tts == null) return;
-    await tts.stop();
+    if (tts == null) {
+      _completeSpeak();
+      return;
+    }
+
+    try {
+      await tts.stop();
+    } finally {
+      _completeSpeak();
+    }
   }
 
   void _onSafeModeChanged() {
