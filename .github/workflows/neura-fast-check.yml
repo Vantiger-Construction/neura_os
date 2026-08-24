@@ -30,7 +30,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Verify local tools
-        shell: powershell
+        # The self-hosted machine enforces signed PowerShell scripts. GitHub
+        # Actions writes each `run` block to an unsigned temporary .ps1 file,
+        # so use a process-scoped bypass without changing machine policy.
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
         run: |
           flutter --version
           dart --version
@@ -41,5 +44,5 @@ jobs:
           nuget help | Select-Object -First 1
 
       - name: Run optimized validation
-        shell: powershell
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
         run: ./tools/Neura-FastCheck.ps1 -Root . -BuildWindows
