@@ -1,4 +1,4 @@
-﻿class PostChatReflectionService {
+class PostChatReflectionService {
   Future<String> generateReflection(String sessionText) async {
     if (sessionText.trim().isEmpty) return '';
     await Future.delayed(const Duration(milliseconds: 300));
@@ -26,7 +26,8 @@
       buf.write('"');
       if (i < sample.length - 1) buf.write('. ');
     }
-    buf.write('. Notice any recurring themes — they often point to what needs attention most.');
+    buf.write(
+        '. Notice any recurring themes — they often point to what needs attention most.');
     return buf.toString();
   }
 }

@@ -7,7 +7,8 @@ class GoodwillController {
   GoodwillController._();
   static final GoodwillController instance = GoodwillController._();
 
-  final ValueNotifier<List<KindnessAct>> acts = ValueNotifier<List<KindnessAct>>(<KindnessAct>[]);
+  final ValueNotifier<List<KindnessAct>> acts =
+      ValueNotifier<List<KindnessAct>>(<KindnessAct>[]);
   final ValueNotifier<int> streak = ValueNotifier<int>(0);
 
   bool _loaded = false;
@@ -50,7 +51,10 @@ class GoodwillController {
   Future<void> deleteAct(KindnessAct act) async {
     await ensureLoaded();
     final list = List<KindnessAct>.from(acts.value)
-      ..removeWhere((x) => x.timestamp == act.timestamp && x.category == act.category && x.note == act.note);
+      ..removeWhere((x) =>
+          x.timestamp == act.timestamp &&
+          x.category == act.category &&
+          x.note == act.note);
     await GoodwillStore.instance.setAll(list);
     acts.value = list;
     streak.value = _calculateStreakEndingOn(_latestActDate(list), list: list);
@@ -60,6 +64,12 @@ class GoodwillController {
     await GoodwillStore.instance.wipe();
     acts.value = <KindnessAct>[];
     streak.value = 0;
+  }
+
+  void resetAfterDataWipe() {
+    acts.value = const <KindnessAct>[];
+    streak.value = 0;
+    _loaded = false;
   }
 
   int _calculateStreakEndingOn(DateTime? end, {List<KindnessAct>? list}) {
@@ -84,5 +94,6 @@ class GoodwillController {
     return streakCount;
   }
 
-  String _dayKey(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  String _dayKey(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }

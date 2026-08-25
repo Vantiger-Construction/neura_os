@@ -27,8 +27,8 @@ class CoachStore {
       final raw = sp.getString(_keyTimeline);
       if (raw == null || raw.trim().isEmpty) return <CoachNote>[];
       return decodeCoachNotes(raw);
-    } catch (e) {
-      await AppLog.instance.warn('CoachStore.getAll failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('coach_store_read_failed', e, st);
       return <CoachNote>[];
     }
   }
@@ -37,8 +37,8 @@ class CoachStore {
     try {
       final sp = NeuraPrefsCache.prefs;
       await sp.setString(_keyTimeline, encodeCoachNotes(notes));
-    } catch (e) {
-      await AppLog.instance.warn('CoachStore._write failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('coach_store_write_failed', e, st);
     }
   }
 
@@ -86,8 +86,12 @@ class CoachStore {
     try {
       final sp = NeuraPrefsCache.prefs;
       await sp.remove(_keyTimeline);
-    } catch (e) {
-      await AppLog.instance.warn('CoachStore.clear failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('coach_store_clear_failed', e, st);
     }
+  }
+
+  void resetAfterDataWipe() {
+    notes.value = const <CoachNote>[];
   }
 }

@@ -36,14 +36,45 @@ function Get-DependencyFingerprint {
 
     $sha = [System.Security.Cryptography.SHA256]::Create()
     try {
-        $bytes = @(foreach ($file in $inputs) {
-            [System.IO.File]::ReadAllBytes($file)
-        })
         $all = [System.Collections.Generic.List[byte]]::new()
-        foreach ($chunk in $bytes) { $all.AddRange($chunk) }
+        foreach ($file in $inputs) {
+            # PowerShell normally enumerates byte arrays written to the
+            # pipeline. Keep each payload strongly typed so AddRange receives
+            # IEnumerable[byte] rather than one scalar byte at a time.
+            [byte[]]$chunk = [System.IO.File]::ReadAllBytes($file)
+            $all.AddRange($chunk)
+        }
         return ([BitConverter]::ToString($sha.ComputeHash($all.ToArray()))).Replace('-', '').ToLowerInvariant()
     } finally {
         $sha.Dispose()
+    }
+}
+
+function Assert-AuthoredWindowsRunner {
+    param([Parameter(Mandatory)][string]$ProjectRoot)
+
+    $rolePath = Join-Path $ProjectRoot 'windows\runner\neura_window_role.cpp'
+    $cmakePath = Join-Path $ProjectRoot 'windows\runner\CMakeLists.txt'
+    $flutterWindowPath = Join-Path $ProjectRoot 'windows\runner\flutter_window.cpp'
+
+    foreach ($required in @($rolePath, $cmakePath, $flutterWindowPath)) {
+        if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+            throw "Authored Windows runner file is missing: $required"
+        }
+    }
+
+    $roleSource = Get-Content -LiteralPath $rolePath -Raw
+    $cmake = Get-Content -LiteralPath $cmakePath -Raw
+    $flutterWindow = Get-Content -LiteralPath $flutterWindowPath -Raw
+
+    if (-not $roleSource.Contains('neura/window_role')) {
+        throw 'Authored Windows runner is missing the neura/window_role channel.'
+    }
+    if (-not $cmake.Contains('"neura_window_role.cpp"')) {
+        throw 'Authored Windows runner does not compile neura_window_role.cpp.'
+    }
+    if (-not $flutterWindow.Contains('window_role_ = std::make_unique<NeuraWindowRole>')) {
+        throw 'Authored Windows runner does not register NeuraWindowRole before plugins.'
     }
 }
 
@@ -87,7 +118,24 @@ try {
         flutter analyze --no-pub --no-fatal-warnings --no-fatal-infos
     }
 
+    if ($BuildWindows) {
+        Write-Host "`n=== authored Windows runner contract ===" -ForegroundColor Cyan
+        Assert-AuthoredWindowsRunner -ProjectRoot $Root
+    }
+
     if (-not $SkipTests) {
+        Invoke-Checked 'startup state matrix' {
+            flutter test --no-pub --timeout 60s `
+                test/startup/startup_platform_policy_test.dart `
+                test/startup/native_speech_safe_mode_test.dart `
+                test/startup/neura_error_pipeline_test.dart
+        }
+
+        Invoke-Checked 'recovery boundary test' {
+            flutter test --no-pub --timeout 30s `
+                test/startup/neura_error_boundary_test.dart
+        }
+
         Invoke-Checked "flutter test (concurrency=$TestConcurrency)" {
             flutter test --no-pub --concurrency $TestConcurrency
         }

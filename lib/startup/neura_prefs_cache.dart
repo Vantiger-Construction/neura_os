@@ -1,4 +1,5 @@
 ﻿import 'package:shared_preferences/shared_preferences.dart';
+
 /// Caches the [SharedPreferences] instance so every service in the app
 /// shares the same object without redundant async [getInstance] calls.
 ///
@@ -14,11 +15,22 @@ class NeuraPrefsCache {
 
   /// Loads and caches the [SharedPreferences] singleton.
   /// Safe to call concurrently from multiple call sites; all callers await
-  /// the same underlying load.
+  /// the same underlying load. A failed attempt is not cached permanently,
+  /// so a later startup/shell retry can recover from a transient plugin error.
   static Future<void> init() {
-    return _initFuture ??= SharedPreferences.getInstance().then((p) {
-      _instance = p;
+    final existing = _initFuture;
+    if (existing != null) return existing;
+    late final Future<void> attempt;
+    attempt = Future<SharedPreferences>.sync(
+      SharedPreferences.getInstance,
+    ).then<void>((prefs) {
+      _instance = prefs;
+    }).onError((Object error, StackTrace stackTrace) {
+      if (identical(_initFuture, attempt)) _initFuture = null;
+      Error.throwWithStackTrace(error, stackTrace);
     });
+    _initFuture = attempt;
+    return attempt;
   }
 
   /// The cached [SharedPreferences] instance.

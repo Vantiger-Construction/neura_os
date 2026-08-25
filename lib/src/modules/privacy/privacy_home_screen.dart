@@ -30,7 +30,8 @@ class PrivacyHomeScreen extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.mic_none_outlined),
                   title: const Text('View recorded clips'),
-                  subtitle: const Text('Play back or delete what Neura has recorded.'),
+                  subtitle: const Text(
+                      'Play back or delete what Neura has recorded.'),
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => const AmbientRecordingsScreen(),
@@ -95,7 +96,8 @@ class PrivacyHomeScreen extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.settings_backup_restore),
               title: const Text('Data Controls'),
-              subtitle: const Text('Export, import, or delete your local data.'),
+              subtitle:
+                  const Text('Export, import, or delete your local data.'),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const DataControlsScreen()),
               ),
@@ -185,7 +187,8 @@ class _AmbientListeningToggle extends StatelessWidget {
       builder: (context, enabled, _) {
         return SwitchListTile(
           value: enabled,
-          onChanged: (v) => AmbientListeningPrefsController.instance.setEnabled(v),
+          onChanged: (v) =>
+              AmbientListeningPrefsController.instance.setEnabled(v),
           secondary: const Icon(Icons.hearing_outlined),
           title: const Text('Listen for speech and record clips'),
           subtitle: const Text(

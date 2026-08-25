@@ -10,7 +10,8 @@ import 'coach_store.dart';
 class CoachHooks {
   CoachHooks._();
 
-  static Future<void> afterMoodCheckin(BuildContext context, MoodEntry entry) async {
+  static Future<void> afterMoodCheckin(
+      BuildContext context, MoodEntry entry) async {
     final prefs = HumanPrefsController.instance.prefs.value;
     if (!prefs.coachEnabled) return;
 
@@ -28,11 +29,13 @@ class CoachHooks {
     }
   }
 
-  static Future<void> afterRescueCompleted(BuildContext context, {MoodEntry? latestMood}) async {
+  static Future<void> afterRescueCompleted(BuildContext context,
+      {MoodEntry? latestMood}) async {
     final prefs = HumanPrefsController.instance.prefs.value;
     if (!prefs.coachEnabled) return;
 
-    final draft = NeuraCoachEngine.instance.forRescueCompleted(latestMood: latestMood);
+    final draft =
+        NeuraCoachEngine.instance.forRescueCompleted(latestMood: latestMood);
     final note = await CoachStore.instance.add(
       source: CoachSourceType.rescue,
       title: draft.title,
@@ -54,7 +57,8 @@ class CoachHooks {
     final prefs = HumanPrefsController.instance.prefs.value;
     if (!prefs.coachEnabled) return;
 
-    final draft = NeuraCoachEngine.instance.forRescueHelpful(actionId: actionId, latestMood: latestMood);
+    final draft = NeuraCoachEngine.instance
+        .forRescueHelpful(actionId: actionId, latestMood: latestMood);
     await CoachStore.instance.add(
       source: CoachSourceType.rescue,
       title: draft.title,

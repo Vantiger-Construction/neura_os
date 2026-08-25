@@ -57,6 +57,7 @@ class WeeklySummaristService {
   static const _staleAfter = Duration(days: 7);
 
   Future<void>? _inFlight;
+  int _dataGeneration = 0;
 
   Future<WeeklyNarrativeState?> _load() async {
     try {
@@ -71,9 +72,11 @@ class WeeklySummaristService {
     }
   }
 
-  Future<void> _save(WeeklyNarrativeState state) async {
+  Future<void> _save(WeeklyNarrativeState state, int generation) async {
+    if (generation != _dataGeneration) return;
     final prefs = NeuraPrefsCache.prefs;
     await prefs.setString(_key, jsonEncode(state.toMap()));
+    if (generation != _dataGeneration) await prefs.remove(_key);
   }
 
   Future<bool> isDue({DateTime? now}) async {
@@ -100,20 +103,38 @@ class WeeklySummaristService {
     final existing = _inFlight;
     if (existing != null) return existing;
 
-    final future = _generateIfDue().whenComplete(() => _inFlight = null);
+    final generation = _dataGeneration;
+    final future =
+        _generateIfDue(generation).whenComplete(() => _inFlight = null);
     _inFlight = future;
     return future;
   }
 
-  Future<void> _generateIfDue() async {
+  Future<void> resetAfterDataWipe() async {
+    _dataGeneration += 1;
+    final inFlight = _inFlight;
+    if (inFlight != null) {
+      try {
+        await inFlight.timeout(const Duration(seconds: 3));
+      } on TimeoutException {
+        // Generation invalidation prevents a late response from re-persisting.
+      }
+    }
+  }
+
+  Future<void> _generateIfDue(int generation) async {
     if (!await isDue()) return;
+    if (generation != _dataGeneration) return;
     if (!NeuraAiService.instance.isConfigured) return;
 
     try {
       final review = await WeeklyReviewStore.instance.generate();
+      if (generation != _dataGeneration) return;
       final summary = await WeeklySnapshotService.instance.buildSummary();
+      if (generation != _dataGeneration) return;
 
-      final prompt = 'week of ${review.weekStart.toIso8601String().substring(0, 10)}: '
+      final prompt =
+          'week of ${review.weekStart.toIso8601String().substring(0, 10)}: '
           'mood avg ${review.moodAvg}/10 (min ${review.moodMin}, max ${review.moodMax}) '
           'across ${review.moodSamples} check-ins; '
           'kindness acts ${review.kindnessActs}; quests done ${review.questDone}; '
@@ -124,20 +145,25 @@ class WeeklySummaristService {
           'recurring dream theme ${summary.topDreamTheme}. '
           'Write a short (3-5 sentence) second-person narrative using only these numbers.';
 
+      if (generation != _dataGeneration) return;
       final text = await NeuraAiService.instance.completeOnce(
         prompt,
         agentId: AgentPersonaCatalog.weeklySummarist.id,
       );
 
-      await _save(WeeklyNarrativeState(
-        summaryText: text,
-        generatedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
-      ));
-    } catch (e) {
+      if (generation != _dataGeneration) return;
+      await _save(
+          WeeklyNarrativeState(
+            summaryText: text,
+            generatedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
+          ),
+          generation);
+    } catch (e, st) {
+      if (generation != _dataGeneration) return;
       // Network failure, guardrail block (NeuraGuardrailBlocked), or missing
       // key -- don't persist anything, stay "due", retry next app-open. The
       // weekly snapshot screen just shows its existing deterministic cards.
-      await AppLog.instance.warn('weekly_summarist_generate_failed: $e');
+      await AppLog.instance.caught('weekly_summarist_generate_failed', e, st);
     }
   }
 }

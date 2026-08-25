@@ -30,7 +30,8 @@ class NotificationsSettingsScreen extends StatelessWidget {
                     .update(prefs.copyWith(weeklyReviewReadyEnabled: v)),
                 secondary: const Icon(Icons.insights_outlined),
                 title: const Text('Weekly review ready'),
-                subtitle: const Text('A nudge once your weekly reflection has been drafted.'),
+                subtitle: const Text(
+                    'A nudge once your weekly reflection has been drafted.'),
               ),
               SwitchListTile(
                 value: prefs.legacyOverdueEnabled,
@@ -38,7 +39,8 @@ class NotificationsSettingsScreen extends StatelessWidget {
                     .update(prefs.copyWith(legacyOverdueEnabled: v)),
                 secondary: const Icon(Icons.auto_stories_outlined),
                 title: const Text('Legacy Guard check-in overdue'),
-                subtitle: const Text('Only applies if Legacy Guard is enabled under Legacy Vault.'),
+                subtitle: const Text(
+                    'Only applies if Legacy Guard is enabled under Legacy Vault.'),
               ),
               SwitchListTile(
                 value: prefs.dailyMoodNudgeEnabled,
@@ -46,11 +48,15 @@ class NotificationsSettingsScreen extends StatelessWidget {
                   final next = prefs.copyWith(dailyMoodNudgeEnabled: v);
                   await NeuraNotificationsPrefsController.instance.update(next);
                   if (v) {
-                    await NeuraNotificationsService.instance.scheduleDailyMoodNudge(
-                      TimeOfDay(hour: next.dailyMoodNudgeHour, minute: next.dailyMoodNudgeMinute),
+                    await NeuraNotificationsService.instance
+                        .scheduleDailyMoodNudge(
+                      TimeOfDay(
+                          hour: next.dailyMoodNudgeHour,
+                          minute: next.dailyMoodNudgeMinute),
                     );
                   } else {
-                    await NeuraNotificationsService.instance.cancelDailyMoodNudge();
+                    await NeuraNotificationsService.instance
+                        .cancelDailyMoodNudge();
                   }
                 },
                 secondary: const Icon(Icons.favorite_outline),
@@ -77,8 +83,10 @@ class NotificationsSettingsScreen extends StatelessWidget {
                       dailyMoodNudgeHour: picked.hour,
                       dailyMoodNudgeMinute: picked.minute,
                     );
-                    await NeuraNotificationsPrefsController.instance.update(next);
-                    await NeuraNotificationsService.instance.scheduleDailyMoodNudge(picked);
+                    await NeuraNotificationsPrefsController.instance
+                        .update(next);
+                    await NeuraNotificationsService.instance
+                        .scheduleDailyMoodNudge(picked);
                   },
                 ),
             ],

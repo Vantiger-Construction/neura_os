@@ -18,7 +18,8 @@ class NeuraEventBus {
 
   static final NeuraEventBus I = NeuraEventBus._();
 
-  final StreamController<Object> _controller = StreamController<Object>.broadcast();
+  final StreamController<Object> _controller =
+      StreamController<Object>.broadcast();
   final List<void Function(Object)> _anyListeners = <void Function(Object)>[];
 
   /// Broadcast stream of all events.

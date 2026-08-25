@@ -90,8 +90,8 @@ class MemoryVaultStore {
 
         final clear = await alg.decrypt(box, secretKey: key);
         return utf8.decode(clear);
-      } catch (e) {
-        await AppLog.instance.warn('Vault decrypt (v2) failed: $e');
+      } catch (e, st) {
+        await AppLog.instance.caught('vault_v2_decrypt_failed', e, st);
         return null;
       }
     }
@@ -100,8 +100,8 @@ class MemoryVaultStore {
     try {
       final legacy = _deobfuscate(blob, pin);
       return legacy;
-    } catch (e) {
-      await AppLog.instance.warn('Vault decrypt (legacy) failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('vault_legacy_decrypt_failed', e, st);
       return null;
     }
   }
@@ -179,8 +179,8 @@ class MemoryVaultStore {
       }
 
       return <VaultItem>[];
-    } catch (e) {
-      await AppLog.instance.warn('Vault getItems failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('vault_items_read_failed', e, st);
       return <VaultItem>[];
     }
   }

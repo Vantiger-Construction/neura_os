@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import '../core/app_log.dart';
 import 'human_prefs.dart';
 import '../../startup/neura_prefs_cache.dart';
@@ -9,7 +9,8 @@ class HumanPrefsController {
 
   static const _key = 'neura.human.prefs.v1';
 
-  final ValueNotifier<HumanPrefs> prefs = ValueNotifier<HumanPrefs>(HumanPrefs.defaults);
+  final ValueNotifier<HumanPrefs> prefs =
+      ValueNotifier<HumanPrefs>(HumanPrefs.defaults);
 
   Future<void> init() async {
     try {
@@ -17,8 +18,8 @@ class HumanPrefsController {
       final raw = sp.getString(_key);
       if (raw == null || raw.trim().isEmpty) return;
       prefs.value = HumanPrefs.fromJsonString(raw);
-    } catch (e) {
-      await AppLog.instance.warn('HumanPrefsController.init failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('human_prefs_init_failed', e, st);
     }
   }
 
@@ -27,8 +28,12 @@ class HumanPrefsController {
     try {
       final sp = NeuraPrefsCache.prefs;
       await sp.setString(_key, next.toJsonString());
-    } catch (e) {
-      await AppLog.instance.warn('HumanPrefsController.update failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('human_prefs_update_failed', e, st);
     }
+  }
+
+  void resetAfterDataWipe() {
+    prefs.value = HumanPrefs.defaults;
   }
 }

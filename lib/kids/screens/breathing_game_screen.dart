@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -164,11 +164,11 @@ class _BreathingGameScreenState extends State<BreathingGameScreen>
                     height: _sizeAnim.value,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: _phaseColor.withValues(alpha:0.25),
+                      color: _phaseColor.withValues(alpha: 0.25),
                       border: Border.all(color: _phaseColor, width: 3),
                       boxShadow: [
                         BoxShadow(
-                          color: _phaseColor.withValues(alpha:0.4),
+                          color: _phaseColor.withValues(alpha: 0.4),
                           blurRadius: 30,
                           spreadRadius: 6,
                         ),
@@ -203,7 +203,7 @@ class _BreathingGameScreenState extends State<BreathingGameScreen>
                 'Inhale 4 • Hold 7 • Exhale 8',
                 style: TextStyle(
                   fontSize: 13,
-                  color: Colors.white.withValues(alpha:0.5),
+                  color: Colors.white.withValues(alpha: 0.5),
                 ),
               ),
               const SizedBox(height: 40),
@@ -243,4 +243,3 @@ class _BreathingGameScreenState extends State<BreathingGameScreen>
     );
   }
 }
-

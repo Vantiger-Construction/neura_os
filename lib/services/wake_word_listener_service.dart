@@ -6,6 +6,7 @@ import '../core/neura_events.dart';
 import '../mascot/mascot_window_service.dart';
 import '../modules/core/app_log.dart';
 import '../persona/agents/agent_persona_catalog.dart';
+import '../reliability/safe_boot.dart';
 import 'neura_ai_service.dart';
 import 'neura_speech_to_text_service.dart';
 import 'neura_tts_service.dart';
@@ -21,21 +22,27 @@ import 'wake_word_prefs.dart';
 /// this gate every phrase said anywhere near the mic would otherwise ship
 /// straight to Claude.
 class WakeWordListenerService {
-  WakeWordListenerService._();
+  WakeWordListenerService._() {
+    SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
+  }
   static final WakeWordListenerService instance = WakeWordListenerService._();
 
   static final RegExp _wakePattern =
       RegExp(r'^\s*(hey\s+)?neura\b[,.]?\s*', caseSensitive: false);
 
-  final NeuraSpeechToTextService _stt = NeuraSpeechToTextService.instance;
+  NeuraSpeechToTextService? _stt;
   StreamSubscription<String>? _sub;
   bool _awaitingMessageAfterWake = false;
   bool _busy = false;
   bool _weStartedSession = false;
+  int _dataGeneration = 0;
+  Future<void>? _activeTurn;
+  bool get listeningAllowed => !SafeBoot.instance.safeMode.value;
 
   /// Begins listening if the feature is enabled. Safe to call more than
   /// once (no-ops if already subscribed).
   Future<void> start() async {
+    if (!listeningAllowed) return;
     if (!WakeWordPrefsController.instance.enabled.value) return;
     if (_sub != null) return;
     await _beginListening();
@@ -45,10 +52,24 @@ class WakeWordListenerService {
     await _sub?.cancel();
     _sub = null;
     _awaitingMessageAfterWake = false;
-    if (_weStartedSession && _stt.isListening) {
-      await _stt.stopRecording();
+    final stt = _stt;
+    if (_weStartedSession && stt != null && stt.isListening) {
+      await stt.stopRecording();
     }
     _weStartedSession = false;
+  }
+
+  Future<void> resetAfterDataWipe() async {
+    _dataGeneration += 1;
+    await stop();
+    final activeTurn = _activeTurn;
+    if (activeTurn != null) {
+      try {
+        await activeTurn;
+      } catch (_) {
+        // The normal turn handler already records/degrades its own failures.
+      }
+    }
   }
 
   /// Suspends reacting to phrases without stopping the underlying session,
@@ -62,13 +83,16 @@ class WakeWordListenerService {
   }
 
   Future<void> resume() async {
+    if (!listeningAllowed) return;
     if (!WakeWordPrefsController.instance.enabled.value) return;
     if (_sub != null) return;
     await _beginListening();
   }
 
   Future<void> _beginListening() async {
-    if (!_stt.isListening) {
+    if (!listeningAllowed) return;
+    final stt = _stt ??= NeuraSpeechToTextService.instance;
+    if (!stt.isListening) {
       // Wait for the mascot window's own native engine/window creation to
       // settle first -- same "two native engines/windows starting close
       // together" hazard documented on MascotWindowService.initialCreationSettled
@@ -77,21 +101,27 @@ class WakeWordListenerService {
       // Already-resolved after the first real boot, so this is a no-op on
       // pause()/resume() cycles.
       await MascotWindowService.I.initialCreationSettled;
-      final ok = await _stt.startRecording();
+      if (!listeningAllowed) return;
+      final ok = await stt.startRecording();
       if (!ok) return;
+      if (!listeningAllowed) {
+        await stt.stopRecording();
+        return;
+      }
       _weStartedSession = true;
     }
-    _sub = _stt.finalPhraseStream.listen(_onFinalPhrase);
+    if (!listeningAllowed) return;
+    _sub = stt.finalPhraseStream.listen(_onFinalPhrase);
   }
 
   void _onFinalPhrase(String phrase) {
-    if (_busy) return;
+    if (_busy || !listeningAllowed) return;
     final trimmed = phrase.trim();
     if (trimmed.isEmpty) return;
 
     if (_awaitingMessageAfterWake) {
       _awaitingMessageAfterWake = false;
-      unawaited(_handleMessage(trimmed));
+      _startMessage(trimmed);
       return;
     }
 
@@ -105,10 +135,23 @@ class WakeWordListenerService {
       _awaitingMessageAfterWake = true;
       return;
     }
-    unawaited(_handleMessage(remainder));
+    _startMessage(remainder);
+  }
+
+  void _startMessage(String text) {
+    if (!listeningAllowed) return;
+    final turn = _handleMessage(text);
+    _activeTurn = turn;
+    unawaited(
+      turn.whenComplete(() {
+        if (identical(_activeTurn, turn)) _activeTurn = null;
+      }).catchError((_) {}),
+    );
   }
 
   Future<void> _handleMessage(String text) async {
+    if (!listeningAllowed) return;
+    final generation = _dataGeneration;
     _busy = true;
     NeuraEventBus.I.emit(const NeuraThinkingEvent(true));
     try {
@@ -119,18 +162,19 @@ class WakeWordListenerService {
       )) {
         buffer.write(delta);
       }
+      if (generation != _dataGeneration) return;
+
       final reply = buffer.toString();
-      NeuraEventBus.I.emit(const NeuraThinkingEvent(false));
       unawaited(_remember(isUser: true, text: text));
       unawaited(_remember(isUser: false, text: reply));
 
       NeuraEventBus.I.emit(const NeuraTalkingEvent(true));
       await NeuraTtsService.instance.speak(reply);
-      NeuraEventBus.I.emit(const NeuraTalkingEvent(false));
-    } catch (e) {
-      NeuraEventBus.I.emit(const NeuraThinkingEvent(false));
-      await AppLog.instance.warn('wake_word_reply_failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('wake_word_reply_failed', e, st);
     } finally {
+      NeuraEventBus.I.emit(const NeuraThinkingEvent(false));
+      NeuraEventBus.I.emit(const NeuraTalkingEvent(false));
       _busy = false;
     }
   }
@@ -149,8 +193,14 @@ class WakeWordListenerService {
           payload: {'text': text, 'source': 'wake_word'},
         );
       }
-    } catch (e) {
-      await AppLog.instance.warn('wake_word_memory_log_failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('wake_word_memory_log_failed', e, st);
+    }
+  }
+
+  void _onSafeModeChanged() {
+    if (!listeningAllowed) {
+      unawaited(stop().catchError((_) {}));
     }
   }
 }

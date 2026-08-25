@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../services/auth_service.dart';
 import 'sign_in_screen.dart';
 
@@ -13,7 +13,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final _client = Supabase.instance.client;
   late final TextEditingController _nameCtrl;
   bool _updating = false;
   String? _error;
@@ -21,7 +20,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    final meta = _client.auth.currentUser?.userMetadata;
+    final meta = AuthService.currentUser?.userMetadata;
     _nameCtrl = TextEditingController(
       text: meta?['display_name'] as String? ?? '',
     );
@@ -39,16 +38,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _error = null;
     });
     try {
-      await _client.auth.updateUser(
-        UserAttributes(data: {'display_name': _nameCtrl.text.trim()}),
-      );
+      await AuthService().updateDisplayName(_nameCtrl.text);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Profile updated')));
       }
     } catch (e) {
-      setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _updating = false);
     }
@@ -56,10 +53,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = _client.auth.currentUser;
-    final initial = user?.email?.isNotEmpty == true
-        ? user!.email![0].toUpperCase()
-        : '?';
+    final user = AuthService.currentUser;
+    final initial =
+        user?.email?.isNotEmpty == true ? user!.email![0].toUpperCase() : '?';
+    final cloudAvailable = AuthService.isAvailable;
 
     return Scaffold(
       appBar: AppBar(
@@ -67,14 +64,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await AuthService().signOut();
-              if (!mounted) return;
-              unawaited(Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const SignInScreen()),
-                (route) => false,
-              ));
-            },
+            onPressed: cloudAvailable
+                ? () async {
+                    await AuthService().signOut();
+                    if (!mounted) return;
+                    unawaited(
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(builder: (_) => const SignInScreen()),
+                        (route) => false,
+                      ),
+                    );
+                  }
+                : null,
           ),
         ],
       ),
@@ -88,22 +89,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Text(initial, style: const TextStyle(fontSize: 32)),
             ),
             const SizedBox(height: 12),
-            Text(user?.email ?? '',
-                style: Theme.of(context).textTheme.bodyMedium),
+            Text(
+              user?.email ??
+                  (cloudAvailable ? '' : 'Cloud profile unavailable'),
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
             const SizedBox(height: 16),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child:
-                    Text(_error!, style: const TextStyle(color: Colors.red)),
+                child: Text(_error!, style: const TextStyle(color: Colors.red)),
               ),
             TextField(
               controller: _nameCtrl,
+              enabled: cloudAvailable && user != null,
               decoration: const InputDecoration(labelText: 'Display Name'),
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _updating ? null : _save,
+              onPressed:
+                  _updating || !cloudAvailable || user == null ? null : _save,
               child: _updating
                   ? const SizedBox(
                       width: 16,

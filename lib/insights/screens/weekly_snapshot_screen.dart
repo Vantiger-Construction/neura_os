@@ -45,9 +45,13 @@ class _WeeklySnapshotScreenState extends State<WeeklySnapshotScreen> {
     final trendCutoff = now.subtract(const Duration(days: _trendDays - 1));
     final recentCutoff = now.subtract(const Duration(days: 6));
 
-    final trend = moods.where((m) => !m.timestamp.isBefore(trendCutoff)).toList()
+    final trend = moods
+        .where((m) => !m.timestamp.isBefore(trendCutoff))
+        .toList()
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-    final recent = moods.where((m) => !m.timestamp.isBefore(recentCutoff)).toList()
+    final recent = moods
+        .where((m) => !m.timestamp.isBefore(recentCutoff))
+        .toList()
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
     if (!mounted) return;
@@ -163,7 +167,8 @@ class _WeeklySnapshotScreenState extends State<WeeklySnapshotScreen> {
                     alignment: Alignment.centerRight,
                     child: TextButton.icon(
                       onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const WeeklyReviewScreen()),
+                        MaterialPageRoute(
+                            builder: (_) => const WeeklyReviewScreen()),
                       ),
                       icon: const Icon(Icons.history_outlined),
                       label: const Text('View history & notes →'),
@@ -192,14 +197,16 @@ class _WeeklySnapshotScreenState extends State<WeeklySnapshotScreen> {
                     runSpacing: 8,
                     children: [
                       FilledButton.icon(
-                        onPressed:
-                            _exporting ? null : () => _exportAndShare(asPdf: false),
+                        onPressed: _exporting
+                            ? null
+                            : () => _exportAndShare(asPdf: false),
                         icon: const Icon(Icons.table_view),
                         label: const Text('Export CSV'),
                       ),
                       FilledButton.icon(
-                        onPressed:
-                            _exporting ? null : () => _exportAndShare(asPdf: true),
+                        onPressed: _exporting
+                            ? null
+                            : () => _exportAndShare(asPdf: true),
                         icon: const Icon(Icons.picture_as_pdf),
                         label: const Text('Export & Share PDF'),
                       ),
@@ -230,9 +237,7 @@ class _WeeklySnapshotScreenState extends State<WeeklySnapshotScreen> {
                           title: Text(
                               '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
                               '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}'),
-                          subtitle: e.note.isEmpty
-                              ? null
-                              : Text(e.note),
+                          subtitle: e.note.isEmpty ? null : Text(e.note),
                         ),
                       );
                     }),

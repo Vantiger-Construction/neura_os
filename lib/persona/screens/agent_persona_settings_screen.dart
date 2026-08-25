@@ -88,7 +88,8 @@ class _AgentPersonaSettingsScreenState
           Card(
             child: ListTile(
               leading: const Icon(Icons.tune),
-              title: const Text('Tune warmth, directness, humor, energy, depth'),
+              title:
+                  const Text('Tune warmth, directness, humor, energy, depth'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(

@@ -114,8 +114,7 @@ class NeuraBehaviorAdapter {
             'Gently challenge the user to stretch themselves if it seems safe.';
         break;
       default:
-        difficultyText =
-            'Keep a balanced level of challenge and comfort.';
+        difficultyText = 'Keep a balanced level of challenge and comfort.';
     }
 
     final roleBullets = agent.roleInstructions.map((r) => '- $r').join('\n');

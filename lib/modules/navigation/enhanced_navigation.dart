@@ -6,7 +6,6 @@ import '../../neura_shell/neura_shell.dart';
 import '../../neura_shell/models/neura_room.dart';
 import '../../services/update_check_service.dart';
 
-
 import '../../dreams/screens/dream_show2_screen.dart';
 import '../../insights/screens/weekly_snapshot_screen.dart';
 import '../../modules/humor/joke_screen.dart';
@@ -26,10 +25,14 @@ import '../../screens/monthly_dream_show_screen.dart';
 import '../../screens/dream_visualizer_screen.dart';
 import '../../screens/journal_prompt_screen.dart';
 import '../../screens/voice_journal_screen.dart';
+import '../../adaptive_intent/neura_live_signal_adapter.dart';
 import '../../core/memory/memory_consolidation_service.dart';
+import '../../dashboard/widgets/proactive_banner_card.dart';
+import '../../intelligence/intelligence_center_screen.dart';
 import '../../insights/services/weekly_summarist_service.dart';
 import '../../notifications/neura_notifications_prefs.dart';
 import '../../notifications/neura_notifications_service.dart';
+import '../../reliability/safe_boot.dart';
 import '../../services/ambient_listening_service.dart';
 import '../../services/wake_word_listener_service.dart';
 import '../../src/modules/legacy/legacy_deadman_service.dart';
@@ -49,6 +52,8 @@ class EnhancedNavigation extends StatefulWidget {
 class _EnhancedNavigationState extends State<EnhancedNavigation> {
   int _index = 0;
 
+  bool get _optionalHooksAllowed => !SafeBoot.instance.safeMode.value;
+
   @override
   void initState() {
     super.initState();
@@ -56,9 +61,17 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     // Legacy Guard; this is the startup check that actually detects an
     // overdue check-in and offers to release capsules. No-ops if disabled.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      LegacyDeadmanService.instance.maybePromptOnStartup(context);
+      if (!mounted || !_optionalHooksAllowed) return;
+      unawaited(
+        LegacyDeadmanService.instance.maybePromptOnStartup(context),
+      );
     });
+
+    // Safe Mode deliberately avoids optional native, network, and proactive
+    // work. Startup already suppresses these services; keep the dashboard's
+    // post-boot hooks from silently starting them again after navigation.
+    if (!_optionalHooksAllowed) return;
+
     // Speaks a short greeting once per launch, then -- only if the user has
     // opted in under Settings > Privacy & Safety -- starts voice-activated
     // ambient listening. No BuildContext needed past this point; the
@@ -74,7 +87,7 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     // moment to fully settle after first paint avoids finding out the hard
     // way whether that combination is safe at the literal first frame.
     Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
+      if (!mounted || !_optionalHooksAllowed) return;
       unawaited(AmbientListeningService.instance.greetAndStartListening());
       // Same "let the window/engine settle first" reasoning as the greeting
       // above -- this is also a native voice subsystem starting for the
@@ -100,18 +113,32 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
   /// than threading a callback through the existing service, so this stays
   /// purely additive to it.
   Future<void> _generateWeeklySummaryThenMaybeNotify() async {
+    if (!_optionalHooksAllowed) return;
     await WeeklySummaristService.instance.maybeGenerateOnAppOpen();
-    if (!NeuraNotificationsPrefsController.instance.prefs.value.weeklyReviewReadyEnabled) return;
+    if (!_optionalHooksAllowed) return;
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.weeklyReviewReadyEnabled) {
+      return;
+    }
     final fresh = await WeeklySummaristService.instance.currentIfFresh();
     if (fresh == null) return;
-    if (DateTime.now().difference(fresh.generatedAt) > const Duration(minutes: 1)) return;
-    await NeuraNotificationsService.instance.showWeeklyReviewReadyNotification();
+    if (DateTime.now().difference(fresh.generatedAt) >
+        const Duration(minutes: 1)) {
+      return;
+    }
+    if (!_optionalHooksAllowed) return;
+    await NeuraNotificationsService.instance
+        .showWeeklyReviewReadyNotification();
   }
 
   Future<void> _maybeNotifyLegacyOverdue() async {
-    if (!NeuraNotificationsPrefsController.instance.prefs.value.legacyOverdueEnabled) return;
+    if (!_optionalHooksAllowed) return;
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.legacyOverdueEnabled) {
+      return;
+    }
     final overdue = await LegacyDeadmanService.instance.isOverdue();
-    if (!overdue) return;
+    if (!overdue || !_optionalHooksAllowed) return;
     await NeuraNotificationsService.instance.showLegacyOverdueNotification();
   }
 
@@ -120,26 +147,32 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
   /// every app open is cheap and guards against it having been lost (e.g.
   /// after a rebuild/reinstall).
   Future<void> _reconfirmDailyMoodNudgeSchedule() async {
+    if (!_optionalHooksAllowed) return;
     final prefs = NeuraNotificationsPrefsController.instance.prefs.value;
     if (!prefs.dailyMoodNudgeEnabled) return;
     await NeuraNotificationsService.instance.scheduleDailyMoodNudge(
-      TimeOfDay(hour: prefs.dailyMoodNudgeHour, minute: prefs.dailyMoodNudgeMinute),
+      TimeOfDay(
+          hour: prefs.dailyMoodNudgeHour, minute: prefs.dailyMoodNudgeMinute),
     );
   }
 
   Future<void> _checkForUpdate() async {
+    if (!_optionalHooksAllowed) return;
     final update = await UpdateCheckService.instance.checkForUpdate();
-    if (update == null || !mounted) return;
+    if (update == null || !mounted || !_optionalHooksAllowed) return;
     ScaffoldMessenger.of(context).showMaterialBanner(
       MaterialBanner(
-        content: Text('Neura ${update.tag} is available - you\'re on an older build.'),
+        content: Text(
+            'Neura ${update.tag} is available - you\'re on an older build.'),
         actions: [
           TextButton(
-            onPressed: () => launchUrl(Uri.parse(update.htmlUrl), mode: LaunchMode.externalApplication),
+            onPressed: () => launchUrl(Uri.parse(update.htmlUrl),
+                mode: LaunchMode.externalApplication),
             child: const Text('View'),
           ),
           TextButton(
-            onPressed: () => ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
+            onPressed: () =>
+                ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
             child: const Text('Dismiss'),
           ),
         ],
@@ -148,14 +181,19 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
   }
 
   void _openChat() {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NeuraChatScreen()));
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const NeuraChatScreen()));
   }
 
   void _openDiagnostics() {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DiagnosticsScreen()));
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const DiagnosticsScreen()));
   }
 
   void _onTab(int i) {
+    NeuraAdaptiveActivityTracker.instance.recordSurfaceVisit(
+      'primary_tab_$i',
+    );
     setState(() => _index = i);
 
     // Optional magic: sync rooms to tabs, so the OS "moves" with you.
@@ -210,11 +248,16 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
         onTap: _onTab,
         type: BottomNavigationBarType.fixed,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.edit_note), label: 'Journal'),
-          BottomNavigationBarItem(icon: Icon(Icons.nights_stay_outlined), label: 'Dreams'),
-          BottomNavigationBarItem(icon: Icon(Icons.auto_stories), label: 'Legacy'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), label: 'Settings'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.dashboard_outlined), label: 'Home'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.edit_note), label: 'Journal'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.nights_stay_outlined), label: 'Dreams'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.auto_stories), label: 'Legacy'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.settings_outlined), label: 'Settings'),
         ],
       ),
     );
@@ -235,9 +278,12 @@ class _Dashboard extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: Text('Neura OS', style: Theme.of(context).textTheme.headlineMedium),
+              child: Text('Neura OS',
+                  style: Theme.of(context).textTheme.headlineMedium),
             ),
-            IconButton(onPressed: openDiagnostics, icon: const Icon(Icons.bug_report_outlined)),
+            IconButton(
+                onPressed: openDiagnostics,
+                icon: const Icon(Icons.bug_report_outlined)),
           ],
         ),
         const SizedBox(height: 8),
@@ -245,6 +291,8 @@ class _Dashboard extends StatelessWidget {
           'An OS for becoming a better human. No capes required.',
           style: Theme.of(context).textTheme.bodyMedium,
         ),
+        const SizedBox(height: 12),
+        const ProactiveBannerCard(),
         const SizedBox(height: 16),
         Wrap(
           spacing: 12,
@@ -257,28 +305,42 @@ class _Dashboard extends StatelessWidget {
               onTap: openChat,
             ),
             _Tile(
+              icon: Icons.hub_outlined,
+              title: 'Neura Intelligence',
+              subtitle: 'Signals, decision receipts, and consent controls.',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const NeuraIntelligenceCenterScreen(),
+                ),
+              ),
+            ),
+            _Tile(
               icon: Icons.favorite_border,
               title: 'Mood Check‑In',
               subtitle: 'Track how you feel.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MoodCheckInScreen())),
+              onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const MoodCheckInScreen())),
             ),
             _Tile(
               icon: Icons.timeline,
               title: 'Mood History',
               subtitle: 'Your emotional weather.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MoodHistoryScreen())),
+              onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const MoodHistoryScreen())),
             ),
             _Tile(
               icon: Icons.insights,
               title: 'Weekly Snapshot',
               subtitle: "This week's mood trend, rituals, and export.",
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WeeklySnapshotScreen())),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const WeeklySnapshotScreen())),
             ),
             _Tile(
               icon: Icons.auto_awesome_outlined,
               title: 'Weekly Review',
               subtitle: 'Past weeks, your notes, and coach commentary.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WeeklyReviewScreen())),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const WeeklyReviewScreen())),
             ),
             _Tile(
               icon: Icons.edit_note,
@@ -287,7 +349,8 @@ class _Dashboard extends StatelessWidget {
               onTap: () {
                 final shell = NeuraShell.of(context);
                 if (shell.isLoaded) shell.setRoom(NeuraRoom.reflectionBay);
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => JournalPromptScreen()));
+                Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => JournalPromptScreen()));
               },
             ),
             _Tile(
@@ -297,7 +360,8 @@ class _Dashboard extends StatelessWidget {
               onTap: () {
                 final shell = NeuraShell.of(context);
                 if (shell.isLoaded) shell.setRoom(NeuraRoom.reflectionBay);
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const VoiceJournalScreen()));
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const VoiceJournalScreen()));
               },
             ),
             _Tile(
@@ -307,7 +371,8 @@ class _Dashboard extends StatelessWidget {
               onTap: () {
                 final shell = NeuraShell.of(context);
                 if (shell.isLoaded) shell.setRoom(NeuraRoom.dreamAtrium);
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => DreamVisualizerScreen()));
+                Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => DreamVisualizerScreen()));
               },
             ),
             _Tile(
@@ -317,7 +382,8 @@ class _Dashboard extends StatelessWidget {
               onTap: () {
                 final shell = NeuraShell.of(context);
                 if (shell.isLoaded) shell.setRoom(NeuraRoom.legacyVault);
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LegacyHomeScreen()));
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const LegacyHomeScreen()));
               },
             ),
             _Tile(
@@ -327,7 +393,8 @@ class _Dashboard extends StatelessWidget {
               onTap: () {
                 final shell = NeuraShell.of(context);
                 if (shell.isLoaded) shell.setRoom(NeuraRoom.moodDen);
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()));
               },
             ),
             _Tile(
@@ -340,55 +407,64 @@ class _Dashboard extends StatelessWidget {
               icon: Icons.lock_outline,
               title: 'Memory Vault',
               subtitle: 'Encrypted notes for the stuff that matters.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MemoryVaultScreen())),
+              onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const MemoryVaultScreen())),
             ),
             _Tile(
               icon: Icons.history_edu_outlined,
               title: 'Life Timeline',
               subtitle: 'Your life, one event at a time.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LifeTimelineScreen())),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const LifeTimelineScreen())),
             ),
             _Tile(
               icon: Icons.health_and_safety_outlined,
               title: 'Support Center',
               subtitle: 'Grounding tools and people to reach out to.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SupportCenterScreen())),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const SupportCenterScreen())),
             ),
             _Tile(
               icon: Icons.volunteer_activism_outlined,
               title: 'Pay It Forward',
               subtitle: 'Track kind acts. Build a streak.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PayItForwardScreen())),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const PayItForwardScreen())),
             ),
             _Tile(
               icon: Icons.flag_outlined,
               title: 'Quest Mode',
               subtitle: 'Tiny missions to build momentum.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const QuestModeScreen())),
+              onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const QuestModeScreen())),
             ),
             _Tile(
               icon: Icons.mood_outlined,
               title: 'Neura Jokes',
               subtitle: 'Need a laugh? Tap in for a joke, told out loud.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const JokeScreen())),
+              onTap: () => Navigator.of(context)
+                  .push(MaterialPageRoute(builder: (_) => const JokeScreen())),
             ),
             _Tile(
               icon: Icons.self_improvement_outlined,
               title: 'Therapy Journal',
               subtitle: 'Guided CBT / DBT / ACT reflection prompts.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TherapyPathScreen())),
+              onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const TherapyPathScreen())),
             ),
             _Tile(
               icon: Icons.account_balance_wallet_outlined,
               title: 'Money Manager',
               subtitle: 'Track income and expenses, on-device.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MoneyManagerScreen())),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const MoneyManagerScreen())),
             ),
             _Tile(
               icon: Icons.holiday_village_outlined,
               title: 'Rooms',
               subtitle: 'Reflection, Care, Dreams, Mirror, Persona, Kids.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OsShellHomeScreen())),
+              onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const OsShellHomeScreen())),
             ),
           ],
         ),
@@ -397,7 +473,8 @@ class _Dashboard extends StatelessWidget {
           child: ListTile(
             leading: const Icon(Icons.lightbulb_outline),
             title: const Text('Daily tiny quest'),
-            subtitle: const Text('Pick one: drink water • 10-min walk • write one honest paragraph'),
+            subtitle: const Text(
+                'Pick one: drink water • 10-min walk • write one honest paragraph'),
             trailing: const Icon(Icons.chevron_right),
             onTap: openChat,
           ),
@@ -413,7 +490,11 @@ class _Tile extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
 
-  const _Tile({required this.icon, required this.title, required this.subtitle, required this.onTap});
+  const _Tile(
+      {required this.icon,
+      required this.title,
+      required this.subtitle,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -452,7 +533,8 @@ class _JournalHub extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text('Journal hub: prompts + voice journaling. Mood-aware prompts are next.'),
+          const Text(
+              'Journal hub: prompts + voice journaling. Mood-aware prompts are next.'),
           const SizedBox(height: 12),
           Card(
             child: ListTile(
@@ -462,7 +544,8 @@ class _JournalHub extends StatelessWidget {
               onTap: () {
                 final shell = NeuraShell.of(context);
                 if (shell.isLoaded) shell.setRoom(NeuraRoom.reflectionBay);
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => JournalPromptScreen()));
+                Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => JournalPromptScreen()));
               },
             ),
           ),
@@ -474,7 +557,8 @@ class _JournalHub extends StatelessWidget {
               onTap: () {
                 final shell = NeuraShell.of(context);
                 if (shell.isLoaded) shell.setRoom(NeuraRoom.reflectionBay);
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const VoiceJournalScreen()));
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const VoiceJournalScreen()));
               },
             ),
           ),
@@ -483,7 +567,8 @@ class _JournalHub extends StatelessWidget {
               leading: const Icon(Icons.favorite_border),
               title: const Text('Mood check‑in'),
               subtitle: const Text('Quick emotional snapshot.'),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MoodCheckInScreen())),
+              onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const MoodCheckInScreen())),
             ),
           ),
         ],
@@ -502,7 +587,8 @@ class _DreamHub extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text('Dream hub: visualizer, calendar, and monthly "show" compilation.'),
+          const Text(
+              'Dream hub: visualizer, calendar, and monthly "show" compilation.'),
           const SizedBox(height: 12),
           Card(
             child: ListTile(
@@ -512,7 +598,8 @@ class _DreamHub extends StatelessWidget {
               onTap: () {
                 final shell = NeuraShell.of(context);
                 if (shell.isLoaded) shell.setRoom(NeuraRoom.dreamAtrium);
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => DreamVisualizerScreen()));
+                Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => DreamVisualizerScreen()));
               },
             ),
           ),
@@ -521,7 +608,8 @@ class _DreamHub extends StatelessWidget {
               leading: const Icon(Icons.calendar_month),
               title: const Text('Dream Calendar'),
               subtitle: const Text('Browse dreams by date.'),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DreamJournalCalendarScreen())),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => DreamJournalCalendarScreen())),
             ),
           ),
           Card(
@@ -529,7 +617,8 @@ class _DreamHub extends StatelessWidget {
               leading: const Icon(Icons.movie_filter_outlined),
               title: const Text('Monthly Dream Show'),
               subtitle: const Text('Auto-compiled highlight reel.'),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => MonthlyDreamShowScreen())),
+              onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => MonthlyDreamShowScreen())),
             ),
           ),
           Card(
@@ -537,7 +626,8 @@ class _DreamHub extends StatelessWidget {
               leading: const Icon(Icons.category_outlined),
               title: const Text('Dream Themes'),
               subtitle: const Text('Recurring themes across your dream log.'),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DreamShow2Screen())),
+              onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const DreamShow2Screen())),
             ),
           ),
         ],

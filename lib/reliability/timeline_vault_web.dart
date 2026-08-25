@@ -2,6 +2,7 @@ class TimelineVault {
   TimelineVault._();
   static final TimelineVault instance = TimelineVault._();
   final List<Map<String, dynamic>> _records = [];
+  bool _suspendedForDataWipe = false;
 
   Future<void> initialize() async {}
 
@@ -10,6 +11,7 @@ class TimelineVault {
     Map<String, Object?> data = const {},
     String source = 'neura_os',
   }) async {
+    if (_suspendedForDataWipe) return;
     _records.add({
       'v': 1,
       'seq': _records.length + 1,
@@ -27,4 +29,9 @@ class TimelineVault {
 
   Future<String> exportCopy() async =>
       'Timeline export is available in the Windows and mobile builds.';
+
+  Future<void> resetAfterDataWipe() async {
+    _suspendedForDataWipe = true;
+    _records.clear();
+  }
 }

@@ -57,7 +57,8 @@ class _JokeScreenState extends State<JokeScreen> {
                   FilledButton.icon(
                     onPressed: _speaking ? null : _tellJoke,
                     icon: const Icon(Icons.mood),
-                    label: Text(_current == null ? 'Tell me a joke' : 'Another one'),
+                    label: Text(
+                        _current == null ? 'Tell me a joke' : 'Another one'),
                   ),
                   if (_current != null) ...[
                     const SizedBox(height: 12),
@@ -69,7 +70,9 @@ class _JokeScreenState extends State<JokeScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             IconButton(
-                              tooltip: isFav ? 'Remove from favorites' : 'Save to favorites',
+                              tooltip: isFav
+                                  ? 'Remove from favorites'
+                                  : 'Save to favorites',
                               onPressed: () => prefs.toggleFavorite(_current!),
                               icon: Icon(
                                 isFav ? Icons.favorite : Icons.favorite_border,
@@ -82,7 +85,9 @@ class _JokeScreenState extends State<JokeScreen> {
                                 await prefs.addDislike(_current!);
                                 if (!mounted) return;
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text("Got it, won't repeat that one.")),
+                                  const SnackBar(
+                                      content: Text(
+                                          "Got it, won't repeat that one.")),
                                 );
                               },
                               icon: const Icon(Icons.thumb_down_outlined),
@@ -120,13 +125,15 @@ class _JokeScreenState extends State<JokeScreen> {
                   children: [
                     const Padding(
                       padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
-                      child: Text('Favorites', style: TextStyle(fontWeight: FontWeight.bold)),
+                      child: Text('Favorites',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
                     for (final joke in favorites)
                       ListTile(
                         title: Text(joke),
                         trailing: IconButton(
-                          icon: const Icon(Icons.favorite, color: Colors.pinkAccent),
+                          icon: const Icon(Icons.favorite,
+                              color: Colors.pinkAccent),
                           onPressed: () => prefs.toggleFavorite(joke),
                         ),
                         onTap: () => setState(() => _current = joke),

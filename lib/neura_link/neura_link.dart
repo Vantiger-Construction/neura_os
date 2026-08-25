@@ -7,4 +7,3 @@ export 'neura_tone.dart';
 export 'sidecar_manager.dart';
 export 'widgets/diagnostics_panel.dart';
 export 'widgets/streaming_chat_view.dart';
-

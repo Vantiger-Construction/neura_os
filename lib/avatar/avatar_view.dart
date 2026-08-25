@@ -141,8 +141,10 @@ class AvatarView extends StatelessWidget {
               height: size,
               child: Image.asset(path,
                   fit: fit,
-                  cacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).round(),
-                  cacheHeight: (size * MediaQuery.devicePixelRatioOf(context)).round(),
+                  cacheWidth:
+                      (size * MediaQuery.devicePixelRatioOf(context)).round(),
+                  cacheHeight:
+                      (size * MediaQuery.devicePixelRatioOf(context)).round(),
                   errorBuilder: (_, __, ___) => fallback),
             );
         }

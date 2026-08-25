@@ -9,12 +9,12 @@ import '../care/services/care_mode_bridge.dart';
 import '../guardrails/guardrails.dart';
 import '../guardrails/guardrails_types.dart';
 import '../guardrails/support_resources.dart';
-import '../modules/mood/mood_models.dart';
 import '../modules/mood/mood_store.dart';
 import '../persona/agents/agent_persona_catalog.dart';
 import '../persona/models/neura_audience.dart';
 import '../persona/services/neura_audience_service.dart';
 import '../persona/services/neura_prompt_builder.dart';
+import '../reliability/safe_boot.dart';
 import '../relationships/services/distress_detector.dart';
 import '../src/modules/focus/focus_controller.dart';
 import '../src/modules/focus/focus_mode.dart';
@@ -23,7 +23,7 @@ import 'neura_generation_cancel.dart';
 import 'neura_llm_diagnostics.dart';
 import 'neura_provider_credentials.dart';
 
-typedef NeuraToolCommandHandler = FutureOr<void> Function(
+typedef NeuraToolCommandHandler = FutureOr<bool> Function(
   NeuraToolCommand command,
 );
 
@@ -87,6 +87,7 @@ class NeuraAiService {
   static const _maxRetries = 3;
   static const _initialBackoffMs = 350;
   static const _maxBackoffMs = 4000;
+  static const _requestTimeout = Duration(seconds: 30);
   static const _retryableStatuses = {429, 500, 502, 503, 529};
 
   final NeuraLlmDiagnostics _diagnostics = NeuraLlmDiagnostics.instance;
@@ -95,6 +96,7 @@ class NeuraAiService {
 
   String get _apiKey => NeuraProviderCredentials.instance.apiKey;
   bool get isConfigured => NeuraProviderCredentials.instance.hasKey;
+  bool get cloudRequestsAllowed => !SafeBoot.instance.safeMode.value;
   String? get activeGenerationId => _activeGenerationId;
   Map<String, dynamic> get diagnosticsSnapshot => _diagnostics.snapshot();
 
@@ -128,6 +130,7 @@ class NeuraAiService {
     String? generationId,
     NeuraToolCommandHandler? onToolCommand,
   }) async* {
+    _throwIfCloudBlocked();
     if (!isConfigured) {
       throw StateError('Configure the AI provider key in Settings.');
     }
@@ -190,6 +193,7 @@ class NeuraAiService {
 
         final toolResults = <Map<String, dynamic>>[];
         for (final block in blocks) {
+          _throwIfCloudBlocked();
           cancel.throwIfCancelled();
           if (block['type'] != 'tool_use') continue;
           final name = block['name']?.toString() ?? '';
@@ -229,15 +233,17 @@ class NeuraAiService {
     Object? lastError;
 
     for (var attempt = 0; attempt <= _maxRetries; attempt++) {
+      _throwIfCloudBlocked();
       cancel.throwIfCancelled();
       final client = http.Client();
       var emittedText = false;
 
       try {
+        _throwIfCloudBlocked();
         _diagnostics.recordAttempt();
         final request = _buildStreamRequest(systemPrompt, messages, tools);
         final streamedResponse = await Future.any<http.StreamedResponse>([
-          client.send(request),
+          client.send(request).timeout(_requestTimeout),
           cancel.whenCancelled.then<http.StreamedResponse>((_) {
             client.close();
             throw NeuraGenerationCancelled(cancel.generationId);
@@ -246,7 +252,10 @@ class NeuraAiService {
         cancel.throwIfCancelled();
 
         if (streamedResponse.statusCode != 200) {
-          final body = await streamedResponse.stream.bytesToString();
+          final body = await streamedResponse.stream
+              .timeout(_requestTimeout)
+              .transform(utf8.decoder)
+              .join();
           final error = NeuraApiException(
             '${streamedResponse.statusCode}: $body',
             statusCode: streamedResponse.statusCode,
@@ -265,8 +274,10 @@ class NeuraAiService {
         var stopReason = 'end_turn';
         var buffer = '';
 
-        await for (final chunk
-            in streamedResponse.stream.transform(utf8.decoder)) {
+        await for (final chunk in streamedResponse.stream
+            .timeout(_requestTimeout)
+            .transform(utf8.decoder)) {
+          _throwIfCloudBlocked();
           cancel.throwIfCancelled();
           buffer += chunk;
           final lines = buffer.split('\n');
@@ -432,6 +443,18 @@ class NeuraAiService {
         case NeuraChatPolicy.getMoodHistory:
           final limitRaw = (input['limit'] as num?)?.toInt() ?? 10;
           final limit = limitRaw.clamp(1, 50).toInt();
+          if (onToolCommand == null) {
+            return 'Tool unavailable: user confirmation UI is missing.';
+          }
+          final approved = await onToolCommand(
+            NeuraToolCommand(
+              NeuraChatPolicy.getMoodHistory,
+              {'limit': limit},
+            ),
+          );
+          if (!approved) {
+            return 'The user did not approve sharing mood history.';
+          }
           final entries = await MoodStore.instance.getAll();
           cancel.throwIfCancelled();
           final recent = entries.length > limit
@@ -440,8 +463,7 @@ class NeuraAiService {
           if (recent.isEmpty) return 'No mood entries recorded yet.';
           return recent
               .map((e) =>
-                  '${e.timestamp.toIso8601String()}: mood ${e.mood0to10}/10'
-                  '${e.note.isEmpty ? '' : ' — ${e.note}'}')
+                  '${e.timestamp.toIso8601String()}: mood ${e.mood0to10}/10')
               .join('\n');
 
         case NeuraChatPolicy.logMoodEntry:
@@ -451,11 +473,19 @@ class NeuraAiService {
           }
           final mood = moodRaw.round().clamp(0, 10).toInt();
           final note = (input['note'] as String?) ?? '';
-          await MoodStore.instance.add(
-            MoodEntry(timestamp: DateTime.now(), mood0to10: mood, note: note),
+          if (onToolCommand == null) {
+            return 'Tool unavailable: user confirmation UI is missing.';
+          }
+          final approved = await onToolCommand(
+            NeuraToolCommand(
+              NeuraChatPolicy.logMoodEntry,
+              {'mood0to10': mood, 'note': note},
+            ),
           );
           cancel.throwIfCancelled();
-          return 'Logged mood $mood/10${note.isEmpty ? '' : ' — $note'}.';
+          return approved
+              ? 'The user approved and saved mood $mood/10 locally.'
+              : 'The user did not approve saving this mood check-in.';
 
         case NeuraChatPolicy.dispatchIntent:
           final room = input['room']?.toString() ?? '';
@@ -465,12 +495,14 @@ class NeuraAiService {
           if (onToolCommand == null) {
             return 'Tool error: navigation runtime is unavailable.';
           }
-          await onToolCommand(NeuraToolCommand(
+          final approved = await onToolCommand(NeuraToolCommand(
             NeuraChatPolicy.dispatchIntent,
             {'room': room},
           ));
           cancel.throwIfCancelled();
-          return 'Navigation request dispatched to "$room". The UI owns the final room state.';
+          return approved
+              ? 'The user approved navigation to "$room".'
+              : 'The user did not approve navigation to "$room".';
 
         case NeuraChatPolicy.setTone:
           final tone = input['tone']?.toString() ?? '';
@@ -480,12 +512,14 @@ class NeuraAiService {
           if (onToolCommand == null) {
             return 'Tool error: tone runtime is unavailable.';
           }
-          await onToolCommand(NeuraToolCommand(
+          final approved = await onToolCommand(NeuraToolCommand(
             NeuraChatPolicy.setTone,
             {'tone': tone},
           ));
           cancel.throwIfCancelled();
-          return 'Tone set to "$tone".';
+          return approved
+              ? 'The user approved tone "$tone".'
+              : 'The user did not approve changing tone.';
 
         default:
           _diagnostics.recordToolDrop();
@@ -505,6 +539,7 @@ class NeuraAiService {
     String userPrompt, {
     required String agentId,
   }) async {
+    _throwIfCloudBlocked();
     if (!isConfigured) {
       throw StateError('Configure the AI provider key in Settings.');
     }
@@ -549,16 +584,20 @@ class NeuraAiService {
     Object? lastError;
     for (var attempt = 0; attempt <= _maxRetries; attempt++) {
       try {
+        _throwIfCloudBlocked();
         _diagnostics.recordAttempt();
-        final response = await http.post(
-          Uri.parse(_endpoint),
-          headers: {
-            'content-type': 'application/json',
-            'x-api-key': _apiKey,
-            'anthropic-version': '2023-06-01',
-          },
-          body: jsonEncode(body),
-        );
+        final response = await http
+            .post(
+              Uri.parse(_endpoint),
+              headers: {
+                'content-type': 'application/json',
+                'x-api-key': _apiKey,
+                'anthropic-version': '2023-06-01',
+              },
+              body: jsonEncode(body),
+            )
+            .timeout(_requestTimeout);
+        _throwIfCloudBlocked();
         if (response.statusCode == 200) {
           _diagnostics.recordSuccess();
           return response;
@@ -595,6 +634,14 @@ class NeuraAiService {
     throw error;
   }
 
+  void _throwIfCloudBlocked() {
+    if (!cloudRequestsAllowed) {
+      throw StateError(
+        'Cloud AI is unavailable while Neura is running in Safe Mode.',
+      );
+    }
+  }
+
   /// Runs the outgoing user message through Guardrails before it reaches the
   /// LLM. Returns a safe-alternative message to show instead if blocked.
   Future<String?> _checkGuardrails(List<NeuraChatTurn> history) async {
@@ -606,8 +653,10 @@ class NeuraAiService {
         ? moodEntries.sublist(moodEntries.length - 10)
         : moodEntries;
     final recentMoods = recentEntries
-        .map((e) => ((e.mood0to10 - 5) / 2.5).round().clamp(-2, 2))
-        .toList();
+        .map(
+          (e) => ((e.mood0to10 - 5) / 2.5).round().clamp(-2, 2).toInt(),
+        )
+        .toList(growable: false);
     final signal = DistressDetector().detect(
       recentMoods: recentMoods,
       appOpensLastHour: 0,
@@ -620,7 +669,8 @@ class NeuraAiService {
 
     final snapshot = NeuraContextSnapshot(
       now: DateTime.now(),
-      userInFocusMode: FocusController.instance.state.value.mode != FocusMode.off,
+      userInFocusMode:
+          FocusController.instance.state.value.mode != FocusMode.off,
       isMinor: isMinor,
       distressScore: signal.active ? 0.9 : 0.1,
     );
@@ -632,7 +682,8 @@ class NeuraAiService {
       options: const ['send', 'no_thanks'],
     );
 
-    final decision = Guardrails().evaluate(context: snapshot, proposal: proposal);
+    final decision =
+        Guardrails().evaluate(context: snapshot, proposal: proposal);
     if (decision.allow) return null;
 
     if (signal.active) {

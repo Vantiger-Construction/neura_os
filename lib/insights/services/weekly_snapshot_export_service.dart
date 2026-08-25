@@ -53,7 +53,8 @@ class WeeklySnapshotExportService {
   /// weekly review numbers (kindness acts, quests done, top learned).
   Future<String> exportPdf({int days = 30}) async {
     final entries = await _moodEntriesFor(days);
-    final summary = await WeeklySnapshotService.instance.buildSummary(days: days);
+    final summary =
+        await WeeklySnapshotService.instance.buildSummary(days: days);
     final review = await WeeklyReviewStore.instance.generate();
 
     final doc = pw.Document();
@@ -61,12 +62,15 @@ class WeeklySnapshotExportService {
       pw.MultiPage(
         build: (ctx) => [
           pw.Text('Neura Weekly Life Snapshot',
-              style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+              style:
+                  pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 8),
-          pw.Text('Range: last $days day(s) · Generated ${_dateLabel(DateTime.now())}',
+          pw.Text(
+              'Range: last $days day(s) · Generated ${_dateLabel(DateTime.now())}',
               style: const pw.TextStyle(fontSize: 10)),
           pw.SizedBox(height: 16),
-          pw.Text(summary.vibeSentence, style: const pw.TextStyle(fontSize: 12)),
+          pw.Text(summary.vibeSentence,
+              style: const pw.TextStyle(fontSize: 12)),
           pw.SizedBox(height: 8),
           pw.Text(
             'Storms: ${summary.stormsCount} (safety alerts: ${summary.safetyStormsCount}) · '

@@ -9,6 +9,8 @@ import 'avatar_controller.dart';
 import 'avatar_controller_viseme_ext.dart';
 
 class AvatarVisemeWiring {
+  static AvatarVisemeWiring? _active;
+
   final AvatarController controller;
   final NeuraEventBus bus;
 
@@ -18,10 +20,14 @@ class AvatarVisemeWiring {
   AvatarVisemeWiring({required this.controller, required this.bus});
 
   void start() {
-    _unsubViseme = bus.on<NeuraVisemeEvent>((e) {
+    if (!identical(_active, this)) {
+      _active?.stop();
+      _active = this;
+    }
+    _unsubViseme ??= bus.on<NeuraVisemeEvent>((e) {
       controller.setVisemeIndex(e.viseme.index);
     });
-    _unsubMouth = bus.on<NeuraMouthOpenEvent>((e) {
+    _unsubMouth ??= bus.on<NeuraMouthOpenEvent>((e) {
       controller.setMouthOpen(e.open);
     });
   }
@@ -31,5 +37,8 @@ class AvatarVisemeWiring {
     _unsubMouth?.call();
     _unsubViseme = null;
     _unsubMouth = null;
+    if (identical(_active, this)) {
+      _active = null;
+    }
   }
 }

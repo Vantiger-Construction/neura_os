@@ -7,10 +7,13 @@ import 'avatar_controller.dart';
 /// Listens to NeuraEventBus and drives AvatarController signals.
 /// This is the "nervous system" glue: events in → expressions out.
 class AvatarOrchestrator {
+  static AvatarOrchestrator? _active;
+
   final AvatarController controller;
   final NeuraEventBus bus;
 
   StreamSubscription<NeuraEvent>? _sub;
+  Timer? _errorResetTimer;
 
   /// How long the avatar stays in the error state after an error event.
   final Duration errorHold;
@@ -22,6 +25,10 @@ class AvatarOrchestrator {
   });
 
   void start() {
+    if (!identical(_active, this)) {
+      _active?.dispose();
+      _active = this;
+    }
     _sub ??= bus.stream.listen(_onEvent);
   }
 
@@ -56,7 +63,9 @@ class AvatarOrchestrator {
         controller.setTalking(false);
         controller.setListening(false);
 
-        Future<void>.delayed(errorHold, () {
+        _errorResetTimer?.cancel();
+        _errorResetTimer = Timer(errorHold, () {
+          _errorResetTimer = null;
           controller.setError(false);
         });
         break;
@@ -64,7 +73,12 @@ class AvatarOrchestrator {
   }
 
   void dispose() {
+    _errorResetTimer?.cancel();
+    _errorResetTimer = null;
     _sub?.cancel();
     _sub = null;
+    if (identical(_active, this)) {
+      _active = null;
+    }
   }
 }

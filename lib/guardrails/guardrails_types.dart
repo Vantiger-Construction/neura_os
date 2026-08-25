@@ -54,6 +54,8 @@ class GuardrailDecision {
   factory GuardrailDecision.allow(NeuraProposal proposal) =>
       GuardrailDecision._(allow: true, proposal: proposal);
 
-  factory GuardrailDecision.block(String reason, {NeuraProposal? safeAlternative}) =>
-      GuardrailDecision._(allow: false, reason: reason, safeAlternative: safeAlternative);
+  factory GuardrailDecision.block(String reason,
+          {NeuraProposal? safeAlternative}) =>
+      GuardrailDecision._(
+          allow: false, reason: reason, safeAlternative: safeAlternative);
 }

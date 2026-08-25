@@ -31,7 +31,8 @@ class _NeuraRecapScreenState extends State<NeuraRecapScreen> {
     final from = _range == _RecapRange.month
         ? DateTime(now.year, now.month - 1, now.day)
         : DateTime(now.year - 1, now.month, now.day);
-    final data = await NeuraRecapService.instance.buildRecap(from: from, to: now);
+    final data =
+        await NeuraRecapService.instance.buildRecap(from: from, to: now);
     if (!mounted) return;
     setState(() {
       _data = data;
@@ -64,7 +65,10 @@ class _NeuraRecapScreenState extends State<NeuraRecapScreen> {
             tooltip: 'Share as PDF',
             onPressed: (_exporting || data == null) ? null : _export,
             icon: _exporting
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.ios_share),
           ),
         ],
@@ -78,8 +82,10 @@ class _NeuraRecapScreenState extends State<NeuraRecapScreen> {
                 children: [
                   SegmentedButton<_RecapRange>(
                     segments: const [
-                      ButtonSegment(value: _RecapRange.month, label: Text('Last month')),
-                      ButtonSegment(value: _RecapRange.year, label: Text('Last year')),
+                      ButtonSegment(
+                          value: _RecapRange.month, label: Text('Last month')),
+                      ButtonSegment(
+                          value: _RecapRange.year, label: Text('Last year')),
                     ],
                     selected: {_range},
                     onSelectionChanged: (s) {
@@ -139,7 +145,8 @@ class _NeuraRecapScreenState extends State<NeuraRecapScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Highlights', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const Text('Highlights',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             if (data.moodAvg != null)
               Text(

@@ -22,7 +22,8 @@ class NeuraRoomMemoryItem {
         'data': data,
       };
 
-  static NeuraRoomMemoryItem fromJson(Map<String, dynamic> j) => NeuraRoomMemoryItem(
+  static NeuraRoomMemoryItem fromJson(Map<String, dynamic> j) =>
+      NeuraRoomMemoryItem(
         at: DateTime.parse(j['at'] as String),
         tag: j['tag'] as String,
         summary: j['summary'] as String,
@@ -130,5 +131,10 @@ class NeuraRoomMemory {
       default:
         return 'Welcome back — I remember what we were doing here.';
     }
+  }
+
+  void resetAfterDataWipe() {
+    _byRoom.clear();
+    _loaded = false;
   }
 }

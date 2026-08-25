@@ -10,6 +10,7 @@ enum MoodLabel {
 
 class MoodState {
   final DateTime date;
+
   /// 0.0 - 10.0
   final double score;
   final MoodLabel label;

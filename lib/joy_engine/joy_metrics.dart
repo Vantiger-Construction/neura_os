@@ -6,7 +6,11 @@ class JoyMetrics {
     try {
       await MemoryGraphService.I.logSuggestion(
         kind: 'JOY_MOMENT',
-        payload: {'id': moment.id, 'title': moment.title, 'type': moment.type.name},
+        payload: {
+          'id': moment.id,
+          'title': moment.title,
+          'type': moment.type.name
+        },
         outcome: result,
       );
     } catch (_) {

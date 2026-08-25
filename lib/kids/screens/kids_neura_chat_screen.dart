@@ -96,7 +96,8 @@ class _KidsNeuraChatScreenState extends State<KidsNeuraChatScreen> {
 
     if (!NeuraAiService.instance.isConfigured) {
       setState(() {
-        _lines.add(_ChatLine.bot("I can't chat for real right now -- ask a grown-up to check the app setup."));
+        _lines.add(_ChatLine.bot(
+            "I can't chat for real right now -- ask a grown-up to check the app setup."));
         _busy = false;
       });
       _scrollToEnd();
@@ -119,7 +120,8 @@ class _KidsNeuraChatScreenState extends State<KidsNeuraChatScreen> {
     } catch (_) {
       setState(() {
         _lines.remove(botLine);
-        _lines.add(_ChatLine.bot("Hmm, I couldn't think of a reply just then. Try again?"));
+        _lines.add(_ChatLine.bot(
+            "Hmm, I couldn't think of a reply just then. Try again?"));
       });
       _scrollToEnd();
     } finally {
@@ -140,15 +142,19 @@ class _KidsNeuraChatScreenState extends State<KidsNeuraChatScreen> {
               itemCount: _lines.length,
               itemBuilder: (context, i) {
                 final line = _lines[i];
-                final align = line.isUser ? Alignment.centerRight : Alignment.centerLeft;
-                final color = line.isUser ? Colors.blueGrey.shade700 : Colors.grey.shade900;
+                final align =
+                    line.isUser ? Alignment.centerRight : Alignment.centerLeft;
+                final color = line.isUser
+                    ? Colors.blueGrey.shade700
+                    : Colors.grey.shade900;
                 return Align(
                   alignment: align,
                   child: Container(
                     margin: const EdgeInsets.symmetric(vertical: 6),
                     padding: const EdgeInsets.all(12),
                     constraints: const BoxConstraints(maxWidth: 560),
-                    decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(14)),
+                    decoration: BoxDecoration(
+                        color: color, borderRadius: BorderRadius.circular(14)),
                     child: Text(line.text.isEmpty ? '…' : line.text),
                   ),
                 );

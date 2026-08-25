@@ -45,38 +45,41 @@ class _QuestModeScreenState extends State<QuestModeScreen> {
 
   bool _doneToday(String questId) {
     final today = normalizeDay(DateTime.now());
-    return _done.any((d) => d.questId == questId && normalizeDay(d.day) == today);
+    return _done
+        .any((d) => d.questId == questId && normalizeDay(d.day) == today);
   }
 
-Future<void> _maybeCoachQuest(Quest quest) async {
-  final prefs = HumanPrefsController.instance.prefs.value;
-  if (!prefs.coachEnabled) return;
+  Future<void> _maybeCoachQuest(Quest quest) async {
+    final prefs = HumanPrefsController.instance.prefs.value;
+    if (!prefs.coachEnabled) return;
 
-  final mood = await MoodStore.instance.latest();
-  final streak = await QuestStore.instance.currentStreak();
-  final draft = NeuraCoachEngine.instance.forQuestDone(quest: quest, streak: streak, latestMood: mood);
-  await CoachStore.instance.add(
-    source: CoachSourceType.questDone,
-    title: draft.title,
-    body: draft.body,
-    tags: draft.tags,
-  );
-
-  if (!mounted) return;
-  if (prefs.coachPopups) {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(draft.title),
-        content: SingleChildScrollView(child: Text(draft.body)),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close')),
-        ],
-      ),
+    final mood = await MoodStore.instance.latest();
+    final streak = await QuestStore.instance.currentStreak();
+    final draft = NeuraCoachEngine.instance
+        .forQuestDone(quest: quest, streak: streak, latestMood: mood);
+    await CoachStore.instance.add(
+      source: CoachSourceType.questDone,
+      title: draft.title,
+      body: draft.body,
+      tags: draft.tags,
     );
-  }
-}
 
+    if (!mounted) return;
+    if (prefs.coachPopups) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(draft.title),
+          content: SingleChildScrollView(child: Text(draft.body)),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Close')),
+          ],
+        ),
+      );
+    }
+  }
 
   Future<void> _addQuestDialog() async {
     final titleC = TextEditingController();
@@ -92,20 +95,27 @@ Future<void> _maybeCoachQuest(Quest quest) async {
             children: [
               TextField(
                 controller: titleC,
-                decoration: const InputDecoration(labelText: 'Title', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                    labelText: 'Title', border: OutlineInputBorder()),
                 textInputAction: TextInputAction.next,
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: detailsC,
-                decoration: const InputDecoration(labelText: 'Details (optional)', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                    labelText: 'Details (optional)',
+                    border: OutlineInputBorder()),
                 maxLines: 3,
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Create')),
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Create')),
           ],
         );
       },
@@ -163,17 +173,20 @@ Future<void> _maybeCoachQuest(Quest quest) async {
   Widget build(BuildContext context) {
     final explain = NeuraExplainSpec(
       title: 'Quest Mode',
-      body: 'Quests are tiny missions designed to generate momentum without turning your life into a spreadsheet cult.',
+      body:
+          'Quests are tiny missions designed to generate momentum without turning your life into a spreadsheet cult.',
       bullets: const [
         'Keep quests small (5–15 minutes).',
         'Mark one done per day to build a streak.',
         'Neura can suggest quests based on your goals + recent mood.',
       ],
-      footer: "Not medical advice. If you're in danger or in crisis, use the Support Center or local emergency services.",
+      footer:
+          "Not medical advice. If you're in danger or in crisis, use the Support Center or local emergency services.",
     );
 
     final active = _quests.where((q) => !q.archived).toList().reversed.toList();
-    final archived = _quests.where((q) => q.archived).toList().reversed.toList();
+    final archived =
+        _quests.where((q) => q.archived).toList().reversed.toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -204,8 +217,10 @@ Future<void> _maybeCoachQuest(Quest quest) async {
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.local_fire_department_outlined),
-                    title: Text('Streak: $_streak day${_streak == 1 ? '' : 's'}'),
-                    subtitle: const Text('One quest done per day keeps the doomscroll away.'),
+                    title:
+                        Text('Streak: $_streak day${_streak == 1 ? '' : 's'}'),
+                    subtitle: const Text(
+                        'One quest done per day keeps the doomscroll away.'),
                     trailing: FilledButton.icon(
                       onPressed: _suggestQuest,
                       icon: const Icon(Icons.auto_awesome_outlined),
@@ -222,9 +237,12 @@ Future<void> _maybeCoachQuest(Quest quest) async {
                   final doneToday = _doneToday(q.id);
                   return Card(
                     child: ListTile(
-                      leading: Icon(doneToday ? Icons.check_circle : Icons.radio_button_unchecked),
+                      leading: Icon(doneToday
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked),
                       title: Text(q.title),
-                      subtitle: q.details.trim().isEmpty ? null : Text(q.details),
+                      subtitle:
+                          q.details.trim().isEmpty ? null : Text(q.details),
                       onTap: () async {
                         if (doneToday) {
                           await QuestStore.instance.unmarkDoneToday(q.id);
@@ -236,12 +254,17 @@ Future<void> _maybeCoachQuest(Quest quest) async {
                       },
                       trailing: PopupMenuButton<String>(
                         onSelected: (v) async {
-                          if (v == 'archive') await QuestStore.instance.toggleArchived(q.id);
-                          if (v == 'delete') await QuestStore.instance.deleteQuest(q.id);
+                          if (v == 'archive') {
+                            await QuestStore.instance.toggleArchived(q.id);
+                          }
+                          if (v == 'delete') {
+                            await QuestStore.instance.deleteQuest(q.id);
+                          }
                           await _load();
                         },
                         itemBuilder: (ctx) => const [
-                          PopupMenuItem(value: 'archive', child: Text('Archive')),
+                          PopupMenuItem(
+                              value: 'archive', child: Text('Archive')),
                           PopupMenuItem(value: 'delete', child: Text('Delete')),
                         ],
                       ),
@@ -250,23 +273,31 @@ Future<void> _maybeCoachQuest(Quest quest) async {
                 }),
                 const SizedBox(height: 16),
                 if (archived.isNotEmpty) ...[
-                  Text('Archived', style: Theme.of(context).textTheme.titleMedium),
+                  Text('Archived',
+                      style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
                   ...archived.map((q) {
                     return Card(
                       child: ListTile(
                         leading: const Icon(Icons.archive_outlined),
                         title: Text(q.title),
-                        subtitle: const Text('Tap menu to unarchive or delete.'),
+                        subtitle:
+                            const Text('Tap menu to unarchive or delete.'),
                         trailing: PopupMenuButton<String>(
                           onSelected: (v) async {
-                            if (v == 'unarchive') await QuestStore.instance.toggleArchived(q.id);
-                            if (v == 'delete') await QuestStore.instance.deleteQuest(q.id);
+                            if (v == 'unarchive') {
+                              await QuestStore.instance.toggleArchived(q.id);
+                            }
+                            if (v == 'delete') {
+                              await QuestStore.instance.deleteQuest(q.id);
+                            }
                             await _load();
                           },
                           itemBuilder: (ctx) => const [
-                            PopupMenuItem(value: 'unarchive', child: Text('Unarchive')),
-                            PopupMenuItem(value: 'delete', child: Text('Delete')),
+                            PopupMenuItem(
+                                value: 'unarchive', child: Text('Unarchive')),
+                            PopupMenuItem(
+                                value: 'delete', child: Text('Delete')),
                           ],
                         ),
                       ),

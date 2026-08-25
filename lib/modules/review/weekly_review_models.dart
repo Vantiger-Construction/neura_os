@@ -36,7 +36,9 @@ class WeeklyReview {
       };
 
   static WeeklyReview fromJson(Map<String, dynamic> j) => WeeklyReview(
-        weekStart: DateTime.tryParse(j['weekStart']?.toString() ?? '')?.toLocal() ?? DateTime.now(),
+        weekStart:
+            DateTime.tryParse(j['weekStart']?.toString() ?? '')?.toLocal() ??
+                DateTime.now(),
         moodAvg: (j['moodAvg'] as num?)?.round() ?? 0,
         moodMin: (j['moodMin'] as num?)?.round() ?? 0,
         moodMax: (j['moodMax'] as num?)?.round() ?? 0,
@@ -44,20 +46,26 @@ class WeeklyReview {
         kindnessActs: (j['kindnessActs'] as num?)?.round() ?? 0,
         questDone: (j['questDone'] as num?)?.round() ?? 0,
         topLearned: (j['topLearned'] is List)
-            ? (j['topLearned'] as List).map((e) => e.toString()).toList(growable: false)
+            ? (j['topLearned'] as List)
+                .map((e) => e.toString())
+                .toList(growable: false)
             : const <String>[],
         note: j['note']?.toString() ?? '',
       );
 }
 
-String encodeWeeklyReviews(List<WeeklyReview> list) => jsonEncode(list.map((e) => e.toJson()).toList());
+String encodeWeeklyReviews(List<WeeklyReview> list) =>
+    jsonEncode(list.map((e) => e.toJson()).toList());
 
 List<WeeklyReview> decodeWeeklyReviews(String raw) {
   if (raw.trim().isEmpty) return <WeeklyReview>[];
   try {
     final decoded = jsonDecode(raw);
     if (decoded is! List) return <WeeklyReview>[];
-    final out = decoded.whereType<Map>().map((m) => WeeklyReview.fromJson(m.cast<String, dynamic>())).toList();
+    final out = decoded
+        .whereType<Map>()
+        .map((m) => WeeklyReview.fromJson(m.cast<String, dynamic>()))
+        .toList();
     out.sort((a, b) => a.weekStart.compareTo(b.weekStart));
     return out;
   } catch (_) {

@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import '../services/relationship_profile_service.dart';
 import '../services/promise_service.dart';
@@ -16,8 +15,7 @@ class RelationshipListScreen extends StatefulWidget {
   const RelationshipListScreen({super.key});
 
   @override
-  State<RelationshipListScreen> createState() =>
-      _RelationshipListScreenState();
+  State<RelationshipListScreen> createState() => _RelationshipListScreenState();
 }
 
 class _RelationshipListScreenState extends State<RelationshipListScreen> {

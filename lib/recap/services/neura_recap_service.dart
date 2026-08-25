@@ -38,7 +38,8 @@ class NeuraRecapService {
   NeuraRecapService._();
   static final NeuraRecapService instance = NeuraRecapService._();
 
-  Future<RecapData> buildRecap({required DateTime from, required DateTime to}) async {
+  Future<RecapData> buildRecap(
+      {required DateTime from, required DateTime to}) async {
     final allMoods = await MoodStore.instance.getAll();
     final moods = allMoods
         .where((m) => !m.timestamp.isBefore(from) && m.timestamp.isBefore(to))
@@ -51,18 +52,23 @@ class NeuraRecapService {
     if (moods.isNotEmpty) {
       moodMin = moods.map((e) => e.mood0to10).reduce((a, b) => a < b ? a : b);
       moodMax = moods.map((e) => e.mood0to10).reduce((a, b) => a > b ? a : b);
-      moodAvg = (moods.fold<int>(0, (p, e) => p + e.mood0to10) / moods.length).round();
+      moodAvg = (moods.fold<int>(0, (p, e) => p + e.mood0to10) / moods.length)
+          .round();
     }
 
     final allReviews = await WeeklyReviewStore.instance.getAll();
     final reviewsInRange = allReviews.where(
-      (r) => !r.weekStart.isBefore(_startOfWeek(from).subtract(const Duration(days: 7))) &&
+      (r) =>
+          !r.weekStart
+              .isBefore(_startOfWeek(from).subtract(const Duration(days: 7))) &&
           r.weekStart.isBefore(to),
     );
-    final kindnessTotal = reviewsInRange.fold<int>(0, (p, r) => p + r.kindnessActs);
+    final kindnessTotal =
+        reviewsInRange.fold<int>(0, (p, r) => p + r.kindnessActs);
     final questsTotal = reviewsInRange.fold<int>(0, (p, r) => p + r.questDone);
 
-    final memoryNodes = await MemoryGraphService.I.nodesBetween(from, to, limit: 1000);
+    final memoryNodes =
+        await MemoryGraphService.I.nodesBetween(from, to, limit: 1000);
     int joyCompleted = 0;
     int joySkipped = 0;
     for (final node in memoryNodes) {

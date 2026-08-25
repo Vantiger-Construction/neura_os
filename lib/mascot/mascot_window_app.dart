@@ -113,8 +113,11 @@ class _MascotHomeState extends State<_MascotHome>
         case 'mood':
           if (!mounted) break;
           setState(() {
-            _mood = ((args['mood'] as num?) ?? _mood).toDouble().clamp(-1.0, 1.0);
-            _energy = ((args['energy'] as num?) ?? _energy).toDouble().clamp(0.0, 1.0);
+            _mood =
+                ((args['mood'] as num?) ?? _mood).toDouble().clamp(-1.0, 1.0);
+            _energy = ((args['energy'] as num?) ?? _energy)
+                .toDouble()
+                .clamp(0.0, 1.0);
           });
           break;
         case 'pulse':
@@ -134,7 +137,8 @@ class _MascotHomeState extends State<_MascotHome>
       _pulseController.repeat(reverse: true);
     } else if (!_talking) {
       _pulseController.stop();
-      _pulseController.animateTo(0, duration: const Duration(milliseconds: 300));
+      _pulseController.animateTo(0,
+          duration: const Duration(milliseconds: 300));
     }
   }
 
@@ -145,7 +149,8 @@ class _MascotHomeState extends State<_MascotHome>
       _pulseController.repeat(reverse: true);
     } else if (!_thinking) {
       _pulseController.stop();
-      _pulseController.animateTo(0, duration: const Duration(milliseconds: 300));
+      _pulseController.animateTo(0,
+          duration: const Duration(milliseconds: 300));
     }
   }
 
@@ -153,7 +158,8 @@ class _MascotHomeState extends State<_MascotHome>
     if (!mounted) return;
     _pulseController.forward(from: 0).then((_) {
       if (mounted && !_thinking && !_talking) {
-        _pulseController.animateTo(0, duration: const Duration(milliseconds: 300));
+        _pulseController.animateTo(0,
+            duration: const Duration(milliseconds: 300));
       }
     });
   }
@@ -175,7 +181,8 @@ class _MascotHomeState extends State<_MascotHome>
       ),
       () async {
         final prefs = await SharedPreferences.getInstance();
-        final saved = prefs.getDouble(_kPosXKey) != null && prefs.getDouble(_kPosYKey) != null
+        final saved = prefs.getDouble(_kPosXKey) != null &&
+                prefs.getDouble(_kPosYKey) != null
             ? Offset(prefs.getDouble(_kPosXKey)!, prefs.getDouble(_kPosYKey)!)
             : await _defaultPosition();
         await _wm.setPosition(saved);
@@ -250,7 +257,8 @@ class _MascotHomeState extends State<_MascotHome>
               // doesn't repeat in lockstep and reads as organic, not robotic.
               final swayDeg = 1.4 * math.sin(t * 0.5 + 1.0);
               final bobY = 3.5 * math.sin(t * 0.7);
-              final idleGlowAlpha = 0.05 + 0.035 * (0.5 + 0.5 * math.sin(t * 0.9));
+              final idleGlowAlpha =
+                  0.05 + 0.035 * (0.5 + 0.5 * math.sin(t * 0.9));
 
               final noticeT = Curves.easeOutBack.transform(_notice.value);
               final noticeScale = 1.0 + 0.1 * math.sin(noticeT * math.pi);
@@ -281,7 +289,8 @@ class _MascotHomeState extends State<_MascotHome>
   Widget _buildBody(BuildContext context, double idleGlowAlpha) {
     final active = _thinking || _talking;
     final pt = _pulseController.value;
-    final pulseGlowStrength = active ? (0.25 + 0.35 * pt) * (0.5 + _energy) : 0.0;
+    final pulseGlowStrength =
+        active ? (0.25 + 0.35 * pt) * (0.5 + _energy) : 0.0;
     return DecoratedBox(
       decoration: BoxDecoration(
         boxShadow: [
@@ -292,7 +301,8 @@ class _MascotHomeState extends State<_MascotHome>
           ),
           if (pulseGlowStrength > 0)
             BoxShadow(
-              color: _glowColor.withValues(alpha: pulseGlowStrength.clamp(0.0, 1.0)),
+              color: _glowColor.withValues(
+                  alpha: pulseGlowStrength.clamp(0.0, 1.0)),
               blurRadius: 30 + 20 * pt,
               spreadRadius: 4 + 6 * pt,
             ),
@@ -301,8 +311,10 @@ class _MascotHomeState extends State<_MascotHome>
       child: Image.asset(
         'assets/images/neura_fullbody.png',
         fit: BoxFit.contain,
-        cacheWidth: (_kWindowWidth * MediaQuery.devicePixelRatioOf(context)).round(),
-        cacheHeight: (_kWindowHeight * MediaQuery.devicePixelRatioOf(context)).round(),
+        cacheWidth:
+            (_kWindowWidth * MediaQuery.devicePixelRatioOf(context)).round(),
+        cacheHeight:
+            (_kWindowHeight * MediaQuery.devicePixelRatioOf(context)).round(),
         errorBuilder: (_, __, ___) => const Center(
           child: Text(
             'NEURA',

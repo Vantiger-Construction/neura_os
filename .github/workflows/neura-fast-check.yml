@@ -29,13 +29,26 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.7'
+          channel: stable
+          cache: true
+
       - name: Verify local tools
-        shell: pwsh
+        # GitHub writes each run block to an unsigned temporary .ps1 file.
+        # Bypass applies only to this CI process and does not change machine
+        # or user execution-policy settings on the self-hosted runner.
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
-          if (Get-Command flutter -ErrorAction SilentlyContinue) { flutter --version } else { Write-Host "Flutter not found" }
-          if (Get-Command dart -ErrorAction SilentlyContinue) { dart --version } else { Write-Host "Dart not found" }
+          flutter --version
+          dart --version
           git --version
-          if (Get-Command cargo -ErrorAction SilentlyContinue) { cargo --version } else { Write-Host "Cargo not found" }
+          # neura_swarm (rust/) needs cargo on this machine's PATH.
+          cargo --version
+          # The authored Windows runner fetches C++/WinRT through NuGet.
+          nuget help | Select-Object -First 1
 
       - name: Run optimized validation
         shell: pwsh

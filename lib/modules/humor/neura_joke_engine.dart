@@ -26,7 +26,8 @@ class NeuraJokeEngine {
   /// Picks a random joke, optionally including the spicier pool, and
   /// avoiding [exclude] (disliked jokes, or the just-shown one) where a
   /// clean-enough alternative still exists.
-  static String randomJoke({required bool includeSpicy, Set<String> exclude = const {}}) {
+  static String randomJoke(
+      {required bool includeSpicy, Set<String> exclude = const {}}) {
     final pool = includeSpicy ? [...cleanJokes, ...spicyJokes] : cleanJokes;
     final available = pool.where((j) => !exclude.contains(j)).toList();
     final choices = available.isEmpty ? pool : available;

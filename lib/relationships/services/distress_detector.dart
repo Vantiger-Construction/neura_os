@@ -1,4 +1,3 @@
-
 class DistressSignal {
   final bool active;
   final List<String> reasons;

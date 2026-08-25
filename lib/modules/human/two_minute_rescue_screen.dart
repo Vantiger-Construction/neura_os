@@ -23,7 +23,6 @@ class _TwoMinuteRescueScreenState extends State<TwoMinuteRescueScreen> {
   MoodEntry? _latest;
   bool _completedCoachFired = false;
 
-
   @override
   void initState() {
     super.initState();
@@ -74,19 +73,20 @@ class _TwoMinuteRescueScreenState extends State<TwoMinuteRescueScreen> {
     });
   }
 
-
   Future<void> _markHelpful(String id) async {
     final allow = HumanPrefsController.instance.prefs.value.allowLearning;
     if (!allow) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Local learning is off in Accessibility settings.')),
+        const SnackBar(
+            content: Text('Local learning is off in Accessibility settings.')),
       );
       return;
     }
     await LearningStore.instance.markHelpful(id);
     if (!mounted) return;
-    await CoachHooks.afterRescueHelpful(context, actionId: id, latestMood: _latest);
+    await CoachHooks.afterRescueHelpful(context,
+        actionId: id, latestMood: _latest);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Noted. Your future self says thanks.')),
@@ -145,11 +145,13 @@ class _TwoMinuteRescueScreenState extends State<TwoMinuteRescueScreen> {
               child: ListTile(
                 leading: const Icon(Icons.check_circle_outline),
                 title: const Text('You did it.'),
-                subtitle: const Text('Two minutes is enough to change the direction of a day.'),
+                subtitle: const Text(
+                    'Two minutes is enough to change the direction of a day.'),
               ),
             ),
           const SizedBox(height: 8),
-          Text('Pick one micro‑action:', style: Theme.of(context).textTheme.titleMedium),
+          Text('Pick one micro‑action:',
+              style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           for (final s in suggestions)
             Card(
@@ -187,10 +189,14 @@ class _Suggestion {
 List<_Suggestion> _suggestions(MoodEntry? latest) {
   // Default "neutral good" list.
   final base = <_Suggestion>[
-    const _Suggestion('water', Icons.water_drop_outlined, 'Drink water', 'Boring. Effective. Biology wins.'),
-    const _Suggestion('breath', Icons.air_outlined, 'One breathing round', 'In 4, hold 4, out 6. Repeat.'),
-    const _Suggestion('sun', Icons.wb_sunny_outlined, 'Step outside', 'Two minutes of sky counts.'),
-    const _Suggestion('tidy', Icons.cleaning_services_outlined, 'Reset one surface', 'Desk corner. Sink. Anything.'),
+    const _Suggestion('water', Icons.water_drop_outlined, 'Drink water',
+        'Boring. Effective. Biology wins.'),
+    const _Suggestion('breath', Icons.air_outlined, 'One breathing round',
+        'In 4, hold 4, out 6. Repeat.'),
+    const _Suggestion('sun', Icons.wb_sunny_outlined, 'Step outside',
+        'Two minutes of sky counts.'),
+    const _Suggestion('tidy', Icons.cleaning_services_outlined,
+        'Reset one surface', 'Desk corner. Sink. Anything.'),
   ];
 
   if (latest == null) return base;
@@ -198,43 +204,68 @@ List<_Suggestion> _suggestions(MoodEntry? latest) {
   final mood = latest.mood0to10.clamp(0, 10);
   final note = latest.note.toLowerCase();
 
-  final anxious = note.contains('stressed') || note.contains('anx') || note.contains('overwhelm') || note.contains('panic');
-  final angry = note.contains('angry') || note.contains('mad') || note.contains('furious') || note.contains('rage');
-  final lowWords = note.contains('sad') || note.contains('down') || note.contains('low') || note.contains('hopeless');
+  final anxious = note.contains('stressed') ||
+      note.contains('anx') ||
+      note.contains('overwhelm') ||
+      note.contains('panic');
+  final angry = note.contains('angry') ||
+      note.contains('mad') ||
+      note.contains('furious') ||
+      note.contains('rage');
+  final lowWords = note.contains('sad') ||
+      note.contains('down') ||
+      note.contains('low') ||
+      note.contains('hopeless');
 
   if (anxious) {
     return [
-      const _Suggestion('breath', Icons.air_outlined, 'Breath reset', 'In 4, hold 4, out 6.'),
-      const _Suggestion('name5', Icons.visibility_outlined, 'Name 5 things', '5 see, 4 feel, 3 hear, 2 smell, 1 taste.'),
-      const _Suggestion('water', Icons.water_drop_outlined, 'Drink water', 'You are a clever swamp creature.'),
-      const _Suggestion('walk2', Icons.directions_walk_outlined, '2-minute walk', 'Movement burns alarm energy.'),
+      const _Suggestion(
+          'breath', Icons.air_outlined, 'Breath reset', 'In 4, hold 4, out 6.'),
+      const _Suggestion('name5', Icons.visibility_outlined, 'Name 5 things',
+          '5 see, 4 feel, 3 hear, 2 smell, 1 taste.'),
+      const _Suggestion('water', Icons.water_drop_outlined, 'Drink water',
+          'You are a clever swamp creature.'),
+      const _Suggestion('walk2', Icons.directions_walk_outlined,
+          '2-minute walk', 'Movement burns alarm energy.'),
     ];
   }
 
   if (angry) {
     return [
-      const _Suggestion('write1', Icons.edit_outlined, 'Write the trigger', 'One sentence: what got violated?'),
-      const _Suggestion('walk2', Icons.directions_walk_outlined, '2-minute walk', 'Let the body metabolize the spike.'),
-      const _Suggestion('cold', Icons.ac_unit_outlined, 'Cold splash', 'Hands under cold water for 20 sec.'),
-      const _Suggestion('breath', Icons.air_outlined, 'Breath reset', 'In 4, hold 4, out 6.'),
+      const _Suggestion('write1', Icons.edit_outlined, 'Write the trigger',
+          'One sentence: what got violated?'),
+      const _Suggestion('walk2', Icons.directions_walk_outlined,
+          '2-minute walk', 'Let the body metabolize the spike.'),
+      const _Suggestion('cold', Icons.ac_unit_outlined, 'Cold splash',
+          'Hands under cold water for 20 sec.'),
+      const _Suggestion(
+          'breath', Icons.air_outlined, 'Breath reset', 'In 4, hold 4, out 6.'),
     ];
   }
 
   if (mood <= 3 || lowWords) {
     return [
-      const _Suggestion('text1', Icons.message_outlined, 'Text one safe human', 'One sentence: "Got 2 minutes?"'),
-      const _Suggestion('sun', Icons.wb_sunny_outlined, 'Sky + light', 'Open a window or step out.'),
-      const _Suggestion('water', Icons.water_drop_outlined, 'Water', 'Your brain runs on it.'),
-      const _Suggestion('music1', Icons.music_note_outlined, 'One song', 'Pick steady, not doom-spiral.'),
+      const _Suggestion('text1', Icons.message_outlined, 'Text one safe human',
+          'One sentence: "Got 2 minutes?"'),
+      const _Suggestion('sun', Icons.wb_sunny_outlined, 'Sky + light',
+          'Open a window or step out.'),
+      const _Suggestion('water', Icons.water_drop_outlined, 'Water',
+          'Your brain runs on it.'),
+      const _Suggestion('music1', Icons.music_note_outlined, 'One song',
+          'Pick steady, not doom-spiral.'),
     ];
   }
 
   if (mood >= 8) {
     return [
-      const _Suggestion('grat', Icons.favorite_outline, 'Gratitude ping', 'Name one thing that is working.'),
-      const _Suggestion('plan1', Icons.checklist_outlined, 'One next step', 'Write the next single step for today.'),
-      const _Suggestion('water', Icons.water_drop_outlined, 'Water', 'Keep the machine happy.'),
-      const _Suggestion('share', Icons.ios_share_outlined, 'Share the win', 'Text someone: "Small win today."'),
+      const _Suggestion('grat', Icons.favorite_outline, 'Gratitude ping',
+          'Name one thing that is working.'),
+      const _Suggestion('plan1', Icons.checklist_outlined, 'One next step',
+          'Write the next single step for today.'),
+      const _Suggestion('water', Icons.water_drop_outlined, 'Water',
+          'Keep the machine happy.'),
+      const _Suggestion('share', Icons.ios_share_outlined, 'Share the win',
+          'Text someone: "Small win today."'),
     ];
   }
 

@@ -47,8 +47,12 @@ class _LegacyDetailScreenState extends State<LegacyDetailScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            ElevatedButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Continue')),
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(context, controller.text),
+                child: const Text('Continue')),
           ],
         ),
       );
@@ -80,31 +84,44 @@ class _LegacyDetailScreenState extends State<LegacyDetailScreen> {
     }
   }
 
-  
   bool _looksLikeGrandma(String s) {
     final v = s.toLowerCase();
-    return v.contains('grandma') || v.contains('gramma') || v.contains('granny') || v.contains('nana') || v.contains('nan');
+    return v.contains('grandma') ||
+        v.contains('gramma') ||
+        v.contains('granny') ||
+        v.contains('nana') ||
+        v.contains('nan');
   }
 
   Future<void> _oneTapGrandma(LegacyCapsule c) async {
     try {
-      final contacts = await LegacyTrustedContactsService.instance.listContacts();
-      final grandma = contacts.where((x) => _looksLikeGrandma(x.displayName) || _looksLikeGrandma(x.note)).toList();
+      final contacts =
+          await LegacyTrustedContactsService.instance.listContacts();
+      final grandma = contacts
+          .where((x) =>
+              _looksLikeGrandma(x.displayName) || _looksLikeGrandma(x.note))
+          .toList();
       if (grandma.isEmpty) {
         if (!mounted) return;
         final add = await showDialog<bool>(
           context: context,
           builder: (_) => AlertDialog(
             title: const Text('No "Grandma" contact yet'),
-            content: const Text('Add a trusted contact named "Grandma" (or Nana/Granny) to enable one‑tap sending.'),
+            content: const Text(
+                'Add a trusted contact named "Grandma" (or Nana/Granny) to enable one‑tap sending.'),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Not now')),
-              ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add contact')),
+              TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Not now')),
+              ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Add contact')),
             ],
           ),
         );
         if (add == true) {
-          await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LegacyTrustedContactsScreen()));
+          await Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const LegacyTrustedContactsScreen()));
         }
         return;
       }
@@ -123,7 +140,8 @@ class _LegacyDetailScreenState extends State<LegacyDetailScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Grandma send failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Grandma send failed: $e')));
     }
   }
 
@@ -141,11 +159,12 @@ class _LegacyDetailScreenState extends State<LegacyDetailScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('PDF export failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('PDF export failed: $e')));
     }
   }
 
-Future<void> _shareDeliveryPacket(LegacyCapsule c) async {
+  Future<void> _shareDeliveryPacket(LegacyCapsule c) async {
     try {
       final xfile = await LegacyDeliveryService.instance.createDeliveryPacket(
         capsule: c,
@@ -174,10 +193,15 @@ Future<void> _shareDeliveryPacket(LegacyCapsule c) async {
           context: context,
           builder: (_) => AlertDialog(
             title: const Text('Export JSON'),
-            content: const Text('Export encrypted as-is, or decrypt first (requires passphrase)?'),
+            content: const Text(
+                'Export encrypted as-is, or decrypt first (requires passphrase)?'),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context, 'raw'), child: const Text('Raw')),
-              ElevatedButton(onPressed: () => Navigator.pop(context, 'decrypt'), child: const Text('Decrypt')),
+              TextButton(
+                  onPressed: () => Navigator.pop(context, 'raw'),
+                  child: const Text('Raw')),
+              ElevatedButton(
+                  onPressed: () => Navigator.pop(context, 'decrypt'),
+                  child: const Text('Decrypt')),
             ],
           ),
         );
@@ -194,7 +218,8 @@ Future<void> _shareDeliveryPacket(LegacyCapsule c) async {
         passphrase: pass,
         decrypted: decrypted,
       );
-      await Share.shareXFiles([XFile(file.path)], text: 'Legacy Capsule export (.json)');
+      await Share.shareXFiles([XFile(file.path)],
+          text: 'Legacy Capsule export (.json)');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -208,10 +233,15 @@ Future<void> _shareDeliveryPacket(LegacyCapsule c) async {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Delete capsule?'),
-        content: const Text('This deletes the capsule and attachments from this device.'),
+        content: const Text(
+            'This deletes the capsule and attachments from this device.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete')),
         ],
       ),
     );
@@ -228,7 +258,10 @@ Future<void> _shareDeliveryPacket(LegacyCapsule c) async {
       appBar: AppBar(
         title: const Text('Legacy Capsule'),
         actions: [
-          IconButton(tooltip: 'Refresh', onPressed: _reload, icon: const Icon(Icons.refresh)),
+          IconButton(
+              tooltip: 'Refresh',
+              onPressed: _reload,
+              icon: const Icon(Icons.refresh)),
         ],
       ),
       body: FutureBuilder<LegacyCapsule?>(
@@ -256,14 +289,19 @@ Future<void> _shareDeliveryPacket(LegacyCapsule c) async {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  Chip(label: Text(locked ? 'Locked until ${c.unlockAt!.toLocal().toString().substring(0, 16)}' : 'Unlocked')),
+                  Chip(
+                      label: Text(locked
+                          ? 'Locked until ${c.unlockAt!.toLocal().toString().substring(0, 16)}'
+                          : 'Unlocked')),
                   if (c.isSealed) const Chip(label: Text('Sealed')),
                   if (c.isEncrypted) const Chip(label: Text('Encrypted')),
-                  if (c.deliveryEnabled) Chip(label: Text('Delivery: ${c.deliveryTrigger} • ${c.deliveryFormat}')),
+                  if (c.deliveryEnabled)
+                    Chip(
+                        label: Text(
+                            'Delivery: ${c.deliveryTrigger} • ${c.deliveryFormat}')),
                 ],
               ),
               const SizedBox(height: 16),
-
               if (locked)
                 Card(
                   child: Padding(
@@ -274,14 +312,14 @@ Future<void> _shareDeliveryPacket(LegacyCapsule c) async {
                     ),
                   ),
                 ),
-
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Message', style: Theme.of(context).textTheme.titleMedium),
+                      Text('Message',
+                          style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 8),
                       Text(
                         c.isEncrypted
@@ -293,7 +331,6 @@ Future<void> _shareDeliveryPacket(LegacyCapsule c) async {
                 ),
               ),
               const SizedBox(height: 12),
-
               if (c.attachments.isNotEmpty)
                 Card(
                   child: Padding(
@@ -301,7 +338,8 @@ Future<void> _shareDeliveryPacket(LegacyCapsule c) async {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Attachments', style: Theme.of(context).textTheme.titleMedium),
+                        Text('Attachments',
+                            style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 8),
                         ...c.attachments.map(
                           (p) => ListTile(
@@ -311,8 +349,10 @@ Future<void> _shareDeliveryPacket(LegacyCapsule c) async {
                             title: Text(p.split('/').last),
                             subtitle: Text(p),
                             onTap: () async {
-                              final f = await LegacyVaultService.instance.resolveAttachmentFile(p);
-                              await Share.shareXFiles([XFile(f.path)], text: 'Attachment from Legacy Capsule');
+                              final f = await LegacyVaultService.instance
+                                  .resolveAttachmentFile(p);
+                              await Share.shareXFiles([XFile(f.path)],
+                                  text: 'Attachment from Legacy Capsule');
                             },
                           ),
                         ),
@@ -320,21 +360,23 @@ Future<void> _shareDeliveryPacket(LegacyCapsule c) async {
                     ),
                   ),
                 ),
-
               const SizedBox(height: 16),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: c.isSealed ? () => _duplicate(c.id) : () => _openEditor(c.id),
+                    onPressed: c.isSealed
+                        ? () => _duplicate(c.id)
+                        : () => _openEditor(c.id),
                     icon: Icon(c.isSealed ? Icons.copy : Icons.edit),
                     label: Text(c.isSealed ? 'Duplicate to Edit' : 'Edit'),
                   ),
                   OutlinedButton.icon(
                     onPressed: () async {
                       await Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => LegacySendScreen(capsule: c)),
+                        MaterialPageRoute(
+                            builder: (_) => LegacySendScreen(capsule: c)),
                       );
                     },
                     icon: const Icon(Icons.send_outlined),

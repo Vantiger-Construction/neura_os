@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import '../services/distress_detector.dart';
 import '../../care/screens/crisis_playbook_detail_screen.dart';
@@ -26,7 +25,8 @@ class SoftLandingPanel extends StatelessWidget {
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
-            const Text('Let’s keep this simple and gentle. One step at a time.'),
+            const Text(
+                'Let’s keep this simple and gentle. One step at a time.'),
             const SizedBox(height: 8),
             if (signal.reasons.isNotEmpty) ...[
               const Text(

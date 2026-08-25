@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import '../models/ai_avatar.dart';
 import '../startup/neura_prefs_cache.dart';
 
@@ -19,8 +19,10 @@ class AvatarService {
   /// Returns available AI Avatars.
   List<AIAvatar> getAvailableAvatars() {
     return const [
-      AIAvatar(id: 'neura', name: 'Neura', assetPath: 'assets/images/ai_avatar.png'),
-      AIAvatar(id: 'neuro', name: 'Neuro', assetPath: 'assets/images/ai_avatar.png'),
+      AIAvatar(
+          id: 'neura', name: 'Neura', assetPath: 'assets/images/ai_avatar.png'),
+      AIAvatar(
+          id: 'neuro', name: 'Neuro', assetPath: 'assets/images/ai_avatar.png'),
     ];
   }
 
@@ -41,5 +43,9 @@ class AvatarService {
       (a) => a.id == id,
       orElse: () => all.first,
     );
+  }
+
+  void resetAfterDataWipe() {
+    selectedAvatarId.value = 'neura';
   }
 }

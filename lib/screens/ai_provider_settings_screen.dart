@@ -11,8 +11,7 @@ class AiProviderSettingsScreen extends StatefulWidget {
       _AiProviderSettingsScreenState();
 }
 
-class _AiProviderSettingsScreenState
-    extends State<AiProviderSettingsScreen> {
+class _AiProviderSettingsScreenState extends State<AiProviderSettingsScreen> {
   final _keyController = TextEditingController();
   bool _obscure = true;
   bool _saving = false;
@@ -26,7 +25,8 @@ class _AiProviderSettingsScreenState
   Future<void> _save() async {
     final error = NeuraProviderCredentials.validate(_keyController.text);
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error)));
       return;
     }
 
@@ -78,11 +78,21 @@ class _AiProviderSettingsScreenState
       ),
     );
     if (confirmed != true) return;
-    await NeuraProviderCredentials.instance.clear();
     try {
+      // Stop native use first, then remove the authoritative secure copy. A
+      // failure in either layer must not be presented as a completed removal.
       await NeuraSwarmService.instance.clearCredential();
+      await NeuraProviderCredentials.instance.clear();
     } catch (_) {
-      // Secure storage is authoritative; a restart also clears native memory.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Key removal is incomplete. Close Neura and try again before using cloud features.',
+          ),
+        ),
+      );
+      return;
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -105,7 +115,8 @@ class _AiProviderSettingsScreenState
                 leading: Icon(
                   configured ? Icons.verified_user_outlined : Icons.cloud_off,
                 ),
-                title: Text(configured ? 'Connected securely' : 'Not configured'),
+                title:
+                    Text(configured ? 'Connected securely' : 'Not configured'),
                 subtitle: Text(
                   configured
                       ? 'The key is stored by your operating system and is never displayed.'

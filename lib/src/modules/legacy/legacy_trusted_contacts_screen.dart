@@ -8,10 +8,12 @@ class LegacyTrustedContactsScreen extends StatefulWidget {
   const LegacyTrustedContactsScreen({super.key});
 
   @override
-  State<LegacyTrustedContactsScreen> createState() => _LegacyTrustedContactsScreenState();
+  State<LegacyTrustedContactsScreen> createState() =>
+      _LegacyTrustedContactsScreenState();
 }
 
-class _LegacyTrustedContactsScreenState extends State<LegacyTrustedContactsScreen> {
+class _LegacyTrustedContactsScreenState
+    extends State<LegacyTrustedContactsScreen> {
   late Future<List<TrustedContact>> _future;
 
   @override
@@ -34,7 +36,8 @@ class _LegacyTrustedContactsScreenState extends State<LegacyTrustedContactsScree
     final saved = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: Text(existing == null ? 'New Trusted Contact' : 'Edit Trusted Contact'),
+        title: Text(
+            existing == null ? 'New Trusted Contact' : 'Edit Trusted Contact'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -66,8 +69,12 @@ class _LegacyTrustedContactsScreenState extends State<LegacyTrustedContactsScree
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Save')),
         ],
       ),
     );
@@ -107,8 +114,12 @@ class _LegacyTrustedContactsScreenState extends State<LegacyTrustedContactsScree
         title: const Text('Remove trusted contact?'),
         content: Text('Remove "${c.displayName}" from your trusted list?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Remove')),
         ],
       ),
     );
@@ -124,7 +135,10 @@ class _LegacyTrustedContactsScreenState extends State<LegacyTrustedContactsScree
       appBar: AppBar(
         title: const Text('Trusted Contacts'),
         actions: [
-          IconButton(tooltip: 'Refresh', onPressed: _reload, icon: const Icon(Icons.refresh)),
+          IconButton(
+              tooltip: 'Refresh',
+              onPressed: _reload,
+              icon: const Icon(Icons.refresh)),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -164,7 +178,8 @@ class _LegacyTrustedContactsScreenState extends State<LegacyTrustedContactsScree
               return ListTile(
                 leading: const Icon(Icons.verified_user_outlined),
                 title: Text(c.displayName),
-                subtitle: Text(c.address, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(c.address,
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
                 onTap: () => _edit(existing: c),
                 trailing: IconButton(
                   tooltip: 'Remove',

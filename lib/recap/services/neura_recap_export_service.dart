@@ -22,7 +22,8 @@ class NeuraRecapExportService {
       pw.MultiPage(
         build: (ctx) => [
           pw.Text('Neura Recap',
-              style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
+              style:
+                  pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 4),
           pw.Text('${_dateLabel(data.from)} – ${_dateLabel(data.to)}',
               style: const pw.TextStyle(fontSize: 11)),
@@ -37,9 +38,11 @@ class NeuraRecapExportService {
             pw.Text('No mood check-ins logged for this range.',
                 style: const pw.TextStyle(fontSize: 13)),
           pw.SizedBox(height: 8),
-          pw.Text('Kindness acts: ${data.kindnessActsTotal}', style: const pw.TextStyle(fontSize: 13)),
+          pw.Text('Kindness acts: ${data.kindnessActsTotal}',
+              style: const pw.TextStyle(fontSize: 13)),
           pw.SizedBox(height: 4),
-          pw.Text('Quests completed: ${data.questsDoneTotal}', style: const pw.TextStyle(fontSize: 13)),
+          pw.Text('Quests completed: ${data.questsDoneTotal}',
+              style: const pw.TextStyle(fontSize: 13)),
           pw.SizedBox(height: 4),
           pw.Text(
             'Joy Moments: ${data.joyMomentsCompleted} enjoyed'
@@ -56,7 +59,8 @@ class NeuraRecapExportService {
     );
 
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/neura_recap_${DateTime.now().millisecondsSinceEpoch}.pdf');
+    final file = File(
+        '${dir.path}/neura_recap_${DateTime.now().millisecondsSinceEpoch}.pdf');
     await file.writeAsBytes(await doc.save());
     return file.path;
   }

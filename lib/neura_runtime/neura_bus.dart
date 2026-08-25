@@ -83,4 +83,9 @@ class NeuraBus {
     currentRoom = room;
     emit(NeuraEvent(NeuraEventType.roomEnter, room: room));
   }
+
+  void resetAfterDataWipe() {
+    log.clear();
+    currentRoom = NeuraRoomKey.penthouse;
+  }
 }

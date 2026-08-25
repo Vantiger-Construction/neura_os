@@ -68,8 +68,7 @@ class _AmbientRecordingsScreenState extends State<AmbientRecordingsScreen> {
     final entries = <_RecordingEntry>[];
     try {
       final dir = await _dir();
-      final indexFile =
-          File('${dir.path}${Platform.pathSeparator}index.jsonl');
+      final indexFile = File('${dir.path}${Platform.pathSeparator}index.jsonl');
       if (await indexFile.exists()) {
         final lines = await indexFile.readAsLines();
         for (final line in lines) {
@@ -118,7 +117,8 @@ class _AmbientRecordingsScreenState extends State<AmbientRecordingsScreen> {
       await _cleanupTempFile();
 
       final dir = await _dir();
-      final file = File('${dir.path}${Platform.pathSeparator}${entry.filename}');
+      final file =
+          File('${dir.path}${Platform.pathSeparator}${entry.filename}');
       final encrypted = await file.readAsBytes();
       final crypto = await _ensureCrypto();
       final wav = await crypto.decryptBytes(encrypted);
@@ -157,12 +157,12 @@ class _AmbientRecordingsScreenState extends State<AmbientRecordingsScreen> {
   Future<void> _delete(_RecordingEntry entry) async {
     try {
       final dir = await _dir();
-      final file = File('${dir.path}${Platform.pathSeparator}${entry.filename}');
+      final file =
+          File('${dir.path}${Platform.pathSeparator}${entry.filename}');
       if (await file.exists()) await file.delete();
 
       final remaining = _entries.where((e) => e.filename != entry.filename);
-      final indexFile =
-          File('${dir.path}${Platform.pathSeparator}index.jsonl');
+      final indexFile = File('${dir.path}${Platform.pathSeparator}index.jsonl');
       final buffer = StringBuffer();
       for (final e in remaining) {
         buffer.writeln(jsonEncode({
@@ -219,7 +219,9 @@ class _AmbientRecordingsScreenState extends State<AmbientRecordingsScreen> {
                       return Card(
                         child: ListTile(
                           leading: Icon(
-                            playing ? Icons.pause_circle : Icons.play_circle_outline,
+                            playing
+                                ? Icons.pause_circle
+                                : Icons.play_circle_outline,
                           ),
                           title: Text(_formatTimestamp(entry.timestamp)),
                           subtitle: Text(

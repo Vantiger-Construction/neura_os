@@ -46,6 +46,11 @@ class NeuraPersonaService extends ChangeNotifier {
     }
   }
 
+  void resetAfterDataWipe() {
+    _current = PersonaProfile.neutral();
+    notifyListeners();
+  }
+
   /// Helper to generate a short description for UI preview.
   String describePersona(PersonaProfile p) {
     final tone = p.warmth >= 0.7

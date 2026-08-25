@@ -6,7 +6,8 @@ class TherapyPromptCard extends StatelessWidget {
   final TherapyPrompt prompt;
   final VoidCallback onTap;
 
-  const TherapyPromptCard({super.key, required this.prompt, required this.onTap});
+  const TherapyPromptCard(
+      {super.key, required this.prompt, required this.onTap});
 
   @override
   Widget build(BuildContext context) {

@@ -1,4 +1,4 @@
-﻿import '../human/learning_store.dart';
+import '../human/learning_store.dart';
 import '../mood/mood_store.dart';
 import '../pay_it_forward/goodwill_store.dart';
 import '../quests/quest_store.dart';
@@ -27,24 +27,38 @@ class WeeklyReviewStore {
     final weekEnd = weekStart.add(const Duration(days: 7));
 
     final moods = await MoodStore.instance.getAll();
-    final weekMoods = moods.where((m) => m.timestamp.isAfter(weekStart.subtract(const Duration(seconds: 1))) && m.timestamp.isBefore(weekEnd)).toList();
+    final weekMoods = moods
+        .where((m) =>
+            m.timestamp
+                .isAfter(weekStart.subtract(const Duration(seconds: 1))) &&
+            m.timestamp.isBefore(weekEnd))
+        .toList();
 
     int moodAvg = 0;
     int moodMin = 0;
     int moodMax = 0;
     if (weekMoods.isNotEmpty) {
-      moodMin = weekMoods.map((e) => e.mood0to10).reduce((a, b) => a < b ? a : b);
-      moodMax = weekMoods.map((e) => e.mood0to10).reduce((a, b) => a > b ? a : b);
+      moodMin =
+          weekMoods.map((e) => e.mood0to10).reduce((a, b) => a < b ? a : b);
+      moodMax =
+          weekMoods.map((e) => e.mood0to10).reduce((a, b) => a > b ? a : b);
       final sum = weekMoods.fold<int>(0, (p, e) => p + e.mood0to10);
       moodAvg = (sum / weekMoods.length).round();
     }
 
     final kindness = await GoodwillStore.instance.getAll();
-    final weekKindness = kindness.where((k) => k.timestamp.isAfter(weekStart.subtract(const Duration(seconds: 1))) && k.timestamp.isBefore(weekEnd)).length;
+    final weekKindness = kindness
+        .where((k) =>
+            k.timestamp
+                .isAfter(weekStart.subtract(const Duration(seconds: 1))) &&
+            k.timestamp.isBefore(weekEnd))
+        .length;
 
     final questDone = await QuestStore.instance.doneCountLastDays(7);
 
-    final topLearned = (await LearningStore.instance.top(max: 3)).map((e) => e.key).toList(growable: false);
+    final topLearned = (await LearningStore.instance.top(max: 3))
+        .map((e) => e.key)
+        .toList(growable: false);
 
     final review = WeeklyReview(
       weekStart: weekStart,
@@ -69,7 +83,8 @@ class WeeklyReviewStore {
 
   Future<void> updateNote(DateTime weekStart, String note) async {
     final list = await getAll();
-    final idx = list.indexWhere((r) => startOfWeek(r.weekStart) == startOfWeek(weekStart));
+    final idx = list
+        .indexWhere((r) => startOfWeek(r.weekStart) == startOfWeek(weekStart));
     if (idx < 0) return;
     final r = list[idx];
     list[idx] = WeeklyReview(
