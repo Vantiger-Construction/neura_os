@@ -32,10 +32,10 @@ jobs:
       - name: Verify local tools
         shell: pwsh
         run: |
-          try { flutter --version } catch { Write-Host "Flutter not found" }
-          try { dart --version } catch { Write-Host "Dart not found" }
+          if (Get-Command flutter -ErrorAction SilentlyContinue) { flutter --version } else { Write-Host "Flutter not found" }
+          if (Get-Command dart -ErrorAction SilentlyContinue) { dart --version } else { Write-Host "Dart not found" }
           git --version
-          try { cargo --version } catch { Write-Host "Cargo not found" }
+          if (Get-Command cargo -ErrorAction SilentlyContinue) { cargo --version } else { Write-Host "Cargo not found" }
 
       - name: Run optimized validation
         shell: pwsh
