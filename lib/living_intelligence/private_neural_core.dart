@@ -38,8 +38,7 @@ class NeuraModelRequest {
     this.visibleContext = '',
     this.permittedDataLabels = const <String>[],
     this.containsPrivateRecords = false,
-  }) : permittedDataLabels =
-            List<String>.unmodifiable(permittedDataLabels);
+  }) : permittedDataLabels = List<String>.unmodifiable(permittedDataLabels);
 
   final NeuraModelPurpose purpose;
   final String prompt;
@@ -102,8 +101,8 @@ class NeuraCallbackModelBackend implements NeuraModelBackend {
     required this.runsLocally,
     required NeuraAvailabilityProbe availabilityProbe,
     required NeuraTextGenerator generator,
-  }) : _availabilityProbe = availabilityProbe,
-       _generator = generator;
+  })  : _availabilityProbe = availabilityProbe,
+        _generator = generator;
 
   @override
   final String id;
@@ -206,8 +205,7 @@ class NeuraLocalModelRouter {
       throw StateError('Private Neural Core is disabled.');
     }
 
-    if (safetyPolicy.safeModeActive ||
-        request.safetyContext.recoveryMode) {
+    if (safetyPolicy.safeModeActive || request.safetyContext.recoveryMode) {
       throw StateError(
         'Model inference is blocked by Safe Mode or Recovery mode.',
       );
@@ -223,7 +221,7 @@ class NeuraLocalModelRouter {
     if (selected == null) {
       final cloudAllowed =
           safetyPolicy.canUseCloudInference(request.safetyContext) &&
-          !request.containsPrivateRecords;
+              !request.containsPrivateRecords;
 
       if (cloudAllowed) {
         selected = await _firstAvailable(
