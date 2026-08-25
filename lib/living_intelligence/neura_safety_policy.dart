@@ -36,8 +36,7 @@ class NeuraSafetyContext {
       recoveryMode: recoveryMode ?? this.recoveryMode,
       directUserGesture: directUserGesture ?? this.directUserGesture,
       freshApproval: freshApproval ?? this.freshApproval,
-      allowCloudInference:
-          allowCloudInference ?? this.allowCloudInference,
+      allowCloudInference: allowCloudInference ?? this.allowCloudInference,
     );
   }
 }
@@ -53,8 +52,7 @@ class NeuraAuthorityDecision {
   final String capabilityId;
   final String reason;
 
-  bool get mayPrepare =>
-      outcome == NeuraAuthorityOutcome.allowPreparation;
+  bool get mayPrepare => outcome == NeuraAuthorityOutcome.allowPreparation;
 
   bool get requiresFreshApproval =>
       outcome == NeuraAuthorityOutcome.requireFreshApproval;
@@ -71,9 +69,9 @@ class NeuraLivingSafetyPolicy {
   NeuraLivingSafetyPolicy({
     NeuraCapabilityRegistry? registry,
     bool Function()? safeModeReader,
-  }) : registry = registry ?? NeuraCapabilityRegistry(),
-       _safeModeReader =
-           safeModeReader ?? (() => SafeBoot.instance.safeMode.value);
+  })  : registry = registry ?? NeuraCapabilityRegistry(),
+        _safeModeReader =
+            safeModeReader ?? (() => SafeBoot.instance.safeMode.value);
 
   final NeuraCapabilityRegistry registry;
   final bool Function() _safeModeReader;
@@ -130,9 +128,9 @@ class NeuraLivingSafetyPolicy {
 
     final requiresApproval =
         capability.approvalMode == NeuraApprovalMode.everyTime ||
-        capability.risk == NeuraCapabilityRisk.sensitiveLocal ||
-        capability.risk == NeuraCapabilityRisk.external ||
-        capability.hasExternalSideEffect;
+            capability.risk == NeuraCapabilityRisk.sensitiveLocal ||
+            capability.risk == NeuraCapabilityRisk.external ||
+            capability.hasExternalSideEffect;
 
     if (requiresApproval &&
         (!context.directUserGesture || !context.freshApproval)) {
