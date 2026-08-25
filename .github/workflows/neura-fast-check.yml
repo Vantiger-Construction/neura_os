@@ -92,6 +92,11 @@ jobs:
             throw "rustc verification failed with exit code $LASTEXITCODE."
           }
 
+      - name: Install NuGet
+        uses: NuGet/setup-nuget@v2
+        with:
+          nuget-version: latest
+
       - name: Verify local tools
         # GitHub writes each run block to an unsigned temporary .ps1 file.
         # Bypass applies only to this CI process and does not change machine
