@@ -91,21 +91,21 @@ class NeuraSelfHealingRuntime {
   NeuraSelfHealingRuntime({
     this.quarantineThreshold = 2,
   }) : _slots = {
-          NeuraReleaseSlot.slotA: const NeuraReleaseSlotState(
-            slot: NeuraReleaseSlot.slotA,
-            health: NeuraReleaseHealth.healthy,
-            version: 'current',
-          ),
-          NeuraReleaseSlot.slotB: const NeuraReleaseSlotState(
-            slot: NeuraReleaseSlot.slotB,
-            health: NeuraReleaseHealth.empty,
-          ),
-          NeuraReleaseSlot.recovery: const NeuraReleaseSlotState(
-            slot: NeuraReleaseSlot.recovery,
-            health: NeuraReleaseHealth.healthy,
-            version: 'recovery',
-          ),
-        };
+         NeuraReleaseSlot.slotA: const NeuraReleaseSlotState(
+           slot: NeuraReleaseSlot.slotA,
+           health: NeuraReleaseHealth.healthy,
+           version: 'current',
+         ),
+         NeuraReleaseSlot.slotB: const NeuraReleaseSlotState(
+           slot: NeuraReleaseSlot.slotB,
+           health: NeuraReleaseHealth.empty,
+         ),
+         NeuraReleaseSlot.recovery: const NeuraReleaseSlotState(
+           slot: NeuraReleaseSlot.recovery,
+           health: NeuraReleaseHealth.healthy,
+           version: 'recovery',
+         ),
+       };
 
   final int quarantineThreshold;
   final Map<NeuraReleaseSlot, NeuraReleaseSlotState> _slots;
