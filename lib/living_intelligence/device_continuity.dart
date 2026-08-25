@@ -32,8 +32,7 @@ class NeuraDeviceIdentity {
     return NeuraDeviceIdentity(
       deviceId: deviceId,
       displayName: displayName ?? this.displayName,
-      publicKeyFingerprint:
-          publicKeyFingerprint ?? this.publicKeyFingerprint,
+      publicKeyFingerprint: publicKeyFingerprint ?? this.publicKeyFingerprint,
       revoked: revoked ?? this.revoked,
     );
   }
@@ -63,9 +62,9 @@ class NeuraContinuityEnvelope {
     required Iterable<int> ciphertext,
     required Iterable<int> nonce,
     required Iterable<int> authenticationTag,
-  }) : ciphertext = List<int>.unmodifiable(ciphertext),
-       nonce = List<int>.unmodifiable(nonce),
-       authenticationTag = List<int>.unmodifiable(authenticationTag) {
+  })  : ciphertext = List<int>.unmodifiable(ciphertext),
+        nonce = List<int>.unmodifiable(nonce),
+        authenticationTag = List<int>.unmodifiable(authenticationTag) {
     if (this.ciphertext.isEmpty ||
         this.nonce.isEmpty ||
         this.authenticationTag.isEmpty) {
