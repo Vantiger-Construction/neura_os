@@ -69,15 +69,18 @@ class NeuraFuturePathsSimulator {
   ) {
     final ordered = List<NeuraPlanStep>.from(source)
       ..sort((a, b) {
-        final scoreCompare =
-            _stepScore(goal, a).compareTo(_stepScore(goal, b));
+        final scoreCompare = _stepScore(
+          goal,
+          a,
+        ).compareTo(_stepScore(goal, b));
         if (scoreCompare != 0) {
           return scoreCompare;
         }
         return a.id.compareTo(b.id);
       });
 
-    final averageScore = ordered
+    final averageScore =
+        ordered
             .map((step) => _stepScore(goal, step))
             .reduce((a, b) => a + b) /
         ordered.length;
