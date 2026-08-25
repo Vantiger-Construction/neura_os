@@ -63,33 +63,30 @@ jobs:
           }
 
       - name: Install Rust
-        shell: powershell
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
-          # Download and install rustup (Rust installer)
-          $rustupUrl = "https://win.rustup.rs/x86_64"
-          $rustupPath = "$env:TEMP\rustup-init.exe"
-          
-          Write-Host "Downloading Rust installer from $rustupUrl"
-          Invoke-WebRequest -Uri $rustupUrl -OutFile $rustupPath
-          
-          Write-Host "Installing Rust..."
-          & $rustupPath -y
-          
-          if ($LASTEXITCODE -ne 0) {
-            throw "Rust installation failed with exit code $LASTEXITCODE."
+          $ErrorActionPreference = 'Stop'
+          $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
+          $cargoExe = Join-Path $cargoBin 'cargo.exe'
+
+          if (-not (Test-Path -LiteralPath $cargoExe -PathType Leaf)) {
+            $rustupUrl = 'https://win.rustup.rs/x86_64'
+            $rustupPath = Join-Path $env:RUNNER_TEMP 'rustup-init.exe'
+            Write-Host "Downloading Rust installer from $rustupUrl"
+            Invoke-WebRequest -Uri $rustupUrl -OutFile $rustupPath
+            & $rustupPath -y --profile minimal
+            if ($LASTEXITCODE -ne 0) {
+              throw "Rust installation failed with exit code $LASTEXITCODE."
+            }
           }
-          
-          # Add Rust to PATH for this session
-          $env:PATH += ";$env:USERPROFILE\.cargo\bin"
-          [System.Environment]::SetEnvironmentVariable("PATH", $env:PATH, [System.EnvironmentVariableTarget]::Process)
-          
-          # Verify installation
-          Write-Host "Verifying Rust installation..."
+
+          $cargoBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH = "$cargoBin;$env:PATH"
+
           cargo --version
           if ($LASTEXITCODE -ne 0) {
             throw "cargo verification failed with exit code $LASTEXITCODE."
           }
-          
           rustc --version
           if ($LASTEXITCODE -ne 0) {
             throw "rustc verification failed with exit code $LASTEXITCODE."
@@ -104,13 +101,9 @@ jobs:
           flutter --version
           dart --version
           git --version
-          # neura_swarm (rust/) needs cargo on this machine's PATH.
           cargo --version
-          # The authored Windows runner fetches C++/WinRT through NuGet.
           nuget help | Select-Object -First 1
 
       - name: Run optimized validation
-        shell: pwsh
-        run: |
-          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
-          ./tools/Neura-FastCheck.ps1 -Root . -BuildWindows
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: ./tools/Neura-FastCheck.ps1 -Root . -BuildWindows
