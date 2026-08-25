@@ -102,8 +102,8 @@ class NeuraCallbackModelBackend implements NeuraModelBackend {
     required this.runsLocally,
     required NeuraAvailabilityProbe availabilityProbe,
     required NeuraTextGenerator generator,
-  })  : _availabilityProbe = availabilityProbe,
-        _generator = generator;
+  }) : _availabilityProbe = availabilityProbe,
+       _generator = generator;
 
   @override
   final String id;
