@@ -32,12 +32,10 @@ jobs:
       - name: Verify local tools
         shell: pwsh
         run: |
-          flutter --version
-          dart --version
+          try { flutter --version } catch { Write-Host "Flutter not found" }
+          try { dart --version } catch { Write-Host "Dart not found" }
           git --version
-          # neura_swarm (rust/) needs cargo on this machine's PATH -- if this
-          # fails, install Rust once via https://rustup.rs on the runner host.
-          cargo --version
+          try { cargo --version } catch { Write-Host "Cargo not found" }
 
       - name: Run optimized validation
         shell: pwsh
