@@ -11,6 +11,7 @@ import '../../modules/support/support_center_screen.dart';
 import '../../relationships/screens/relationship_detail_screen.dart';
 import '../../relationships/screens/relationship_list_screen.dart';
 import '../../src/modules/focus/focus_office_screen.dart';
+import '../../services/neura_tts_service.dart';
 import '../proactive_banner_service.dart';
 
 /// Surfaces Adaptive Intent state plus an optional, dismissible proactive card.
@@ -130,6 +131,17 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
     );
   }
 
+  Future<void> _briefMe() async {
+    final banner = _banner;
+    if (banner == null) return;
+    final approvalCopy = banner.receipt.requiresApproval
+        ? 'I will wait for your approval before making any change.'
+        : 'Nothing will happen unless you choose to open it.';
+    await NeuraTtsService.instance.speak(
+      '${banner.title}. ${banner.body}. $approvalCopy',
+    );
+  }
+
   Future<void> _showWhy() async {
     final banner = _banner;
     if (banner == null) return;
@@ -230,6 +242,11 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
                           TextButton(
                             onPressed: _dismiss,
                             child: const Text('Not now'),
+                          ),
+                          TextButton.icon(
+                            onPressed: _briefMe,
+                            icon: const Icon(Icons.graphic_eq, size: 18),
+                            label: const Text('Brief me'),
                           ),
                           if (showWhy)
                             TextButton(
