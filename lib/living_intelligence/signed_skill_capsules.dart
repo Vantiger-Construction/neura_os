@@ -18,10 +18,10 @@ class NeuraSkillManifest {
     this.declaredHosts = const <String>[],
     this.allowedInSafeMode = false,
     this.signature = '',
-  })  : capabilities = Set<String>.unmodifiable(capabilities),
-        privateDataClasses = Set<String>.unmodifiable(privateDataClasses),
-        permissions = Set<String>.unmodifiable(permissions),
-        declaredHosts = Set<String>.unmodifiable(declaredHosts);
+  }) : capabilities = Set<String>.unmodifiable(capabilities),
+       privateDataClasses = Set<String>.unmodifiable(privateDataClasses),
+       permissions = Set<String>.unmodifiable(permissions),
+       declaredHosts = Set<String>.unmodifiable(declaredHosts);
 
   final String id;
   final String version;
