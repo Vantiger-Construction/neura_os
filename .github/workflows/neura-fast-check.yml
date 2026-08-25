@@ -62,6 +62,39 @@ jobs:
             throw "Flutter verification failed with exit code $LASTEXITCODE."
           }
 
+      - name: Install Rust
+        shell: powershell
+        run: |
+          # Download and install rustup (Rust installer)
+          $rustupUrl = "https://win.rustup.rs/x86_64"
+          $rustupPath = "$env:TEMP\rustup-init.exe"
+          
+          Write-Host "Downloading Rust installer from $rustupUrl"
+          Invoke-WebRequest -Uri $rustupUrl -OutFile $rustupPath
+          
+          Write-Host "Installing Rust..."
+          & $rustupPath -y
+          
+          if ($LASTEXITCODE -ne 0) {
+            throw "Rust installation failed with exit code $LASTEXITCODE."
+          }
+          
+          # Add Rust to PATH for this session
+          $env:PATH += ";$env:USERPROFILE\.cargo\bin"
+          [System.Environment]::SetEnvironmentVariable("PATH", $env:PATH, [System.EnvironmentVariableTarget]::Process)
+          
+          # Verify installation
+          Write-Host "Verifying Rust installation..."
+          cargo --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "cargo verification failed with exit code $LASTEXITCODE."
+          }
+          
+          rustc --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "rustc verification failed with exit code $LASTEXITCODE."
+          }
+
       - name: Verify local tools
         # GitHub writes each run block to an unsigned temporary .ps1 file.
         # Bypass applies only to this CI process and does not change machine
