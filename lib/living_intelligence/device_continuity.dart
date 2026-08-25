@@ -63,9 +63,9 @@ class NeuraContinuityEnvelope {
     required Iterable<int> ciphertext,
     required Iterable<int> nonce,
     required Iterable<int> authenticationTag,
-  })  : ciphertext = List<int>.unmodifiable(ciphertext),
-        nonce = List<int>.unmodifiable(nonce),
-        authenticationTag = List<int>.unmodifiable(authenticationTag) {
+  }) : ciphertext = List<int>.unmodifiable(ciphertext),
+       nonce = List<int>.unmodifiable(nonce),
+       authenticationTag = List<int>.unmodifiable(authenticationTag) {
     if (this.ciphertext.isEmpty ||
         this.nonce.isEmpty ||
         this.authenticationTag.isEmpty) {
