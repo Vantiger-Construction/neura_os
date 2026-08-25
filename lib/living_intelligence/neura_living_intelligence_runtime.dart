@@ -46,12 +46,9 @@ class NeuraLivingIntelligenceRuntime {
   });
 
   factory NeuraLivingIntelligenceRuntime.create({
-    Iterable<NeuraModelBackend> modelBackends =
-        const <NeuraModelBackend>[],
-    NeuraReflexBindings reflexBindings =
-        const NeuraReflexBindings(),
-    NeuraPresenceBindings presenceBindings =
-        const NeuraPresenceBindings(),
+    Iterable<NeuraModelBackend> modelBackends = const <NeuraModelBackend>[],
+    NeuraReflexBindings reflexBindings = const NeuraReflexBindings(),
+    NeuraPresenceBindings presenceBindings = const NeuraPresenceBindings(),
     NeuraSkillSignatureVerifier signatureVerifier =
         const NeuraDenyAllSkillSignatureVerifier(),
     bool Function()? safeModeReader,
