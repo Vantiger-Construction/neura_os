@@ -103,9 +103,8 @@ class NeuraLivingIntelligenceRuntime {
     return NeuraLivingIntelligenceStatus(
       enabled: _enabled,
       safeModeBlocked: safetyPolicy.safeModeActive,
-      localModelBackends: modelRouter.backends
-          .where((backend) => backend.runsLocally)
-          .length,
+      localModelBackends:
+          modelRouter.backends.where((backend) => backend.runsLocally).length,
       pairedDevices: continuity.devices.length,
     );
   }
@@ -114,8 +113,7 @@ class NeuraLivingIntelligenceRuntime {
     bool value, {
     required NeuraSafetyContext context,
   }) {
-    if (value &&
-        (safetyPolicy.safeModeActive || context.recoveryMode)) {
+    if (value && (safetyPolicy.safeModeActive || context.recoveryMode)) {
       throw StateError(
         'Living Intelligence cannot be enabled in Safe Mode or Recovery mode.',
       );
