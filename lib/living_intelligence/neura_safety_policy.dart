@@ -71,9 +71,9 @@ class NeuraLivingSafetyPolicy {
   NeuraLivingSafetyPolicy({
     NeuraCapabilityRegistry? registry,
     bool Function()? safeModeReader,
-  })  : registry = registry ?? NeuraCapabilityRegistry(),
-        _safeModeReader =
-            safeModeReader ?? (() => SafeBoot.instance.safeMode.value);
+  }) : registry = registry ?? NeuraCapabilityRegistry(),
+       _safeModeReader =
+           safeModeReader ?? (() => SafeBoot.instance.safeMode.value);
 
   final NeuraCapabilityRegistry registry;
   final bool Function() _safeModeReader;
