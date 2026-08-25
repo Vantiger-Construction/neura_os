@@ -5,6 +5,7 @@ class SupportResources {
   };
 
   static const global = {
-    'emergency': 'If you are in immediate danger, contact your local emergency number.',
+    'emergency':
+        'If you are in immediate danger, contact your local emergency number.',
   };
 }

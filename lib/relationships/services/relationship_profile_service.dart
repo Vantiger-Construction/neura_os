@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -25,7 +24,8 @@ class RelationshipProfileService {
       _cache = [];
       return;
     }
-    final list = (jsonDecode(raw) as List<dynamic>).cast<Map<String, dynamic>>();
+    final list =
+        (jsonDecode(raw) as List<dynamic>).cast<Map<String, dynamic>>();
     _cache = list.map(RelationshipProfile.fromJson).toList();
   }
 
@@ -84,9 +84,13 @@ class RelationshipProfileService {
       byProfile[p.profileId!] = (byProfile[p.profileId!] ?? 0) + 1;
     }
     _cache = _cache
-        .map((profile) => profile.copyWith(
-            openPromiseCount: byProfile[profile.id] ?? 0))
+        .map((profile) =>
+            profile.copyWith(openPromiseCount: byProfile[profile.id] ?? 0))
         .toList();
     await _save();
+  }
+
+  void resetAfterDataWipe() {
+    _cache = [];
   }
 }

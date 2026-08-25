@@ -25,8 +25,12 @@ class PersonaLabScreen extends StatelessWidget {
             decoration: const InputDecoration(hintText: 'Type and hit Add'),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(context, c.text.trim()), child: const Text('Add')),
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, c.text.trim()),
+                child: const Text('Add')),
           ],
         ),
       );
@@ -69,7 +73,8 @@ class PersonaLabScreen extends StatelessWidget {
                 ),
                 onDelete: (i) {
                   final list = [...p.goals]..removeAt(i);
-                  HumanPrefsController.instance.update(prefs.copyWith(persona: p.copyWith(goals: list)));
+                  HumanPrefsController.instance
+                      .update(prefs.copyWith(persona: p.copyWith(goals: list)));
                 },
               ),
               const SizedBox(height: 12),
@@ -86,7 +91,8 @@ class PersonaLabScreen extends StatelessWidget {
                 ),
                 onDelete: (i) {
                   final list = [...p.values]..removeAt(i);
-                  HumanPrefsController.instance.update(prefs.copyWith(persona: p.copyWith(values: list)));
+                  HumanPrefsController.instance.update(
+                      prefs.copyWith(persona: p.copyWith(values: list)));
                 },
               ),
             ],
@@ -120,8 +126,12 @@ class _ChipsSection extends StatelessWidget {
           children: [
             Row(
               children: [
-                Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
-                IconButton(onPressed: onAdd, icon: const Icon(Icons.add_circle_outline)),
+                Expanded(
+                    child: Text(title,
+                        style: Theme.of(context).textTheme.titleMedium)),
+                IconButton(
+                    onPressed: onAdd,
+                    icon: const Icon(Icons.add_circle_outline)),
               ],
             ),
             const SizedBox(height: 8),

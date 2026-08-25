@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:window_manager_plus/window_manager_plus.dart';
 
+import '../startup/neura_error_pipeline.dart';
+
 /// Marker passed as an extra arg to the floating avatar window so `main()`
 /// can tell it apart from the primary app window.
 const String kMascotWindowArgument = 'neura_mascot';
@@ -17,27 +19,75 @@ class MascotWindowService {
   // initialCreationSettled can safely await it regardless of whether
   // _ensureCreated has actually been called yet -- see that getter's doc
   // comment for the real crash this fixes.
-  final Completer<WindowManagerPlus?> _creationCompleter = Completer<WindowManagerPlus?>();
+  final Completer<WindowManagerPlus?> _creationCompleter =
+      Completer<WindowManagerPlus?>();
   bool _creationStarted = false;
+  bool _disabledForProcess = false;
+  Future<void> _creationBarrier = Future<void>.value();
+
+  /// Holds secondary-window creation until primary window-manager bootstrap
+  /// has settled. The main app can still render immediately; only the optional
+  /// mascot waits on this barrier.
+  void deferCreationUntil(Future<void> barrier) {
+    if (_creationStarted || _disabledForProcess) return;
+    _creationBarrier = barrier;
+  }
+
+  /// Permanently removes secondary-window creation from this isolate's
+  /// lifetime. The Windows bootstrap uses this when its role channel or
+  /// window-manager plugin is unavailable; retrying later could otherwise
+  /// spawn another engine into the same broken bootstrap path recursively.
+  /// A clean process restart is the only resume boundary.
+  void disableForProcess() {
+    _disabledForProcess = true;
+    if (!_creationCompleter.isCompleted) {
+      _creationCompleter.complete(null);
+    }
+  }
+
+  bool get disabledForProcess => _disabledForProcess;
 
   Future<WindowManagerPlus?> _ensureCreated() {
+    if (_disabledForProcess) return Future<WindowManagerPlus?>.value(null);
     if (!_creationStarted) {
       _creationStarted = true;
-      WindowManagerPlus.createWindow([kMascotWindowArgument]).then(
-        (controller) {
-          if (!_creationCompleter.isCompleted) _creationCompleter.complete(controller);
-        },
-        onError: (Object e, StackTrace st) {
-          if (!_creationCompleter.isCompleted) _creationCompleter.completeError(e, st);
-        },
-      );
+      unawaited(_createAfterBootstrap());
     }
     return _creationCompleter.future;
   }
 
+  Future<void> _createAfterBootstrap() async {
+    try {
+      await _creationBarrier;
+      if (_disabledForProcess) return;
+
+      final controller =
+          await WindowManagerPlus.createWindow([kMascotWindowArgument]);
+      if (_disabledForProcess) {
+        try {
+          await controller?.hide();
+        } catch (_) {}
+        return;
+      }
+      if (!_creationCompleter.isCompleted) {
+        _creationCompleter.complete(controller);
+      }
+    } catch (error, stackTrace) {
+      NeuraErrorPipeline.instance.captureBootstrapWarning(
+        error,
+        stackTrace,
+        source: 'mascot_window_create',
+      );
+      // A failed primary bootstrap or secondary-window creation must never be
+      // retried recursively from another engine in the same process.
+      disableForProcess();
+    }
+  }
+
   Future<void> init({required bool visible}) async {
+    if (_disabledForProcess) return;
     final controller = await _ensureCreated();
-    if (visible) {
+    if (visible && !_disabledForProcess) {
       await controller?.show();
     }
   }
@@ -75,7 +125,9 @@ class MascotWindowService {
   }
 
   Future<void> setVisible(bool visible) async {
+    if (_disabledForProcess) return;
     final controller = await _ensureCreated();
+    if (_disabledForProcess) return;
     if (visible) {
       await controller?.show();
     } else {
@@ -89,9 +141,10 @@ class MascotWindowService {
   /// (window not created yet, window closed, IPC hiccup) should just mean
   /// "the mascot doesn't react this time", not a crash anywhere upstream.
   Future<void> sendEvent(String method, Map<String, dynamic> args) async {
+    if (_disabledForProcess) return;
     try {
       final controller = await _ensureCreated();
-      if (controller == null) return;
+      if (controller == null || _disabledForProcess) return;
       await WindowManagerPlus.current.invokeMethodToWindow(
         controller.id,
         method,

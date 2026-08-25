@@ -107,9 +107,11 @@ class _DreamShow2ScreenState extends State<DreamShow2Screen> {
                                   children: d.themes
                                       .map((t) => Chip(
                                             label: Text(t.replaceAll('_', ' ')),
-                                            visualDensity: VisualDensity.compact,
+                                            visualDensity:
+                                                VisualDensity.compact,
                                             materialTapTargetSize:
-                                                MaterialTapTargetSize.shrinkWrap,
+                                                MaterialTapTargetSize
+                                                    .shrinkWrap,
                                           ))
                                       .toList(),
                                 ),

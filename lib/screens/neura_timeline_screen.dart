@@ -44,7 +44,8 @@ class _NeuraTimelineScreenState extends State<NeuraTimelineScreen> {
             child: ListTile(
               leading: Icon(_iconFor(e.type)),
               title: Text(e.message ?? e.type.name),
-              subtitle: Text('${_roomLabel(e.room)} • ${e.data.isEmpty ? '' : e.data}'),
+              subtitle: Text(
+                  '${_roomLabel(e.room)} • ${e.data.isEmpty ? '' : e.data}'),
             ),
           );
         },

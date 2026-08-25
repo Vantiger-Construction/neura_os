@@ -1,13 +1,15 @@
-﻿import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 
 import '../config/supabase_config.dart';
 import '../modules/navigation/enhanced_navigation.dart';
+import '../reliability/safe_boot.dart';
 import '../screens/sign_in_screen.dart';
 import '../services/app_lock_prefs.dart';
 import '../services/auth_service.dart';
 import '../widgets/auth_guard.dart';
 import 'neura_startup_coordinator.dart';
-import '../reliability/safe_boot.dart';
 
 /// Animated splash screen shown while [NeuraStartupCoordinator] runs.
 ///
@@ -51,7 +53,7 @@ class _NeuraBootScreenState extends State<NeuraBootScreen>
     _coordinator.ready.addListener(_onReady);
 
     // Fire the boot sequence (idempotent — safe to call here).
-    _coordinator.boot();
+    unawaited(_coordinator.boot());
   }
 
   @override
@@ -67,37 +69,45 @@ class _NeuraBootScreenState extends State<NeuraBootScreen>
     // Only ask for sign-in once Supabase is actually configured — with
     // placeholder keys, Supabase.initialize() was skipped, so touching
     // Supabase.instance (AuthService included) would throw.
-    final needsSignIn =
-        SupabaseConfig.isConfigured && AuthService.currentUser == null;
+    final safeMode = SafeBoot.instance.safeMode.value;
+    final canInspectSession = shouldInspectSupabaseSession(
+      safeMode: safeMode,
+      configured: SupabaseConfig.isConfigured,
+      initialized: _coordinator.supabaseInitialized,
+    );
+    final needsSignIn = canInspectSession && AuthService.currentUser == null;
     // Device-lock only applies to the local-only dashboard path — once
     // Supabase sign-in is active it already gates identity on its own.
-    final needsDeviceLock =
-        !needsSignIn && AppLockPrefsController.instance.enabled.value;
+    final needsDeviceLock = !safeMode &&
+        !needsSignIn &&
+        AppLockPrefsController.instance.enabled.value;
     // Short pause so "Ready!" is readable, then replace the whole route stack.
-    Future<void>.delayed(const Duration(milliseconds: 350), () {
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder<void>(
-          pageBuilder: (_, __, ___) {
-            if (needsSignIn) return const SignInScreen();
-            const dashboard = EnhancedNavigation();
-            return needsDeviceLock
-                ? const AuthGuard(child: dashboard)
-                : dashboard;
-          },
-          transitionsBuilder: (_, animation, __, child) {
-            return FadeTransition(
-              opacity: CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeIn,
-              ),
-              child: child,
-            );
-          },
-          transitionDuration: const Duration(milliseconds: 600),
-        ),
-      );
-    });
+    unawaited(
+      Future<void>.delayed(const Duration(milliseconds: 350), () {
+        if (!mounted) return;
+        Navigator.of(context).pushReplacement(
+          PageRouteBuilder<void>(
+            pageBuilder: (_, __, ___) {
+              if (needsSignIn) return const SignInScreen();
+              const dashboard = EnhancedNavigation();
+              return needsDeviceLock
+                  ? const AuthGuard(child: dashboard)
+                  : dashboard;
+            },
+            transitionsBuilder: (_, animation, __, child) {
+              return FadeTransition(
+                opacity: CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeIn,
+                ),
+                child: child,
+              );
+            },
+            transitionDuration: const Duration(milliseconds: 600),
+          ),
+        );
+      }),
+    );
   }
 
   @override
@@ -182,36 +192,70 @@ class _NeuraBootScreenState extends State<NeuraBootScreen>
                     ),
                   ),
                   const Spacer(flex: 2),
-                  // ── Progress bar ─────────────────────────────────────────
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 48),
-                    child: Column(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: LinearProgressIndicator(
-                            value: stage.progress,
-                            minHeight: 4,
-                            backgroundColor: Colors.white12,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.deepPurple.shade300,
-                            ),
+                  ValueListenableBuilder<NeuraBootFailure?>(
+                    valueListenable: _coordinator.failure,
+                    builder: (context, failure, _) {
+                      if (failure != null) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 36),
+                          child: Column(
+                            children: [
+                              const Icon(
+                                Icons.error_outline,
+                                color: Colors.orangeAccent,
+                                size: 28,
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                failure.message,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.78),
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              FilledButton.icon(
+                                onPressed: () => unawaited(_coordinator.boot()),
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Retry startup'),
+                              ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 10),
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 200),
-                          child: Text(
-                            stage.label,
-                            key: ValueKey(stage.label),
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.55),
-                              fontSize: 12,
+                        );
+                      }
+
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 48),
+                        child: Column(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: LinearProgressIndicator(
+                                value: stage.progress,
+                                minHeight: 4,
+                                backgroundColor: Colors.white12,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.deepPurple.shade300,
+                                ),
+                              ),
                             ),
-                          ),
+                            const SizedBox(height: 10),
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              child: Text(
+                                stage.label,
+                                key: ValueKey(stage.label),
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.55),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 40),
                 ],

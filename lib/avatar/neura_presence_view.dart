@@ -40,10 +40,10 @@ class NeuraPresenceView extends StatefulWidget {
   final AvatarService? avatarService;
 
   const NeuraPresenceView({
-	super.key,
-	this.size = 200,
-	this.controller,
-	this.avatarService,
+    super.key,
+    this.size = 200,
+    this.controller,
+    this.avatarService,
   });
 
   @override
@@ -69,80 +69,80 @@ class _NeuraPresenceViewState extends State<NeuraPresenceView> {
 
   @override
   void initState() {
-	super.initState();
-	_controller = widget.controller ?? AvatarGlobals.controller;
-	_service = widget.avatarService ?? AvatarGlobals.service;
-	_startMic();
+    super.initState();
+    _controller = widget.controller ?? AvatarGlobals.controller;
+    _service = widget.avatarService ?? AvatarGlobals.service;
+    _startMic();
   }
 
   Future<void> _startMic() async {
-	final started = await _mic.start();
-	if (!started || !mounted) return;
+    final started = await _mic.start();
+    if (!started || !mounted) return;
 
-	// ── Mic wiring ────────────────────────────────────────────────────────────
-	// 1. Forward raw amplitude directly to the controller's number input
-	//    (per-frame; drives sub-animations in Rive when supported).
-	// 2. State transitions (listening / thinking) go through NeuraEventBus so
-	//    AvatarOrchestrator and any other listener can react.
-	// ─────────────────────────────────────────────────────────────────────────
-	_levelSub = _mic.attachLevel((lvl) {
-	  _controller.setNumberInput('mic_level', lvl);       // direct – per frame
-	  if (lvl > NeuraMicDriver.kListenThreshold) {
-		_onVoiceDetected();
-	  } else {
-		_onSilenceDetected();
-	  }
-	});
+    // ── Mic wiring ────────────────────────────────────────────────────────────
+    // 1. Forward raw amplitude directly to the controller's number input
+    //    (per-frame; drives sub-animations in Rive when supported).
+    // 2. State transitions (listening / thinking) go through NeuraEventBus so
+    //    AvatarOrchestrator and any other listener can react.
+    // ─────────────────────────────────────────────────────────────────────────
+    _levelSub = _mic.attachLevel((lvl) {
+      _controller.setNumberInput('mic_level', lvl); // direct – per frame
+      if (lvl > NeuraMicDriver.kListenThreshold) {
+        _onVoiceDetected();
+      } else {
+        _onSilenceDetected();
+      }
+    });
   }
 
   void _onVoiceDetected() {
-	_silenceTimer?.cancel();
-	_silenceTimer = null;
-	_thinkingTimer?.cancel();
-	_thinkingTimer = null;
-	NeuraEventBus.I.emit(const NeuraListeningEvent(true));
-	NeuraEventBus.I.emit(const NeuraThinkingEvent(false));
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
+    _thinkingTimer?.cancel();
+    _thinkingTimer = null;
+    NeuraEventBus.I.emit(const NeuraListeningEvent(true));
+    NeuraEventBus.I.emit(const NeuraThinkingEvent(false));
   }
 
   void _onSilenceDetected() {
-	if (!_controller.signals.isListening) return; // already idle, nothing to do
-	_silenceTimer ??= Timer(_kSilenceDelay, () {
-	  // Voice ended → thinking state
-	  NeuraEventBus.I.emit(const NeuraListeningEvent(false));
-	  NeuraEventBus.I.emit(const NeuraThinkingEvent(true));
+    if (!_controller.signals.isListening) return; // already idle, nothing to do
+    _silenceTimer ??= Timer(_kSilenceDelay, () {
+      // Voice ended → thinking state
+      NeuraEventBus.I.emit(const NeuraListeningEvent(false));
+      NeuraEventBus.I.emit(const NeuraThinkingEvent(true));
 
-	  _thinkingTimer = Timer(_kThinkingDelay, () {
-		// Thinking window elapsed → back to idle (unless TTS started externally)
-		if (!_controller.signals.isTalking) {
-		  NeuraEventBus.I.emit(const NeuraThinkingEvent(false));
-		}
-		_thinkingTimer = null;
-	  });
-	  _silenceTimer = null;
-	});
+      _thinkingTimer = Timer(_kThinkingDelay, () {
+        // Thinking window elapsed → back to idle (unless TTS started externally)
+        if (!_controller.signals.isTalking) {
+          NeuraEventBus.I.emit(const NeuraThinkingEvent(false));
+        }
+        _thinkingTimer = null;
+      });
+      _silenceTimer = null;
+    });
   }
 
   @override
   void dispose() {
-	_silenceTimer?.cancel();
-	_thinkingTimer?.cancel();
-	_levelSub?.cancel();
-	_mic.dispose();
-	super.dispose();
+    _silenceTimer?.cancel();
+    _thinkingTimer?.cancel();
+    _levelSub?.cancel();
+    _mic.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-	return ValueListenableBuilder<String>(
-	  valueListenable: _service.selectedAvatarId,
-	  builder: (_, id, __) {
-		final spec = AvatarRegistry.byId(id);
-		return AvatarView(
-		  spec: spec,
-		  controller: _controller,
-		  size: widget.size,
-		);
-	  },
-	);
+    return ValueListenableBuilder<String>(
+      valueListenable: _service.selectedAvatarId,
+      builder: (_, id, __) {
+        final spec = AvatarRegistry.byId(id);
+        return AvatarView(
+          spec: spec,
+          controller: _controller,
+          size: widget.size,
+        );
+      },
+    );
   }
 }

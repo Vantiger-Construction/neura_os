@@ -25,10 +25,14 @@ class LegacyDeliveryService {
     }
 
     String? pass = passphraseOverride;
-    if (decryptIfPossible && capsule.isEncrypted && (pass == null || pass.trim().isEmpty) && context != null) {
+    if (decryptIfPossible &&
+        capsule.isEncrypted &&
+        (pass == null || pass.trim().isEmpty) &&
+        context != null) {
       pass = await _promptPassphrase(
         context,
-        title: 'Passphrase to decrypt "${capsule.title.isEmpty ? 'capsule' : capsule.title}"',
+        title:
+            'Passphrase to decrypt "${capsule.title.isEmpty ? 'capsule' : capsule.title}"',
       );
       if (pass == null || pass.trim().isEmpty) {
         // User cancelled. Fall back to encrypted export.
@@ -70,12 +74,14 @@ class LegacyDeliveryService {
     return XFile(f.path);
   }
 
-  Future<void> shareFiles({required List<String> filePaths, String? text}) async {
+  Future<void> shareFiles(
+      {required List<String> filePaths, String? text}) async {
     final files = filePaths.map((p) => XFile(p)).toList();
     await Share.shareXFiles(files, text: text);
   }
 
-  Future<String?> _promptPassphrase(BuildContext context, {required String title}) async {
+  Future<String?> _promptPassphrase(BuildContext context,
+      {required String title}) async {
     final controller = TextEditingController();
     try {
       return await showDialog<String>(
@@ -90,8 +96,12 @@ class LegacyDeliveryService {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            ElevatedButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Continue')),
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            ElevatedButton(
+                onPressed: () => Navigator.pop(context, controller.text),
+                child: const Text('Continue')),
           ],
         ),
       );

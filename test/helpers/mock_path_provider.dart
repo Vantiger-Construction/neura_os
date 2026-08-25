@@ -5,14 +5,17 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 /// Registers a [PathProviderPlatform] that returns [Directory.systemTemp]
 /// for all path queries. Call [registerMockPathProvider] in setUpAll.
-void registerMockPathProvider() {
-  PathProviderPlatform.instance = _MockPathProvider();
+void registerMockPathProvider({String? rootPath}) {
+  PathProviderPlatform.instance = _MockPathProvider(rootPath);
 }
 
 class _MockPathProvider extends Fake
     with MockPlatformInterfaceMixin
     implements PathProviderPlatform {
-  final String _tmp = Directory.systemTemp.path;
+  _MockPathProvider(String? rootPath)
+      : _tmp = rootPath ?? Directory.systemTemp.path;
+
+  final String _tmp;
 
   @override
   Future<String?> getTemporaryPath() async => _tmp;
@@ -35,7 +38,8 @@ class _MockPathProvider extends Fake
   @override
   Future<List<String>?> getExternalStoragePaths({
     StorageDirectory? type,
-  }) async => [_tmp];
+  }) async =>
+      [_tmp];
 
   @override
   Future<String?> getDownloadsPath() async => _tmp;

@@ -1,41 +1,59 @@
-﻿import 'dart:convert';
+import 'dart:convert';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../config/supabase_config.dart';
 import '../models/journal_entry.dart';
-import 'conflict_resolution_service.dart';
+import '../modules/core/app_log.dart';
+import '../reliability/safe_boot.dart';
 import '../startup/neura_prefs_cache.dart';
+import 'auth_service.dart';
+import 'conflict_resolution_service.dart';
+
+@visibleForTesting
+bool shouldAttemptCloudSync({
+  required bool configured,
+  required bool safeMode,
+  required bool clientAvailable,
+}) =>
+    configured && !safeMode && clientAvailable;
 
 class SyncService {
   static const _kLocalKey = 'journal_entries';
   static const _kTable = 'journal_entries';
 
-  // Lazy, not a field initializer: Supabase.instance.client throws if
-  // Supabase.initialize() was never called, which is the case whenever
-  // SupabaseConfig.isConfigured is false. Currently the only call site
-  // (SyncStatusScreen) is UI-gated on isConfigured, but a field initializer
-  // would crash the instant *anything* constructs SyncService() without
-  // that gate — a getter keeps that danger from being reachable at all.
   SupabaseClient get _supabase => Supabase.instance.client;
   final _conflict = ConflictResolutionService();
 
-  /// Starts sync when connectivity is available.
-  /// Pushes local entries to Supabase and merges remote changes locally.
+  /// Pushes local journal entries and merges remote changes when cloud sync
+  /// is configured, initialized, signed in, and allowed by the current mode.
   Future<void> syncAll() async {
-    if (!SupabaseConfig.isConfigured) return;
-
-    final statuses = await Connectivity().checkConnectivity();
-    if (statuses.every((s) => s == ConnectivityResult.none)) return;
-
-    final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) return; // not signed in
+    if (!shouldAttemptCloudSync(
+      configured: SupabaseConfig.isConfigured,
+      safeMode: SafeBoot.instance.safeMode.value,
+      clientAvailable: AuthService.isAvailable,
+    )) {
+      return;
+    }
 
     try {
+      final statuses = await Connectivity().checkConnectivity();
+      if (statuses.every((status) => status == ConnectivityResult.none)) {
+        return;
+      }
+
+      // Keep every Supabase access inside the guarded block. A configured
+      // project can still be intentionally uninitialized in Safe Mode or
+      // temporarily unavailable after a failed optional cloud startup.
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
       await _pushLocal(userId);
       await _pullRemote(userId);
-    } catch (e) {
-      debugPrint('SyncService: error during sync — $e');
+    } catch (error, stack) {
+      await AppLog.instance.caught('sync_failed', error, stack);
     }
   }
 
@@ -44,10 +62,12 @@ class SyncService {
     if (local.isEmpty) return;
 
     final rows = local
-        .map((e) => {
-              ...e.toMap(),
-              'user_id': userId,
-            })
+        .map(
+          (entry) => {
+            ...entry.toMap(),
+            'user_id': userId,
+          },
+        )
         .toList();
 
     await _supabase.from(_kTable).upsert(rows, onConflict: 'id');
@@ -61,7 +81,9 @@ class SyncService {
         .order('timestamp', ascending: false);
 
     final remote = (response as List)
-        .map((r) => JournalEntry.fromMap(r as Map<String, dynamic>))
+        .map(
+          (row) => JournalEntry.fromMap(row as Map<String, dynamic>),
+        )
         .toList();
 
     if (remote.isEmpty) return;
@@ -76,26 +98,30 @@ class SyncService {
     List<JournalEntry> remote,
   ) async {
     final map = <String, JournalEntry>{};
-    for (final e in local) {
-      map[e.id] = e;
+    for (final entry in local) {
+      map[entry.id] = entry;
     }
-    for (final r in remote) {
-      final existing = map[r.id];
+    for (final entry in remote) {
+      final existing = map[entry.id];
       if (existing == null) {
-        map[r.id] = r;
+        map[entry.id] = entry;
       } else {
-        map[r.id] = await _conflict.resolve(existing, r);
+        map[entry.id] = await _conflict.resolve(existing, entry);
       }
     }
     return map.values.toList()
-      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      ..sort((left, right) => right.timestamp.compareTo(left.timestamp));
   }
 
   Future<List<JournalEntry>> _loadLocal() async {
     final prefs = NeuraPrefsCache.prefs;
     final raw = prefs.getStringList(_kLocalKey) ?? [];
     return raw
-        .map((s) => JournalEntry.fromMap(jsonDecode(s) as Map<String, dynamic>))
+        .map(
+          (encoded) => JournalEntry.fromMap(
+            jsonDecode(encoded) as Map<String, dynamic>,
+          ),
+        )
         .toList();
   }
 
@@ -103,7 +129,7 @@ class SyncService {
     final prefs = NeuraPrefsCache.prefs;
     await prefs.setStringList(
       _kLocalKey,
-      entries.map((e) => jsonEncode(e.toMap())).toList(),
+      entries.map((entry) => jsonEncode(entry.toMap())).toList(),
     );
   }
 }

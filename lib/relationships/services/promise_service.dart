@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -23,7 +22,8 @@ class PromiseService {
       _cache = [];
       return;
     }
-    final list = (jsonDecode(raw) as List<dynamic>).cast<Map<String, dynamic>>();
+    final list =
+        (jsonDecode(raw) as List<dynamic>).cast<Map<String, dynamic>>();
     _cache = list.map(NeuraPromise.fromJson).toList();
   }
 
@@ -40,9 +40,7 @@ class PromiseService {
 
   Future<List<NeuraPromise>> openPromises() async {
     await _loadIfNeeded();
-    return _cache
-        .where((p) => p.status == PromiseStatus.pending)
-        .toList()
+    return _cache.where((p) => p.status == PromiseStatus.pending).toList()
       ..sort((a, b) {
         final ad = a.dueAt ?? DateTime.now().add(const Duration(days: 365));
         final bd = b.dueAt ?? DateTime.now().add(const Duration(days: 365));
@@ -85,5 +83,9 @@ class PromiseService {
   Future<int> openCount() async {
     await _loadIfNeeded();
     return _cache.where((p) => p.status == PromiseStatus.pending).length;
+  }
+
+  void resetAfterDataWipe() {
+    _cache = [];
   }
 }

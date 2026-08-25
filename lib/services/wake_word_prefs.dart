@@ -25,8 +25,8 @@ class WakeWordPrefsController {
     try {
       final sp = NeuraPrefsCache.prefs;
       enabled.value = sp.getBool(_prefsKey) ?? false;
-    } catch (e) {
-      await AppLog.instance.warn('WakeWordPrefsController.init failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('wake_word_prefs_init_failed', e, st);
     }
   }
 
@@ -35,8 +35,12 @@ class WakeWordPrefsController {
     try {
       final sp = NeuraPrefsCache.prefs;
       await sp.setBool(_prefsKey, value);
-    } catch (e) {
-      await AppLog.instance.warn('WakeWordPrefsController.setEnabled failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('wake_word_prefs_update_failed', e, st);
     }
+  }
+
+  void resetAfterDataWipe() {
+    enabled.value = false;
   }
 }

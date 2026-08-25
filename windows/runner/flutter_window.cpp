@@ -6,6 +6,8 @@
 #include <screen_retriever_windows/screen_retriever_windows_plugin_c_api.h>
 #include <window_manager_plus/window_manager_plus_plugin.h>
 
+#include "neura_native_diagnostics.h"
+
 FlutterWindow::FlutterWindow(const flutter::DartProject& project,
                              int window_id, bool is_mascot)
     : project_(project), window_id_(window_id), is_mascot_(is_mascot) {}
@@ -23,64 +25,64 @@ bool FlutterWindow::OnCreate() {
   // creation / destruction in the startup path.
   flutter_controller_ = std::make_unique<flutter::FlutterViewController>(
       frame.right - frame.left, frame.bottom - frame.top, project_);
-  // Ensure that basic setup of the controller was successful.
   if (!flutter_controller_->engine() || !flutter_controller_->view()) {
+    RecordNeuraNativeBreadcrumb("flutter_controller_create_failed");
     return false;
   }
+  RecordNeuraNativeBreadcrumb("flutter_controller_created");
+
+  auto* engine = flutter_controller_->engine();
+
+  // Dart asks for this role immediately after attaching its dependency-free
+  // bootstrap frame. Install the channel before plugins so discovery cannot
+  // race plugin registration.
+  window_role_ = std::make_unique<NeuraWindowRole>(
+      engine->messenger(), window_id_, is_mascot_);
+  RecordNeuraNativeBreadcrumb("window_role_channel_registered");
+
   if (is_mascot_) {
-    // The floating avatar window runs its own, second Flutter engine (see
-    // WindowManagerPlusPluginSetWindowCreatedCallback in main.cpp). Several
-    // of this app's Windows plugins -- flutter_tts in particular -- keep
-    // their registration state in file-scope global variables rather than
-    // per-engine state, because they were never written with multi-engine
-    // apps in mind. Calling the full RegisterPlugins() here would register
-    // a second flutter_tts_plugin instance and clobber the main window's
-    // plugin/method-channel state out from under any in-flight or
-    // about-to-fire TTS call -- a real bug, worth fixing regardless.
-    //
-    // NOTE: this does NOT fix the flutter_tts_plugin.dll crash tracked in
-    // issue #32. That was directly tested and disproven -- the crash still
-    // reproduces 100% of the time with this fix applied, and even with the
-    // mascot window disabled entirely (no second engine created at all).
-    // The real cause is inside flutter_tts's own Windows speak()
-    // implementation; see the corrected diagnosis in
-    // lib/services/ambient_listening_service.dart's kEnableProactiveGreetingTts
-    // doc comment. This registration fix stays because it's a real,
-    // separate bug (a latent footgun for any future plugin that also uses
-    // global state), not because it resolves #32.
-    //
-    // The mascot window's Dart code (lib/mascot/*.dart) only ever calls
-    // into window_manager_plus and screen_retriever, so only register
-    // those two plugins for this engine instead of the full set. This also
-    // sidesteps the same process-global-state footgun in any of the other
-    // ten plugins below, not just flutter_tts.
-    auto* engine = flutter_controller_->engine();
+    // The mascot owns a second Flutter engine but uses only these two plugins.
+    // Registering the complete plugin set here would duplicate process-global
+    // plugin state, including flutter_tts, and could clobber the primary
+    // engine's method channels. This is independent of issue #32's native TTS
+    // crash and remains worthwhile even while spoken startup audio stays off.
     WindowManagerPlusPluginRegisterWithRegistrar(
         engine->GetRegistrarForPlugin("WindowManagerPlusPlugin"));
     ScreenRetrieverWindowsPluginCApiRegisterWithRegistrar(
         engine->GetRegistrarForPlugin("ScreenRetrieverWindowsPluginCApi"));
   } else {
-    RegisterPlugins(flutter_controller_->engine());
+    RegisterPlugins(engine);
   }
-  speech_recognizer_ = std::make_unique<NeuraSpeechRecognizer>(
-      flutter_controller_->engine()->messenger());
-  window_role_ = std::make_unique<NeuraWindowRole>(
-      flutter_controller_->engine()->messenger(), window_id_, is_mascot_);
+
+  // A plugin may install its own unhandled-exception filter. Reassert Neura's
+  // pass-through logger afterward; it records a privacy-safe breadcrumb and
+  // still returns EXCEPTION_CONTINUE_SEARCH for normal Windows reporting.
+  InstallNeuraNativeCrashHandlers();
+  RecordNeuraNativeBreadcrumb("plugins_registered");
+
+  speech_recognizer_ =
+      std::make_unique<NeuraSpeechRecognizer>(engine->messenger());
+  RecordNeuraNativeBreadcrumb("native_channels_registered");
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
-  flutter_controller_->engine()->SetNextFrameCallback([&]() {
+  flutter_controller_->engine()->SetNextFrameCallback([this]() {
+    RecordNeuraNativeBreadcrumb(is_mascot_ ? "mascot_first_frame"
+                                           : "primary_first_frame");
     this->Show();
   });
 
-  // Flutter can complete the first frame before the "show window" callback is
-  // registered. The following call ensures a frame is pending to ensure the
-  // window is shown. It is a no-op if the first frame hasn't completed yet.
+  // Flutter can complete the first frame before the show callback is
+  // registered. This ensures a frame is pending; it is a no-op otherwise.
   flutter_controller_->ForceRedraw();
 
   return true;
 }
 
 void FlutterWindow::OnDestroy() {
+  // Both custom channel owners retain the engine's BinaryMessenger. Release
+  // them before destroying the FlutterViewController/engine.
+  window_role_.reset();
+  speech_recognizer_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -104,7 +106,10 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
 
   switch (message) {
     case WM_FONTCHANGE:
-      flutter_controller_->engine()->ReloadSystemFonts();
+      // A font broadcast can arrive while a window is being torn down.
+      if (flutter_controller_ && flutter_controller_->engine()) {
+        flutter_controller_->engine()->ReloadSystemFonts();
+      }
       break;
   }
 

@@ -91,8 +91,14 @@ class _MoneyManagerScreenState extends State<MoneyManagerScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
-                              _SummaryChip(label: 'In this month', value: _money(_monthIncome), color: Colors.green),
-                              _SummaryChip(label: 'Out this month', value: _money(_monthExpense), color: Colors.redAccent),
+                              _SummaryChip(
+                                  label: 'In this month',
+                                  value: _money(_monthIncome),
+                                  color: Colors.green),
+                              _SummaryChip(
+                                  label: 'Out this month',
+                                  value: _money(_monthExpense),
+                                  color: Colors.redAccent),
                             ],
                           ),
                         ],
@@ -103,7 +109,9 @@ class _MoneyManagerScreenState extends State<MoneyManagerScreen> {
                   if (_entries.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 40),
-                      child: Center(child: Text('No transactions yet. Tap Add to log one.')),
+                      child: Center(
+                          child:
+                              Text('No transactions yet. Tap Add to log one.')),
                     )
                   else
                     ..._entries.map((e) => Dismissible(
@@ -113,13 +121,18 @@ class _MoneyManagerScreenState extends State<MoneyManagerScreen> {
                             alignment: Alignment.centerRight,
                             padding: const EdgeInsets.symmetric(horizontal: 20),
                             color: Colors.redAccent,
-                            child: const Icon(Icons.delete, color: Colors.white),
+                            child:
+                                const Icon(Icons.delete, color: Colors.white),
                           ),
                           onDismissed: (_) => _delete(e),
                           child: ListTile(
                             leading: Icon(
-                              e.type == MoneyEntryType.income ? Icons.arrow_downward : Icons.arrow_upward,
-                              color: e.type == MoneyEntryType.income ? Colors.green : Colors.redAccent,
+                              e.type == MoneyEntryType.income
+                                  ? Icons.arrow_downward
+                                  : Icons.arrow_upward,
+                              color: e.type == MoneyEntryType.income
+                                  ? Colors.green
+                                  : Colors.redAccent,
                             ),
                             title: Text(e.category),
                             subtitle: e.note.isEmpty ? null : Text(e.note),
@@ -127,7 +140,9 @@ class _MoneyManagerScreenState extends State<MoneyManagerScreen> {
                               '${e.type == MoneyEntryType.income ? '+' : '-'}${_money(e.amount)}',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                color: e.type == MoneyEntryType.income ? Colors.green : Colors.redAccent,
+                                color: e.type == MoneyEntryType.income
+                                    ? Colors.green
+                                    : Colors.redAccent,
                               ),
                             ),
                           ),
@@ -144,14 +159,16 @@ class _SummaryChip extends StatelessWidget {
   final String value;
   final Color color;
 
-  const _SummaryChip({required this.label, required this.value, required this.color});
+  const _SummaryChip(
+      {required this.label, required this.value, required this.color});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         Text(label, style: Theme.of(context).textTheme.bodySmall),
-        Text(value, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+        Text(value,
+            style: TextStyle(color: color, fontWeight: FontWeight.bold)),
       ],
     );
   }

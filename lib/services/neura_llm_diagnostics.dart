@@ -18,7 +18,8 @@ class NeuraLlmDiagnostics {
   DateTime? lastFailureAt;
   String? lastError;
 
-  bool get healthy => failures == 0 ||
+  bool get healthy =>
+      failures == 0 ||
       (lastSuccessAt != null &&
           (lastFailureAt == null || lastSuccessAt!.isAfter(lastFailureAt!)));
 
@@ -36,7 +37,10 @@ class NeuraLlmDiagnostics {
   void recordFailure(Object error) {
     failures += 1;
     lastFailureAt = DateTime.now();
-    lastError = error.toString();
+    // Provider exceptions may echo prompts, credentials, URLs, or local
+    // paths. Diagnostics only needs a stable classification; arbitrary
+    // exception text must never cross into logs or the UI.
+    lastError = '${error.runtimeType} details withheld.';
   }
 
   void recordRetry() => retries += 1;
@@ -68,6 +72,10 @@ class NeuraLlmDiagnostics {
   /// Test-only convenience. Production code should never need to clear health
   /// history during a process lifetime.
   void resetForTesting() {
+    resetAfterDataWipe();
+  }
+
+  void resetAfterDataWipe() {
     attempts = 0;
     successes = 0;
     failures = 0;

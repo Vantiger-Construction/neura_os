@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import '../services/promise_service.dart';
 import '../models/neura_promise.dart';

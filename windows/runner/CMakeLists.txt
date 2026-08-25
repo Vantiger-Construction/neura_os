@@ -28,6 +28,7 @@ execute_process(
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
   "main.cpp"
+  "neura_native_diagnostics.cpp"
   "neura_speech_recognizer.cpp"
   "neura_window_role.cpp"
   "utils.cpp"

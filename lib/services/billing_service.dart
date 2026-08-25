@@ -1,6 +1,8 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+
+import '../modules/core/app_log.dart';
 
 class BillingService {
   final InAppPurchase _iap = InAppPurchase.instance;
@@ -12,7 +14,8 @@ class BillingService {
 
   /// Whether a premium entitlement is currently active.
   bool get isPremium => purchases.value.any(
-        (p) => p.status == PurchaseStatus.purchased ||
+        (p) =>
+            p.status == PurchaseStatus.purchased ||
             p.status == PurchaseStatus.restored,
       );
 
@@ -22,10 +25,13 @@ class BillingService {
     final available = await _iap.isAvailable();
     if (!available) return;
 
-    unawaited(_purchaseSub?.cancel());
+    final priorSubscription = _purchaseSub;
+    if (priorSubscription != null) {
+      await _cancelSubscription(priorSubscription);
+    }
     _purchaseSub = _iap.purchaseStream.listen(
       _onPurchaseUpdate,
-      onError: (Object e) => debugPrint('BillingService: stream error $e'),
+      onError: _onPurchaseStreamError,
     );
 
     // Restore previously-completed purchases (e.g. after reinstall).
@@ -38,13 +44,19 @@ class BillingService {
       if (purchase.status == PurchaseStatus.pending) continue;
 
       if (purchase.status == PurchaseStatus.error) {
-        debugPrint('BillingService: purchase error for ${purchase.productID}');
+        unawaited(
+          AppLog.instance.warn('billing_purchase_failed', <String, Object?>{
+            'error_code': purchase.error?.code ?? 'unknown',
+          }),
+        );
         continue;
       }
 
       if (purchase.status == PurchaseStatus.purchased ||
           purchase.status == PurchaseStatus.restored) {
-        final existing = current.indexWhere((p) => p.productID == purchase.productID);
+        final existing = current.indexWhere(
+          (p) => p.productID == purchase.productID,
+        );
         if (existing >= 0) {
           current[existing] = purchase;
         } else {
@@ -54,7 +66,7 @@ class BillingService {
 
       // Acknowledge the purchase to avoid being refunded.
       if (purchase.pendingCompletePurchase) {
-        _iap.completePurchase(purchase);
+        unawaited(_completePurchase(purchase));
       }
     }
     purchases.value = current;
@@ -64,7 +76,11 @@ class BillingService {
   Future<List<ProductDetails>> fetchProducts(List<String> ids) async {
     final response = await _iap.queryProductDetails(ids.toSet());
     if (response.error != null) {
-      debugPrint('BillingService: query error ${response.error}');
+      unawaited(
+        AppLog.instance.warn('billing_product_query_failed', <String, Object?>{
+          'error_code': response.error?.code ?? 'unknown',
+        }),
+      );
     }
     return response.productDetails;
   }
@@ -80,7 +96,42 @@ class BillingService {
 
   /// Disposes the purchase stream subscription.
   void dispose() {
-    _purchaseSub?.cancel();
+    final subscription = _purchaseSub;
     _purchaseSub = null;
+    if (subscription != null) {
+      unawaited(_cancelSubscription(subscription));
+    }
+  }
+
+  void _onPurchaseStreamError(Object error, StackTrace stack) {
+    unawaited(
+      AppLog.instance.caught('billing_purchase_stream_failed', error, stack),
+    );
+  }
+
+  Future<void> _completePurchase(PurchaseDetails purchase) async {
+    try {
+      await _iap.completePurchase(purchase);
+    } catch (error, stack) {
+      await AppLog.instance.caught(
+        'billing_purchase_completion_failed',
+        error,
+        stack,
+      );
+    }
+  }
+
+  Future<void> _cancelSubscription(
+    StreamSubscription<List<PurchaseDetails>> subscription,
+  ) async {
+    try {
+      await subscription.cancel();
+    } catch (error, stack) {
+      await AppLog.instance.caught(
+        'billing_subscription_cancel_failed',
+        error,
+        stack,
+      );
+    }
   }
 }

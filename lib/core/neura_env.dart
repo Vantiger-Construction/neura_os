@@ -35,8 +35,7 @@ class NeuraEnv {
 
 /// Beta gating. IAP / purchases must be gated behind this.
 /// Beta builds pass --dart-define=BETA_MODE=true
-const bool kBetaMode =
-    bool.fromEnvironment('BETA_MODE', defaultValue: true);
+const bool kBetaMode = bool.fromEnvironment('BETA_MODE', defaultValue: true);
 
 /// True only when in-app purchases should be reachable.
 /// In beta this is always false.

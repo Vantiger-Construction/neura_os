@@ -30,7 +30,8 @@ class VaultSession {
       if (created == null) return false;
       await store.configurePin(created);
       _pin = created;
-      await AppLog.instance.info('vault_event', {'msg': 'Vault PIN configured (verifier stored).'});
+      await AppLog.instance.info(
+          'vault_event', {'msg': 'Vault PIN configured (verifier stored).'});
       return true;
     }
 
@@ -73,8 +74,12 @@ class VaultSession {
               onSubmitted: (_) => Navigator.of(ctx).pop(ctrl.text.trim()),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.of(ctx).pop(null), child: const Text('Cancel')),
-              ElevatedButton(onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()), child: const Text('Unlock')),
+              TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(null),
+                  child: const Text('Cancel')),
+              ElevatedButton(
+                  onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+                  child: const Text('Unlock')),
             ],
           );
         },
@@ -97,7 +102,8 @@ class VaultSession {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('This PIN is never stored. You will enter it once per session to unlock the vault.'),
+                const Text(
+                    'This PIN is never stored. You will enter it once per session to unlock the vault.'),
                 const SizedBox(height: 12),
                 TextField(
                   controller: a,
@@ -114,14 +120,18 @@ class VaultSession {
               ],
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.of(ctx).pop(null), child: const Text('Cancel')),
+              TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(null),
+                  child: const Text('Cancel')),
               ElevatedButton(
                 onPressed: () {
                   final p1 = a.text.trim();
                   final p2 = b.text.trim();
                   if (p1.length < 4 || p1 != p2) {
                     ScaffoldMessenger.of(ctx).showSnackBar(
-                      const SnackBar(content: Text('PINs must match and be at least 4 digits.')),
+                      const SnackBar(
+                          content: Text(
+                              'PINs must match and be at least 4 digits.')),
                     );
                     return;
                   }

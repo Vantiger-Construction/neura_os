@@ -7,20 +7,18 @@
 
 import 'package:flutter_tts/flutter_tts.dart';
 
+import '../../avatar/viseme/neura_viseme_engine.dart';
 import '../../core/neura_event_bus.dart';
 import '../../core/neura_events.dart';
 import '../../core/neura_events_extra.dart';
-import '../../avatar/viseme/neura_viseme_engine.dart';
 
 class NeuraFlutterTtsVisemeBridge {
   static bool _attached = false;
 
-  /// [onCompletion], [onCancel], and [onError] fire alongside this bridge's
-  /// own event-bus emissions -- flutter_tts only supports one handler of
-  /// each kind, so callers that also need completion/cancel/error signals
-  /// (e.g. to resolve a Dart-side speak() completion future) must go
-  /// through these hooks rather than calling setCompletionHandler etc.
-  /// themselves, which would silently replace this bridge's handler.
+  /// [onCompletion], [onCancel], and [onError] run alongside the bridge's
+  /// event-bus emissions. flutter_tts supports only one handler of each kind,
+  /// so services that also need lifecycle signals must use these hooks instead
+  /// of replacing the bridge's handlers.
   static Future<void> attach(
     FlutterTts tts, {
     NeuraEventBus? bus,
@@ -29,67 +27,88 @@ class NeuraFlutterTtsVisemeBridge {
     void Function(dynamic message)? onError,
   }) async {
     if (_attached) return;
-    _attached = true;
 
-    final b = bus ?? NeuraEventBus.I;
+    final eventBus = bus ?? NeuraEventBus.I;
 
-    // Start / completion are the most reliable.
     tts.setStartHandler(() {
-      b.emit(const NeuraTalkingEvent(true));
-      // default "talking starts": open mouth a bit
-      b.emit(const NeuraMouthOpenEvent(0.25));
-      b.emit(const NeuraVisemeEvent(NeuraViseme.AI));
+      eventBus.emit(const NeuraTalkingEvent(true));
+      eventBus.emit(const NeuraMouthOpenEvent(0.25));
+      eventBus.emit(const NeuraVisemeEvent(NeuraViseme.AI));
     });
 
     tts.setCompletionHandler(() {
-      b.emit(const NeuraTalkingEvent(false));
-      b.emit(const NeuraMouthOpenEvent(0.0));
-      b.emit(const NeuraVisemeEvent(NeuraViseme.rest));
-      // small blink on finish feels alive
-      b.emit(const NeuraPulseEvent.blink());
+      _emitRestState(eventBus);
+      eventBus.emit(const NeuraPulseEvent.blink());
       onCompletion?.call();
     });
 
     tts.setCancelHandler(() {
-      b.emit(const NeuraTalkingEvent(false));
-      b.emit(const NeuraMouthOpenEvent(0.0));
-      b.emit(const NeuraVisemeEvent(NeuraViseme.rest));
+      _emitRestState(eventBus);
       onCancel?.call();
     });
 
     tts.setErrorHandler((message) {
-      b.emit(const NeuraTalkingEvent(false));
-      b.emit(const NeuraMouthOpenEvent(0.0));
-      b.emit(const NeuraVisemeEvent(NeuraViseme.rest));
-      b.emit(NeuraErrorEvent('TTS error: $message', hint: 'flutter_tts'));
+      _emitRestState(eventBus);
+      eventBus.emit(
+        NeuraErrorEvent(
+          'TTS error: $message',
+          hint: 'flutter_tts',
+        ),
+      );
       onError?.call(message);
     });
 
-    // Progress handler gives substring positions in the original text for many platforms.
-    // We'll sample a tiny slice and infer a viseme.
+    // Many platforms report the spoken substring through this callback. Keep
+    // every index inside the source text before deriving the current viseme.
     tts.setProgressHandler((String text, int start, int end, String word) {
       try {
-        final safeStart = start.clamp(0, text.length);
-        final safeEnd = end.clamp(0, text.length);
-        String frag;
-        if (safeEnd > safeStart) {
-          frag = text.substring(safeStart, safeEnd);
-        } else if (word.isNotEmpty) {
-          frag = word;
-        } else {
-          frag = text.isEmpty
-              ? ''
-              : text.substring(
-                  safeStart, (safeStart + 1).clamp(0, text.length));
-        }
+        final safeStart = start.clamp(0, text.length).toInt();
+        final safeEnd = end.clamp(0, text.length).toInt();
+        final fragment = _extractFragment(
+          text: text,
+          start: safeStart,
+          end: safeEnd,
+          word: word,
+        );
 
-        final v = NeuraVisemeEngine.inferFromFragment(frag);
-        final open = NeuraVisemeEngine.mouthOpenFromFragment(frag);
-        b.emit(NeuraVisemeEvent(v));
-        b.emit(NeuraMouthOpenEvent(open));
+        final viseme = NeuraVisemeEngine.inferFromFragment(fragment);
+        final open = NeuraVisemeEngine.mouthOpenFromFragment(fragment);
+        eventBus.emit(NeuraVisemeEvent(viseme));
+        eventBus.emit(NeuraMouthOpenEvent(open));
       } catch (_) {
-        // Never throw from progress callback.
+        // Native progress callbacks must never propagate an exception.
       }
     });
+
+    // Mark attached only after every callback registration succeeds so a
+    // transient plugin failure can be retried later in this process.
+    _attached = true;
+  }
+
+  static void _emitRestState(NeuraEventBus bus) {
+    bus.emit(const NeuraTalkingEvent(false));
+    bus.emit(const NeuraMouthOpenEvent(0.0));
+    bus.emit(const NeuraVisemeEvent(NeuraViseme.rest));
+  }
+
+  static String _extractFragment({
+    required String text,
+    required int start,
+    required int end,
+    required String word,
+  }) {
+    if (text.isEmpty) return word;
+
+    if (end > start) {
+      return text.substring(start, end);
+    }
+
+    if (word.isNotEmpty) return word;
+    if (start >= text.length) return '';
+
+    final nextIndex = (start + 1).clamp(0, text.length).toInt();
+    if (nextIndex <= start) return '';
+
+    return text.substring(start, nextIndex);
   }
 }

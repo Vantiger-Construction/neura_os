@@ -15,7 +15,8 @@ class MemoryNode {
     Set<String>? tags,
     DateTime? createdAtUtc,
   })  : tags = tags ?? const <String>{},
-        createdAtUtc = createdAtUtc ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+        createdAtUtc =
+            createdAtUtc ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
 
   MemoryNode copyWith({
     String? id,

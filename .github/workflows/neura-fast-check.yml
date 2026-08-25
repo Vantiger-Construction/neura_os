@@ -29,13 +29,85 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Verify local tools
-        shell: pwsh
+      - name: Install Flutter
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
-          if (Get-Command flutter -ErrorAction SilentlyContinue) { flutter --version } else { Write-Host "Flutter not found" }
-          if (Get-Command dart -ErrorAction SilentlyContinue) { dart --version } else { Write-Host "Dart not found" }
+          $flutterVersion = '3.44.7'
+          $flutterRoot = Join-Path $env:RUNNER_TOOL_CACHE "flutter\$flutterVersion\x64"
+          $flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
+
+          if (-not (Test-Path -LiteralPath $flutterExe -PathType Leaf)) {
+            $stagingRoot = Join-Path $env:RUNNER_TEMP "flutter-$flutterVersion-$env:GITHUB_RUN_ID"
+            if (Test-Path -LiteralPath $stagingRoot) {
+              Remove-Item -LiteralPath $stagingRoot -Recurse -Force
+            }
+
+            git clone --depth 1 --branch $flutterVersion https://github.com/flutter/flutter.git $stagingRoot
+            if ($LASTEXITCODE -ne 0) {
+              throw "Flutter $flutterVersion clone failed with exit code $LASTEXITCODE."
+            }
+
+            New-Item -ItemType Directory -Path (Split-Path -Parent $flutterRoot) -Force | Out-Null
+            Move-Item -LiteralPath $stagingRoot -Destination $flutterRoot
+          }
+
+          $flutterBin = Join-Path $flutterRoot 'bin'
+          $flutterBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $flutterExe config --no-analytics
+          if ($LASTEXITCODE -ne 0) {
+            throw "Flutter configuration failed with exit code $LASTEXITCODE."
+          }
+          & $flutterExe --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Flutter verification failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Install Rust
+        shell: powershell
+        run: |
+          # Download and install rustup (Rust installer)
+          $rustupUrl = "https://win.rustup.rs/x86_64"
+          $rustupPath = "$env:TEMP\rustup-init.exe"
+          
+          Write-Host "Downloading Rust installer from $rustupUrl"
+          Invoke-WebRequest -Uri $rustupUrl -OutFile $rustupPath
+          
+          Write-Host "Installing Rust..."
+          & $rustupPath -y
+          
+          if ($LASTEXITCODE -ne 0) {
+            throw "Rust installation failed with exit code $LASTEXITCODE."
+          }
+          
+          # Add Rust to PATH for this session
+          $env:PATH += ";$env:USERPROFILE\.cargo\bin"
+          [System.Environment]::SetEnvironmentVariable("PATH", $env:PATH, [System.EnvironmentVariableTarget]::Process)
+          
+          # Verify installation
+          Write-Host "Verifying Rust installation..."
+          cargo --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "cargo verification failed with exit code $LASTEXITCODE."
+          }
+          
+          rustc --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "rustc verification failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Verify local tools
+        # GitHub writes each run block to an unsigned temporary .ps1 file.
+        # Bypass applies only to this CI process and does not change machine
+        # or user execution-policy settings on the self-hosted runner.
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          flutter --version
+          dart --version
           git --version
-          if (Get-Command cargo -ErrorAction SilentlyContinue) { cargo --version } else { Write-Host "Cargo not found" }
+          # neura_swarm (rust/) needs cargo on this machine's PATH.
+          cargo --version
+          # The authored Windows runner fetches C++/WinRT through NuGet.
+          nuget help | Select-Object -First 1
 
       - name: Run optimized validation
         shell: pwsh

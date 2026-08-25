@@ -1,0 +1,456 @@
+name: Neura Phase 4 package validation
+
+on:
+  push:
+    branches:
+      - agent/build-neura-downloads-20260729
+      - agent/neura-intelligence-fabric-v1.3
+      - agent/neura-adaptive-intent-phase4-integration
+  pull_request:
+    branches:
+      - Neura
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: neura-recovery-downloads-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: "3.44.7"
+
+jobs:
+  verify:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Announce Phase 4 package validation
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/agent/neura-adaptive-intent-phase4-integration'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh pr comment 43 \
+            --repo Vantiger-Construction/neura_os \
+            --body "Windows and Android package validation started: run ${GITHUB_RUN_ID} on ${GITHUB_SHA}."
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Record Flutter version
+        run: flutter --version
+
+      - name: Restore dependencies
+        run: |
+          flutter clean
+          flutter pub get
+
+      - name: Verify committed Dart formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          dart format lib test
+          git diff --no-ext-diff --binary -- lib test > dart-format.patch
+          if ! git diff --quiet -- lib test; then
+            echo "::error::Committed Dart sources are not formatted. Apply dart format lib test and commit the result."
+            exit 1
+          fi
+
+      - name: Verify authored Windows runner contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'messenger, "neura/window_role"' windows/runner/neura_window_role.cpp
+          grep -Fq '"neura_window_role.cpp"' windows/runner/CMakeLists.txt
+          grep -Fq 'window_role_ = std::make_unique<NeuraWindowRole>' windows/runner/flutter_window.cpp
+
+      - name: Require zero analyzer errors
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter analyze --no-fatal-warnings --no-fatal-infos 2>&1 | tee analyze.log
+
+      - name: Run startup release gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter test --no-pub --reporter expanded \
+            test/startup/neura_error_pipeline_test.dart 2>&1 | tee startup-tests.log
+          flutter test --no-pub --reporter expanded --timeout 30s \
+            test/startup/neura_error_boundary_test.dart 2>&1 | tee -a startup-tests.log
+
+      - name: Run complete Flutter suite
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter test --no-pub --reporter expanded 2>&1 | tee tests.log
+
+      - name: Upload verification logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Neura-verification-logs
+          path: |
+            analyze.log
+            startup-tests.log
+            tests.log
+            dart-format.patch
+            pubspec.lock
+          if-no-files-found: warn
+          retention-days: 14
+
+  windows:
+    name: Build Windows x64
+    needs: verify
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Enable Windows desktop
+        shell: pwsh
+        run: |
+          flutter config --enable-windows-desktop
+          flutter --version
+          flutter doctor -v
+
+      - name: Restore dependencies
+        shell: pwsh
+        run: flutter pub get
+
+      - name: Verify authored Windows runner contract
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $roleSource = Get-Content -LiteralPath 'windows\runner\neura_window_role.cpp' -Raw
+          $cmake = Get-Content -LiteralPath 'windows\runner\CMakeLists.txt' -Raw
+          $flutterWindow = Get-Content -LiteralPath 'windows\runner\flutter_window.cpp' -Raw
+          if (-not $roleSource.Contains('neura/window_role')) {
+            throw 'Authored Windows runner is missing the neura/window_role channel.'
+          }
+          if (-not $cmake.Contains('"neura_window_role.cpp"')) {
+            throw 'Authored Windows runner does not compile neura_window_role.cpp.'
+          }
+          if (-not $flutterWindow.Contains('window_role_ = std::make_unique<NeuraWindowRole>')) {
+            throw 'Authored Windows runner does not register NeuraWindowRole before plugins.'
+          }
+
+      - name: Build Windows release
+        shell: pwsh
+        run: |
+          $versionLine = Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$'
+          $buildName = $versionLine.Matches[0].Groups[1].Value.Trim().Split('+')[0]
+          flutter build windows --release `
+            --build-name $buildName `
+            --build-number $env:GITHUB_RUN_NUMBER *>&1 |
+            Tee-Object -FilePath windows-build.log |
+            Out-Host
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Package and launch-test Windows download
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = Join-Path $PWD 'build\windows\x64\runner\Release'
+          $exe = Join-Path $release 'neuro_companion.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+            throw "Expected executable not found: $exe"
+          }
+
+          foreach ($runtimeName in @(
+            'msvcp140.dll',
+            'vcruntime140.dll',
+            'vcruntime140_1.dll'
+          )) {
+            $destination = Join-Path $release $runtimeName
+            if (-not (Test-Path -LiteralPath $destination -PathType Leaf)) {
+              $matches = @()
+              foreach ($programRoot in @(
+                ${env:ProgramFiles(x86)},
+                $env:ProgramFiles
+              ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) {
+                $matches += Get-ChildItem -Path (
+                  Join-Path $programRoot (
+                    "Microsoft Visual Studio\*\*\VC\Redist\MSVC\*" +
+                    "\x64\Microsoft.VC*.CRT\$runtimeName"
+                  )
+                ) -File -ErrorAction SilentlyContinue
+              }
+              $source = $matches |
+                Sort-Object -Property FullName -Descending |
+                Select-Object -First 1
+              if (-not $source) {
+                throw "Visual C++ x64 runtime was not found: $runtimeName"
+              }
+              Copy-Item -LiteralPath $source.FullName -Destination $destination
+            }
+          }
+
+          foreach ($required in @(
+            $exe,
+            (Join-Path $release 'flutter_windows.dll'),
+            (Join-Path $release 'neura_swarm.dll'),
+            (Join-Path $release 'msvcp140.dll'),
+            (Join-Path $release 'vcruntime140.dll'),
+            (Join-Path $release 'vcruntime140_1.dll'),
+            (Join-Path $release 'data\icudtl.dat'),
+            (Join-Path $release 'data\app.so')
+          )) {
+            if (-not (Test-Path -LiteralPath $required -PathType Leaf) -or
+                (Get-Item -LiteralPath $required).Length -le 0) {
+              throw "Windows runtime payload is incomplete: $required"
+            }
+          }
+
+          $flutterAssets = Join-Path $release 'data\flutter_assets'
+          if (-not (Test-Path -LiteralPath $flutterAssets -PathType Container) -or
+              -not (Get-ChildItem -LiteralPath $flutterAssets -File -Recurse |
+                Select-Object -First 1)) {
+            throw "Windows Flutter assets are missing or empty: $flutterAssets"
+          }
+
+          $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+          $startInfo.FileName = $exe
+          $startInfo.Arguments = '--launch-smoke-test'
+          $startInfo.WorkingDirectory = $release
+          $startInfo.UseShellExecute = $false
+          $smoke = New-Object System.Diagnostics.Process
+          $smoke.StartInfo = $startInfo
+          $smokeStarted = $false
+          try {
+            if (-not $smoke.Start()) {
+              throw 'Windows did not start the packaged executable.'
+            }
+            $smokeStarted = $true
+            if (-not $smoke.WaitForExit(15000)) {
+              throw 'Packaged launch self-test did not self-exit within 15 seconds.'
+            }
+            if ($smoke.ExitCode -ne 73) {
+              throw "Packaged launch self-test exited with code $($smoke.ExitCode); expected sentinel 73."
+            }
+          } finally {
+            if ($smokeStarted) {
+              $smoke.Refresh()
+              if (-not $smoke.HasExited) {
+                Stop-Process -Id $smoke.Id -Force -ErrorAction Stop
+              }
+            }
+            $smoke.Dispose()
+          }
+
+          $output = Join-Path $PWD 'recovery_downloads\windows'
+          New-Item -ItemType Directory -Path $output -Force | Out-Null
+          $versionLine = Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$'
+          $buildName = $versionLine.Matches[0].Groups[1].Value.Trim().Split('+')[0]
+          $version = "$buildName-recovery.$env:GITHUB_RUN_NUMBER"
+          $zipName = "NeuraCompanion_Windows_x64_$version.zip"
+          $zipPath = Join-Path $output $zipName
+
+          $workflowBundle = Join-Path $release 'SOURCE_WORKFLOWS'
+          New-Item -ItemType Directory -Path $workflowBundle -Force | Out-Null
+          Copy-Item -Path '.github\\workflows\\*.yml' -Destination $workflowBundle
+          if (-not (Get-ChildItem -LiteralPath $workflowBundle -File -Filter '*.yml' |
+              Select-Object -First 1)) {
+            throw 'Source workflow bundle is missing from the Windows package.'
+          }
+
+          @"
+          Neura Companion - Windows x64 recovery build
+
+          Version: $version
+          Commit: $env:GITHUB_SHA
+
+          Install:
+          1. Extract the entire ZIP to a folder you choose.
+          2. Run neuro_companion.exe.
+          3. Keep the data, DLL, and executable files together.
+
+          This build passed dependency restore, Flutter analysis, startup release
+          gates, the complete Flutter suite, Windows release compilation,
+          authored-runner validation, payload validation, and the packaged
+          sentinel-73 launch smoke test in the same workflow.
+
+          SOURCE_WORKFLOWS contains the repository CI workflow files used to
+          reproduce and audit the validation gates.
+          "@ | Set-Content -LiteralPath (Join-Path $release 'README_INSTALL.txt') -Encoding UTF8
+
+          [ordered]@{
+            app = 'Neura Companion'
+            platform = 'windows-x64'
+            version = $version
+            commit = $env:GITHUB_SHA
+            workflowRun = $env:GITHUB_RUN_ID
+            flutter = (flutter --version | Select-Object -First 1)
+            startupReleaseGates = 'passed'
+            authoredWindowsRunner = 'passed'
+            launchSmokeTest = 'passed'
+            runtimePayload = 'passed'
+            builtAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+          } | ConvertTo-Json |
+            Set-Content -LiteralPath (Join-Path $release 'BUILD_PROVENANCE.json') -Encoding UTF8
+
+          Compress-Archive -Path (Join-Path $release '*') -DestinationPath $zipPath -CompressionLevel Optimal
+          $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $zipName" | Set-Content -LiteralPath (Join-Path $output 'SHA256SUMS.txt') -Encoding ASCII
+
+      - name: Upload Windows download
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeuraCompanion-Windows-x64
+          path: recovery_downloads/windows/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Windows failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Neura-Windows-build-log
+          path: windows-build.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  android:
+    name: Build Android installable APK
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Restore dependencies
+        run: flutter pub get
+
+      - name: Build installable Android test APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n 1)"
+          build_name="${app_version%%+*}"
+          flutter build apk --debug \
+            --build-name "$build_name" \
+            --build-number "$GITHUB_RUN_NUMBER" 2>&1 | tee android-build.log
+
+      - name: Package Android download
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_apk="$(find build/app/outputs -type f -name '*.apk' -size +0c -print -quit)"
+          if [[ -z "$source_apk" ]]; then
+            echo "::error::Flutter completed without producing a non-empty APK."
+            find build/app/outputs -maxdepth 5 -type f -print || true
+            exit 1
+          fi
+          output="recovery_downloads/android"
+          mkdir -p "$output"
+          app_version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n 1)"
+          version="${app_version%%+*}-recovery.${GITHUB_RUN_NUMBER}"
+          apk_name="NeuraCompanion_Android_${version}_debug-signed.apk"
+          cp "$source_apk" "$output/$apk_name"
+          mkdir -p "$output/SOURCE_WORKFLOWS"
+          cp .github/workflows/*.yml "$output/SOURCE_WORKFLOWS/"
+          compgen -G "$output/SOURCE_WORKFLOWS/*.yml" > /dev/null
+          sha256sum "$output/$apk_name" | sed "s#  $output/#  #" > "$output/SHA256SUMS.txt"
+          cat > "$output/README_INSTALL.txt" <<EOF
+          Neura Companion - Android recovery test build
+
+          Version: $version
+          Commit: $GITHUB_SHA
+
+          This APK is debug-signed intentionally so the Phase 4 recovery artifact
+          is directly installable during validation. It is not the permanently
+          signed Google Play release.
+
+          SOURCE_WORKFLOWS contains the repository CI workflow files used to
+          reproduce and audit the validation gates.
+          EOF
+
+      - name: Upload Android download
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeuraCompanion-Android-APK
+          path: recovery_downloads/android/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Android failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Neura-Android-build-log
+          path: android-build.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  report:
+    name: Report Phase 4 package validation
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/agent/neura-adaptive-intent-phase4-integration'
+    needs:
+      - verify
+      - windows
+      - android
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Post package result to PR 43
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+          ANDROID_RESULT: ${{ needs.android.result }}
+        shell: bash
+        run: |
+          gh pr comment 43 \
+            --repo Vantiger-Construction/neura_os \
+            --body "Package validation run ${GITHUB_RUN_ID}: verify=${VERIFY_RESULT}, Windows=${WINDOWS_RESULT}, Android=${ANDROID_RESULT}, commit=${GITHUB_SHA}."

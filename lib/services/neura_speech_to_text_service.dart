@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 
 import '../modules/core/app_log.dart';
+import '../reliability/safe_boot.dart';
 
 /// Windows speech-to-text via a native WinRT bridge (see
 /// windows/runner/neura_speech_recognizer.{h,cpp}).
@@ -40,13 +41,16 @@ class NeuraSpeechToTextService {
   String _finalText = '';
   bool _listening = false;
   Completer<String>? _stopCompleter;
+  Future<String>? _stopInFlight;
 
   Stream<String> get transcriptStream => _transcriptStream.stream;
   Stream<String> get finalPhraseStream => _finalPhraseStream.stream;
   bool get isListening => _listening;
+  bool get listeningAllowed => !SafeBoot.instance.safeMode.value;
 
   NeuraSpeechToTextService._() {
     _channel.setMethodCallHandler(_handleNativeCall);
+    SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
   }
 
   Future<void> _handleNativeCall(MethodCall call) async {
@@ -55,65 +59,131 @@ class NeuraSpeechToTextService {
         _finalText = '';
         break;
       case 'onPartial':
+        if (!listeningAllowed) return;
         final hypothesis = call.arguments as String? ?? '';
-        _transcriptStream.add(
-            _finalText.isEmpty ? hypothesis : '$_finalText $hypothesis');
+        _transcriptStream
+            .add(_finalText.isEmpty ? hypothesis : '$_finalText $hypothesis');
         break;
       case 'onFinal':
+        if (!listeningAllowed) return;
         final phrase = call.arguments as String? ?? '';
-        if (phrase.isNotEmpty) {
-          _finalText = _finalText.isEmpty ? phrase : '$_finalText $phrase';
+        final completedPhrase = phrase.trim();
+        if (completedPhrase.isNotEmpty) {
+          _finalText = _finalText.isEmpty
+              ? completedPhrase
+              : '$_finalText $completedPhrase';
         }
         _transcriptStream.add(_finalText);
-        if (phrase.trim().isNotEmpty) {
-          _finalPhraseStream.add(_finalText);
+        if (completedPhrase.isNotEmpty) {
+          _finalPhraseStream.add(completedPhrase);
         }
         break;
       case 'onStopped':
         _listening = false;
-        if (!(_stopCompleter?.isCompleted ?? true)) {
-          _stopCompleter!.complete(_finalText);
-        }
+        _completePendingStop();
         break;
       case 'onError':
         _listening = false;
-        await AppLog.instance.error('speech_to_text_native_error', {'reason': call.arguments});
-        _transcriptStream.add('[voice input error] ${call.arguments}');
-        if (!(_stopCompleter?.isCompleted ?? true)) {
-          _stopCompleter!.complete(_finalText);
-        }
+        await AppLog.instance.error('speech_to_text_native_error');
+        _transcriptStream.add('Speech-to-text reported an input error.');
+        _completePendingStop();
         break;
     }
   }
 
+  void _completePendingStop() {
+    final completer = _stopCompleter;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(_finalText);
+    }
+  }
+
   Future<bool> startRecording() async {
+    if (!listeningAllowed) return false;
+    final stopping = _stopInFlight;
+    if (stopping != null) await stopping;
+    if (!listeningAllowed) return false;
     if (_listening) return true;
+
     _finalText = '';
     _listening = true;
     try {
       await _channel.invokeMethod('start');
+      if (!listeningAllowed) {
+        await stopRecording();
+        return false;
+      }
       return true;
-    } catch (e) {
+    } catch (error, stack) {
       _listening = false;
-      await AppLog.instance.error('speech_to_text_start_failed', {'error': e.toString()});
+      await AppLog.instance.caught(
+        'speech_to_text_start_failed',
+        error,
+        stack,
+      );
       _transcriptStream.add('Speech-to-text not available on this device.');
       return false;
     }
   }
 
-  Future<String> stopRecording() async {
-    if (!_listening) return _finalText;
-    _stopCompleter = Completer<String>();
+  Future<String> stopRecording() {
+    final existing = _stopInFlight;
+    if (existing != null) return existing;
+    if (!_listening) return Future<String>.value(_finalText);
+
+    late final Future<String> operation;
+    operation = _stopRecordingOnce().whenComplete(() {
+      if (identical(_stopInFlight, operation)) _stopInFlight = null;
+    });
+    _stopInFlight = operation;
+    return operation;
+  }
+
+  Future<String> _stopRecordingOnce() async {
+    final completer = Completer<String>();
+    _stopCompleter = completer;
     try {
       await _channel.invokeMethod('stop');
-    } catch (_) {
+    } catch (error, stack) {
       _listening = false;
+      _completePendingStop();
+      await AppLog.instance.caught(
+        'speech_to_text_stop_failed',
+        error,
+        stack,
+      );
+      if (identical(_stopCompleter, completer)) _stopCompleter = null;
       return _finalText;
     }
-    return _stopCompleter!.future.timeout(
-      const Duration(seconds: 3),
-      onTimeout: () => _finalText,
-    );
+
+    try {
+      return await completer.future.timeout(
+        const Duration(seconds: 3),
+        onTimeout: () async {
+          _listening = false;
+          _completePendingStop();
+          await AppLog.instance.warn('speech_to_text_stop_timeout');
+          return _finalText;
+        },
+      );
+    } finally {
+      if (identical(_stopCompleter, completer)) _stopCompleter = null;
+    }
+  }
+
+  void _onSafeModeChanged() {
+    if (!listeningAllowed && (_listening || _stopInFlight != null)) {
+      unawaited(
+        stopRecording().catchError((Object error, StackTrace stack) async {
+          await AppLog.instance.caught(
+            'speech_to_text_safe_mode_stop_failed',
+            error,
+            stack,
+          );
+          return _finalText;
+        }),
+      );
+    }
   }
 
   // Deliberately no dispose() -- this is a permanent app-lifetime singleton

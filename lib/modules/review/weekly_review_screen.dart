@@ -63,7 +63,9 @@ class _WeeklyReviewScreenState extends State<WeeklyReviewScreen> {
           title: Text(draft.title),
           content: SingleChildScrollView(child: Text(draft.body)),
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close')),
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Close')),
           ],
         ),
       );
@@ -94,8 +96,12 @@ class _WeeklyReviewScreenState extends State<WeeklyReviewScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Save')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Save')),
         ],
       ),
     );
@@ -111,7 +117,8 @@ class _WeeklyReviewScreenState extends State<WeeklyReviewScreen> {
     final raw = jsonEncode(r.toJson());
     await Clipboard.setData(ClipboardData(text: raw));
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied review JSON to clipboard.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Copied review JSON to clipboard.')));
     }
   }
 
@@ -124,21 +131,25 @@ class _WeeklyReviewScreenState extends State<WeeklyReviewScreen> {
   Widget build(BuildContext context) {
     final explain = NeuraExplainSpec(
       title: 'Weekly Review',
-      body: "This is a local-only snapshot of your last 7 days. It's meant to be kind, not judgmental.",
+      body:
+          "This is a local-only snapshot of your last 7 days. It's meant to be kind, not judgmental.",
       bullets: const [
         'Mood stats come from your Mood Check‑Ins.',
         'Kindness comes from Pay It Forward.',
         'Quest momentum comes from Quest Mode.',
         'Helpful actions come from your local "Learning" taps.',
       ],
-      footer: 'You can export by copying JSON. This is not medical advice or diagnosis.',
+      footer:
+          'You can export by copying JSON. This is not medical advice or diagnosis.',
     );
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Weekly Review — History & Notes'),
         actions: [
-          IconButton(icon: const Icon(Icons.help_outline), onPressed: () => showNeuraExplain(context, spec: explain)),
+          IconButton(
+              icon: const Icon(Icons.help_outline),
+              onPressed: () => showNeuraExplain(context, spec: explain)),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
@@ -156,7 +167,8 @@ class _WeeklyReviewScreenState extends State<WeeklyReviewScreen> {
                   alignment: Alignment.centerRight,
                   child: TextButton.icon(
                     onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const WeeklySnapshotScreen()),
+                      MaterialPageRoute(
+                          builder: (_) => const WeeklySnapshotScreen()),
                     ),
                     icon: const Icon(Icons.insights_outlined),
                     label: const Text("This week's full snapshot →"),
@@ -167,8 +179,10 @@ class _WeeklyReviewScreenState extends State<WeeklyReviewScreen> {
                     child: ListTile(
                       leading: const Icon(Icons.event_note_outlined),
                       title: const Text('No review yet'),
-                      subtitle: const Text('Tap Generate to create your first weekly review.'),
-                      trailing: FilledButton(onPressed: _generate, child: const Text('Generate')),
+                      subtitle: const Text(
+                          'Tap Generate to create your first weekly review.'),
+                      trailing: FilledButton(
+                          onPressed: _generate, child: const Text('Generate')),
                     ),
                   )
                 else
@@ -181,7 +195,9 @@ class _WeeklyReviewScreenState extends State<WeeklyReviewScreen> {
                 const SizedBox(height: 16),
                 Text('History', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
-                if (_all.isEmpty) const Text('No history yet.') else ...[
+                if (_all.isEmpty)
+                  const Text('No history yet.')
+                else ...[
                   ..._all.reversed.map((r) {
                     return _ReviewCard(
                       title: _weekLabel(r.weekStart),
@@ -221,8 +237,12 @@ class _ReviewCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Expanded(child: Text(title, style: theme.textTheme.titleMedium)),
-                IconButton(tooltip: 'Copy JSON', onPressed: onCopy, icon: const Icon(Icons.copy)),
+                Expanded(
+                    child: Text(title, style: theme.textTheme.titleMedium)),
+                IconButton(
+                    tooltip: 'Copy JSON',
+                    onPressed: onCopy,
+                    icon: const Icon(Icons.copy)),
               ],
             ),
             const SizedBox(height: 8),
@@ -230,16 +250,22 @@ class _ReviewCard extends StatelessWidget {
               spacing: 10,
               runSpacing: 10,
               children: [
-                _chip(context, Icons.favorite_border, 'Mood avg', '${review.moodAvg}/10'),
-                _chip(context, Icons.show_chart, 'Range', '${review.moodMin}–${review.moodMax}'),
-                _chip(context, Icons.data_usage, 'Samples', '${review.moodSamples}'),
-                _chip(context, Icons.volunteer_activism, 'Kindness', '${review.kindnessActs}'),
-                _chip(context, Icons.emoji_events_outlined, 'Quests', '${review.questDone}'),
+                _chip(context, Icons.favorite_border, 'Mood avg',
+                    '${review.moodAvg}/10'),
+                _chip(context, Icons.show_chart, 'Range',
+                    '${review.moodMin}–${review.moodMax}'),
+                _chip(context, Icons.data_usage, 'Samples',
+                    '${review.moodSamples}'),
+                _chip(context, Icons.volunteer_activism, 'Kindness',
+                    '${review.kindnessActs}'),
+                _chip(context, Icons.emoji_events_outlined, 'Quests',
+                    '${review.questDone}'),
               ],
             ),
             const SizedBox(height: 10),
             if (review.topLearned.isNotEmpty)
-              Text('Helpful actions: ${review.topLearned.join(', ')}', style: theme.textTheme.bodySmall),
+              Text('Helpful actions: ${review.topLearned.join(', ')}',
+                  style: theme.textTheme.bodySmall),
             const SizedBox(height: 10),
             if (review.note.trim().isNotEmpty)
               Text('Note: ${review.note}', style: theme.textTheme.bodyMedium)

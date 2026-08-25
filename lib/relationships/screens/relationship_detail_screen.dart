@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 
 import '../models/relationship_profile.dart';
@@ -30,16 +29,15 @@ class _RelationshipDetailScreenState extends State<RelationshipDetailScreen> {
   }
 
   Future<void> _load() async {
-    final last = await InteractionService.instance
-        .lastForProfile(widget.profile.id);
+    final last =
+        await InteractionService.instance.lastForProfile(widget.profile.id);
     final allPromises =
         await PromiseService.instance.forProfile(widget.profile.id);
     if (!mounted) return;
     setState(() {
       _lastInteraction = last;
-      _promises = allPromises
-          .where((p) => p.status == PromiseStatus.pending)
-          .toList();
+      _promises =
+          allPromises.where((p) => p.status == PromiseStatus.pending).toList();
       _loading = false;
     });
   }
@@ -52,8 +50,7 @@ class _RelationshipDetailScreenState extends State<RelationshipDetailScreen> {
       appBar: AppBar(
         title: Text(profile.name),
       ),
-      floatingActionButton:
-          RelationshipQuickNoteButton(profileId: profile.id),
+      floatingActionButton: RelationshipQuickNoteButton(profileId: profile.id),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -90,9 +87,8 @@ class _RelationshipDetailScreenState extends State<RelationshipDetailScreen> {
             if (profile.tags.isNotEmpty)
               Wrap(
                 spacing: 8,
-                children: profile.tags
-                    .map((t) => Chip(label: Text(t)))
-                    .toList(),
+                children:
+                    profile.tags.map((t) => Chip(label: Text(t))).toList(),
               ),
             const SizedBox(height: 8),
             Text(
@@ -172,7 +168,8 @@ class _RelationshipDetailScreenState extends State<RelationshipDetailScreen> {
               const SizedBox(height: 8),
               Text(
                 'Next step: ${last.nextStep}',
-                style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic),
+                style:
+                    const TextStyle(fontSize: 13, fontStyle: FontStyle.italic),
               ),
             ],
           ],

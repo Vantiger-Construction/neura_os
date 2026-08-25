@@ -50,12 +50,15 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Add transaction', style: Theme.of(context).textTheme.titleLarge),
+          Text('Add transaction',
+              style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 16),
           SegmentedButton<MoneyEntryType>(
             segments: const [
-              ButtonSegment(value: MoneyEntryType.expense, label: Text('Expense')),
-              ButtonSegment(value: MoneyEntryType.income, label: Text('Income')),
+              ButtonSegment(
+                  value: MoneyEntryType.expense, label: Text('Expense')),
+              ButtonSegment(
+                  value: MoneyEntryType.income, label: Text('Income')),
             ],
             selected: {_type},
             onSelectionChanged: (s) => setState(() => _type = s.first),
@@ -64,19 +67,26 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
           TextField(
             controller: _amountController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Amount', prefixText: '\$ ', border: OutlineInputBorder()),
+            decoration: const InputDecoration(
+                labelText: 'Amount',
+                prefixText: '\$ ',
+                border: OutlineInputBorder()),
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             initialValue: _category,
-            decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
-            items: kMoneyCategories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+            decoration: const InputDecoration(
+                labelText: 'Category', border: OutlineInputBorder()),
+            items: kMoneyCategories
+                .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                .toList(),
             onChanged: (v) => setState(() => _category = v ?? _category),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _noteController,
-            decoration: const InputDecoration(labelText: 'Note (optional)', border: OutlineInputBorder()),
+            decoration: const InputDecoration(
+                labelText: 'Note (optional)', border: OutlineInputBorder()),
           ),
           const SizedBox(height: 16),
           FilledButton(onPressed: _save, child: const Text('Save')),

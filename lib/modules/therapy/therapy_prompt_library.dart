@@ -8,19 +8,22 @@ class TherapyPromptLibrary {
     TherapyPrompt(
       id: 'cbt1',
       title: 'Thought Challenge',
-      instruction: 'Describe a recent negative thought. What evidence supports it? What evidence goes against it?',
+      instruction:
+          'Describe a recent negative thought. What evidence supports it? What evidence goes against it?',
       method: 'CBT',
     ),
     TherapyPrompt(
       id: 'cbt2',
       title: 'Cognitive Distortions',
-      instruction: 'What thinking error might have occurred? (e.g. catastrophizing, black-and-white thinking, mind reading)',
+      instruction:
+          'What thinking error might have occurred? (e.g. catastrophizing, black-and-white thinking, mind reading)',
       method: 'CBT',
     ),
     TherapyPrompt(
       id: 'cbt3',
       title: 'Reframe',
-      instruction: "Write the thought again, but more balanced - what's a fairer way to see the same situation?",
+      instruction:
+          "Write the thought again, but more balanced - what's a fairer way to see the same situation?",
       method: 'CBT',
     ),
   ];
@@ -29,13 +32,15 @@ class TherapyPromptLibrary {
     TherapyPrompt(
       id: 'dbt1',
       title: 'Emotion Regulation',
-      instruction: 'How did you manage a strong emotion today? What skill did you use, or wish you had?',
+      instruction:
+          'How did you manage a strong emotion today? What skill did you use, or wish you had?',
       method: 'DBT',
     ),
     TherapyPrompt(
       id: 'dbt2',
       title: 'Opposite Action',
-      instruction: "Name an emotion you felt today. What would 'opposite action' look like for it?",
+      instruction:
+          "Name an emotion you felt today. What would 'opposite action' look like for it?",
       method: 'DBT',
     ),
   ];
@@ -44,13 +49,15 @@ class TherapyPromptLibrary {
     TherapyPrompt(
       id: 'act1',
       title: 'Values Check',
-      instruction: 'What action did you take today that lined up with what actually matters to you?',
+      instruction:
+          'What action did you take today that lined up with what actually matters to you?',
       method: 'ACT',
     ),
     TherapyPrompt(
       id: 'act2',
       title: 'Making Room',
-      instruction: 'What difficult feeling showed up today? Could you let it be there without fighting it?',
+      instruction:
+          'What difficult feeling showed up today? Could you let it be there without fighting it?',
       method: 'ACT',
     ),
   ];

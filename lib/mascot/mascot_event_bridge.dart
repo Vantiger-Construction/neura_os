@@ -27,10 +27,12 @@ class MascotEventBridge {
     _started = true;
 
     _unsubscribers.add(
-      NeuraEventBus.I.on<NeuraThinkingEvent>((e) => _send('thinking', {'on': e.isThinking})),
+      NeuraEventBus.I.on<NeuraThinkingEvent>(
+          (e) => _send('thinking', {'on': e.isThinking})),
     );
     _unsubscribers.add(
-      NeuraEventBus.I.on<NeuraTalkingEvent>((e) => _send('talking', {'on': e.isTalking})),
+      NeuraEventBus.I
+          .on<NeuraTalkingEvent>((e) => _send('talking', {'on': e.isTalking})),
     );
     _unsubscribers.add(
       NeuraEventBus.I.on<NeuraMoodEvent>(

@@ -28,14 +28,18 @@ class TrustedContact {
       );
 }
 
-String encodeContacts(List<TrustedContact> list) => jsonEncode(list.map((e) => e.toJson()).toList());
+String encodeContacts(List<TrustedContact> list) =>
+    jsonEncode(list.map((e) => e.toJson()).toList());
 
 List<TrustedContact> decodeContacts(String raw) {
   if (raw.trim().isEmpty) return <TrustedContact>[];
   try {
     final decoded = jsonDecode(raw);
     if (decoded is! List) return <TrustedContact>[];
-    return decoded.whereType<Map>().map((m) => TrustedContact.fromJson(m.cast<String, dynamic>())).toList();
+    return decoded
+        .whereType<Map>()
+        .map((m) => TrustedContact.fromJson(m.cast<String, dynamic>()))
+        .toList();
   } catch (_) {
     return <TrustedContact>[];
   }

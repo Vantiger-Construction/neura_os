@@ -91,7 +91,8 @@ class _AuthGuardState extends State<AuthGuard> {
       future: _authFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
         }
         if (snapshot.data == true) {
           return widget.child;

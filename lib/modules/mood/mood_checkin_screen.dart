@@ -42,7 +42,8 @@ class _MoodCheckInScreenState extends State<MoodCheckInScreen> {
   Future<void> _save() async {
     setState(() => _saving = true);
     await MoodStore.instance.add(
-      MoodEntry(timestamp: DateTime.now(), mood0to10: _mood, note: _note.text.trim()),
+      MoodEntry(
+          timestamp: DateTime.now(), mood0to10: _mood, note: _note.text.trim()),
     );
     if (!mounted) return;
     setState(() => _saving = false);
@@ -63,14 +64,16 @@ class _MoodCheckInScreenState extends State<MoodCheckInScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          Text('How are you doing right now?', style: Theme.of(context).textTheme.titleMedium),
+          Text('How are you doing right now?',
+              style: Theme.of(context).textTheme.titleMedium),
           Slider(
             value: _mood.toDouble(),
             min: 0,
             max: 10,
             divisions: 10,
             label: _mood.toString(),
-            onChanged: _saving ? null : (v) => setState(() => _mood = v.round()),
+            onChanged:
+                _saving ? null : (v) => setState(() => _mood = v.round()),
           ),
           const SizedBox(height: 8),
           TextField(

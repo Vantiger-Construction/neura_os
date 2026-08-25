@@ -7,8 +7,10 @@ import 'api.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'frb_generated.dart';
-import 'frb_generated.io.dart'
-    if (dart.library.js_interop) 'frb_generated.web.dart';
+// Neura does not package a WASM swarm. This generated bridge is native-only;
+// the public NeuraSwarmService conditionally exports a pure-Dart unsupported
+// implementation on web, so web builds never reach this FFI library.
+import 'frb_generated.io.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 /// Main entrypoint of the Rust API

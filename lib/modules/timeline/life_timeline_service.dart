@@ -59,7 +59,8 @@ class LifeTimelineService {
         ts: d.day.add(const Duration(hours: 12)),
         type: 'quest',
         title: 'Quest done: $title',
-        subtitle: q?.details.trim().isNotEmpty == true ? q!.details : 'Completed',
+        subtitle:
+            q?.details.trim().isNotEmpty == true ? q!.details : 'Completed',
         data: {
           'questId': d.questId,
           'questTitle': q?.title ?? '',
@@ -73,7 +74,8 @@ class LifeTimelineService {
         ts: r.weekStart.add(const Duration(days: 6, hours: 18)),
         type: 'review',
         title: 'Weekly review (${r.weekStart.month}/${r.weekStart.day})',
-        subtitle: 'Mood avg ${r.moodAvg}/10 • Kindness ${r.kindnessActs} • Quests ${r.questDone}',
+        subtitle:
+            'Mood avg ${r.moodAvg}/10 • Kindness ${r.kindnessActs} • Quests ${r.questDone}',
         data: {
           'weekStart': r.weekStart.toIso8601String(),
           'moodAvg': r.moodAvg,

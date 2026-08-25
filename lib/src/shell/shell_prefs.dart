@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../../modules/core/app_log.dart';
 import '../../startup/neura_prefs_cache.dart';
@@ -8,7 +8,10 @@ class ShellPrefs {
   final bool portalFx;
   final bool walkingShimmer;
 
-  const ShellPrefs({required this.ambientFx, required this.portalFx, required this.walkingShimmer});
+  const ShellPrefs(
+      {required this.ambientFx,
+      required this.portalFx,
+      required this.walkingShimmer});
 
   ShellPrefs copyWith({bool? ambientFx, bool? portalFx, bool? walkingShimmer}) {
     return ShellPrefs(
@@ -32,7 +35,8 @@ class ShellPrefs {
     );
   }
 
-  static const defaults = ShellPrefs(ambientFx: true, portalFx: true, walkingShimmer: true);
+  static const defaults =
+      ShellPrefs(ambientFx: true, portalFx: true, walkingShimmer: true);
 }
 
 class ShellPrefsController {
@@ -42,7 +46,8 @@ class ShellPrefsController {
 
   static const _prefsKey = 'neura.shell.prefs.v1';
 
-  final ValueNotifier<ShellPrefs> prefs = ValueNotifier<ShellPrefs>(ShellPrefs.defaults);
+  final ValueNotifier<ShellPrefs> prefs =
+      ValueNotifier<ShellPrefs>(ShellPrefs.defaults);
 
   Future<void> init() async {
     try {
@@ -53,8 +58,8 @@ class ShellPrefsController {
       if (decoded is Map<String, dynamic>) {
         prefs.value = ShellPrefs.fromJson(decoded);
       }
-    } catch (e) {
-      await AppLog.instance.warn('ShellPrefsController.init failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('shell_prefs_init_failed', e, st);
     }
   }
 
@@ -63,8 +68,8 @@ class ShellPrefsController {
     try {
       final sp = NeuraPrefsCache.prefs;
       await sp.setString(_prefsKey, jsonEncode(next.toJson()));
-    } catch (e) {
-      await AppLog.instance.warn('ShellPrefsController.update failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('shell_prefs_update_failed', e, st);
     }
   }
 }

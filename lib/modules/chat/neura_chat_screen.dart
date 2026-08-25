@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/memory/memory_graph_service.dart';
+import '../../modules/mood/mood_models.dart';
+import '../../modules/mood/mood_store.dart';
 import '../../neura_shell/models/neura_room.dart';
 import '../../neura_shell/neura_shell.dart';
 import '../../persona/agents/agent_persona_catalog.dart';
@@ -43,7 +45,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   _ChatLine? _activeBotLine;
   int _generationSerial = 0;
 
-  final NeuraSpeechToTextService _voiceInput = NeuraSpeechToTextService.instance;
+  final NeuraSpeechToTextService _voiceInput =
+      NeuraSpeechToTextService.instance;
   final ImagePicker _imagePicker = ImagePicker();
   StreamSubscription<String>? _voiceSub;
   StreamSubscription<String>? _finalPhraseSub;
@@ -306,7 +309,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     });
     _scrollToEnd();
     await AppLog.instance.info('chat_turn', {
-      'user': displayText,
+      'character_count': displayText.runes.length,
       'has_image': hasImage,
       'utterance_id': generationId,
       'room': room.id,
@@ -395,11 +398,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         setState(() => botLine.interrupted = true);
       }
       return;
-    } catch (e) {
-      await AppLog.instance.info('chat_error', {
-        'error': e.toString(),
-        'utterance_id': generationId,
-      });
+    } catch (error, stack) {
+      await AppLog.instance.caught(
+        'chat_generation_failed',
+        error,
+        stack,
+        context: <String, Object?>{'utterance_id': generationId},
+      );
       if (!mounted || _activeReplyId != generationId) return;
 
       if (botLine.text.isEmpty) {
@@ -487,8 +492,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
           payload: {'text': text},
         );
       }
-    } catch (e) {
-      await AppLog.instance.warn('chat_memory_log_failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('chat_memory_log_failed', e, st);
     }
   }
 
@@ -521,32 +526,107 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
           payload: {'summary': fact.summary, 'factKind': fact.kind},
         );
       }
-    } catch (e) {
-      await AppLog.instance.warn('chat_swarm_failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('chat_swarm_failed', e, st);
     }
   }
 
-  Future<void> _handleToolCommand(NeuraToolCommand command) async {
-    if (!mounted) return;
+  Future<bool> _handleToolCommand(NeuraToolCommand command) async {
+    if (!mounted) return false;
     switch (command.name) {
+      case NeuraChatPolicy.getMoodHistory:
+        return _confirmToolAction(
+          title: 'Share mood scores once?',
+          message: 'Neura wants to send recent mood dates and 0–10 scores to '
+              'the configured AI provider for this reply. Your mood notes '
+              'will not be shared.',
+          approveLabel: 'Share once',
+        );
+      case NeuraChatPolicy.logMoodEntry:
+        final mood = (command.arguments['mood0to10'] as num?)
+            ?.round()
+            .clamp(0, 10)
+            .toInt();
+        if (mood == null) return false;
+        final note = command.arguments['note']?.toString() ?? '';
+        final approved = await _confirmToolAction(
+          title: 'Save this mood check-in?',
+          message: note.trim().isEmpty
+              ? 'Save mood $mood/10 to your encrypted local history?'
+              : 'Save mood $mood/10 with the note “$note” to your encrypted '
+                  'local history?',
+          approveLabel: 'Save locally',
+        );
+        if (!approved) return false;
+        await MoodStore.instance.add(
+          MoodEntry(
+            timestamp: DateTime.now(),
+            mood0to10: mood,
+            note: note,
+          ),
+        );
+        return true;
       case NeuraChatPolicy.dispatchIntent:
         final roomId = command.arguments['room']?.toString() ?? '';
-        if (!NeuraChatPolicy.knownRoomIds.contains(roomId)) return;
+        if (!NeuraChatPolicy.knownRoomIds.contains(roomId)) return false;
         final target = NeuraRoom.fromId(roomId);
-        if (target.id != roomId) return;
+        if (target.id != roomId) return false;
+        final approved = await _confirmToolAction(
+          title: 'Open ${target.title}?',
+          message: 'Neura suggested changing rooms. The app will navigate '
+              'only if you approve this request.',
+          approveLabel: 'Open room',
+        );
+        if (!approved || !mounted) return false;
         await NeuraShell.of(context).setRoom(target);
-        if (!mounted) return;
+        if (!mounted) return false;
         setState(() {
           _activeAgent = AgentSelectionService.instance.resolveAgent(target);
         });
         await AppLog.instance.info('dispatch_intent', {'room': roomId});
-        break;
+        return true;
       case NeuraChatPolicy.setTone:
         final tone = command.arguments['tone']?.toString() ?? '';
+        if (!NeuraChatPolicy.knownTones.contains(tone)) return false;
+        final approved = await _confirmToolAction(
+          title: 'Change Neura’s tone?',
+          message: 'Use the “$tone” presentation tone for this interaction?',
+          approveLabel: 'Change tone',
+        );
+        if (!approved) return false;
         final applied = NeuraToneRuntime.instance.setTone(tone);
-        await AppLog.instance.info('set_tone', {'tone': tone, 'applied': applied});
-        break;
+        await AppLog.instance
+            .info('set_tone', {'tone': tone, 'applied': applied});
+        return applied;
+      default:
+        return false;
     }
+  }
+
+  Future<bool> _confirmToolAction({
+    required String title,
+    required String message,
+    required String approveLabel,
+  }) async {
+    if (!mounted) return false;
+    return await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(title),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Not now'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text(approveLabel),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   String _transcriptSnippet(List<NeuraChatTurn> history) {

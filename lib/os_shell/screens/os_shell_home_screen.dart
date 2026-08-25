@@ -121,7 +121,8 @@ class OsShellHomeScreen extends StatelessWidget {
                 NeuraOsRoomCard(
                   icon: Icons.tune,
                   title: "Neura's Personas",
-                  subtitle: 'Which specialist answers, and how Neura talks, jokes, and coaches you.',
+                  subtitle:
+                      'Which specialist answers, and how Neura talks, jokes, and coaches you.',
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
@@ -148,10 +149,12 @@ class OsShellHomeScreen extends StatelessWidget {
                   subtitle: 'A short, mood-aware Joy Moment. Always skippable.',
                   onTap: () async {
                     await MoodStateService.instance.load();
-                    final mood = _mapMood(MoodStateService.instance.currentMood);
+                    final mood =
+                        _mapMood(MoodStateService.instance.currentMood);
                     final moment = JoyEngine().pickMoment(mood);
                     if (!context.mounted) return;
-                    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+                    final result =
+                        await Navigator.of(context).push<Map<String, dynamic>>(
                       MaterialPageRoute(
                         builder: (_) => const NeuraJoyScreen(),
                         settings: RouteSettings(arguments: moment),

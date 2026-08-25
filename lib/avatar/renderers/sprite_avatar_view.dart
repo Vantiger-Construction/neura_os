@@ -20,7 +20,8 @@ class SpriteAvatarView extends StatefulWidget {
   State<SpriteAvatarView> createState() => _SpriteAvatarViewState();
 }
 
-class _SpriteAvatarViewState extends State<SpriteAvatarView> with SingleTickerProviderStateMixin {
+class _SpriteAvatarViewState extends State<SpriteAvatarView>
+    with SingleTickerProviderStateMixin {
   AnimationController? _controller;
 
   @override
@@ -32,7 +33,8 @@ class _SpriteAvatarViewState extends State<SpriteAvatarView> with SingleTickerPr
   @override
   void didUpdateWidget(covariant SpriteAvatarView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.spec.sprite?.frames.length != widget.spec.sprite?.frames.length ||
+    if (oldWidget.spec.sprite?.frames.length !=
+            widget.spec.sprite?.frames.length ||
         oldWidget.spec.sprite?.fps != widget.spec.sprite?.fps) {
       _setup();
     }

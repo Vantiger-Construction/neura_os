@@ -28,9 +28,11 @@ class NeuraNotificationsPrefs {
     int? dailyMoodNudgeMinute,
   }) {
     return NeuraNotificationsPrefs(
-      weeklyReviewReadyEnabled: weeklyReviewReadyEnabled ?? this.weeklyReviewReadyEnabled,
+      weeklyReviewReadyEnabled:
+          weeklyReviewReadyEnabled ?? this.weeklyReviewReadyEnabled,
       legacyOverdueEnabled: legacyOverdueEnabled ?? this.legacyOverdueEnabled,
-      dailyMoodNudgeEnabled: dailyMoodNudgeEnabled ?? this.dailyMoodNudgeEnabled,
+      dailyMoodNudgeEnabled:
+          dailyMoodNudgeEnabled ?? this.dailyMoodNudgeEnabled,
       dailyMoodNudgeHour: dailyMoodNudgeHour ?? this.dailyMoodNudgeHour,
       dailyMoodNudgeMinute: dailyMoodNudgeMinute ?? this.dailyMoodNudgeMinute,
     );
@@ -46,7 +48,8 @@ class NeuraNotificationsPrefs {
 
   static NeuraNotificationsPrefs fromMap(Map<String, dynamic> map) {
     return NeuraNotificationsPrefs(
-      weeklyReviewReadyEnabled: map['weeklyReviewReadyEnabled'] as bool? ?? false,
+      weeklyReviewReadyEnabled:
+          map['weeklyReviewReadyEnabled'] as bool? ?? false,
       legacyOverdueEnabled: map['legacyOverdueEnabled'] as bool? ?? false,
       dailyMoodNudgeEnabled: map['dailyMoodNudgeEnabled'] as bool? ?? false,
       dailyMoodNudgeHour: (map['dailyMoodNudgeHour'] as num?)?.toInt() ?? 19,
@@ -74,10 +77,11 @@ class NeuraNotificationsPrefsController {
       if (raw == null || raw.trim().isEmpty) return;
       final decoded = jsonDecode(raw);
       if (decoded is Map) {
-        prefs.value = NeuraNotificationsPrefs.fromMap(decoded.cast<String, dynamic>());
+        prefs.value =
+            NeuraNotificationsPrefs.fromMap(decoded.cast<String, dynamic>());
       }
-    } catch (e) {
-      await AppLog.instance.warn('NeuraNotificationsPrefsController.init failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught('notifications_prefs_init_failed', e, st);
     }
   }
 
@@ -85,8 +89,16 @@ class NeuraNotificationsPrefsController {
     prefs.value = next;
     try {
       await NeuraPrefsCache.prefs.setString(_key, jsonEncode(next.toMap()));
-    } catch (e) {
-      await AppLog.instance.warn('NeuraNotificationsPrefsController.update failed: $e');
+    } catch (e, st) {
+      await AppLog.instance.caught(
+        'notifications_prefs_update_failed',
+        e,
+        st,
+      );
     }
+  }
+
+  void resetAfterDataWipe() {
+    prefs.value = const NeuraNotificationsPrefs();
   }
 }

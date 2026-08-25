@@ -1,4 +1,9 @@
-enum NeuraIntent { seekingCalm, seekingProgress, seekingSleep, seekingConnection }
+enum NeuraIntent {
+  seekingCalm,
+  seekingProgress,
+  seekingSleep,
+  seekingConnection
+}
 
 class IntentVector {
   final Map<NeuraIntent, double> scores;

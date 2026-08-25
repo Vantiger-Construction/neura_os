@@ -1,31 +1,103 @@
-NEURA CONSOLIDATED UPGRADE VALIDATION
-=====================================
+NEURA 1.3 CONSOLIDATED UPGRADE VALIDATION STATUS
+================================================
 
-Source package: neuro_companion 1.2.0+3
+Package declared in source: neuro_companion 1.3.0+5
 
-Integrated source checks performed in the packaging environment:
-  [PASS] Original source archive extracted successfully.
-  [PASS] Existing Neura modules preserved.
-  [PASS] Secure provider service referenced by startup and AI service.
-  [PASS] Provider settings screen linked from Settings.
-  [PASS] Neura Link barrel and protocol source installed.
-  [PASS] Local Brain Console linked from Settings.
-  [PASS] Rust neura_api binary target source installed.
-  [PASS] Windows build/run automation installed.
-  [PASS] Dart and Rust focused tests installed.
-  [PASS] Timeline Vault, Safe Boot, and Module Health source installed.
-  [PASS] Diagnostics reliability controls and export installed.
-  [PASS] Reliability-focused tests installed.
-  [PASS] No key-shaped Anthropic secret found in packaged source.
+IMPORTANT STATUS
+----------------
 
-Toolchain status in packaging environment:
-  [NOT AVAILABLE] Flutter / Dart
-  [NOT AVAILABLE] Rust / cargo
-  [NOT AVAILABLE] Windows PowerShell
+This report distinguishes source inspection from executable validation.
+Flutter, Dart, Rust/cargo, and Windows PowerShell are not installed in this
+packaging environment. No Flutter analysis, Dart formatting, Flutter test,
+Rust test, Windows build, Android build, or application runtime result is
+reported as passing here.
 
-Required final gate on Windows:
-  Run BUILD_ALL_NEURA_UPGRADES.bat.
+SOURCE IMPLEMENTATION PRESENT
+-----------------------------
 
-That script runs dependency resolution, Rust format/tests/build, Flutter
-analysis/tests, Windows release compilation, optional Android app-bundle
-compilation, and portable distribution packaging. It stops on failures.
+  [SOURCE] Signal Graph with freshness, confidence, sensitivity, expiry,
+           conflict handling, and bounded evidence.
+  [SOURCE] Side-effect-free Opportunity Radar specialists and deterministic
+           candidate IDs.
+  [SOURCE] Autonomy Kernel policy for Safe Mode, attention, cooldown, caps,
+           privacy, capability risk, and fresh approval.
+  [SOURCE] Decision Receipts, sensitive-evidence redaction, Intelligence
+           Center controls, and guarded dashboard integration.
+  [SOURCE] Approval Broker with exact candidate/receipt binding, expiry,
+           execution-time revalidation, concurrent idempotency, denial,
+           failure handling, and constrained undo.
+  [SOURCE] Action Loom durable execution with cryptographic payload
+           fingerprints, serialized writes, crash recovery, deterministic
+           quest IDs, and cross-restart duplicate prevention.
+  [SOURCE] Bounded approval and execution ledgers contain operational metadata
+           only; raw goals, recommendation copy, journals, and mood notes are
+           excluded.
+  [SOURCE] Model-requested mood read/write, navigation, and tone operations
+           require explicit per-request UI confirmation. Mood history exports
+           dates and numeric scores only, never stored notes.
+  [SOURCE] Memory-key creation and migration verify OS secure storage and fail
+           closed if an expected key is missing or unavailable. Wipe-start
+           generation invalidation blocks stale in-flight crypto work.
+  [SOURCE] Provider credential deletion verifies secure removal and persists a
+           migration tombstone so a legacy build key cannot resurrect.
+  [SOURCE] Full local-data wipe latches Safe Mode, suspends or drains producers
+           and persistent writers, invalidates caches, attempts every known
+           credential/key/preference/file deletion, and aggregates failures.
+           Writers resume only after complete success; restart-latched services
+           remain unavailable for the current process.
+  [SOURCE] Safe Mode service gates cover cloud AI, native Swarm, ambient
+           listening, wake word, TTS, notifications, proactive intelligence,
+           startup, and shell paths. Clearing the marker requires restart.
+  [SOURCE] Window-manager startup is guarded by platform; the secondary mascot
+           role and native Rust Swarm remain Windows-only, web has a safe Swarm
+           fallback, and macOS secure-storage entitlement is present.
+  [SOURCE] A dependency-free first frame precedes optional plugin handshakes.
+           Missing Windows role/window channels now degrade safely instead of
+           terminating before the primary UI is attached.
+  [SOURCE] One redacted structured pipeline covers Flutter, platform, root-zone,
+           and root-isolate failures. Windows adds bounded runner/native crash
+           breadcrumbs; Diagnostics can inspect, clear, and export every log.
+  [SOURCE] Windows rebuild tooling preserves the authored native runner,
+           validates the complete runtime payload, and invokes the packaged
+           executable's self-exiting first-frame smoke mode.
+  [SOURCE] After Storm bridge recursion repair and local-learning preference
+           enforcement remain installed.
+  [SOURCE] GitHub recovery CI takes its release version from pubspec.yaml,
+           records format/analyzer/test evidence, and gates Windows and Android
+           recovery artifacts on the Flutter verification job.
+
+TEST SOURCES INSTALLED — NOT EXECUTED HERE
+------------------------------------------
+
+  [INSTALLED] Signal Graph and Opportunity Radar tests.
+  [INSTALLED] Autonomy, preference, controller, and quiet-hours tests.
+  [INSTALLED] Approval Broker concurrency, binding, expiry, Safe Mode, wipe,
+              execution, denial, and undo tests.
+  [INSTALLED] Action Loom durability, metadata-only ledger, progress-aware
+              undo, idempotency, and data-wipe tests.
+  [INSTALLED] Complete data-wipe path and failure tests.
+  [INSTALLED] Provider-credential migration tombstone tests.
+  [INSTALLED] Startup platform-policy and After Storm regression tests.
+  [INSTALLED] Bootstrap error-pipeline and structured AppLog privacy tests.
+
+DEPENDENCY-LOCK STATUS
+----------------------
+
+  [PENDING] pubspec.lock is not present in this packaging tree. The GitHub
+            verification artifact is configured to retain the lock generated
+            by flutter pub get. Review and commit the resolved lock before a
+            production release, then rerun verification.
+
+REQUIRED RELEASE GATES
+----------------------
+
+  1. Run the GitHub Actions workflow for the exact release commit.
+  2. Require a clean analyzer result and a passing Flutter test result.
+  3. Inspect dart-format.patch; require it to be empty or commit the formatting.
+  4. Review and commit the generated pubspec.lock, then rerun the workflow.
+  5. Require successful Windows release and intended Android artifact builds.
+  6. On a configured Windows host, run BUILD_ALL_NEURA_UPGRADES.bat to execute
+     Dart/Rust formatting, Flutter/Rust tests, analysis, Rust compilation,
+     Windows compilation, optional Android packaging, and archive creation.
+  7. Do not release if any gate fails. Do not pass a provider key through
+     --dart-define, and revoke any key previously included in a binary or ZIP.

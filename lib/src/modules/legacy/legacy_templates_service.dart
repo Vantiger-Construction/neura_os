@@ -19,8 +19,7 @@ class LegacyTemplatesService {
         isBuiltIn: true,
         createdAt: now,
         updatedAt: now,
-        bodyTemplate:
-            'Hi {contactName},\n\n'
+        bodyTemplate: 'Hi {contactName},\n\n'
             'This is a "Legacy Packet" from me, created in Neura Companion. '
             'It contains a message and any attachments I included.\n\n'
             'Packet name: "{capsuleTitle}"\n'
@@ -33,8 +32,7 @@ class LegacyTemplatesService {
         isBuiltIn: true,
         createdAt: now,
         updatedAt: now,
-        bodyTemplate:
-            'Hello {contactName},\n\n'
+        bodyTemplate: 'Hello {contactName},\n\n'
             'I\'m sharing a Legacy Packet titled "{capsuleTitle}". '
             'It was generated on {date}.\n\n'
             'Open the ZIP and read the README first. '
@@ -74,7 +72,8 @@ class LegacyTemplatesService {
       for (final d in _defaults()) {
         byId.putIfAbsent(d.id, () => d);
       }
-      final merged = byId.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+      final merged = byId.values.toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
       if (merged.length != list.length) {
         await _saveRaw(prefs, merged);
       }
@@ -89,7 +88,8 @@ class LegacyTemplatesService {
   Future<void> upsertTemplate(LegacyMessageTemplate template) async {
     final all = await listTemplates();
     final now = DateTime.now();
-    final updated = template.copyWith(updatedAt: now, createdAt: template.createdAt);
+    final updated =
+        template.copyWith(updatedAt: now, createdAt: template.createdAt);
 
     final next = <LegacyMessageTemplate>[];
     bool replaced = false;
@@ -121,7 +121,8 @@ class LegacyTemplatesService {
     await _saveRaw(prefs, list);
   }
 
-  Future<void> _saveRaw(SharedPreferences prefs, List<LegacyMessageTemplate> list) async {
+  Future<void> _saveRaw(
+      SharedPreferences prefs, List<LegacyMessageTemplate> list) async {
     final payload = list.map((t) => t.toMap()).toList();
     await prefs.setString(_kKey, jsonEncode(payload));
   }

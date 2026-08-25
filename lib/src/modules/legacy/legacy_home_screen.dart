@@ -96,28 +96,32 @@ class _LegacyHomeScreenState extends State<LegacyHomeScreen> {
                     ListTile(
                       leading: const Icon(Icons.people_outline),
                       title: const Text('Trusted Contacts'),
-                      subtitle: const Text('Keep a clean list of people (or destinations) for delivery.'),
+                      subtitle: const Text(
+                          'Keep a clean list of people (or destinations) for delivery.'),
                       onTap: _openTrustedContacts,
                     ),
                     const Divider(height: 1),
                     ListTile(
                       leading: const Icon(Icons.message_outlined),
                       title: const Text('Message Templates'),
-                      subtitle: const Text('Quick "send to grandma" style messages for sharing packets.'),
+                      subtitle: const Text(
+                          'Quick "send to grandma" style messages for sharing packets.'),
                       onTap: _openTemplates,
                     ),
                     const Divider(height: 1),
                     ListTile(
                       leading: const Icon(Icons.backup_outlined),
                       title: const Text('Vault Backup & Restore'),
-                      subtitle: const Text('Export a local ZIP backup or import one.'),
+                      subtitle: const Text(
+                          'Export a local ZIP backup or import one.'),
                       onTap: _openVaultTools,
                     ),
                     const Divider(height: 1),
                     ListTile(
                       leading: const Icon(Icons.shield_outlined),
                       title: const Text('Legacy Guard'),
-                      subtitle: const Text('Dead‑man switch style check‑ins & release packets.'),
+                      subtitle: const Text(
+                          'Dead‑man switch style check‑ins & release packets.'),
                       onTap: _openGuard,
                     ),
                   ],
@@ -126,14 +130,19 @@ class _LegacyHomeScreenState extends State<LegacyHomeScreen> {
               const SizedBox(height: 16),
               Row(
                 children: [
-                  Text('Capsules', style: Theme.of(context).textTheme.titleLarge),
+                  Text('Capsules',
+                      style: Theme.of(context).textTheme.titleLarge),
                   const Spacer(),
-                  Text('${items.length}', style: Theme.of(context).textTheme.titleMedium),
+                  Text('${items.length}',
+                      style: Theme.of(context).textTheme.titleMedium),
                 ],
               ),
               const SizedBox(height: 8),
               if (items.isEmpty)
-                const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('No capsules yet.')))
+                const Center(
+                    child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text('No capsules yet.')))
               else
                 ...items.map(
                   (c) => Card(

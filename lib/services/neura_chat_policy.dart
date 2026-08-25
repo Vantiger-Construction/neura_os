@@ -130,8 +130,9 @@ class NeuraChatPolicy {
         return {
           'name': getMoodHistory,
           'description':
-              "Get the user's recent mood check-in history (timestamp, 0-10 "
-              'mood score, and note). Use this for mood history or trends.',
+              "Request the user's recent mood dates and 0-10 scores for this "
+                  'reply. A user confirmation is required and notes are never '
+                  'shared.',
           'input_schema': {
             'type': 'object',
             'properties': {
@@ -149,7 +150,7 @@ class NeuraChatPolicy {
           'name': logMoodEntry,
           'description':
               'Record a mood check-in only when the user clearly asks to save '
-              'or log it. Do not log every emotional statement.',
+                  'or log it. Do not log every emotional statement.',
           'input_schema': {
             'type': 'object',
             'properties': {
@@ -170,7 +171,7 @@ class NeuraChatPolicy {
           'name': dispatchIntent,
           'description':
               'Request navigation to another Neura room when the user clearly '
-              'asks to go there. The UI remains authoritative for room state.',
+                  'asks to go there. The UI remains authoritative for room state.',
           'input_schema': {
             'type': 'object',
             'properties': {

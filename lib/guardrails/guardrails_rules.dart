@@ -21,21 +21,29 @@ class GuardrailRules {
         safeAlternative: NeuraProposal(
           type: ProposalType.suggestion,
           id: 'support_mode',
-          message: 'I’m here. Want grounding, or would you prefer to reach out to someone you trust?',
-          options: const ['grounding', 'contact_someone', 'resources', 'no_thanks'],
+          message:
+              'I’m here. Want grounding, or would you prefer to reach out to someone you trust?',
+          options: const [
+            'grounding',
+            'contact_someone',
+            'resources',
+            'no_thanks'
+          ],
           payload: const {'mode': 'support'},
         ),
       );
     }
 
     final msg = p.message.toLowerCase();
-    if ((p.payload['exclusive_language'] == true) || msg.contains('only i can help')) {
+    if ((p.payload['exclusive_language'] == true) ||
+        msg.contains('only i can help')) {
       return GuardrailDecision.block(
         'Exclusive/manipulative language blocked.',
         safeAlternative: NeuraProposal(
           type: p.type,
           id: '${p.id}_rephrased',
-          message: 'Here are a few options that might help — and you can also reach out to people in your life if you want.',
+          message:
+              'Here are a few options that might help — and you can also reach out to people in your life if you want.',
           options: _ensureNoThanks(p.options),
           payload: p.payload,
         ),
@@ -46,9 +54,20 @@ class GuardrailRules {
   }
 
   GuardrailDecision? softShape(NeuraContextSnapshot ctx, NeuraProposal p) {
-    if (ctx.userInFocusMode && p.type == ProposalType.notification) {
+    if (ctx.userSleepingMode &&
+        (p.type == ProposalType.prompt ||
+            p.type == ProposalType.suggestion ||
+            p.type == ProposalType.notification)) {
       return GuardrailDecision.block(
-        'User in focus mode. Suppressing notification.',
+        'Quiet hours are active. Suppressing proactive interruption.',
+      );
+    }
+
+    if (ctx.userInFocusMode &&
+        (p.type == ProposalType.notification ||
+            p.type == ProposalType.prompt)) {
+      return GuardrailDecision.block(
+        'User in focus mode. Suppressing proactive interruption.',
         safeAlternative: NeuraProposal(
           type: ProposalType.suggestion,
           id: 'queue_for_later',

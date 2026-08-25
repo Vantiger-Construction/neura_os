@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -72,7 +72,8 @@ class _KidsModeHomeScreenState extends State<KidsModeHomeScreen> {
                 subtitle: const Text('A safe, kid-friendly chat.'),
                 trailing: const Icon(Icons.play_arrow),
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const KidsNeuraChatScreen()),
+                  MaterialPageRoute(
+                      builder: (_) => const KidsNeuraChatScreen()),
                 ),
               ),
             ),
@@ -110,11 +111,13 @@ class _KidsModeHomeScreenState extends State<KidsModeHomeScreen> {
                             final target = _games.getLaunchTarget(name);
                             if (!ctx.mounted) return;
                             if (target == 'neura://kids/breathing') {
-                              unawaited(Navigator.of(ctx).push(MaterialPageRoute(
+                              unawaited(
+                                  Navigator.of(ctx).push(MaterialPageRoute(
                                 builder: (_) => const BreathingGameScreen(),
                               )));
                             } else if (target == 'neura://kids/gratitude') {
-                              unawaited(Navigator.of(ctx).push(MaterialPageRoute(
+                              unawaited(
+                                  Navigator.of(ctx).push(MaterialPageRoute(
                                 builder: (_) => const GratitudeStarsScreen(),
                               )));
                             }

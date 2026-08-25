@@ -76,4 +76,9 @@ class TrustedContactsService {
     }
     return null;
   }
+
+  void resetAfterDataWipe() {
+    _contacts = [];
+    _loaded = false;
+  }
 }
