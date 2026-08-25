@@ -3,6 +3,7 @@ import '../../core/memory/memory_graph_service.dart';
 import '../../mood/services/mood_state_service.dart';
 import '../agents/agent_persona_catalog.dart';
 import '../models/neura_audience.dart';
+import '../models/neura_character_charter.dart';
 import '../services/neura_persona_service.dart';
 import '../services/neura_behavior_adapter.dart';
 import '../models/neura_response_style.dart';
@@ -53,7 +54,12 @@ class NeuraPromptBuilder {
     final memorySnippet =
         includePersistentMemory ? await _buildMemorySnippet() : '';
 
-    final parts = [style.systemPromptSnippet, profileSnippet, memorySnippet]
+    final parts = [
+      NeuraCharacterCharter.systemPrompt,
+      style.systemPromptSnippet,
+      profileSnippet,
+      memorySnippet,
+    ]
         .where((s) => s.isNotEmpty);
     return parts.join('\n\n');
   }
