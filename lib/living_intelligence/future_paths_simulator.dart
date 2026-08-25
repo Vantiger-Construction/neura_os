@@ -80,10 +80,8 @@ class NeuraFuturePathsSimulator {
       });
 
     final averageScore =
-        ordered
-            .map((step) => _stepScore(goal, step))
-            .reduce((a, b) => a + b) /
-        ordered.length;
+        ordered.map((step) => _stepScore(goal, step)).reduce((a, b) => a + b) /
+            ordered.length;
 
     return NeuraFuturePath(
       goal: goal,
