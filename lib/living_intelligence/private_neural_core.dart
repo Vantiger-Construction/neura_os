@@ -36,7 +36,7 @@ class NeuraModelRequest {
     required this.prompt,
     required this.safetyContext,
     this.visibleContext = '',
-    this.permittedDataLabels = const <String>[],
+    Iterable<String> permittedDataLabels = const <String>[],
     this.containsPrivateRecords = false,
   }) : permittedDataLabels = List<String>.unmodifiable(permittedDataLabels);
 
@@ -132,51 +132,40 @@ class NeuraCallbackModelBackend implements NeuraModelBackend {
 
 class NeuraFoundryLocalBackend extends NeuraCallbackModelBackend {
   NeuraFoundryLocalBackend({
-    required NeuraAvailabilityProbe availabilityProbe,
-    required NeuraTextGenerator generator,
+    required super.availabilityProbe,
+    required super.generator,
   }) : super(
           id: 'foundry_local_windows',
           runsLocally: true,
-          availabilityProbe: availabilityProbe,
-          generator: generator,
         );
 }
 
 class NeuraAndroidOnDeviceBackend extends NeuraCallbackModelBackend {
   NeuraAndroidOnDeviceBackend({
-    required NeuraAvailabilityProbe availabilityProbe,
-    required NeuraTextGenerator generator,
+    required super.availabilityProbe,
+    required super.generator,
   }) : super(
           id: 'android_on_device',
           runsLocally: true,
-          availabilityProbe: availabilityProbe,
-          generator: generator,
         );
 }
 
 class NeuraOnnxLocalBackend extends NeuraCallbackModelBackend {
   NeuraOnnxLocalBackend({
-    required NeuraAvailabilityProbe availabilityProbe,
-    required NeuraTextGenerator generator,
+    required super.availabilityProbe,
+    required super.generator,
   }) : super(
           id: 'onnx_local',
           runsLocally: true,
-          availabilityProbe: availabilityProbe,
-          generator: generator,
         );
 }
 
 class NeuraCloudModelBackend extends NeuraCallbackModelBackend {
   NeuraCloudModelBackend({
-    required String id,
-    required NeuraAvailabilityProbe availabilityProbe,
-    required NeuraTextGenerator generator,
-  }) : super(
-          id: id,
-          runsLocally: false,
-          availabilityProbe: availabilityProbe,
-          generator: generator,
-        );
+    required super.id,
+    required super.availabilityProbe,
+    required super.generator,
+  }) : super(runsLocally: false);
 }
 
 /// Local-first model router.
