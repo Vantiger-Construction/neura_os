@@ -8,6 +8,7 @@ import '../../intelligence/neura_intelligence_controller.dart';
 import '../../joy_engine/joy_screen.dart';
 import '../../modules/quests/quest_mode_screen.dart';
 import '../../modules/support/support_center_screen.dart';
+import '../../persona/models/neura_kind_explanation.dart';
 import '../../relationships/screens/relationship_detail_screen.dart';
 import '../../relationships/screens/relationship_list_screen.dart';
 import '../../src/modules/focus/focus_office_screen.dart';
@@ -134,11 +135,12 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
   Future<void> _briefMe() async {
     final banner = _banner;
     if (banner == null) return;
-    final approvalCopy = banner.receipt.requiresApproval
-        ? 'I will wait for your approval before making any change.'
-        : 'Nothing will happen unless you choose to open it.';
     await NeuraTtsService.instance.speak(
-      '${banner.title}. ${banner.body}. $approvalCopy',
+      NeuraKindExplanation.spokenBrief(
+        title: banner.title,
+        body: banner.body,
+        requiresApproval: banner.receipt.requiresApproval,
+      ),
     );
   }
 
@@ -155,9 +157,11 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
           children: [
             Text(
-              'Why Neura suggested this',
+              'Why I thought this might help',
               style: Theme.of(context).textTheme.titleLarge,
             ),
+            const SizedBox(height: 8),
+            const Text(NeuraKindExplanation.uncertainty),
             const SizedBox(height: 12),
             Text(
               'Priority score ${(receipt.score * 100).round()}/100 • '
@@ -165,9 +169,9 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
             ),
             const SizedBox(height: 8),
             Text(
-              receipt.requiresApproval
-                  ? 'This is a preview. Neura cannot make the change until you review and approve it.'
-                  : 'Nothing happens unless you tap Open.',
+              NeuraKindExplanation.controlStatement(
+                requiresApproval: receipt.requiresApproval,
+              ),
             ),
             const SizedBox(height: 12),
             ...receipt.reasons.map(
