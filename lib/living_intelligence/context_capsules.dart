@@ -27,9 +27,9 @@ class NeuraContextCapsule {
     required Iterable<String> allowedCapabilities,
     this.cloudInferenceAllowed = false,
     this.retention = const Duration(days: 30),
-  }) : dataCategories =
-           Set<NeuraCapsuleDataCategory>.unmodifiable(dataCategories),
-       allowedCapabilities = Set<String>.unmodifiable(allowedCapabilities);
+  })  : dataCategories =
+            Set<NeuraCapsuleDataCategory>.unmodifiable(dataCategories),
+        allowedCapabilities = Set<String>.unmodifiable(allowedCapabilities);
 
   final NeuraContextCapsuleKind kind;
   final String partitionId;
@@ -57,8 +57,7 @@ class NeuraContextCapsuleRegistry {
   NeuraContextCapsuleRegistry({
     Iterable<NeuraContextCapsule>? capsules,
   }) : _capsules = {
-          for (final capsule in capsules ?? defaults())
-            capsule.kind: capsule,
+          for (final capsule in capsules ?? defaults()) capsule.kind: capsule,
         };
 
   final Map<NeuraContextCapsuleKind, NeuraContextCapsule> _capsules;
