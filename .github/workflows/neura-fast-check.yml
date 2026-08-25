@@ -30,11 +30,37 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.44.7'
-          channel: stable
-          cache: true
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $flutterVersion = '3.44.7'
+          $flutterRoot = Join-Path $env:RUNNER_TOOL_CACHE "flutter\$flutterVersion\x64"
+          $flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
+
+          if (-not (Test-Path -LiteralPath $flutterExe -PathType Leaf)) {
+            $stagingRoot = Join-Path $env:RUNNER_TEMP "flutter-$flutterVersion-$env:GITHUB_RUN_ID"
+            if (Test-Path -LiteralPath $stagingRoot) {
+              Remove-Item -LiteralPath $stagingRoot -Recurse -Force
+            }
+
+            git clone --depth 1 --branch $flutterVersion https://github.com/flutter/flutter.git $stagingRoot
+            if ($LASTEXITCODE -ne 0) {
+              throw "Flutter $flutterVersion clone failed with exit code $LASTEXITCODE."
+            }
+
+            New-Item -ItemType Directory -Path (Split-Path -Parent $flutterRoot) -Force | Out-Null
+            Move-Item -LiteralPath $stagingRoot -Destination $flutterRoot
+          }
+
+          $flutterBin = Join-Path $flutterRoot 'bin'
+          $flutterBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $flutterExe config --no-analytics
+          if ($LASTEXITCODE -ne 0) {
+            throw "Flutter configuration failed with exit code $LASTEXITCODE."
+          }
+          & $flutterExe --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Flutter verification failed with exit code $LASTEXITCODE."
+          }
 
       - name: Verify local tools
         # GitHub writes each run block to an unsigned temporary .ps1 file.
