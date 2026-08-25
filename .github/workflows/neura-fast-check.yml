@@ -113,28 +113,6 @@ jobs:
           }
           Write-Host ($nugetOutput | Select-Object -First 1)
 
-      - name: Capture canonical Living Intelligence formatting
-        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
-        run: |
-          flutter pub get
-          $files = @(
-            'lib/living_intelligence/context_capsules.dart',
-            'lib/living_intelligence/device_continuity.dart',
-            'lib/living_intelligence/future_paths_simulator.dart',
-            'lib/living_intelligence/neura_living_intelligence_runtime.dart',
-            'lib/living_intelligence/neura_safety_policy.dart',
-            'lib/living_intelligence/private_neural_core.dart',
-            'lib/living_intelligence/self_healing_runtime.dart',
-            'lib/living_intelligence/signed_skill_capsules.dart'
-          )
-          dart format $files
-          foreach ($file in $files) {
-            $relative = $file
-            Write-Host "NEURA_FORMAT_BEGIN:$relative"
-            Write-Host ([Convert]::ToBase64String([IO.File]::ReadAllBytes($file)))
-            Write-Host "NEURA_FORMAT_END:$relative"
-          }
-
       - name: Run optimized validation
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: ./tools/Neura-FastCheck.ps1 -Root . -BuildWindows
