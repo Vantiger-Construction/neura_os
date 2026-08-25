@@ -113,6 +113,18 @@ jobs:
           }
           Write-Host ($nugetOutput | Select-Object -First 1)
 
+      - name: Capture canonical Living Intelligence formatting
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $files = Get-ChildItem -LiteralPath lib/living_intelligence -Filter *.dart | Select-Object -ExpandProperty FullName
+          dart format $files
+          foreach ($file in $files) {
+            $relative = [IO.Path]::GetRelativePath((Get-Location).Path, $file)
+            Write-Host "NEURA_FORMAT_BEGIN:$relative"
+            Write-Host ([Convert]::ToBase64String([IO.File]::ReadAllBytes($file)))
+            Write-Host "NEURA_FORMAT_END:$relative"
+          }
+
       - name: Run optimized validation
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: ./tools/Neura-FastCheck.ps1 -Root . -BuildWindows
