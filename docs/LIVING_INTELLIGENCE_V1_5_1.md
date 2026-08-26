@@ -77,6 +77,40 @@ Support signals such as frustration or overwhelm must be supplied explicitly by
 the caller from the current visible interaction. The policy does not infer a
 clinical or emotional diagnosis and does not silently read private history.
 
+### 4. Action Loom fresh approval leases
+
+A stored `explicitUserApproval` Boolean is no longer the only execution evidence
+for capabilities configured as `everyTime`, sensitive, external, critical, or
+side-effecting. Action Loom now issues a process-local lease that is:
+
+- scoped to one action id, immutable candidate id, decision receipt id, and
+  registered capability id;
+- limited to at most two minutes and never longer than the candidate itself;
+- replaced and revoked when the user approves the action again;
+- rejected when missing, not yet valid, too close to expiry, expired, revoked,
+  consumed, or mismatched;
+- consumed once inside the registered local-plan capability executor before any
+  quest ledger or quest data mutation begins;
+- cleared during local-data wipe and process-local approval-cache reset.
+
+Action Loom also requires at least five seconds of remaining lease lifetime
+before beginning broker revalidation. This avoids deliberately starting a
+mutation on evidence already at its expiration boundary. A stale or mismatched
+lease causes the reviewed action to be denied and requires a new reviewed
+submission instead of silently refreshing authority.
+
+The bounded Action Loom audit record stores only lease id, state, and UTC
+issuance, expiration, consumption, or revocation times. It does not store raw
+proposal copy, prompts, goals, payload values, journal text, therapy records, or
+conversation content.
+
+Calling the internal broker's approval method directly does not bypass this
+boundary: Action Loom's preflight requires a lease, and the local-plan executor
+consumes the same exact-scope lease immediately before mutation. Device identity
+and Context Capsule identity are not yet part of Action Loom's action model, so
+cryptographic device/capsule binding remains explicit follow-up integration
+rather than being claimed as complete.
+
 ## Runtime integration
 
 `NeuraLivingIntelligenceRuntime` now exposes:
@@ -95,14 +129,17 @@ movement remains blocked.
 
 ## Validation
 
-The focused workflow requires:
+The focused workflows require:
 
 1. no unresolved merge markers;
 2. canonical Dart formatting;
 3. fatal-info analysis;
 4. all Living Intelligence tests;
-5. the complete Flutter suite.
+5. fresh approval lease unit tests;
+6. Action Loom approval-bypass, audit-privacy, expiry, and data-wipe tests;
+7. the complete Flutter suite on hosted validation.
 
 Native model SDKs, production credentials, platform secure storage, package
-signing, speech-engine replacement, Android system registration, physical-device
-acceptance, and installer file operations remain explicit platform work.
+signing, speech-engine replacement, cryptographic Action Loom device/capsule
+binding, Android system registration, physical-device acceptance, and installer
+file operations remain explicit platform work.
