@@ -170,15 +170,22 @@ jobs:
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
-          dart format --output=none --set-exit-if-changed `
-            lib\living_intelligence `
-            lib\intelligence\action_loom.dart `
-            lib\intelligence\fresh_approval_lease.dart `
-            lib\intelligence\intelligence.dart `
-            test\living_intelligence `
-            test\intelligence\action_loom_fresh_approval_test.dart `
-            test\intelligence\fresh_approval_lease_test.dart
+          $formatPaths = @(
+            'lib\living_intelligence',
+            'lib\intelligence\action_loom.dart',
+            'lib\intelligence\fresh_approval_lease.dart',
+            'lib\intelligence\intelligence.dart',
+            'test\living_intelligence',
+            'test\intelligence\action_loom_fresh_approval_test.dart',
+            'test\intelligence\fresh_approval_lease_test.dart'
+          )
+          & dart format @formatPaths
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & git diff --exit-code -- @formatPaths
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host 'The formatter diff above must be committed.'
+            exit 1
+          }
 
       - name: Require zero analyzer findings
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
