@@ -233,28 +233,46 @@ jobs:
 
           $runKey = "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
           $workspaceTarget = Join-Path $env:NEURA_FLUTTER_VOLUME "neura-ci\$runKey\workspace"
+          $sourceLink = Join-Path $env:GITHUB_WORKSPACE 'source'
 
-          # A running PowerShell process cannot remove its current directory.
+          # The runner holds GITHUB_WORKSPACE open, so keep that root in place.
+          # Only the unheld source child becomes a junction to the alternate
+          # volume; actions/checkout writes through it.
           Set-Location -LiteralPath $env:RUNNER_TEMP
-          Remove-LinkOrDirectory -Path $env:GITHUB_WORKSPACE
+          Remove-LinkOrDirectory -Path $sourceLink
           Remove-LinkOrDirectory -Path $workspaceTarget
 
           New-Item -ItemType Directory -Path $workspaceTarget -Force | Out-Null
           New-Item `
             -ItemType Junction `
-            -Path $env:GITHUB_WORKSPACE `
+            -Path $sourceLink `
             -Target $workspaceTarget | Out-Null
 
-          "NEURA_WORKSPACE_ROOT=$workspaceTarget" |
-            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "Source checkout junction: $env:GITHUB_WORKSPACE -> $workspaceTarget"
+          @(
+            "NEURA_SOURCE_ROOT=$sourceLink",
+            "NEURA_WORKSPACE_ROOT=$workspaceTarget"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Source checkout junction: $sourceLink -> $workspaceTarget"
 
       - name: Check out source
         uses: actions/checkout@v4
+        with:
+          path: source
 
-      - name: Reclaim bounded system-volume space
+      - name: Confirm bounded system-volume headroom
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
-        run: ./tools/Neura-ReclaimCiDisk.ps1 -MinimumFreeGb 0.25
+        run: |
+          $runnerWork = Split-Path -Parent $env:RUNNER_TEMP
+          $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+          $driveName = $systemRoot.TrimEnd('\').TrimEnd(':')
+          $free = (Get-PSDrive -Name $driveName -ErrorAction Stop).Free
+          Write-Host ("System volume {0} free after checkout: {1:N2} GB" -f $systemRoot, ($free / 1GB))
+          if ($free -lt 0.20GB) {
+            throw (
+              "The runner needs at least 0.20 GB on {0} for metadata and " +
+              "temporary step scripts; only {1:N2} GB is free."
+            ) -f $systemRoot, ($free / 1GB)
+          }
 
       - name: Route generated output to alternate volumes
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
@@ -288,8 +306,8 @@ jobs:
           $tempRoot = Join-Path $flutterRoot 'temp'
           $cargoHome = Join-Path $rustRoot 'cargo-home'
 
-          Remove-LinkOrDirectory -Path (Join-Path $env:GITHUB_WORKSPACE 'build')
-          Remove-LinkOrDirectory -Path (Join-Path $env:GITHUB_WORKSPACE 'rust\target')
+          Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_SOURCE_ROOT 'build')
+          Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_SOURCE_ROOT 'rust\target')
           Remove-LinkOrDirectory -Path $flutterRoot
           Remove-LinkOrDirectory -Path $rustRoot
 
@@ -306,11 +324,11 @@ jobs:
 
           New-Item `
             -ItemType Junction `
-            -Path (Join-Path $env:GITHUB_WORKSPACE 'build') `
+            -Path (Join-Path $env:NEURA_SOURCE_ROOT 'build') `
             -Target $flutterBuild | Out-Null
           New-Item `
             -ItemType Junction `
-            -Path (Join-Path $env:GITHUB_WORKSPACE 'rust\target') `
+            -Path (Join-Path $env:NEURA_SOURCE_ROOT 'rust\target') `
             -Target $rustTarget | Out-Null
 
           @(
@@ -439,7 +457,7 @@ jobs:
 
       - name: Run optimized validation
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
-        run: ./tools/Neura-FastCheck.ps1 -Root . -BuildWindows
+        run: '& "$env:NEURA_SOURCE_ROOT\tools\Neura-FastCheck.ps1" -Root $env:NEURA_SOURCE_ROOT -BuildWindows'
 
       - name: Release generated build space
         if: always()
@@ -458,8 +476,8 @@ jobs:
             }
           }
 
-          Remove-LinkOrDirectory -Path (Join-Path $env:GITHUB_WORKSPACE 'build')
-          Remove-LinkOrDirectory -Path (Join-Path $env:GITHUB_WORKSPACE 'rust\target')
+          Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_SOURCE_ROOT 'build')
+          Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_SOURCE_ROOT 'rust\target')
 
           foreach ($path in @($env:NEURA_FLUTTER_ROOT, $env:NEURA_RUST_ROOT)) {
             if (-not [string]::IsNullOrWhiteSpace($path)) {
