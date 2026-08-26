@@ -33,7 +33,7 @@ function Remove-EphemeralPath {
     try {
         Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
     } catch {
-        Write-Warning "Could not completely remove $Path: $($_.Exception.Message)"
+        Write-Warning "Could not completely remove ${Path}: $($_.Exception.Message)"
     }
 }
 
