@@ -10,6 +10,7 @@ import '../reliability/safe_boot.dart';
 import '../startup/neura_prefs_cache.dart';
 import 'approval_broker.dart';
 import 'capability_registry.dart';
+import 'fresh_approval_lease.dart';
 import 'models.dart';
 
 /// Runtime binding for capability executors that Neura is currently allowed
@@ -19,7 +20,10 @@ import 'models.dart';
 /// copy and raw goal text stay out of the audit ledger.
 class NeuraActionLoom {
   NeuraActionLoom._() {
-    final questExecutor = _QuestPlanExecutor();
+    freshApprovalLeases = NeuraFreshApprovalLeaseRegistry();
+    final questExecutor = _QuestPlanExecutor(
+      freshApprovalLeases: freshApprovalLeases,
+    );
     _questExecutor = questExecutor;
     broker = NeuraApprovalBroker(
       executors: {
@@ -33,8 +37,10 @@ class NeuraActionLoom {
 
   static const _ledgerKey = 'neura.action_loom.ledger.v1';
   static const _maxLedgerEntries = 100;
+  static const _minimumExecutionLeaseRemaining = Duration(seconds: 5);
 
   late final NeuraApprovalBroker broker;
+  late final NeuraFreshApprovalLeaseRegistry freshApprovalLeases;
   late final _QuestPlanExecutor _questExecutor;
   Future<void> _ledgerQueue = Future<void>.value();
   bool _suspended = false;
@@ -48,9 +54,32 @@ class NeuraActionLoom {
     return action;
   }
 
-  Future<NeuraApprovalAction> approve(String actionId) async {
+  Future<NeuraApprovalAction> approve(
+    String actionId, {
+    Duration freshApprovalLifetime = const Duration(minutes: 2),
+  }) async {
+    _validateFreshApprovalLifetime(freshApprovalLifetime);
     final generation = _beginOperation();
-    final action = broker.approve(actionId);
+    var action = broker.approve(actionId);
+    _ensureCurrent(generation);
+
+    if (action.status == NeuraApprovalStatus.approved &&
+        _requiresFreshApproval(action.capability)) {
+      try {
+        freshApprovalLeases.issue(
+          scope: _freshApprovalScope(action),
+          issuedAt: DateTime.now().toUtc(),
+          lifetime: freshApprovalLifetime,
+          notAfter: action.expiresAt,
+        );
+      } on StateError {
+        action = broker.deny(
+          actionId,
+          reason: 'The action expired before fresh approval could be bound.',
+        );
+      }
+    }
+
     _ensureCurrent(generation);
     await _persistMetadata(action, generation);
     return action;
@@ -59,6 +88,10 @@ class NeuraActionLoom {
   Future<NeuraApprovalAction> deny(String actionId) async {
     final generation = _beginOperation();
     final action = broker.deny(actionId);
+    freshApprovalLeases.revokeForAction(
+      action.id,
+      now: DateTime.now().toUtc(),
+    );
     _ensureCurrent(generation);
     await _persistMetadata(action, generation);
     return action;
@@ -66,7 +99,40 @@ class NeuraActionLoom {
 
   Future<NeuraApprovalAction> execute(String actionId) async {
     final generation = _beginOperation();
+    final current = broker.find(actionId);
+    if (current != null &&
+        _requiresFreshApproval(current.capability) &&
+        _isWaitingToExecute(current)) {
+      final approval = freshApprovalLeases.validate(
+        scope: _freshApprovalScope(current),
+        now: DateTime.now().toUtc(),
+        minimumRemaining: _minimumExecutionLeaseRemaining,
+      );
+      if (!approval.allowed) {
+        final denied = broker.deny(
+          actionId,
+          reason: '${approval.reason} Submit this action again for review.',
+        );
+        freshApprovalLeases.revokeForAction(
+          actionId,
+          now: DateTime.now().toUtc(),
+        );
+        _ensureCurrent(generation);
+        await _persistMetadata(denied, generation);
+        return denied;
+      }
+    }
+
     final action = await broker.execute(actionId);
+    if (action.status == NeuraApprovalStatus.denied ||
+        action.status == NeuraApprovalStatus.expired ||
+        action.status == NeuraApprovalStatus.blocked ||
+        action.status == NeuraApprovalStatus.failed) {
+      freshApprovalLeases.revokeForAction(
+        action.id,
+        now: DateTime.now().toUtc(),
+      );
+    }
     _ensureCurrent(generation);
     await _persistMetadata(action, generation);
     return action;
@@ -102,6 +168,7 @@ class NeuraActionLoom {
   Future<void> resetAfterDataWipe() async {
     _suspended = true;
     _dataGeneration += 1;
+    freshApprovalLeases.clear();
     final ledgerDrain = _ledgerQueue;
     try {
       await Future.wait<void>([
@@ -130,6 +197,7 @@ class NeuraActionLoom {
   void resumeAfterDataWipe() {
     broker.resumeAfterDataWipe();
     _questExecutor.resumeAfterDataWipe();
+    freshApprovalLeases.clear();
     _ledgerQueue = Future<void>.value();
     _suspended = false;
   }
@@ -139,6 +207,7 @@ class NeuraActionLoom {
   Future<void> resetApprovalCacheForTesting() async {
     _suspended = true;
     _dataGeneration += 1;
+    freshApprovalLeases.clear();
     await _ledgerQueue;
     await broker.resetAfterDataWipe();
     broker.resumeAfterDataWipe();
@@ -162,9 +231,26 @@ class NeuraActionLoom {
     }
   }
 
+  void _validateFreshApprovalLifetime(Duration lifetime) {
+    if (lifetime.inMicroseconds <= 0 ||
+        lifetime > freshApprovalLeases.maximumLifetime) {
+      throw ArgumentError.value(
+        lifetime,
+        'freshApprovalLifetime',
+        'Fresh approval lifetime must be positive and no longer than '
+            '${freshApprovalLeases.maximumLifetime}.',
+      );
+    }
+  }
+
   Future<void> _writeMetadata(NeuraApprovalAction action) async {
     final prefs = NeuraPrefsCache.prefs;
     final records = _decodeRecordList(prefs.getString(_ledgerKey));
+    final now = DateTime.now().toUtc();
+    final freshApproval = freshApprovalLeases.metadataForAction(
+      action.id,
+      now: now,
+    );
     records.removeWhere((item) => item['action_id'] == action.id);
     records.add({
       'v': 1,
@@ -174,11 +260,21 @@ class NeuraActionLoom {
       'capability_id': action.capability.id,
       'status': action.status.name,
       'explicit_user_approval': action.explicitUserApproval,
+      'fresh_approval_id': freshApproval?.leaseId,
+      'fresh_approval_state': freshApproval?.state.name,
+      'fresh_approval_issued_at':
+          freshApproval?.issuedAtUtc.toIso8601String(),
+      'fresh_approval_expires_at':
+          freshApproval?.expiresAtUtc.toIso8601String(),
+      'fresh_approval_consumed_at':
+          freshApproval?.consumedAtUtc?.toIso8601String(),
+      'fresh_approval_revoked_at':
+          freshApproval?.revokedAtUtc?.toIso8601String(),
       'submitted_at': action.submittedAt.toUtc().toIso8601String(),
       'reviewed_at': action.reviewedAt?.toUtc().toIso8601String(),
       'executed_at': action.executedAt?.toUtc().toIso8601String(),
       'undone_at': action.undoneAt?.toUtc().toIso8601String(),
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
+      'updated_at': now.toIso8601String(),
     });
     records.sort(
       (left, right) => (left['updated_at']?.toString() ?? '')
@@ -195,9 +291,12 @@ class NeuraActionLoom {
 }
 
 class _QuestPlanExecutor implements NeuraCapabilityExecutor {
+  _QuestPlanExecutor({required this.freshApprovalLeases});
+
   static const _executionKey = 'neura.action_loom.quest_executions.v1';
   static const _maxExecutionEntries = 100;
 
+  final NeuraFreshApprovalLeaseRegistry freshApprovalLeases;
   Future<void> _queue = Future<void>.value();
   bool _suspended = false;
   int _dataGeneration = 0;
@@ -215,6 +314,18 @@ class _QuestPlanExecutor implements NeuraCapabilityExecutor {
     int generation,
   ) async {
     _ensureCurrent(generation);
+    if (_requiresFreshApproval(invocation.capability)) {
+      final approval = freshApprovalLeases.validateAndConsume(
+        scope: _freshApprovalScopeFromInvocation(invocation),
+        now: DateTime.now().toUtc(),
+      );
+      if (!approval.allowed) {
+        throw StateError(
+          'Fresh approval failed before local mutation: ${approval.reason}',
+        );
+      }
+    }
+
     final payload = invocation.candidate.payload;
     if (payload['action'] != 'draft_quest') {
       throw UnsupportedError('Unsupported local-plan action.');
@@ -451,7 +562,8 @@ class _QuestPlanExecutor implements NeuraCapabilityExecutor {
     );
     if (!written) {
       throw StateError(
-          'The durable quest execution ledger could not be saved.');
+        'The durable quest execution ledger could not be saved.',
+      );
     }
     if (!_isCurrent(generation)) {
       await NeuraPrefsCache.prefs.remove(_executionKey);
@@ -556,6 +668,40 @@ class _QuestPlanExecutor implements NeuraCapabilityExecutor {
     });
     return result.future;
   }
+}
+
+bool _requiresFreshApproval(NeuraCapabilityDefinition capability) {
+  return capability.approvalMode == NeuraApprovalMode.everyTime ||
+      capability.risk == NeuraCapabilityRisk.sensitiveLocal ||
+      capability.risk == NeuraCapabilityRisk.external ||
+      capability.risk == NeuraCapabilityRisk.critical ||
+      capability.hasExternalSideEffect;
+}
+
+bool _isWaitingToExecute(NeuraApprovalAction action) {
+  return action.status == NeuraApprovalStatus.approved ||
+      (action.status == NeuraApprovalStatus.policyHeld &&
+          action.executionResult == null);
+}
+
+NeuraFreshApprovalScope _freshApprovalScope(NeuraApprovalAction action) {
+  return NeuraFreshApprovalScope(
+    actionId: action.id,
+    candidateId: action.candidate.id,
+    receiptId: action.receipt.id,
+    capabilityId: action.capability.id,
+  );
+}
+
+NeuraFreshApprovalScope _freshApprovalScopeFromInvocation(
+  NeuraCapabilityInvocation invocation,
+) {
+  return NeuraFreshApprovalScope(
+    actionId: invocation.actionId,
+    candidateId: invocation.candidate.id,
+    receiptId: invocation.receipt.id,
+    capabilityId: invocation.capability.id,
+  );
 }
 
 List<Map<String, Object?>> _decodeRecordList(String? raw) {
