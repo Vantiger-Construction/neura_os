@@ -1,5 +1,8 @@
 export 'android_intelligence_bridge.dart';
+export 'cloud_inference_consent.dart';
+export 'compassionate_response_policy.dart';
 export 'context_capsules.dart';
+export 'conversation_turn_coordinator.dart';
 export 'device_continuity.dart';
 export 'future_paths_simulator.dart';
 export 'neura_living_intelligence_runtime.dart';
