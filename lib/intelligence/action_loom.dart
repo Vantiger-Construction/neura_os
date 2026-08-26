@@ -13,16 +13,48 @@ import 'capability_registry.dart';
 import 'fresh_approval_lease.dart';
 import 'models.dart';
 
+class _NeuraActionLoomExecutionGate {
+  final Set<String> _authorizedActionIds = <String>{};
+
+  void authorize(String actionId) {
+    final normalized = actionId.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError.value(
+        actionId,
+        'actionId',
+        'Action Loom execution authorization needs an action id.',
+      );
+    }
+    _authorizedActionIds.add(normalized);
+  }
+
+  bool consume(String actionId) {
+    return _authorizedActionIds.remove(actionId.trim());
+  }
+
+  void revoke(String actionId) {
+    _authorizedActionIds.remove(actionId.trim());
+  }
+
+  void clear() {
+    _authorizedActionIds.clear();
+  }
+}
+
 /// Runtime binding for capability executors that Neura is currently allowed
-/// to offer. The broker remains the final authority for every side effect.
+/// to offer. The broker remains the final policy authority for every side
+/// effect, while the private execution gate ensures only Action Loom can open
+/// the executor boundary.
 ///
 /// Consent and action status are persisted as bounded metadata only. Candidate
 /// copy and raw goal text stay out of the audit ledger.
 class NeuraActionLoom {
   NeuraActionLoom._() {
     _freshApprovalLeases = NeuraFreshApprovalLeaseRegistry();
+    _executionGate = _NeuraActionLoomExecutionGate();
     final questExecutor = _QuestPlanExecutor(
       freshApprovalLeases: _freshApprovalLeases,
+      executionGate: _executionGate,
     );
     _questExecutor = questExecutor;
     broker = NeuraApprovalBroker(
@@ -41,6 +73,7 @@ class NeuraActionLoom {
 
   late final NeuraApprovalBroker broker;
   late final NeuraFreshApprovalLeaseRegistry _freshApprovalLeases;
+  late final _NeuraActionLoomExecutionGate _executionGate;
   late final _QuestPlanExecutor _questExecutor;
   Future<void> _ledgerQueue = Future<void>.value();
   bool _suspended = false;
@@ -76,6 +109,11 @@ class NeuraActionLoom {
         action = broker.deny(
           actionId,
           reason: 'The action expired before fresh approval could be bound.',
+        );
+      } on ArgumentError {
+        action = broker.deny(
+          actionId,
+          reason: 'The reviewed action identifiers could not be safely bound.',
         );
       }
     }
@@ -123,7 +161,18 @@ class NeuraActionLoom {
       }
     }
 
-    final action = await broker.execute(actionId);
+    if (current != null &&
+        current.capability.id == NeuraCapabilityRegistry.changeLocalPlan &&
+        _isWaitingToExecute(current)) {
+      _executionGate.authorize(actionId);
+    }
+
+    late final NeuraApprovalAction action;
+    try {
+      action = await broker.execute(actionId);
+    } finally {
+      _executionGate.revoke(actionId);
+    }
     if (action.status == NeuraApprovalStatus.denied ||
         action.status == NeuraApprovalStatus.expired ||
         action.status == NeuraApprovalStatus.blocked ||
@@ -168,6 +217,7 @@ class NeuraActionLoom {
   Future<void> resetAfterDataWipe() async {
     _suspended = true;
     _dataGeneration += 1;
+    _executionGate.clear();
     _freshApprovalLeases.clear();
     final ledgerDrain = _ledgerQueue;
     try {
@@ -197,6 +247,7 @@ class NeuraActionLoom {
   void resumeAfterDataWipe() {
     broker.resumeAfterDataWipe();
     _questExecutor.resumeAfterDataWipe();
+    _executionGate.clear();
     _freshApprovalLeases.clear();
     _ledgerQueue = Future<void>.value();
     _suspended = false;
@@ -207,6 +258,7 @@ class NeuraActionLoom {
   Future<void> resetApprovalCacheForTesting() async {
     _suspended = true;
     _dataGeneration += 1;
+    _executionGate.clear();
     _freshApprovalLeases.clear();
     await _ledgerQueue;
     await broker.resetAfterDataWipe();
@@ -317,12 +369,16 @@ class NeuraActionLoom {
 }
 
 class _QuestPlanExecutor implements NeuraCapabilityExecutor {
-  _QuestPlanExecutor({required this.freshApprovalLeases});
+  _QuestPlanExecutor({
+    required this.freshApprovalLeases,
+    required this.executionGate,
+  });
 
   static const _executionKey = 'neura.action_loom.quest_executions.v1';
   static const _maxExecutionEntries = 100;
 
   final NeuraFreshApprovalLeaseRegistry freshApprovalLeases;
+  final _NeuraActionLoomExecutionGate executionGate;
   Future<void> _queue = Future<void>.value();
   bool _suspended = false;
   int _dataGeneration = 0;
@@ -340,6 +396,11 @@ class _QuestPlanExecutor implements NeuraCapabilityExecutor {
     int generation,
   ) async {
     _ensureCurrent(generation);
+    if (!executionGate.consume(invocation.actionId)) {
+      throw StateError(
+        'Action Loom execution authorization is missing.',
+      );
+    }
     if (_requiresFreshApproval(invocation.capability)) {
       final approval = freshApprovalLeases.validateAndConsume(
         scope: _freshApprovalScopeFromInvocation(invocation),
