@@ -49,6 +49,21 @@ jobs:
             }
           }
 
+          function Remove-StaleChildren {
+            param(
+              [Parameter(Mandatory)][string]$Path,
+              [Parameter(Mandatory)][datetime]$Cutoff
+            )
+            if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
+              return
+            }
+            Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue |
+              Where-Object { $_.LastWriteTime -lt $Cutoff } |
+              ForEach-Object {
+                Remove-GeneratedPath -Path $_.FullName
+              }
+          }
+
           $runnerWork = Split-Path -Parent $env:RUNNER_TEMP
           $driveRoot = [System.IO.Path]::GetPathRoot($runnerWork)
           $driveName = $driveRoot.TrimEnd('\').TrimEnd(':')
@@ -64,7 +79,6 @@ jobs:
           }
 
           foreach ($path in @(
-            (Join-Path $runnerWork '_actions\NuGet\setup-nuget\v2'),
             (Join-Path $env:USERPROFILE '.gradle\caches'),
             (Join-Path $env:USERPROFILE '.gradle\daemon'),
             (Join-Path $env:USERPROFILE '.gradle\native'),
@@ -73,12 +87,69 @@ jobs:
             Remove-GeneratedPath -Path $path
           }
 
-          $cutoff = (Get-Date).AddHours(-6)
-          Get-ChildItem -LiteralPath $env:RUNNER_TEMP -Force -ErrorAction SilentlyContinue |
-            Where-Object { $_.LastWriteTime -lt $cutoff } |
-            ForEach-Object {
-              Remove-GeneratedPath -Path $_.FullName
+          Remove-StaleChildren -Path $env:RUNNER_TEMP -Cutoff (Get-Date).AddMinutes(-15)
+
+          $afterBasic = (Get-PSDrive -Name $driveName -ErrorAction Stop).Free
+          if ($afterBasic -lt 8GB) {
+            Write-Host 'Free space is still low; pruning reproducible caches.'
+
+            # Marketplace actions are a cache. This recovery job uses none,
+            # and the validation job will download only what it needs.
+            Remove-GeneratedPath -Path (Join-Path $runnerWork '_actions')
+
+            # Keep the pinned Flutter 3.44.7 toolchain and remove older cached
+            # Flutter versions only.
+            $flutterTools = Join-Path $env:RUNNER_TOOL_CACHE 'flutter'
+            if (Test-Path -LiteralPath $flutterTools -PathType Container) {
+              Get-ChildItem -LiteralPath $flutterTools -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -notlike '*3.44.7*' } |
+                ForEach-Object {
+                  Remove-GeneratedPath -Path $_.FullName
+                }
             }
+
+            # Cargo registries and Git sources are reproducible caches. The
+            # active Rust toolchain and cargo/rustc binaries are retained.
+            Remove-GeneratedPath -Path (Join-Path $env:USERPROFILE '.cargo\registry')
+            Remove-GeneratedPath -Path (Join-Path $env:USERPROFILE '.cargo\git')
+            Remove-GeneratedPath -Path (Join-Path $env:USERPROFILE '.rustup\downloads')
+            Remove-GeneratedPath -Path (Join-Path $env:USERPROFILE '.rustup\tmp')
+
+            $rustupExe = Join-Path $env:USERPROFILE '.cargo\bin\rustup.exe'
+            if (Test-Path -LiteralPath $rustupExe -PathType Leaf) {
+              $toolchains = & $rustupExe toolchain list
+              foreach ($line in $toolchains) {
+                $toolchain = ($line -split '\s+')[0]
+                if ($toolchain -and
+                    $toolchain -notlike 'stable-*' -and
+                    $toolchain -ne 'stable') {
+                  Write-Host "Removing inactive Rust toolchain: $toolchain"
+                  & $rustupExe toolchain uninstall $toolchain
+                }
+              }
+            }
+
+            # Dart/Flutter and NuGet caches are recreated by dependency
+            # restore. No source or credential storage is touched.
+            if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+              Remove-GeneratedPath -Path (Join-Path $env:LOCALAPPDATA 'Pub\Cache\hosted')
+              Remove-GeneratedPath -Path (Join-Path $env:LOCALAPPDATA 'Pub\Cache\git')
+              Remove-GeneratedPath -Path (Join-Path $env:LOCALAPPDATA 'Pub\Cache\_temp')
+              Remove-GeneratedPath -Path (Join-Path $env:LOCALAPPDATA 'NuGet\v3-cache')
+              Remove-GeneratedPath -Path (Join-Path $env:LOCALAPPDATA 'NuGet\plugins-cache')
+              Remove-GeneratedPath -Path (Join-Path $env:LOCALAPPDATA 'NuGet\scratch')
+            }
+            Remove-GeneratedPath -Path (Join-Path $env:USERPROFILE '.nuget\packages')
+
+            if (-not [string]::IsNullOrWhiteSpace($env:TEMP)) {
+              Remove-StaleChildren -Path $env:TEMP -Cutoff (Get-Date).AddHours(-1)
+            }
+
+            $runnerRoot = Split-Path -Parent $runnerWork
+            Remove-StaleChildren `
+              -Path (Join-Path $runnerRoot '_diag') `
+              -Cutoff (Get-Date).AddDays(-1)
+          }
 
           [GC]::Collect()
           [GC]::WaitForPendingFinalizers()
@@ -90,8 +161,12 @@ jobs:
             ([Math]::Max(0, $after - $before) / 1GB)
           )
 
-          if ($after -lt 1GB) {
-            throw "The runner still has less than 1 GB free after emergency cleanup."
+          if ($after -lt 8GB) {
+            $message = (
+              "The runner still has only {0:N2} GB free after pruning " +
+              "generated outputs and reproducible caches; 8 GB is required."
+            ) -f ($after / 1GB)
+            throw $message
           }
 
   validate:
