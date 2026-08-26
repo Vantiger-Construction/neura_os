@@ -15,7 +15,7 @@ class NeuraSkillManifest {
     required Iterable<String> privateDataClasses,
     required Iterable<String> permissions,
     required this.networkPolicy,
-    this.declaredHosts = const <String>[],
+    Iterable<String> declaredHosts = const <String>[],
     this.allowedInSafeMode = false,
     this.signature = '',
   })  : capabilities = Set<String>.unmodifiable(capabilities),
