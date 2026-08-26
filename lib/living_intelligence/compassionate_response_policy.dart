@@ -108,7 +108,8 @@ class NeuraCompassionateResponsePolicy {
 
     switch (supportSignal) {
       case NeuraSupportSignal.standard:
-        instructions.add('Match the client\'s pace and avoid unnecessary intensity.');
+        instructions
+            .add('Match the client\'s pace and avoid unnecessary intensity.');
         break;
       case NeuraSupportSignal.frustrated:
         instructions.addAll(const <String>[
