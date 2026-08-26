@@ -124,8 +124,7 @@ jobs:
           }
 
           # Remove only stale directories below Neura's own alternate-volume
-          # namespace. No other root-level data on E:, N:, or another volume
-          # is inspected or changed.
+          # namespace. No other root-level data is inspected or changed.
           foreach ($drive in [System.IO.DriveInfo]::GetDrives()) {
             if (-not $drive.IsReady -or $drive.Name -eq $systemRoot) {
               continue
@@ -150,10 +149,15 @@ jobs:
             ($systemAfter / 1GB),
             ([Math]::Max(0, $systemAfter - $systemBefore) / 1GB)
           )
-          if ($systemAfter -lt 0.75GB) {
+
+          # Source checkout, Pub/Cargo caches, build output, NuGet packages,
+          # and TEMP/TMP are routed to the selected non-system volumes below.
+          # C: only needs enough room for the runner's own metadata and small
+          # generated step scripts.
+          if ($systemAfter -lt 0.25GB) {
             throw (
-              "The runner needs at least 0.75 GB on {0} for source, tools, " +
-              "and runner metadata; only {1:N2} GB is free."
+              "The runner needs at least 0.25 GB on {0} for runner metadata; " +
+              "only {1:N2} GB is free."
             ) -f $systemRoot, ($systemAfter / 1GB)
           }
 
@@ -203,12 +207,54 @@ jobs:
       NEURA_RUST_VOLUME: ${{ needs.reclaim-runner-space.outputs.rust_volume }}
 
     steps:
+      - name: Route source checkout to an alternate volume
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          function Remove-LinkOrDirectory {
+            param([Parameter(Mandatory)][string]$Path)
+
+            if (-not (Test-Path -LiteralPath $Path)) {
+              return
+            }
+
+            $item = Get-Item -LiteralPath $Path -Force
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+              & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$Path"
+              if ($LASTEXITCODE -ne 0) {
+                throw "Could not remove junction $Path."
+              }
+            } else {
+              Remove-Item -LiteralPath $Path -Recurse -Force
+            }
+          }
+
+          $runKey = "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $workspaceTarget = Join-Path $env:NEURA_FLUTTER_VOLUME "neura-ci\$runKey\workspace"
+
+          # A running PowerShell process cannot remove its current directory.
+          Set-Location -LiteralPath $env:RUNNER_TEMP
+          Remove-LinkOrDirectory -Path $env:GITHUB_WORKSPACE
+          Remove-LinkOrDirectory -Path $workspaceTarget
+
+          New-Item -ItemType Directory -Path $workspaceTarget -Force | Out-Null
+          New-Item `
+            -ItemType Junction `
+            -Path $env:GITHUB_WORKSPACE `
+            -Target $workspaceTarget | Out-Null
+
+          "NEURA_WORKSPACE_ROOT=$workspaceTarget" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Source checkout junction: $env:GITHUB_WORKSPACE -> $workspaceTarget"
+
       - name: Check out source
         uses: actions/checkout@v4
 
       - name: Reclaim bounded system-volume space
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
-        run: ./tools/Neura-ReclaimCiDisk.ps1 -MinimumFreeGb 0.75
+        run: ./tools/Neura-ReclaimCiDisk.ps1 -MinimumFreeGb 0.25
 
       - name: Route generated output to alternate volumes
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
@@ -381,7 +427,7 @@ jobs:
           Write-Host ($nugetOutput | Select-Object -First 1)
 
           foreach ($path in @(
-            $env:GITHUB_WORKSPACE,
+            $env:NEURA_WORKSPACE_ROOT,
             $env:NEURA_FLUTTER_ROOT,
             $env:NEURA_RUST_ROOT
           )) {
