@@ -10,8 +10,13 @@ on:
       - Neura
     paths:
       - 'lib/living_intelligence/**'
+      - 'lib/intelligence/action_loom.dart'
+      - 'lib/intelligence/fresh_approval_lease.dart'
+      - 'lib/intelligence/intelligence.dart'
       - 'lib/persona/models/neura_audience.dart'
       - 'test/living_intelligence/**'
+      - 'test/intelligence/action_loom_fresh_approval_test.dart'
+      - 'test/intelligence/fresh_approval_lease_test.dart'
       - 'docs/LIVING_INTELLIGENCE_V1_5_1.md'
       - 'pubspec.yaml'
       - 'pubspec.lock'
@@ -30,7 +35,7 @@ env:
 
 jobs:
   validate:
-    name: Validate consent scope, turn safety, and compassionate guidance
+    name: Validate consent, turn, and Action Loom approval safety
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -44,7 +49,11 @@ jobs:
           set -euo pipefail
           if grep -RInE '^(<<<<<<<|=======|>>>>>>>)' \
             lib/living_intelligence \
-            test/living_intelligence; then
+            lib/intelligence/action_loom.dart \
+            lib/intelligence/fresh_approval_lease.dart \
+            test/living_intelligence \
+            test/intelligence/action_loom_fresh_approval_test.dart \
+            test/intelligence/fresh_approval_lease_test.dart; then
             echo "::error::Unresolved merge markers are committed."
             exit 1
           fi
@@ -65,7 +74,12 @@ jobs:
           set -euo pipefail
           dart format --output=none --set-exit-if-changed \
             lib/living_intelligence \
-            test/living_intelligence
+            lib/intelligence/action_loom.dart \
+            lib/intelligence/fresh_approval_lease.dart \
+            lib/intelligence/intelligence.dart \
+            test/living_intelligence \
+            test/intelligence/action_loom_fresh_approval_test.dart \
+            test/intelligence/fresh_approval_lease_test.dart
 
       - name: Require zero analyzer findings
         shell: bash
@@ -73,12 +87,15 @@ jobs:
           set -o pipefail
           flutter analyze --fatal-infos 2>&1 | tee analyze.log
 
-      - name: Run focused Living Intelligence tests
+      - name: Run focused safety tests
         shell: bash
         run: |
           set -o pipefail
           flutter test --no-pub --reporter expanded \
-            test/living_intelligence 2>&1 | tee living-intelligence-tests.log
+            test/living_intelligence \
+            test/intelligence/action_loom_fresh_approval_test.dart \
+            test/intelligence/fresh_approval_lease_test.dart \
+            2>&1 | tee focused-safety-tests.log
 
       - name: Run complete Flutter suite
         shell: bash
@@ -94,7 +111,7 @@ jobs:
           name: Neura-1.5.1-consent-turn-safety-evidence
           path: |
             analyze.log
-            living-intelligence-tests.log
+            focused-safety-tests.log
             complete-tests.log
             pubspec.lock
           if-no-files-found: warn
