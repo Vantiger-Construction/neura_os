@@ -7,7 +7,7 @@ class _FakeBackend implements NeuraModelBackend {
   _FakeBackend({
     required this.id,
     required this.runsLocally,
-    this.available = true,
+    required this.available,
   });
 
   @override
@@ -129,10 +129,12 @@ void main() {
       final local = _FakeBackend(
         id: 'local',
         runsLocally: true,
+        available: true,
       );
       final cloud = _FakeBackend(
         id: 'cloud',
         runsLocally: false,
+        available: true,
       );
       final policy = NeuraLivingSafetyPolicy(
         safeModeReader: () => false,
@@ -165,6 +167,7 @@ void main() {
       final cloud = _FakeBackend(
         id: 'cloud',
         runsLocally: false,
+        available: true,
       );
       final router = NeuraLocalModelRouter(
         safetyPolicy: NeuraLivingSafetyPolicy(
