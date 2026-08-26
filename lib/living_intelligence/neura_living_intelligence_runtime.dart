@@ -11,6 +11,9 @@ import 'neura_safety_policy.dart';
 import 'presence_engine.dart';
 import 'private_neural_core.dart';
 import 'reflex_safety_layer.dart';
+import 'safety/action_loom_fresh_approval_gate.dart';
+import 'safety/fresh_approval_lease.dart';
+import 'safety/fresh_approval_registry.dart';
 import 'self_healing_runtime.dart';
 import 'signed_skill_capsules.dart';
 import 'trust_lens.dart';
@@ -23,6 +26,7 @@ class NeuraLivingIntelligenceStatus {
     required this.pairedDevices,
     this.activeCloudPermits = 0,
     this.activeConversationTurn = false,
+    this.activeFreshApprovalLeases = 0,
   });
 
   final bool enabled;
@@ -31,6 +35,7 @@ class NeuraLivingIntelligenceStatus {
   final int pairedDevices;
   final int activeCloudPermits;
   final bool activeConversationTurn;
+  final int activeFreshApprovalLeases;
 }
 
 /// Coordination facade for Neura 1.5 and its bounded 1.5.1 safety upgrade.
@@ -50,6 +55,8 @@ class NeuraLivingIntelligenceRuntime {
     required this.presenceEngine,
     required this.responsePolicy,
     required this.turnCoordinator,
+    required this.freshApprovalLeases,
+    required this.actionLoomApprovalGate,
     required this.futurePaths,
     required this.selfHealing,
     required this.androidBridge,
@@ -83,6 +90,8 @@ class NeuraLivingIntelligenceRuntime {
       modelRouter: modelRouter,
       presenceEngine: presenceEngine,
     );
+    final freshApprovalLeases = NeuraFreshApprovalLeaseRegistry();
+    const actionLoomApprovalGate = NeuraActionLoomFreshApprovalGate();
 
     return NeuraLivingIntelligenceRuntime(
       safetyPolicy: safetyPolicy,
@@ -100,6 +109,8 @@ class NeuraLivingIntelligenceRuntime {
       presenceEngine: presenceEngine,
       responsePolicy: responsePolicy,
       turnCoordinator: turnCoordinator,
+      freshApprovalLeases: freshApprovalLeases,
+      actionLoomApprovalGate: actionLoomApprovalGate,
       futurePaths: const NeuraFuturePathsSimulator(),
       selfHealing: NeuraSelfHealingRuntime(),
       androidBridge: const NeuraAndroidIntelligenceBridge(),
@@ -118,6 +129,8 @@ class NeuraLivingIntelligenceRuntime {
   final NeuraPresenceEngine presenceEngine;
   final NeuraCompassionateResponsePolicy responsePolicy;
   final NeuraConversationTurnCoordinator turnCoordinator;
+  final NeuraFreshApprovalLeaseRegistry freshApprovalLeases;
+  final NeuraActionLoomFreshApprovalGate actionLoomApprovalGate;
   final NeuraFuturePathsSimulator futurePaths;
   final NeuraSelfHealingRuntime selfHealing;
   final NeuraAndroidIntelligenceBridge androidBridge;
@@ -136,6 +149,7 @@ class NeuraLivingIntelligenceRuntime {
       pairedDevices: continuity.devices.length,
       activeCloudPermits: cloudConsent.activePermitCount(),
       activeConversationTurn: turnCoordinator.hasActiveTurn,
+      activeFreshApprovalLeases: freshApprovalLeases.activeLeaseCount(),
     );
   }
 
@@ -153,6 +167,7 @@ class NeuraLivingIntelligenceRuntime {
     modelRouter.enabled = value;
     if (!value) {
       turnCoordinator.cancelActiveTurn();
+      freshApprovalLeases.resetAfterDataWipe();
     }
   }
 
@@ -207,6 +222,42 @@ class NeuraLivingIntelligenceRuntime {
     );
   }
 
+  NeuraFreshApprovalIssue issueFreshApprovalLease({
+    required String leaseId,
+    required String actionFingerprint,
+    required String capabilityId,
+    required String contextCapsuleId,
+    required String deviceId,
+    required NeuraSafetyContext context,
+    required bool explicitApproval,
+    required bool capabilityRegistered,
+    required bool criticalCapability,
+    required bool involvesMoneyMovement,
+    Duration lifetime = const Duration(seconds: 90),
+    DateTime? now,
+  }) {
+    if (!_enabled) {
+      throw StateError('Living Intelligence is disabled.');
+    }
+    return freshApprovalLeases.issue(
+      leaseId: leaseId,
+      scope: NeuraFreshApprovalScope(
+        actionFingerprint: actionFingerprint,
+        capabilityId: capabilityId,
+        capsuleId: contextCapsuleId,
+        deviceId: deviceId,
+      ),
+      issuedAt: now ?? DateTime.now(),
+      lifetime: lifetime,
+      safetyContext: context,
+      explicitApproval: explicitApproval,
+      capabilityRegistered: capabilityRegistered,
+      criticalCapability: criticalCapability,
+      involvesMoneyMovement: involvesMoneyMovement,
+      safeModeActive: safetyPolicy.safeModeActive,
+    );
+  }
+
   NeuraModelRequest buildGuidedModelRequest({
     required NeuraModelPurpose purpose,
     required String prompt,
@@ -243,6 +294,7 @@ class NeuraLivingIntelligenceRuntime {
     modelRouter.enabled = false;
     turnCoordinator.cancelActiveTurn();
     cloudConsent.resetAfterDataWipe();
+    freshApprovalLeases.resetAfterDataWipe();
     skillHealth.resetAfterDataWipe();
     continuity.resetAfterDataWipe();
     await turnCoordinator.enterQuietMode();
