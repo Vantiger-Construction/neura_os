@@ -21,7 +21,82 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  reclaim-runner-space:
+    name: Reclaim self-hosted runner disk
+    runs-on: [self-hosted, Windows, X64, neura]
+    timeout-minutes: 10
+
+    steps:
+      # This job intentionally uses no marketplace actions or repository
+      # checkout. It must be able to recover a runner whose action cache
+      # cannot grow because an earlier native build exhausted the disk.
+      - name: Remove generated runner data
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          function Remove-GeneratedPath {
+            param([Parameter(Mandatory)][string]$Path)
+            if (-not (Test-Path -LiteralPath $Path)) {
+              return
+            }
+            Write-Host "Removing generated runner data: $Path"
+            try {
+              Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            } catch {
+              Write-Warning "Could not completely remove $Path: $($_.Exception.Message)"
+            }
+          }
+
+          $runnerWork = Split-Path -Parent $env:RUNNER_TEMP
+          $driveRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+          $driveName = $driveRoot.TrimEnd('\').TrimEnd(':')
+          $before = (Get-PSDrive -Name $driveName -ErrorAction Stop).Free
+
+          foreach ($repository in Get-ChildItem -LiteralPath $runnerWork -Directory -ErrorAction SilentlyContinue) {
+            if ($repository.Name.StartsWith('_')) {
+              continue
+            }
+            $checkout = Join-Path $repository.FullName $repository.Name
+            Remove-GeneratedPath -Path (Join-Path $checkout 'build')
+            Remove-GeneratedPath -Path (Join-Path $checkout 'rust\target')
+          }
+
+          foreach ($path in @(
+            (Join-Path $runnerWork '_actions\NuGet\setup-nuget\v2'),
+            (Join-Path $env:USERPROFILE '.gradle\caches'),
+            (Join-Path $env:USERPROFILE '.gradle\daemon'),
+            (Join-Path $env:USERPROFILE '.gradle\native'),
+            (Join-Path $env:USERPROFILE '.gradle\notifications')
+          )) {
+            Remove-GeneratedPath -Path $path
+          }
+
+          $cutoff = (Get-Date).AddHours(-6)
+          Get-ChildItem -LiteralPath $env:RUNNER_TEMP -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTime -lt $cutoff } |
+            ForEach-Object {
+              Remove-GeneratedPath -Path $_.FullName
+            }
+
+          [GC]::Collect()
+          [GC]::WaitForPendingFinalizers()
+
+          $after = (Get-PSDrive -Name $driveName -ErrorAction Stop).Free
+          Write-Host (
+            "Emergency cleanup free space: {0:N2} GB (reclaimed {1:N2} GB)" -f
+            ($after / 1GB),
+            ([Math]::Max(0, $after - $before) / 1GB)
+          )
+
+          if ($after -lt 1GB) {
+            throw "The runner still has less than 1 GB free after emergency cleanup."
+          }
+
   validate:
+    name: validate
+    needs: reclaim-runner-space
     # Uses the owner's Windows computer instead of paid GitHub-hosted minutes.
     runs-on: [self-hosted, Windows, X64, neura]
     timeout-minutes: 55
@@ -97,10 +172,32 @@ jobs:
             throw "rustc verification failed with exit code $LASTEXITCODE."
           }
 
-      - name: Install NuGet
-        uses: NuGet/setup-nuget@v2
-        with:
-          nuget-version: latest
+      - name: Locate or install NuGet
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $nugetExe = Get-ChildItem -LiteralPath $env:RUNNER_TOOL_CACHE `
+              -Filter 'nuget.exe' -File -Recurse -ErrorAction SilentlyContinue |
+            Sort-Object -Property FullName -Descending |
+            Select-Object -First 1
+
+          if (-not $nugetExe) {
+            $nugetRoot = Join-Path $env:RUNNER_TOOL_CACHE 'nuget\7.9.0\x64'
+            New-Item -ItemType Directory -Path $nugetRoot -Force | Out-Null
+            $nugetPath = Join-Path $nugetRoot 'nuget.exe'
+            Invoke-WebRequest `
+              -Uri 'https://dist.nuget.org/win-x86-commandline/v7.9.0/nuget.exe' `
+              -OutFile $nugetPath
+            $nugetExe = Get-Item -LiteralPath $nugetPath
+          }
+
+          $nugetExe.Directory.FullName |
+            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH = "$($nugetExe.Directory.FullName);$env:PATH"
+          & $nugetExe.FullName help | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            throw "NuGet verification failed with exit code $LASTEXITCODE."
+          }
 
       - name: Verify local tools
         # GitHub writes each run block to an unsigned temporary .ps1 file.
