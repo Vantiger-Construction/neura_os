@@ -6,6 +6,11 @@ on:
       - agent/neura-living-intelligence-v1.5
     paths:
       - '.github/workflows/neura-runner-disk-inventory.yml'
+  pull_request:
+    branches:
+      - Neura
+    paths:
+      - '.github/workflows/neura-runner-disk-inventory.yml'
   workflow_dispatch:
 
 permissions:
