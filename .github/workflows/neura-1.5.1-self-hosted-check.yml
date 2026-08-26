@@ -166,7 +166,7 @@ jobs:
           flutter pub get
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Verify canonical formatting
+      - name: Prepare canonical source evidence
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
@@ -181,9 +181,42 @@ jobs:
           )
           & dart format @formatPaths
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & git diff --exit-code -- @formatPaths
+          & git diff --no-ext-diff -- pubspec.lock @formatPaths |
+            Out-File -LiteralPath canonical-source.patch -Encoding utf8
+          & git diff --name-only -- pubspec.lock @formatPaths
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload canonical source evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: Neura-1.5.1-canonical-source
+          path: |
+            ${{ env.NEURA_SOURCE_ROOT }}\pubspec.lock
+            ${{ env.NEURA_SOURCE_ROOT }}\canonical-source.patch
+            ${{ env.NEURA_SOURCE_ROOT }}\lib\living_intelligence\cloud_inference_consent.dart
+            ${{ env.NEURA_SOURCE_ROOT }}\lib\living_intelligence\compassionate_response_policy.dart
+            ${{ env.NEURA_SOURCE_ROOT }}\lib\intelligence\action_loom.dart
+            ${{ env.NEURA_SOURCE_ROOT }}\test\living_intelligence\neura_consent_turn_safety_test.dart
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Verify canonical generated files are committed
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+          $checkedPaths = @(
+            'pubspec.lock',
+            'lib\living_intelligence',
+            'lib\intelligence\action_loom.dart',
+            'lib\intelligence\fresh_approval_lease.dart',
+            'lib\intelligence\intelligence.dart',
+            'test\living_intelligence',
+            'test\intelligence\action_loom_fresh_approval_test.dart',
+            'test\intelligence\fresh_approval_lease_test.dart'
+          )
+          & git diff --exit-code -- @checkedPaths
           if ($LASTEXITCODE -ne 0) {
-            Write-Host 'The formatter diff above must be committed.'
+            Write-Host 'The canonical source artifact contains the exact files to commit.'
             exit 1
           }
 
