@@ -1,4 +1,4 @@
-name: Neura Runner Disk Inventory
+name: Neura Runner Toolchain Inventory
 
 on:
   push:
@@ -18,30 +18,62 @@ permissions:
 
 jobs:
   inventory:
-    name: Read-only runner volume inventory
+    name: Read-only Android and Java inventory
     runs-on: [self-hosted, Windows, X64, neura]
     timeout-minutes: 10
 
     steps:
-      # No checkout or marketplace action is used. This diagnostic must run
-      # even when the runner cannot allocate space for an action download.
-      - name: Report available filesystem volumes
+      # No checkout, marketplace action, install, or configuration change is
+      # performed. The report is safe to run while the system volume is low.
+      - name: Report runner toolchains and volumes
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-StrictMode -Version Latest
-          $ErrorActionPreference = 'Stop'
+          $ErrorActionPreference = 'Continue'
 
-          Write-Host '=== Runner paths ==='
-          Write-Host ("RUNNER_TEMP: {0}" -f $env:RUNNER_TEMP)
-          Write-Host ("RUNNER_TOOL_CACHE: {0}" -f $env:RUNNER_TOOL_CACHE)
-          Write-Host ("USERPROFILE: {0}" -f $env:USERPROFILE)
+          Write-Host '=== Environment ==='
+          foreach ($name in @(
+            'JAVA_HOME',
+            'ANDROID_HOME',
+            'ANDROID_SDK_ROOT',
+            'RUNNER_TEMP',
+            'RUNNER_TOOL_CACHE',
+            'USERPROFILE'
+          )) {
+            $value = [System.Environment]::GetEnvironmentVariable($name)
+            Write-Host ("{0}={1}" -f $name, ($value ?? '<unset>'))
+          }
+
+          Write-Host '=== Command discovery ==='
+          foreach ($command in @('java', 'javac', 'sdkmanager', 'adb')) {
+            $resolved = Get-Command $command -ErrorAction SilentlyContinue
+            if ($resolved) {
+              Write-Host ("{0}: {1}" -f $command, $resolved.Source)
+            } else {
+              Write-Host ("{0}: not found" -f $command)
+            }
+          }
+
+          Write-Host '=== Java ==='
+          if (Get-Command java -ErrorAction SilentlyContinue) {
+            & java -version 2>&1 | ForEach-Object { Write-Host $_ }
+          } else {
+            Write-Host 'No Java runtime is on PATH.'
+          }
+
+          Write-Host '=== Flutter 3.44.7 Android diagnosis ==='
+          $flutterExe = Join-Path $env:RUNNER_TOOL_CACHE 'flutter\3.44.7\x64\bin\flutter.bat'
+          if (Test-Path -LiteralPath $flutterExe -PathType Leaf) {
+            & $flutterExe doctor -v 2>&1 | ForEach-Object { Write-Host $_ }
+            Write-Host ("flutter doctor exit code: {0}" -f $LASTEXITCODE)
+          } else {
+            Write-Host ("Pinned Flutter executable not found: {0}" -f $flutterExe)
+          }
 
           Write-Host '=== Ready filesystem volumes ==='
-          $readyDrives = [System.IO.DriveInfo]::GetDrives() |
-            Where-Object { $_.IsReady } |
-            Sort-Object -Property Name
-
-          foreach ($drive in $readyDrives) {
+          foreach ($drive in [System.IO.DriveInfo]::GetDrives() |
+              Where-Object { $_.IsReady } |
+              Sort-Object -Property Name) {
             Write-Host (
               "{0} type={1} label='{2}' free={3:N2} GB used={4:N2} GB total={5:N2} GB" -f
               $drive.Name,
@@ -53,25 +85,5 @@ jobs:
             )
           }
 
-          Write-Host '=== Candidate CI output volumes ==='
-          $candidates = $readyDrives |
-            Where-Object {
-              ($_.DriveType -eq [System.IO.DriveType]::Fixed -or
-               $_.DriveType -eq [System.IO.DriveType]::Removable) -and
-              $_.AvailableFreeSpace -ge 12GB
-            }
-
-          if ($candidates) {
-            foreach ($drive in $candidates) {
-              Write-Host (
-                "Candidate: {0} ({1:N2} GB free)" -f
-                $drive.Name,
-                ($drive.AvailableFreeSpace / 1GB)
-              )
-            }
-          } else {
-            Write-Host 'No ready fixed or removable volume has at least 12 GB free.'
-          }
-
           Write-Host '=== Inventory boundary ==='
-          Write-Host 'No files, services, partitions, or volume settings were modified.'
+          Write-Host 'No files, tools, services, SDK settings, or volume settings were modified.'
