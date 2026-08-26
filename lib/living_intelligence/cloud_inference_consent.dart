@@ -21,8 +21,7 @@ class NeuraCloudInferencePermit {
     required Iterable<String> permittedDataLabels,
     required this.issuedAtUtc,
     required this.expiresAtUtc,
-  }) : permittedDataLabels =
-            Set<String>.unmodifiable(permittedDataLabels);
+  }) : permittedDataLabels = Set<String>.unmodifiable(permittedDataLabels);
 
   final String id;
   final String purposeId;
