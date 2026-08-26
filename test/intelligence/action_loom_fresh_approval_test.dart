@@ -80,6 +80,7 @@ void main() {
         NeuraPrefsCache.prefs.getString('neura.action_loom.ledger.v1')!;
 
     expect(executed.status, NeuraApprovalStatus.executed);
+    expect(consumed, isNotNull);
     expect(consumed!.state, NeuraFreshApprovalLeaseState.consumed);
     expect(consumed.consumedAtUtc, isNotNull);
     expect(await QuestStore.instance.getQuests(), hasLength(1));
@@ -91,7 +92,7 @@ void main() {
       () async {
     final loom = NeuraActionLoom.instance;
     final decision = _decision(
-      'fresh-bypass-${DateTime.now().microsecondsSinceEpoch}',
+      'fresh-approve-bypass-${DateTime.now().microsecondsSinceEpoch}',
       goal: 'Do not create this quest',
     );
     final pending = await loom.submit(decision);
@@ -101,6 +102,29 @@ void main() {
 
     expect(denied.status, NeuraApprovalStatus.denied);
     expect(denied.denialReason, contains('fresh approval'));
+    expect(await QuestStore.instance.getQuests(), isEmpty);
+  });
+
+  test('direct broker execution cannot use a legitimate Action Loom lease',
+      () async {
+    final loom = NeuraActionLoom.instance;
+    final decision = _decision(
+      'fresh-execute-bypass-${DateTime.now().microsecondsSinceEpoch}',
+      goal: 'Do not bypass the Action Loom execution boundary',
+    );
+    final pending = await loom.submit(decision);
+    final approved = await loom.approve(pending.id);
+    final active = loom.freshApprovalMetadataForTesting(approved.id);
+
+    final bypassed = await loom.broker.execute(approved.id);
+    final after = loom.freshApprovalMetadataForTesting(approved.id);
+
+    expect(active, isNotNull);
+    expect(active!.state, NeuraFreshApprovalLeaseState.active);
+    expect(bypassed.status, NeuraApprovalStatus.failed);
+    expect(bypassed.failure, contains('StateError'));
+    expect(after, isNotNull);
+    expect(after!.state, NeuraFreshApprovalLeaseState.active);
     expect(await QuestStore.instance.getQuests(), isEmpty);
   });
 
@@ -121,6 +145,55 @@ void main() {
 
     expect(denied.status, NeuraApprovalStatus.denied);
     expect(denied.denialReason, contains('too close to expiry'));
+    expect(await QuestStore.instance.getQuests(), isEmpty);
+  });
+
+  test('Safe Mode hold does not leak an executor authorization', () async {
+    final loom = NeuraActionLoom.instance;
+    final decision = _decision(
+      'fresh-safe-mode-${DateTime.now().microsecondsSinceEpoch}',
+      goal: 'Run only after Safe Mode is disabled',
+    );
+    final pending = await loom.submit(decision);
+    final approved = await loom.approve(pending.id);
+    SafeBoot.instance.safeMode.value = true;
+
+    final held = await loom.execute(approved.id);
+    final whileHeld = loom.freshApprovalMetadataForTesting(approved.id);
+
+    expect(held.status, NeuraApprovalStatus.policyHeld);
+    expect(held.policyReason, contains('Safe Mode'));
+    expect(whileHeld, isNotNull);
+    expect(whileHeld!.state, NeuraFreshApprovalLeaseState.active);
+    expect(await QuestStore.instance.getQuests(), isEmpty);
+
+    SafeBoot.instance.safeMode.value = false;
+    final executed = await loom.execute(approved.id);
+
+    expect(executed.status, NeuraApprovalStatus.executed);
+    expect(
+      loom.freshApprovalStateForTesting(approved.id),
+      NeuraFreshApprovalLeaseState.consumed,
+    );
+    expect(await QuestStore.instance.getQuests(), hasLength(1));
+  });
+
+  test('explicit denial revokes unused approval evidence', () async {
+    final loom = NeuraActionLoom.instance;
+    final decision = _decision(
+      'fresh-deny-${DateTime.now().microsecondsSinceEpoch}',
+      goal: 'Do not run after denial',
+    );
+    final pending = await loom.submit(decision);
+    final approved = await loom.approve(pending.id);
+
+    final denied = await loom.deny(approved.id);
+
+    expect(denied.status, NeuraApprovalStatus.denied);
+    expect(
+      loom.freshApprovalStateForTesting(approved.id),
+      NeuraFreshApprovalLeaseState.revoked,
+    );
     expect(await QuestStore.instance.getQuests(), isEmpty);
   });
 
