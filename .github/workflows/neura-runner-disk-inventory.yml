@@ -18,113 +18,60 @@ permissions:
 
 jobs:
   inventory:
-    name: Read-only disk ownership inventory
+    name: Read-only runner volume inventory
     runs-on: [self-hosted, Windows, X64, neura]
-    timeout-minutes: 20
+    timeout-minutes: 10
 
     steps:
       # No checkout or marketplace action is used. This diagnostic must run
       # even when the runner cannot allocate space for an action download.
-      - name: Report bounded disk inventory
+      - name: Report available filesystem volumes
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
 
-          function Measure-DirectoryBytes {
-            param([Parameter(Mandatory)][string]$Path)
+          Write-Host '=== Runner paths ==='
+          Write-Host ("RUNNER_TEMP: {0}" -f $env:RUNNER_TEMP)
+          Write-Host ("RUNNER_TOOL_CACHE: {0}" -f $env:RUNNER_TOOL_CACHE)
+          Write-Host ("USERPROFILE: {0}" -f $env:USERPROFILE)
 
-            if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
-              return [int64]0
-            }
+          Write-Host '=== Ready filesystem volumes ==='
+          $readyDrives = [System.IO.DriveInfo]::GetDrives() |
+            Where-Object { $_.IsReady } |
+            Sort-Object -Property Name
 
-            try {
-              $measurement = Get-ChildItem `
-                  -LiteralPath $Path `
-                  -File `
-                  -Recurse `
-                  -Force `
-                  -ErrorAction SilentlyContinue |
-                Measure-Object -Property Length -Sum
-              if ($null -eq $measurement.Sum) {
-                return [int64]0
-              }
-              return [int64]$measurement.Sum
-            } catch {
-              Write-Warning "Could not completely measure ${Path}: $($_.Exception.Message)"
-              return [int64]0
-            }
+          foreach ($drive in $readyDrives) {
+            Write-Host (
+              "{0} type={1} label='{2}' free={3:N2} GB used={4:N2} GB total={5:N2} GB" -f
+              $drive.Name,
+              $drive.DriveType,
+              $drive.VolumeLabel,
+              ($drive.AvailableFreeSpace / 1GB),
+              (($drive.TotalSize - $drive.AvailableFreeSpace) / 1GB),
+              ($drive.TotalSize / 1GB)
+            )
           }
 
-          $runnerWork = Split-Path -Parent $env:RUNNER_TEMP
-          $runnerRoot = Split-Path -Parent $runnerWork
-          $driveRoot = [System.IO.Path]::GetPathRoot($runnerWork)
-          $driveName = $driveRoot.TrimEnd('\').TrimEnd(':')
-          $drive = Get-PSDrive -Name $driveName -ErrorAction Stop
-
-          Write-Host '=== Runner volume ==='
-          Write-Host ("Drive: {0}" -f $driveRoot)
-          Write-Host ("Used: {0:N2} GB" -f ($drive.Used / 1GB))
-          Write-Host ("Free: {0:N2} GB" -f ($drive.Free / 1GB))
-          Write-Host ("Total: {0:N2} GB" -f (($drive.Used + $drive.Free) / 1GB))
-          Write-Host ("Runner work: {0}" -f $runnerWork)
-          Write-Host ("Runner tool cache: {0}" -f $env:RUNNER_TOOL_CACHE)
-          Write-Host ("Runner account profile: {0}" -f $env:USERPROFILE)
-
-          $basePaths = @(
-            (Join-Path $runnerWork '_tool'),
-            (Join-Path $runnerWork '_actions'),
-            (Join-Path $runnerWork '_temp'),
-            (Join-Path $runnerWork 'neura_os'),
-            (Join-Path $runnerRoot '_diag'),
-            (Join-Path $env:USERPROFILE '.rustup'),
-            (Join-Path $env:USERPROFILE '.cargo'),
-            (Join-Path $env:USERPROFILE '.gradle'),
-            (Join-Path $env:USERPROFILE '.nuget'),
-            (Join-Path $env:LOCALAPPDATA 'Pub\Cache'),
-            (Join-Path $env:LOCALAPPDATA 'Android'),
-            (Join-Path $env:LOCALAPPDATA 'NuGet'),
-            'C:\Android',
-            'C:\ProgramData\chocolatey',
-            'C:\ProgramData\Package Cache',
-            'C:\Windows\SoftwareDistribution\Download',
-            'C:\Windows\Installer',
-            'C:\Windows\Temp',
-            'C:\Program Files\Microsoft Visual Studio',
-            'C:\Program Files (x86)\Microsoft Visual Studio'
-          )
-
-          $detailRoots = @(
-            $env:RUNNER_TOOL_CACHE,
-            (Join-Path $env:USERPROFILE '.rustup\toolchains'),
-            (Join-Path $env:LOCALAPPDATA 'Android\Sdk')
-          )
-          $detailPaths = foreach ($root in $detailRoots) {
-            if (Test-Path -LiteralPath $root -PathType Container) {
-              Get-ChildItem -LiteralPath $root -Directory -Force -ErrorAction SilentlyContinue |
-                ForEach-Object { $_.FullName }
+          Write-Host '=== Candidate CI output volumes ==='
+          $candidates = $readyDrives |
+            Where-Object {
+              ($_.DriveType -eq [System.IO.DriveType]::Fixed -or
+               $_.DriveType -eq [System.IO.DriveType]::Removable) -and
+              $_.AvailableFreeSpace -ge 12GB
             }
+
+          if ($candidates) {
+            foreach ($drive in $candidates) {
+              Write-Host (
+                "Candidate: {0} ({1:N2} GB free)" -f
+                $drive.Name,
+                ($drive.AvailableFreeSpace / 1GB)
+              )
+            }
+          } else {
+            Write-Host 'No ready fixed or removable volume has at least 12 GB free.'
           }
-
-          $paths = @($basePaths + $detailPaths) |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-            Select-Object -Unique
-
-          Write-Host '=== Bounded directory inventory ==='
-          $inventory = foreach ($path in $paths) {
-            $bytes = Measure-DirectoryBytes -Path $path
-            [pscustomobject]@{
-              Path = $path
-              Bytes = $bytes
-            }
-          }
-
-          $inventory |
-            Sort-Object -Property Bytes -Descending |
-            ForEach-Object {
-              Write-Host ("{0,9:N2} GB  {1}" -f ($_.Bytes / 1GB), $_.Path)
-            }
 
           Write-Host '=== Inventory boundary ==='
-          Write-Host 'No files were modified or deleted by this workflow.'
-          Write-Host 'Windows, Program Files outside Visual Studio, and user documents were not recursively scanned.'
+          Write-Host 'No files, services, partitions, or volume settings were modified.'
