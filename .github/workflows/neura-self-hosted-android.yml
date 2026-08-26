@@ -214,7 +214,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $archive = Join-Path $env:NEURA_ANDROID_TOOL_ROOT 'temurin17.zip'
           $uri = 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.19%2B10/OpenJDK17U-jdk_x64_windows_hotspot_17.0.19_10.zip'
-          $expected = '318b0430957ce9ef7753cdb8c91c124f01feda9f78b8845340855ebe44b91212'
+          $expected = 'b5b235c48adf6a081874b812c630b9f4b5f637b7a5ed18b9174d08a41ec4c235'
 
           Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive
           $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
