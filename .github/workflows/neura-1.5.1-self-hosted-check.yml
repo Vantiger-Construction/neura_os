@@ -10,8 +10,13 @@ on:
       - Neura
     paths:
       - 'lib/living_intelligence/**'
+      - 'lib/intelligence/action_loom.dart'
+      - 'lib/intelligence/fresh_approval_lease.dart'
+      - 'lib/intelligence/intelligence.dart'
       - 'lib/persona/models/neura_audience.dart'
       - 'test/living_intelligence/**'
+      - 'test/intelligence/action_loom_fresh_approval_test.dart'
+      - 'test/intelligence/fresh_approval_lease_test.dart'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/neura-1.5.1-self-hosted-check.yml'
@@ -26,7 +31,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate consent and turn safety on retained Flutter
+    name: Validate consent and Action Loom safety on retained Flutter
     runs-on: [self-hosted, Windows, X64, neura]
     timeout-minutes: 60
 
@@ -167,7 +172,12 @@ jobs:
           Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
           dart format --output=none --set-exit-if-changed `
             lib\living_intelligence `
-            test\living_intelligence
+            lib\intelligence\action_loom.dart `
+            lib\intelligence\fresh_approval_lease.dart `
+            lib\intelligence\intelligence.dart `
+            test\living_intelligence `
+            test\intelligence\action_loom_fresh_approval_test.dart `
+            test\intelligence\fresh_approval_lease_test.dart
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Require zero analyzer findings
@@ -177,11 +187,14 @@ jobs:
           flutter analyze --fatal-infos
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Run focused Living Intelligence tests
+      - name: Run focused safety tests
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
-          flutter test --no-pub --reporter expanded test\living_intelligence
+          flutter test --no-pub --reporter expanded `
+            test\living_intelligence `
+            test\intelligence\action_loom_fresh_approval_test.dart `
+            test\intelligence\fresh_approval_lease_test.dart
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Release generated validation space
