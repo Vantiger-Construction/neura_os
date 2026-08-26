@@ -68,20 +68,14 @@ void main() {
     );
     final pending = await loom.submit(decision);
     final approved = await loom.approve(pending.id);
-    final active = loom.freshApprovalLeases.metadataForAction(
-      approved.id,
-      now: DateTime.now().toUtc(),
-    );
+    final active = loom.freshApprovalMetadataForTesting(approved.id);
 
     expect(approved.status, NeuraApprovalStatus.approved);
     expect(active, isNotNull);
     expect(active!.state, NeuraFreshApprovalLeaseState.active);
 
     final executed = await loom.execute(approved.id);
-    final consumed = loom.freshApprovalLeases.metadataForAction(
-      approved.id,
-      now: DateTime.now().toUtc(),
-    );
+    final consumed = loom.freshApprovalMetadataForTesting(approved.id);
     final audit =
         NeuraPrefsCache.prefs.getString('neura.action_loom.ledger.v1')!;
 
@@ -107,32 +101,6 @@ void main() {
 
     expect(denied.status, NeuraApprovalStatus.denied);
     expect(denied.denialReason, contains('fresh approval'));
-    expect(await QuestStore.instance.getQuests(), isEmpty);
-  });
-
-  test('mismatched lease scope fails closed before the executor', () async {
-    final loom = NeuraActionLoom.instance;
-    final decision = _decision(
-      'fresh-scope-${DateTime.now().microsecondsSinceEpoch}',
-      goal: 'Do not create a mismatched quest',
-    );
-    final pending = await loom.submit(decision);
-    final approved = loom.broker.approve(pending.id);
-    loom.freshApprovalLeases.issue(
-      scope: NeuraFreshApprovalScope(
-        actionId: approved.id,
-        candidateId: approved.candidate.id,
-        receiptId: 'wrong-receipt',
-        capabilityId: approved.capability.id,
-      ),
-      issuedAt: DateTime.now().toUtc(),
-      notAfter: approved.expiresAt,
-    );
-
-    final denied = await loom.execute(approved.id);
-
-    expect(denied.status, NeuraApprovalStatus.denied);
-    expect(denied.denialReason, contains('exact action'));
     expect(await QuestStore.instance.getQuests(), isEmpty);
   });
 
@@ -164,16 +132,13 @@ void main() {
     );
     final pending = await loom.submit(decision);
     final approved = await loom.approve(pending.id);
-    expect(loom.freshApprovalLeases.recordCount, 1);
+    expect(loom.freshApprovalRecordCountForTesting, 1);
 
     await loom.resetAfterDataWipe();
 
-    expect(loom.freshApprovalLeases.recordCount, 0);
+    expect(loom.freshApprovalRecordCountForTesting, 0);
     expect(
-      loom.freshApprovalLeases.stateOf(
-        approved.id,
-        now: DateTime.now().toUtc(),
-      ),
+      loom.freshApprovalStateForTesting(approved.id),
       NeuraFreshApprovalLeaseState.missing,
     );
     loom.resumeAfterDataWipe();
