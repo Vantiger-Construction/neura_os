@@ -202,7 +202,6 @@ class NeuraSelfHealingRuntime {
     if (slot == NeuraReleaseSlot.recovery) {
       return;
     }
-    final current = state(slot);
     _slots[slot] = NeuraReleaseSlotState(
       slot: slot,
       health: NeuraReleaseHealth.empty,
