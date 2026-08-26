@@ -41,7 +41,10 @@ jobs:
             'USERPROFILE'
           )) {
             $value = [System.Environment]::GetEnvironmentVariable($name)
-            Write-Host ("{0}={1}" -f $name, ($value ?? '<unset>'))
+            if ([string]::IsNullOrWhiteSpace($value)) {
+              $value = '<unset>'
+            }
+            Write-Host ("{0}={1}" -f $name, $value)
           }
 
           Write-Host '=== Command discovery ==='
