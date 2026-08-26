@@ -1,0 +1,453 @@
+name: Neura Self-Hosted Android Package
+
+on:
+  pull_request:
+    branches:
+      - Neura
+    paths:
+      - 'android/**'
+      - 'lib/**'
+      - 'test/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/neura-self-hosted-android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-self-hosted-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Build installable Android debug APK
+    runs-on: [self-hosted, Windows, X64, neura]
+    timeout-minutes: 90
+
+    steps:
+      - name: Select disk-bounded Android volumes
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          function Remove-GeneratedPath {
+            param([Parameter(Mandatory)][string]$Path)
+            if (-not (Test-Path -LiteralPath $Path)) {
+              return
+            }
+            Write-Host "Removing generated runner data: $Path"
+            try {
+              $item = Get-Item -LiteralPath $Path -Force
+              if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$Path"
+              } else {
+                Remove-Item -LiteralPath $Path -Recurse -Force
+              }
+            } catch {
+              Write-Warning "Could not completely remove ${Path}: $($_.Exception.Message)"
+            }
+          }
+
+          function Test-CiVolume {
+            param([Parameter(Mandatory)][System.IO.DriveInfo]$Drive)
+            if (-not $Drive.IsReady -or
+                ($Drive.DriveType -ne [System.IO.DriveType]::Fixed -and
+                 $Drive.DriveType -ne [System.IO.DriveType]::Removable) -or
+                $Drive.AvailableFreeSpace -lt 3.5GB) {
+              return $false
+            }
+
+            $ownedRoot = Join-Path $Drive.RootDirectory.FullName 'neura-ci'
+            $probe = Join-Path $ownedRoot "android-probe-$env:GITHUB_RUN_ID"
+            try {
+              New-Item -ItemType Directory -Path $probe -Force | Out-Null
+              Set-Content -LiteralPath (Join-Path $probe 'probe.txt') `
+                -Value 'Neura Android CI probe' -NoNewline
+              Remove-Item -LiteralPath $probe -Recurse -Force
+              return $true
+            } catch {
+              Write-Warning "Volume $($Drive.Name) is not writable: $($_.Exception.Message)"
+              return $false
+            }
+          }
+
+          $runnerWork = Split-Path -Parent $env:RUNNER_TEMP
+          $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+          $cutoff = (Get-Date).AddHours(-2)
+
+          foreach ($repository in Get-ChildItem -LiteralPath $runnerWork -Directory -ErrorAction SilentlyContinue) {
+            if ($repository.Name.StartsWith('_')) {
+              continue
+            }
+            $checkout = Join-Path $repository.FullName $repository.Name
+            Remove-GeneratedPath -Path (Join-Path $checkout 'build')
+            Remove-GeneratedPath -Path (Join-Path $checkout 'rust\target')
+          }
+
+          foreach ($drive in [System.IO.DriveInfo]::GetDrives()) {
+            if (-not $drive.IsReady -or $drive.Name -eq $systemRoot) {
+              continue
+            }
+            $ownedRoot = Join-Path $drive.RootDirectory.FullName 'neura-ci'
+            if (Test-Path -LiteralPath $ownedRoot -PathType Container) {
+              Get-ChildItem -LiteralPath $ownedRoot -Directory -Force -ErrorAction SilentlyContinue |
+                Where-Object { $_.LastWriteTime -lt $cutoff } |
+                ForEach-Object { Remove-GeneratedPath -Path $_.FullName }
+            }
+          }
+
+          $systemDriveName = $systemRoot.TrimEnd('\').TrimEnd(':')
+          $systemFree = (Get-PSDrive -Name $systemDriveName -ErrorAction Stop).Free
+          if ($systemFree -lt 0.25GB) {
+            throw (
+              "The runner requires 0.25 GB on {0} for metadata; only " +
+              "{1:N2} GB is free."
+            ) -f $systemRoot, ($systemFree / 1GB)
+          }
+
+          $eligible = @(
+            [System.IO.DriveInfo]::GetDrives() |
+              Where-Object { $_.IsReady -and $_.Name -ne $systemRoot } |
+              Where-Object { Test-CiVolume -Drive $_ } |
+              Sort-Object -Property AvailableFreeSpace -Descending
+          )
+          if ($eligible.Count -lt 2) {
+            throw (
+              'Android validation requires two writable non-system volumes ' +
+              'with at least 3.5 GB free.'
+            )
+          }
+
+          $sdkDrive = $eligible[0]
+          $buildDrive = $eligible[1]
+          @(
+            "NEURA_ANDROID_SDK_VOLUME=$($sdkDrive.RootDirectory.FullName)",
+            "NEURA_ANDROID_BUILD_VOLUME=$($buildDrive.RootDirectory.FullName)"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          Write-Host (
+            "Android SDK volume: {0} ({1:N2} GB free)" -f
+            $sdkDrive.Name,
+            ($sdkDrive.AvailableFreeSpace / 1GB)
+          )
+          Write-Host (
+            "Android build volume: {0} ({1:N2} GB free)" -f
+            $buildDrive.Name,
+            ($buildDrive.AvailableFreeSpace / 1GB)
+          )
+
+      - name: Route source checkout to the build volume
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          function Remove-LinkOrDirectory {
+            param([Parameter(Mandatory)][string]$Path)
+            if (-not (Test-Path -LiteralPath $Path)) {
+              return
+            }
+            $item = Get-Item -LiteralPath $Path -Force
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+              & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$Path"
+            } else {
+              Remove-Item -LiteralPath $Path -Recurse -Force
+            }
+          }
+
+          $runKey = "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $workspaceTarget = Join-Path $env:NEURA_ANDROID_BUILD_VOLUME "neura-ci\$runKey\android-workspace"
+          $sourceLink = Join-Path $env:GITHUB_WORKSPACE 'source'
+
+          Set-Location -LiteralPath $env:RUNNER_TEMP
+          Remove-LinkOrDirectory -Path $sourceLink
+          Remove-LinkOrDirectory -Path $workspaceTarget
+          New-Item -ItemType Directory -Path $workspaceTarget -Force | Out-Null
+          New-Item -ItemType Junction -Path $sourceLink -Target $workspaceTarget | Out-Null
+
+          @(
+            "NEURA_ANDROID_SOURCE_ROOT=$sourceLink",
+            "NEURA_ANDROID_WORKSPACE_ROOT=$workspaceTarget",
+            "NEURA_ANDROID_RUN_KEY=$runKey"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      - name: Route Android caches and build output
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          function Remove-LinkOrDirectory {
+            param([Parameter(Mandatory)][string]$Path)
+            if (-not (Test-Path -LiteralPath $Path)) {
+              return
+            }
+            $item = Get-Item -LiteralPath $Path -Force
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+              & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$Path"
+            } else {
+              Remove-Item -LiteralPath $Path -Recurse -Force
+            }
+          }
+
+          $buildRoot = Join-Path $env:NEURA_ANDROID_BUILD_VOLUME "neura-ci\$env:NEURA_ANDROID_RUN_KEY\android-build"
+          $sdkRoot = Join-Path $env:NEURA_ANDROID_SDK_VOLUME "neura-ci\$env:NEURA_ANDROID_RUN_KEY\android-sdk"
+          $outputRoot = Join-Path $buildRoot 'build'
+          $pubCache = Join-Path $buildRoot 'pub-cache'
+          $gradleHome = Join-Path $buildRoot 'gradle-home'
+          $androidUserHome = Join-Path $buildRoot 'android-user'
+          $tempRoot = Join-Path $buildRoot 'temp'
+          $jdkRoot = Join-Path $buildRoot 'jdk'
+
+          Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'build')
+          Remove-LinkOrDirectory -Path $buildRoot
+          Remove-LinkOrDirectory -Path $sdkRoot
+
+          foreach ($path in @(
+            $outputRoot,
+            $pubCache,
+            $gradleHome,
+            $androidUserHome,
+            $tempRoot,
+            $jdkRoot,
+            $sdkRoot
+          )) {
+            New-Item -ItemType Directory -Path $path -Force | Out-Null
+          }
+          New-Item `
+            -ItemType Junction `
+            -Path (Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'build') `
+            -Target $outputRoot | Out-Null
+
+          @(
+            "NEURA_ANDROID_BUILD_ROOT=$buildRoot",
+            "NEURA_ANDROID_SDK_ROOT=$sdkRoot",
+            "NEURA_ANDROID_JDK_ROOT=$jdkRoot",
+            "PUB_CACHE=$pubCache",
+            "GRADLE_USER_HOME=$gradleHome",
+            "ANDROID_USER_HOME=$androidUserHome",
+            "TEMP=$tempRoot",
+            "TMP=$tempRoot"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Enable pinned Flutter
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $flutterRoot = Join-Path $env:RUNNER_TOOL_CACHE 'flutter\3.44.7\x64'
+          $flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
+          if (-not (Test-Path -LiteralPath $flutterExe -PathType Leaf)) {
+            throw 'Pinned Flutter 3.44.7 is missing from the runner tool cache.'
+          }
+          (Join-Path $flutterRoot 'bin') |
+            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $flutterExe --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Flutter verification failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Install pinned Temurin JDK 17
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $archive = Join-Path $env:NEURA_ANDROID_BUILD_ROOT 'temurin17.zip'
+          $uri = 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.19%2B10/OpenJDK17U-jdk_x64_windows_hotspot_17.0.19_10.zip'
+          $expected = 'b5b235c48adf6a081874b812c630b9f4b5f637b7a5ed18b9174d08a41ec4c235'
+
+          Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive
+          $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "Temurin JDK checksum mismatch: $actual"
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $env:NEURA_ANDROID_JDK_ROOT -Force
+          Remove-Item -LiteralPath $archive -Force
+
+          $javaExe = Get-ChildItem `
+              -LiteralPath $env:NEURA_ANDROID_JDK_ROOT `
+              -Filter 'java.exe' `
+              -File `
+              -Recurse |
+            Where-Object { $_.Directory.Name -eq 'bin' } |
+            Select-Object -First 1
+          if (-not $javaExe) {
+            throw 'The Temurin archive did not contain bin\java.exe.'
+          }
+          $javaHome = Split-Path -Parent $javaExe.Directory.FullName
+          @(
+            "JAVA_HOME=$javaHome",
+            "JAVA_TOOL_OPTIONS=-Djava.io.tmpdir=$env:TEMP"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $javaExe.Directory.FullName |
+            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $javaExe.FullName -version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Java verification failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Install pinned Android SDK packages
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $archive = Join-Path $env:NEURA_ANDROID_SDK_ROOT 'command-line-tools.zip'
+          $extract = Join-Path $env:NEURA_ANDROID_SDK_ROOT '_extract'
+          $uri = 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip'
+          $expected = '90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a'
+
+          Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive
+          $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "Android command-line tools checksum mismatch: $actual"
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $extract -Force
+          Remove-Item -LiteralPath $archive -Force
+
+          $latest = Join-Path $env:NEURA_ANDROID_SDK_ROOT 'cmdline-tools\latest'
+          New-Item -ItemType Directory -Path (Split-Path -Parent $latest) -Force | Out-Null
+          Move-Item -LiteralPath (Join-Path $extract 'cmdline-tools') -Destination $latest
+          Remove-Item -LiteralPath $extract -Recurse -Force
+
+          $sdkManager = Join-Path $latest 'bin\sdkmanager.bat'
+          if (-not (Test-Path -LiteralPath $sdkManager -PathType Leaf)) {
+            throw 'sdkmanager.bat was not installed.'
+          }
+
+          @(
+            "ANDROID_HOME=$env:NEURA_ANDROID_SDK_ROOT",
+            "ANDROID_SDK_ROOT=$env:NEURA_ANDROID_SDK_ROOT"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'platform-tools') |
+            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $latestBin = Join-Path $latest 'bin'
+          $latestBin |
+            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          1..200 | ForEach-Object { 'y' } |
+            & $sdkManager "--sdk_root=$env:NEURA_ANDROID_SDK_ROOT" --licenses
+          if ($LASTEXITCODE -ne 0) {
+            throw "Android license acceptance failed with exit code $LASTEXITCODE."
+          }
+
+          & $sdkManager `
+            "--sdk_root=$env:NEURA_ANDROID_SDK_ROOT" `
+            'platform-tools' `
+            'platforms;android-36' `
+            'build-tools;36.0.0'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Android SDK installation failed with exit code $LASTEXITCODE."
+          }
+
+          flutter config --android-sdk $env:NEURA_ANDROID_SDK_ROOT
+          if ($LASTEXITCODE -ne 0) {
+            throw "Flutter Android SDK configuration failed with exit code $LASTEXITCODE."
+          }
+          flutter doctor -v
+
+      - name: Restore Flutter dependencies
+        working-directory: ${{ env.NEURA_ANDROID_SOURCE_ROOT }}
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          flutter pub get
+          if ($LASTEXITCODE -ne 0) {
+            throw "flutter pub get failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Build installable Android test APK
+        working-directory: ${{ env.NEURA_ANDROID_SOURCE_ROOT }}
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $versionLine = Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$'
+          $buildName = $versionLine.Matches[0].Groups[1].Value.Trim().Split('+')[0]
+          flutter build apk --debug --no-pub `
+            --build-name $buildName `
+            --build-number $env:GITHUB_RUN_NUMBER *>&1 |
+            Tee-Object -FilePath android-build.log |
+            Out-Host
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Verify and package Android APK
+        working-directory: ${{ env.NEURA_ANDROID_SOURCE_ROOT }}
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $apk = Get-ChildItem `
+              -LiteralPath 'build\app\outputs' `
+              -Filter '*.apk' `
+              -File `
+              -Recurse |
+            Where-Object { $_.Length -gt 0 } |
+            Select-Object -First 1
+          if (-not $apk) {
+            throw 'Flutter completed without producing a non-empty APK.'
+          }
+
+          $output = Join-Path $PWD 'recovery_downloads\android'
+          New-Item -ItemType Directory -Path $output -Force | Out-Null
+          $versionLine = Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$'
+          $buildName = $versionLine.Matches[0].Groups[1].Value.Trim().Split('+')[0]
+          $version = "$buildName-recovery.$env:GITHUB_RUN_NUMBER"
+          $apkName = "NeuraCompanion_Android_${version}_debug-signed.apk"
+          $destination = Join-Path $output $apkName
+          Copy-Item -LiteralPath $apk.FullName -Destination $destination
+
+          $hash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $apkName" |
+            Set-Content -LiteralPath (Join-Path $output 'SHA256SUMS.txt') -Encoding ASCII
+          @"
+          Neura Companion - Android recovery test build
+
+          Version: $version
+          Commit: $env:GITHUB_SHA
+
+          This APK is debug-signed for direct validation installation. It is
+          not the permanently signed Google Play release.
+          "@ | Set-Content -LiteralPath (Join-Path $output 'README_INSTALL.txt') -Encoding UTF8
+
+          Write-Host "Verified APK: $destination"
+          Write-Host "APK size: $((Get-Item -LiteralPath $destination).Length) bytes"
+          Write-Host "SHA256: $hash"
+
+      - name: Upload Android recovery APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeuraCompanion-SelfHosted-Android-APK
+          path: ${{ env.NEURA_ANDROID_SOURCE_ROOT }}\recovery_downloads\android\
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Release Android build space
+        if: always()
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          if (-not [string]::IsNullOrWhiteSpace($env:NEURA_ANDROID_SOURCE_ROOT) -and
+              (Test-Path -LiteralPath $env:NEURA_ANDROID_SOURCE_ROOT -PathType Container)) {
+            $gradle = Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'android\gradlew.bat'
+            if (Test-Path -LiteralPath $gradle -PathType Leaf) {
+              & $gradle --stop | Out-Null
+            }
+            $buildLink = Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'build'
+            if (Test-Path -LiteralPath $buildLink) {
+              & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$buildLink"
+            }
+          }
+
+          foreach ($path in @(
+            $env:NEURA_ANDROID_BUILD_ROOT,
+            $env:NEURA_ANDROID_SDK_ROOT
+          )) {
+            if (-not [string]::IsNullOrWhiteSpace($path) -and
+                (Test-Path -LiteralPath $path)) {
+              Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
