@@ -3,8 +3,8 @@
 param(
     [ValidateRange(1, 168)]
     [int]$StaleHours = 6,
-    [ValidateRange(1, 64)]
-    [int]$MinimumFreeGb = 8
+    [ValidateRange(0.25, 64)]
+    [double]$MinimumFreeGb = 0.75
 )
 
 Set-StrictMode -Version Latest
@@ -31,7 +31,15 @@ function Remove-EphemeralPath {
 
     Write-Host "Removing ephemeral CI data: $Path" -ForegroundColor DarkGray
     try {
-        Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+        if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$Path"
+            if ($LASTEXITCODE -ne 0) {
+                throw "rmdir exited with code $LASTEXITCODE"
+            }
+        } else {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+        }
     } catch {
         Write-Warning "Could not completely remove ${Path}: $($_.Exception.Message)"
     }
@@ -42,11 +50,12 @@ $runnerWork = Split-Path -Parent (Split-Path -Parent $workspace)
 $before = Get-FreeBytes -Path $workspace
 
 Write-Host (
-    "Runner free space before cleanup: {0:N2} GB" -f ($before / 1GB)
+    "Runner system-volume free space before cleanup: {0:N2} GB" -f
+    ($before / 1GB)
 ) -ForegroundColor Cyan
 
 # Every path below is generated CI state. Source files, secure storage, Android
-# SDKs, Flutter toolchains, and user-owned folders are intentionally excluded.
+# SDKs, Flutter toolchains, Visual Studio, and user-owned folders are excluded.
 foreach ($repository in Get-ChildItem -LiteralPath $runnerWork -Directory -ErrorAction SilentlyContinue) {
     if ($repository.Name.StartsWith('_')) {
         continue
@@ -88,16 +97,17 @@ $after = Get-FreeBytes -Path $workspace
 $reclaimed = [Math]::Max(0, $after - $before)
 
 Write-Host (
-    "Runner free space after cleanup: {0:N2} GB (reclaimed {1:N2} GB)" -f
+    "Runner system-volume free space after cleanup: {0:N2} GB " +
+    "(reclaimed {1:N2} GB)" -f
     ($after / 1GB),
     ($reclaimed / 1GB)
 ) -ForegroundColor Green
 
-$minimum = [int64]$MinimumFreeGb * 1GB
+$minimum = [int64]($MinimumFreeGb * 1GB)
 if ($after -lt $minimum) {
     $message = (
         "The self-hosted runner has only {0:N2} GB free after safe cleanup; " +
-        "{1} GB is required before compiling Flutter and Rust."
+        "{1:N2} GB is required for source, tools, and runner metadata."
     ) -f ($after / 1GB), $MinimumFreeGb
     throw $message
 }
