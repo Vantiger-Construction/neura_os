@@ -10,6 +10,8 @@ export 'neura_safety_policy.dart';
 export 'presence_engine.dart';
 export 'private_neural_core.dart';
 export 'reflex_safety_layer.dart';
+export 'safety/action_loom_fresh_approval_gate.dart';
+export 'safety/fresh_approval_lease.dart';
 export 'self_healing_runtime.dart';
 export 'signed_skill_capsules.dart';
 export 'trust_lens.dart';
