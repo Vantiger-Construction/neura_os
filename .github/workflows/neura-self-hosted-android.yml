@@ -52,7 +52,7 @@ jobs:
             if (-not $Drive.IsReady -or
                 ($Drive.DriveType -ne [System.IO.DriveType]::Fixed -and
                  $Drive.DriveType -ne [System.IO.DriveType]::Removable) -or
-                $Drive.AvailableFreeSpace -lt 3.5GB) {
+                $Drive.AvailableFreeSpace -lt 3.0GB) {
               return $false
             }
             $probe = Join-Path $Drive.RootDirectory.FullName "neura-ci\probe-$env:GITHUB_RUN_ID"
@@ -101,7 +101,7 @@ jobs:
               Sort-Object -Property AvailableFreeSpace -Descending
           )
           if ($eligible.Count -lt 2) {
-            throw 'Android validation requires two writable non-system volumes with at least 3.5 GB free.'
+            throw 'Android validation requires two writable non-system volumes with at least 3.0 GB free.'
           }
 
           @(
