@@ -50,6 +50,36 @@ function Get-DependencyFingerprint {
     }
 }
 
+function Assert-NoMergeMarkers {
+    param([Parameter(Mandatory)][string]$ProjectRoot)
+
+    $matches = @()
+    foreach ($relativeRoot in @('lib', 'test')) {
+        $candidate = Join-Path $ProjectRoot $relativeRoot
+        if (-not (Test-Path -LiteralPath $candidate -PathType Container)) {
+            continue
+        }
+
+        $dartFiles = Get-ChildItem -LiteralPath $candidate -File -Recurse |
+            Where-Object { $_.Extension -eq '.dart' }
+        if ($dartFiles) {
+            $matches += $dartFiles |
+                Select-String -Pattern '^(<<<<<<<|=======|>>>>>>>)'
+        }
+    }
+
+    if ($matches.Count -gt 0) {
+        $matches |
+            Select-Object -First 20 |
+            ForEach-Object {
+                Write-Host (
+                    '{0}:{1}: {2}' -f $_.Path, $_.LineNumber, $_.Line
+                ) -ForegroundColor Red
+            }
+        throw 'Unresolved merge markers are committed in lib or test.'
+    }
+}
+
 function Assert-AuthoredWindowsRunner {
     param([Parameter(Mandatory)][string]$ProjectRoot)
 
@@ -78,6 +108,104 @@ function Assert-AuthoredWindowsRunner {
     }
 }
 
+function Assert-PackagedWindowsLaunch {
+    param([Parameter(Mandatory)][string]$ProjectRoot)
+
+    $release = Join-Path $ProjectRoot 'build\windows\x64\runner\Release'
+    $exe = Join-Path $release 'neuro_companion.exe'
+    if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+        throw "Expected Windows executable was not produced: $exe"
+    }
+
+    foreach ($runtimeName in @(
+        'msvcp140.dll',
+        'vcruntime140.dll',
+        'vcruntime140_1.dll'
+    )) {
+        $destination = Join-Path $release $runtimeName
+        if (Test-Path -LiteralPath $destination -PathType Leaf) {
+            continue
+        }
+
+        $matches = @()
+        foreach ($programRoot in @(
+            ${env:ProgramFiles(x86)},
+            $env:ProgramFiles
+        ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) {
+            $matches += Get-ChildItem -Path (
+                Join-Path $programRoot (
+                    "Microsoft Visual Studio\*\*\VC\Redist\MSVC\*" +
+                    "\x64\Microsoft.VC*.CRT\$runtimeName"
+                )
+            ) -File -ErrorAction SilentlyContinue
+        }
+
+        $source = $matches |
+            Sort-Object -Property FullName -Descending |
+            Select-Object -First 1
+        if (-not $source) {
+            throw "Visual C++ x64 runtime was not found: $runtimeName"
+        }
+        Copy-Item -LiteralPath $source.FullName -Destination $destination
+    }
+
+    foreach ($required in @(
+        $exe,
+        (Join-Path $release 'flutter_windows.dll'),
+        (Join-Path $release 'neura_swarm.dll'),
+        (Join-Path $release 'msvcp140.dll'),
+        (Join-Path $release 'vcruntime140.dll'),
+        (Join-Path $release 'vcruntime140_1.dll'),
+        (Join-Path $release 'data\icudtl.dat'),
+        (Join-Path $release 'data\app.so')
+    )) {
+        if (-not (Test-Path -LiteralPath $required -PathType Leaf) -or
+            (Get-Item -LiteralPath $required).Length -le 0) {
+            throw "Windows runtime payload is incomplete: $required"
+        }
+    }
+
+    $flutterAssets = Join-Path $release 'data\flutter_assets'
+    if (-not (Test-Path -LiteralPath $flutterAssets -PathType Container) -or
+        -not (Get-ChildItem -LiteralPath $flutterAssets -File -Recurse |
+            Select-Object -First 1)) {
+        throw "Windows Flutter assets are missing or empty: $flutterAssets"
+    }
+
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $exe
+    $startInfo.Arguments = '--launch-smoke-test'
+    $startInfo.WorkingDirectory = $release
+    $startInfo.UseShellExecute = $false
+
+    $smoke = New-Object System.Diagnostics.Process
+    $smoke.StartInfo = $startInfo
+    $started = $false
+    try {
+        if (-not $smoke.Start()) {
+            throw 'Windows did not start the packaged executable.'
+        }
+        $started = $true
+        if (-not $smoke.WaitForExit(15000)) {
+            throw 'Packaged launch self-test did not self-exit within 15 seconds.'
+        }
+        if ($smoke.ExitCode -ne 73) {
+            throw (
+                "Packaged launch self-test exited with code " +
+                "$($smoke.ExitCode); expected sentinel 73."
+            )
+        }
+    } finally {
+        if ($started) {
+            $smoke.Refresh()
+            if (-not $smoke.HasExited) {
+                Stop-Process -Id $smoke.Id -Force -ErrorAction Stop
+            }
+        }
+        $smoke.Dispose()
+    }
+}
+
 $Root = (Resolve-Path -LiteralPath $Root).Path
 $pubspec = Join-Path $Root 'pubspec.yaml'
 if (-not (Test-Path -LiteralPath $pubspec -PathType Leaf)) {
@@ -96,6 +224,9 @@ $previousFingerprint = if (Test-Path -LiteralPath $fingerprintFile) {
 
 Push-Location $Root
 try {
+    Write-Host "`n=== unresolved merge marker check ===" -ForegroundColor Cyan
+    Assert-NoMergeMarkers -ProjectRoot $Root
+
     $packagesFile = Join-Path $Root '.dart_tool\package_config.json'
     $needsPubGet = $ForcePubGet -or
         -not (Test-Path -LiteralPath $packagesFile -PathType Leaf) -or
@@ -114,8 +245,8 @@ try {
         dart format --output=none --set-exit-if-changed lib test
     }
 
-    Invoke-Checked 'flutter analyze' {
-        flutter analyze --no-pub --no-fatal-warnings --no-fatal-infos
+    Invoke-Checked 'flutter analyze --fatal-infos' {
+        flutter analyze --no-pub --fatal-infos
     }
 
     if ($BuildWindows) {
@@ -145,6 +276,9 @@ try {
         Invoke-Checked 'flutter build windows --release' {
             flutter build windows --release --no-pub
         }
+
+        Write-Host "`n=== packaged Windows launch self-test ===" -ForegroundColor Cyan
+        Assert-PackagedWindowsLaunch -ProjectRoot $Root
     }
 } finally {
     Pop-Location
