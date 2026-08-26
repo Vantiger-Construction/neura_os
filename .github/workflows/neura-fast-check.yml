@@ -12,6 +12,7 @@ on:
       - 'pubspec.lock'
       - 'analysis_options.yaml'
       - 'tools/Neura-FastCheck.ps1'
+      - 'tools/Neura-ReclaimCiDisk.ps1'
       - '.github/workflows/neura-fast-check.yml'
   workflow_dispatch:
 
@@ -23,11 +24,15 @@ jobs:
   validate:
     # Uses the owner's Windows computer instead of paid GitHub-hosted minutes.
     runs-on: [self-hosted, Windows, X64, neura]
-    timeout-minutes: 45
+    timeout-minutes: 55
 
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      - name: Reclaim stale CI build space
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: ./tools/Neura-ReclaimCiDisk.ps1 -MinimumFreeGb 8
 
       - name: Install Flutter
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
@@ -116,3 +121,16 @@ jobs:
       - name: Run optimized validation
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: ./tools/Neura-FastCheck.ps1 -Root . -BuildWindows
+
+      - name: Release generated build space
+        if: always()
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          foreach ($path in @(
+            (Join-Path $env:GITHUB_WORKSPACE 'build'),
+            (Join-Path $env:GITHUB_WORKSPACE 'rust\target')
+          )) {
+            if (Test-Path -LiteralPath $path) {
+              Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
