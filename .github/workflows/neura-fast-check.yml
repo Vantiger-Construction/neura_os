@@ -68,7 +68,7 @@ jobs:
             if (-not $Drive.IsReady -or
                 ($Drive.DriveType -ne [System.IO.DriveType]::Fixed -and
                  $Drive.DriveType -ne [System.IO.DriveType]::Removable) -or
-                $Drive.AvailableFreeSpace -lt 3.5GB) {
+                $Drive.AvailableFreeSpace -lt 3.0GB) {
               return $false
             }
 
@@ -179,7 +179,7 @@ jobs:
 
           if ($eligible.Count -lt 2) {
             throw (
-              'Two writable non-system volumes with at least 3.5 GB free ' +
+              'Two writable non-system volumes with at least 3.0 GB free ' +
               'are required to split Flutter/Windows and Rust output safely.'
             )
           }
