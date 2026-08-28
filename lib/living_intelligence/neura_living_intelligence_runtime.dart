@@ -82,9 +82,7 @@ class NeuraLivingIntelligenceRuntime {
       cloudConsentRegistry: cloudConsent,
       backends: modelBackends,
     );
-    final presenceEngine = NeuraPresenceEngine(
-      bindings: presenceBindings,
-    );
+    final presenceEngine = NeuraPresenceEngine(bindings: presenceBindings);
     const responsePolicy = NeuraCompassionateResponsePolicy();
     final turnCoordinator = NeuraConversationTurnCoordinator(
       modelRouter: modelRouter,
@@ -97,9 +95,7 @@ class NeuraLivingIntelligenceRuntime {
       safetyPolicy: safetyPolicy,
       cloudConsent: cloudConsent,
       modelRouter: modelRouter,
-      reflexLayer: NeuraReflexSafetyLayer(
-        bindings: reflexBindings,
-      ),
+      reflexLayer: NeuraReflexSafetyLayer(bindings: reflexBindings),
       trustLens: const NeuraTrustLens(),
       contextCapsules: NeuraContextCapsuleRegistry(),
       skillValidator: NeuraSignedSkillValidator(
@@ -140,23 +136,21 @@ class NeuraLivingIntelligenceRuntime {
 
   bool get enabled => _enabled;
 
-  NeuraLivingIntelligenceStatus get status {
+  NeuraLivingIntelligenceStatus status({DateTime? now}) {
     return NeuraLivingIntelligenceStatus(
       enabled: _enabled,
       safeModeBlocked: safetyPolicy.safeModeActive,
-      localModelBackends:
-          modelRouter.backends.where((backend) => backend.runsLocally).length,
+      localModelBackends: modelRouter.backends
+          .where((backend) => backend.runsLocally)
+          .length,
       pairedDevices: continuity.devices.length,
-      activeCloudPermits: cloudConsent.activePermitCount(),
+      activeCloudPermits: cloudConsent.activePermitCount(now: now),
       activeConversationTurn: turnCoordinator.hasActiveTurn,
-      activeFreshApprovalLeases: freshApprovalLeases.activeLeaseCount(),
+      activeFreshApprovalLeases: freshApprovalLeases.activeLeaseCount(now: now),
     );
   }
 
-  void setEnabled(
-    bool value, {
-    required NeuraSafetyContext context,
-  }) {
+  void setEnabled(bool value, {required NeuraSafetyContext context}) {
     if (value && (safetyPolicy.safeModeActive || context.recoveryMode)) {
       throw StateError(
         'Living Intelligence cannot be enabled in Safe Mode or Recovery mode.',
@@ -191,9 +185,7 @@ class NeuraLivingIntelligenceRuntime {
     );
   }
 
-  NeuraAuthorityDecision evaluateLocalPlanDraft(
-    NeuraSafetyContext context,
-  ) {
+  NeuraAuthorityDecision evaluateLocalPlanDraft(NeuraSafetyContext context) {
     return evaluateCapability(
       capabilityId: NeuraCapabilityRegistry.changeLocalPlan,
       context: context,
