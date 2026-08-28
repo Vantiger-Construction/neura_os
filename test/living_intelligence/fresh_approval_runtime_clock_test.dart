@@ -28,6 +28,6 @@ void main() {
     );
 
     expect(issue.issued, isTrue);
-    expect(runtime.status.activeFreshApprovalLeases, 1);
+    expect(runtime.status(now: issuedAt).activeFreshApprovalLeases, 1);
   });
 }
