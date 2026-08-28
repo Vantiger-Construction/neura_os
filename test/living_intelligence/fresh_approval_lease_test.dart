@@ -263,7 +263,8 @@ void main() {
   group('NeuraActionLoomFreshApprovalGate', () {
     const gate = NeuraActionLoomFreshApprovalGate();
 
-    test('never invokes the mutation callback when authorization fails', () async {
+    test('never invokes the mutation callback when authorization fails',
+        () async {
       final lease = issue(leaseId: 'blocked-callback').lease!;
       var callbackCalls = 0;
 
