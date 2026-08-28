@@ -374,12 +374,12 @@ void main() {
       final received = <NeuraTurnDelta>[];
       final subscription = coordinator
           .startTurn(
-            NeuraModelRequest(
-              purpose: NeuraModelPurpose.createDraft,
-              prompt: 'Draft.',
-              safetyContext: const NeuraSafetyContext(),
-            ),
-          )
+        NeuraModelRequest(
+          purpose: NeuraModelPurpose.createDraft,
+          prompt: 'Draft.',
+          safetyContext: const NeuraSafetyContext(),
+        ),
+      )
           .listen((delta) {
         received.add(delta);
         if (!firstDelta.isCompleted) {
@@ -498,13 +498,13 @@ void main() {
       final received = <NeuraModelDelta>[];
       final subscription = router
           .generate(
-            NeuraModelRequest(
-              purpose: NeuraModelPurpose.explainDecision,
-              prompt: 'Explain.',
-              safetyContext: const NeuraSafetyContext(),
-            ),
-            cancellation: NeuraCancellationToken(),
-          )
+        NeuraModelRequest(
+          purpose: NeuraModelPurpose.explainDecision,
+          prompt: 'Explain.',
+          safetyContext: const NeuraSafetyContext(),
+        ),
+        cancellation: NeuraCancellationToken(),
+      )
           .listen((delta) {
         received.add(delta);
         if (!first.isCompleted) {
