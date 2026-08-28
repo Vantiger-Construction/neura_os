@@ -103,20 +103,25 @@ jobs:
               Where-Object { Test-NeuraCiVolume -Drive $_ } |
               Sort-Object -Property AvailableFreeSpace -Descending
           )
-          if ($eligible.Count -lt 2) {
-            throw ('Android validation requires two writable volumes with at least ' +
-              '3.0 GB free. The system volume is eligible only when at least ' +
-              '6.0 GB remains free.')
+          if ($eligible.Count -eq 0 -or
+              ($eligible.Count -eq 1 -and
+               $eligible[0].AvailableFreeSpace -lt 8.0GB)) {
+            throw ('Android validation requires either two writable volumes with ' +
+              'at least 3.0 GB free each, or one shared writable volume with at ' +
+              'least 8.0 GB free. The system volume is eligible only when at ' +
+              'least 6.0 GB remains free.')
           }
 
+          $sdkDrive = $eligible[0]
+          $buildDrive = if ($eligible.Count -ge 2) { $eligible[1] } else { $eligible[0] }
           @(
-            "NEURA_ANDROID_SDK_VOLUME=$($eligible[0].RootDirectory.FullName)",
-            "NEURA_ANDROID_BUILD_VOLUME=$($eligible[1].RootDirectory.FullName)",
+            "NEURA_ANDROID_SDK_VOLUME=$($sdkDrive.RootDirectory.FullName)",
+            "NEURA_ANDROID_BUILD_VOLUME=$($buildDrive.RootDirectory.FullName)",
             "NEURA_ANDROID_RUN_KEY=$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-          Write-Host "SDK/JDK volume: $($eligible[0].Name) ($([Math]::Round($eligible[0].AvailableFreeSpace / 1GB, 2)) GB free)"
-          Write-Host "Source/build volume: $($eligible[1].Name) ($([Math]::Round($eligible[1].AvailableFreeSpace / 1GB, 2)) GB free)"
+          Write-Host "SDK/JDK volume: $($sdkDrive.Name) ($([Math]::Round($sdkDrive.AvailableFreeSpace / 1GB, 2)) GB free)"
+          Write-Host "Source/build volume: $($buildDrive.Name) ($([Math]::Round($buildDrive.AvailableFreeSpace / 1GB, 2)) GB free)"
 
       - name: Route source checkout to the build volume
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
