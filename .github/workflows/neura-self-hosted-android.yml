@@ -96,12 +96,17 @@ jobs:
 
           $eligible = @(
             [System.IO.DriveInfo]::GetDrives() |
-              Where-Object { $_.IsReady -and $_.Name -ne $systemRoot } |
+              Where-Object {
+                $_.IsReady -and
+                ($_.Name -ne $systemRoot -or $systemFree -ge 6.0GB)
+              } |
               Where-Object { Test-NeuraCiVolume -Drive $_ } |
               Sort-Object -Property AvailableFreeSpace -Descending
           )
           if ($eligible.Count -lt 2) {
-            throw 'Android validation requires two writable non-system volumes with at least 3.0 GB free.'
+            throw ('Android validation requires two writable volumes with at least ' +
+              '3.0 GB free. The system volume is eligible only when at least ' +
+              '6.0 GB remains free.')
           }
 
           @(
