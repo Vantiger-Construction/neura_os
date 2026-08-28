@@ -150,10 +150,9 @@ jobs:
             ([Math]::Max(0, $systemAfter - $systemBefore) / 1GB)
           )
 
-          # Source checkout, Pub/Cargo caches, build output, NuGet packages,
-          # and TEMP/TMP are routed to the selected non-system volumes below.
-          # C: only needs enough room for the runner's own metadata and small
-          # generated step scripts.
+          # Prefer non-system volumes. When the runner has at least 6.0 GB free
+          # on its system volume, it may safely serve as one of the two bounded
+          # output volumes while retaining headroom for runner metadata.
           if ($systemAfter -lt 0.25GB) {
             throw (
               "The runner needs at least 0.25 GB on {0} for runner metadata; " +
@@ -163,7 +162,10 @@ jobs:
 
           $eligible = @(
             [System.IO.DriveInfo]::GetDrives() |
-              Where-Object { $_.IsReady -and $_.Name -ne $systemRoot } |
+              Where-Object {
+                $_.IsReady -and
+                ($_.Name -ne $systemRoot -or $systemAfter -ge 6.0GB)
+              } |
               Where-Object { Test-CiVolume -Drive $_ } |
               Sort-Object -Property AvailableFreeSpace -Descending
           )
@@ -179,8 +181,9 @@ jobs:
 
           if ($eligible.Count -lt 2) {
             throw (
-              'Two writable non-system volumes with at least 3.0 GB free ' +
-              'are required to split Flutter/Windows and Rust output safely.'
+              'Two writable volumes with at least 3.0 GB free are required ' +
+              'to split Flutter/Windows and Rust output safely. The system ' +
+              'volume is eligible only when at least 6.0 GB remains free.'
             )
           }
 
