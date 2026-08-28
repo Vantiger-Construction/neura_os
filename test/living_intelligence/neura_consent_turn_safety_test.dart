@@ -581,11 +581,11 @@ void main() {
       context: context,
     );
 
-    expect(runtime.status.activeCloudPermits, 1);
+    expect(runtime.status().activeCloudPermits, 1);
     await runtime.resetAfterDataWipe();
 
     expect(runtime.enabled, isFalse);
-    expect(runtime.status.activeCloudPermits, 0);
+    expect(runtime.status().activeCloudPermits, 0);
     expect(runtime.presenceEngine.isQuiet, isTrue);
   });
 }
