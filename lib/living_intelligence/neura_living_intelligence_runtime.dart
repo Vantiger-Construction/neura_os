@@ -140,9 +140,8 @@ class NeuraLivingIntelligenceRuntime {
     return NeuraLivingIntelligenceStatus(
       enabled: _enabled,
       safeModeBlocked: safetyPolicy.safeModeActive,
-      localModelBackends: modelRouter.backends
-          .where((backend) => backend.runsLocally)
-          .length,
+      localModelBackends:
+          modelRouter.backends.where((backend) => backend.runsLocally).length,
       pairedDevices: continuity.devices.length,
       activeCloudPermits: cloudConsent.activePermitCount(now: now),
       activeConversationTurn: turnCoordinator.hasActiveTurn,
