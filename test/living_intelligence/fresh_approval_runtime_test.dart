@@ -20,9 +20,7 @@ void main() {
 
   group('NeuraFreshApprovalLeaseRegistry', () {
     test('bounds active leases and rejects duplicate identifiers', () {
-      final registry = NeuraFreshApprovalLeaseRegistry(
-        maximumActiveLeases: 2,
-      );
+      final registry = NeuraFreshApprovalLeaseRegistry(maximumActiveLeases: 2);
 
       NeuraFreshApprovalIssue issue(String id, String fingerprint) {
         return registry.issue(
@@ -53,9 +51,7 @@ void main() {
     });
 
     test('removes expired or consumed leases before new issuance', () {
-      final registry = NeuraFreshApprovalLeaseRegistry(
-        maximumActiveLeases: 1,
-      );
+      final registry = NeuraFreshApprovalLeaseRegistry(maximumActiveLeases: 1);
       final first = registry.issue(
         leaseId: 'lease-1',
         scope: scope('sha256:a'),
@@ -102,9 +98,7 @@ void main() {
       );
       final lease = issue.lease!;
 
-      registry.resetAfterDataWipe(
-        now: now.add(const Duration(seconds: 1)),
-      );
+      registry.resetAfterDataWipe(now: now.add(const Duration(seconds: 1)));
 
       expect(lease.revoked, isTrue);
       expect(registry.find('lease-1'), isNull);
@@ -134,7 +128,7 @@ void main() {
       );
 
       expect(issue.issued, isTrue);
-      expect(runtime.status.activeFreshApprovalLeases, 1);
+      expect(runtime.status(now: now).activeFreshApprovalLeases, 1);
     });
 
     test('disabling runtime revokes outstanding approval', () {
@@ -160,7 +154,7 @@ void main() {
       runtime.setEnabled(false, context: approvedContext);
 
       expect(lease.revoked, isTrue);
-      expect(runtime.status.activeFreshApprovalLeases, 0);
+      expect(runtime.status(now: now).activeFreshApprovalLeases, 0);
     });
 
     test('Safe Mode blocks issuance even after runtime activation', () {
@@ -185,11 +179,8 @@ void main() {
         now: now,
       );
 
-      expect(
-        issue.outcome,
-        NeuraFreshApprovalOutcome.blockedBySafeMode,
-      );
-      expect(runtime.status.activeFreshApprovalLeases, 0);
+      expect(issue.outcome, NeuraFreshApprovalOutcome.blockedBySafeMode);
+      expect(runtime.status(now: now).activeFreshApprovalLeases, 0);
     });
 
     test('data wipe clears cloud and fresh approval state together', () async {
@@ -214,7 +205,7 @@ void main() {
       await runtime.resetAfterDataWipe();
 
       expect(runtime.enabled, isFalse);
-      expect(runtime.status.activeFreshApprovalLeases, 0);
+      expect(runtime.status(now: now).activeFreshApprovalLeases, 0);
       expect(runtime.presenceEngine.isQuiet, isTrue);
     });
   });
