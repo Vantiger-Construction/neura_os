@@ -340,8 +340,7 @@ class NeuraActionLoom {
       'explicit_user_approval': action.explicitUserApproval,
       'fresh_approval_id': freshApproval?.leaseId,
       'fresh_approval_state': freshApproval?.state.name,
-      'fresh_approval_issued_at':
-          freshApproval?.issuedAtUtc.toIso8601String(),
+      'fresh_approval_issued_at': freshApproval?.issuedAtUtc.toIso8601String(),
       'fresh_approval_expires_at':
           freshApproval?.expiresAtUtc.toIso8601String(),
       'fresh_approval_consumed_at':
