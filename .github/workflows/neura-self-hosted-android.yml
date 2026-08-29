@@ -52,7 +52,7 @@ jobs:
             if (-not $Drive.IsReady -or
                 ($Drive.DriveType -ne [System.IO.DriveType]::Fixed -and
                  $Drive.DriveType -ne [System.IO.DriveType]::Removable) -or
-                $Drive.AvailableFreeSpace -lt 3.0GB) {
+                $Drive.AvailableFreeSpace -lt 2.75GB) {
               return $false
             }
             $probe = Join-Path $Drive.RootDirectory.FullName "neura-ci\probe-$env:GITHUB_RUN_ID"
@@ -105,11 +105,14 @@ jobs:
           )
           if ($eligible.Count -eq 0 -or
               ($eligible.Count -eq 1 -and
-               $eligible[0].AvailableFreeSpace -lt 8.0GB)) {
-            throw ('Android validation requires either two writable volumes with ' +
-              'at least 3.0 GB free each, or one shared writable volume with at ' +
-              'least 8.0 GB free. The system volume is eligible only when at ' +
-              'least 6.0 GB remains free.')
+               $eligible[0].AvailableFreeSpace -lt 8.0GB) -or
+              ($eligible.Count -ge 2 -and
+               ($eligible[0].AvailableFreeSpace -lt 3.25GB -or
+                $eligible[1].AvailableFreeSpace -lt 2.75GB))) {
+            throw ('Android validation requires either separate writable volumes with ' +
+              'at least 3.25 GB for SDK/JDK data and 2.75 GB for source/build data, ' +
+              'or one shared writable volume with at least 8.0 GB free. The system ' +
+              'volume is eligible only when at least 6.0 GB remains free.')
           }
 
           $sdkDrive = $eligible[0]
