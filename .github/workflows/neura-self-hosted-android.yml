@@ -322,8 +322,14 @@ jobs:
         run: |
           Set-Location -LiteralPath $env:NEURA_ANDROID_SOURCE_ROOT
           $pubLog = Join-Path $PWD 'pub-get.log'
-          flutter pub get --verbose *> $pubLog
-          $pubExitCode = $LASTEXITCODE
+          $previousErrorActionPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          try {
+            flutter pub get --verbose *> $pubLog
+            $pubExitCode = $LASTEXITCODE
+          } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+          }
           if (Test-Path -LiteralPath $pubLog -PathType Leaf) {
             Get-Content -LiteralPath $pubLog | Out-Host
           }
@@ -345,8 +351,14 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($buildName)) {
             throw 'The Flutter build name resolved to an empty value.'
           }
-          flutter build apk --debug --no-pub --verbose --build-name $buildName --build-number $env:GITHUB_RUN_NUMBER *> $buildLog
-          $buildExitCode = $LASTEXITCODE
+          $previousErrorActionPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          try {
+            flutter build apk --debug --no-pub --verbose --build-name $buildName --build-number $env:GITHUB_RUN_NUMBER *> $buildLog
+            $buildExitCode = $LASTEXITCODE
+          } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+          }
           if (Test-Path -LiteralPath $buildLog -PathType Leaf) {
             Get-Content -LiteralPath $buildLog | Out-Host
           }

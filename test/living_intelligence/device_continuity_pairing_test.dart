@@ -113,23 +113,27 @@ void main() {
     );
 
     expect(
-      registry.validateHandoffPreview(
-        preview,
-        signatureVerified: false,
-        directUserGesture: true,
-        freshApproval: true,
-        now: now,
-      ).allowed,
+      registry
+          .validateHandoffPreview(
+            preview,
+            signatureVerified: false,
+            directUserGesture: true,
+            freshApproval: true,
+            now: now,
+          )
+          .allowed,
       isFalse,
     );
     expect(
-      registry.validateHandoffPreview(
-        preview,
-        signatureVerified: true,
-        directUserGesture: true,
-        freshApproval: true,
-        now: now,
-      ).allowed,
+      registry
+          .validateHandoffPreview(
+            preview,
+            signatureVerified: true,
+            directUserGesture: true,
+            freshApproval: true,
+            now: now,
+          )
+          .allowed,
       isTrue,
     );
   });

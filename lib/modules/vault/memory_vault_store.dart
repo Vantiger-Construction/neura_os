@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
@@ -115,8 +115,10 @@ class MemoryVaultStore {
     }
   }
 
-  Future<SecretKey> _deriveKey(
-      {required String pin, required String seed}) async {
+  Future<SecretKey> _deriveKey({
+    required String pin,
+    required String seed,
+  }) async {
     // PBKDF2: derive a 256-bit key from the PIN with a per-device salt.
     final pbkdf2 = Pbkdf2(
       macAlgorithm: Hmac.sha256(),
@@ -207,8 +209,9 @@ class MemoryVaultStore {
     if (legacyPin != null && legacyPin.trim().isNotEmpty) {
       await configurePin(legacyPin.trim());
       await sp.remove(_keyPinLegacy);
-      await AppLog.instance.info('vault_event',
-          {'msg': 'Vault PIN migrated to verifier (no PIN stored).'});
+      await AppLog.instance.info('vault_event', {
+        'msg': 'Vault PIN migrated to verifier (no PIN stored).',
+      });
     }
   }
 
@@ -274,11 +277,12 @@ class MemoryVaultStore {
     await sp.setString(_keyData, enc);
   }
 
-  Future<void> add(
-      {required String pin,
-      required String title,
-      required String body,
-      List<String> tags = const []}) async {
+  Future<void> add({
+    required String pin,
+    required String title,
+    required String body,
+    List<String> tags = const [],
+  }) async {
     final items = await getItems(pin: pin);
     final id = 'v_${DateTime.now().millisecondsSinceEpoch}';
     items.add(VaultItem(
