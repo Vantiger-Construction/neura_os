@@ -33,7 +33,7 @@ env:
 jobs:
   contract:
     name: Verify release gate contracts
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows, X64, neura]
     timeout-minutes: 10
     steps:
       - name: Check out source
