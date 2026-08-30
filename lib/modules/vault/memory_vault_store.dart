@@ -114,6 +114,7 @@ class MemoryVaultStore {
       return false;
     }
   }
+
   Future<SecretKey> _deriveKey(
       {required String pin, required String seed}) async {
     // PBKDF2: derive a 256-bit key from the PIN with a per-device salt.

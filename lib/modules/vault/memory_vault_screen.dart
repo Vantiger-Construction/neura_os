@@ -119,6 +119,7 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
     if (!mounted) return;
     await _load();
   }
+
   Future<void> _delete(String id) async {
     final pin = VaultSession.sessionPin;
     if (pin == null) {
