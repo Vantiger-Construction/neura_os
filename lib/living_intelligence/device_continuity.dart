@@ -61,9 +61,8 @@ class NeuraPairingSession {
   }) : expiresAtUtc = expiresAt.toUtc() {
     if (deviceId.trim().isEmpty ||
         code.trim().isEmpty ||
-        challenge.trim().isEmpty ||
-        !expiresAtUtc.isAfter(DateTime.now().toUtc())) {
-      throw ArgumentError('A valid, non-expired pairing session is required.');
+        challenge.trim().isEmpty) {
+      throw ArgumentError('A valid pairing session is required.');
     }
   }
 
