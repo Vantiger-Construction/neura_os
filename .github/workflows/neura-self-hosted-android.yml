@@ -317,22 +317,53 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           flutter doctor -v
 
-      - name: Restore dependencies and build APK
+      - name: Restore dependencies
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-Location -LiteralPath $env:NEURA_ANDROID_SOURCE_ROOT
-          flutter pub get
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $pubLog = Join-Path $PWD 'pub-get.log'
+          flutter pub get --verbose *> $pubLog
+          $pubExitCode = $LASTEXITCODE
+          if (Test-Path -LiteralPath $pubLog -PathType Leaf) {
+            Get-Content -LiteralPath $pubLog | Out-Host
+          }
+          if ($pubExitCode -ne 0) {
+            throw "flutter pub get failed with exit code $pubExitCode. See $pubLog."
+          }
 
-          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$').Matches[0].Groups[1].Value.Trim()
+      - name: Build APK
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-Location -LiteralPath $env:NEURA_ANDROID_SOURCE_ROOT
+          $buildLog = Join-Path $PWD 'android-build.log'
+          $versionLine = Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$'
+          if (-not $versionLine) {
+            throw 'pubspec.yaml does not contain a valid version line.'
+          }
+          $version = $versionLine.Matches[0].Groups[1].Value.Trim()
           $buildName = $version.Split('+')[0]
-          flutter build apk --debug --no-pub `
-            --build-name $buildName `
-            --build-number $env:GITHUB_RUN_NUMBER *>&1 |
-            Tee-Object -FilePath android-build.log |
-            Out-Host
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ([string]::IsNullOrWhiteSpace($buildName)) {
+            throw 'The Flutter build name resolved to an empty value.'
+          }
+          flutter build apk --debug --no-pub --verbose --build-name $buildName --build-number $env:GITHUB_RUN_NUMBER *> $buildLog
+          $buildExitCode = $LASTEXITCODE
+          if (Test-Path -LiteralPath $buildLog -PathType Leaf) {
+            Get-Content -LiteralPath $buildLog | Out-Host
+          }
+          if ($buildExitCode -ne 0) {
+            throw "flutter build apk failed with exit code $buildExitCode. See $buildLog."
+          }
 
+      - name: Upload Android restore and build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Neura-SelfHosted-Android-restore-build-logs
+          path: |
+            ${{ github.workspace }}\source\pub-get.log
+            ${{ github.workspace }}\source\android-build.log
+          if-no-files-found: warn
+          retention-days: 14
       - name: Verify Android APK
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
