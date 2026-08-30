@@ -49,8 +49,11 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
     final title = TextEditingController();
     final body = TextEditingController();
     final tags = TextEditingController();
+    String titleValue = '';
+    String bodyValue = '';
+    String tagsValue = '';
+    bool? ok;
 
-    final bool? ok;
     try {
       ok = await showDialog<bool>(
         context: context,
@@ -89,6 +92,11 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
           );
         },
       );
+      if (ok == true) {
+        titleValue = title.text.trim();
+        bodyValue = body.text.trim();
+        tagsValue = tags.text;
+      }
     } finally {
       title.dispose();
       body.dispose();
@@ -98,9 +106,9 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
     if (ok != true) return;
     await MemoryVaultStore.instance.add(
       pin: pin,
-      title: title.text.trim().isEmpty ? 'Untitled' : title.text.trim(),
-      body: body.text.trim(),
-      tags: tags.text
+      title: titleValue.isEmpty ? 'Untitled' : titleValue,
+      body: bodyValue,
+      tags: tagsValue
           .split(',')
           .map((e) => e.trim())
           .where((e) => e.isNotEmpty)

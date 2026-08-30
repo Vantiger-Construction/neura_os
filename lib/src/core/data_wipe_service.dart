@@ -20,6 +20,8 @@ import '../../mascot/neura_window_role.dart';
 import '../../neura_runtime/neura_runtime_controller.dart';
 import '../../modules/coach/coach_store.dart';
 import '../../modules/core/app_log.dart';
+import '../../modules/vault/memory_vault_store.dart';
+import '../../modules/vault/vault_session.dart';
 import '../../modules/human/human_prefs_controller.dart';
 import '../../modules/humor/joke_prefs_controller.dart';
 import '../../modules/money/money_store.dart';
@@ -255,6 +257,7 @@ class NeuraDataWipeService {
     MoodStateService.instance.resetAfterDataWipe();
     GoodwillController.instance.resetAfterDataWipe();
     SpaceMemoryEngine.instance.resetAfterDataWipe();
+    VaultSession.lock();
     AvatarService.instance.resetAfterDataWipe();
     NeuraToneRuntime.instance.resetAfterDataWipe();
     CoachStore.instance.resetAfterDataWipe();
@@ -262,6 +265,11 @@ class NeuraDataWipeService {
     NeuraLlmDiagnostics.instance.resetAfterDataWipe();
     SelfHealService.instance.clearLog();
 
+    await _attempt(
+      failures,
+      'memory vault deletion',
+      MemoryVaultStore.instance.wipe,
+    );
     // These operations remove or invalidate live secrets. They are
     // independently attempted and any failure is always surfaced.
     await _attempt(

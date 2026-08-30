@@ -52,7 +52,7 @@ jobs:
             if (-not $Drive.IsReady -or
                 ($Drive.DriveType -ne [System.IO.DriveType]::Fixed -and
                  $Drive.DriveType -ne [System.IO.DriveType]::Removable) -or
-                $Drive.AvailableFreeSpace -lt 3.5GB) {
+                $Drive.AvailableFreeSpace -lt 2.75GB) {
               return $false
             }
             $probe = Join-Path $Drive.RootDirectory.FullName "neura-ci\probe-$env:GITHUB_RUN_ID"
@@ -96,22 +96,35 @@ jobs:
 
           $eligible = @(
             [System.IO.DriveInfo]::GetDrives() |
-              Where-Object { $_.IsReady -and $_.Name -ne $systemRoot } |
+              Where-Object {
+                $_.IsReady -and
+                ($_.Name -ne $systemRoot -or $systemFree -ge 6.0GB)
+              } |
               Where-Object { Test-NeuraCiVolume -Drive $_ } |
               Sort-Object -Property AvailableFreeSpace -Descending
           )
-          if ($eligible.Count -lt 2) {
-            throw 'Android validation requires two writable non-system volumes with at least 3.5 GB free.'
+          if ($eligible.Count -eq 0 -or
+              ($eligible.Count -eq 1 -and
+               $eligible[0].AvailableFreeSpace -lt 8.0GB) -or
+              ($eligible.Count -ge 2 -and
+               ($eligible[0].AvailableFreeSpace -lt 3.25GB -or
+                $eligible[1].AvailableFreeSpace -lt 2.75GB))) {
+            throw ('Android validation requires either separate writable volumes with ' +
+              'at least 3.25 GB for SDK/JDK data and 2.75 GB for source/build data, ' +
+              'or one shared writable volume with at least 8.0 GB free. The system ' +
+              'volume is eligible only when at least 6.0 GB remains free.')
           }
 
+          $sdkDrive = $eligible[0]
+          $buildDrive = if ($eligible.Count -ge 2) { $eligible[1] } else { $eligible[0] }
           @(
-            "NEURA_ANDROID_SDK_VOLUME=$($eligible[0].RootDirectory.FullName)",
-            "NEURA_ANDROID_BUILD_VOLUME=$($eligible[1].RootDirectory.FullName)",
+            "NEURA_ANDROID_SDK_VOLUME=$($sdkDrive.RootDirectory.FullName)",
+            "NEURA_ANDROID_BUILD_VOLUME=$($buildDrive.RootDirectory.FullName)",
             "NEURA_ANDROID_RUN_KEY=$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-          Write-Host "SDK/JDK volume: $($eligible[0].Name) ($([Math]::Round($eligible[0].AvailableFreeSpace / 1GB, 2)) GB free)"
-          Write-Host "Source/build volume: $($eligible[1].Name) ($([Math]::Round($eligible[1].AvailableFreeSpace / 1GB, 2)) GB free)"
+          Write-Host "SDK/JDK volume: $($sdkDrive.Name) ($([Math]::Round($sdkDrive.AvailableFreeSpace / 1GB, 2)) GB free)"
+          Write-Host "Source/build volume: $($buildDrive.Name) ($([Math]::Round($buildDrive.AvailableFreeSpace / 1GB, 2)) GB free)"
 
       - name: Route source checkout to the build volume
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
@@ -270,8 +283,16 @@ jobs:
           (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'platform-tools') |
             Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
+          $licenseAnswers = Join-Path $env:TEMP 'android-sdk-license-answers.txt'
           1..200 | ForEach-Object { 'y' } |
-            & $sdkManager "--sdk_root=$env:NEURA_ANDROID_SDK_ROOT" --licenses
+            Set-Content -LiteralPath $licenseAnswers -Encoding ASCII
+          $licenseCommand = (
+            '"{0}" "--sdk_root={1}" --licenses < "{2}"' -f
+            $sdkManager,
+            $env:NEURA_ANDROID_SDK_ROOT,
+            $licenseAnswers
+          )
+          & "$env:SystemRoot\System32\cmd.exe" /d /s /c $licenseCommand
           if ($LASTEXITCODE -ne 0) { throw "License acceptance failed: $LASTEXITCODE" }
 
           & $sdkManager `
@@ -282,26 +303,67 @@ jobs:
             'ndk;28.2.13676358'
           if ($LASTEXITCODE -ne 0) { throw "Android SDK install failed: $LASTEXITCODE" }
 
+          foreach ($required in @(
+            (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'platform-tools\adb.exe'),
+            (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'platforms\android-36\android.jar'),
+            (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'build-tools\36.0.0\aapt2.exe')
+          )) {
+            if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+              throw "Android SDK package installation is incomplete: $required"
+            }
+          }
+
           flutter config --android-sdk $env:NEURA_ANDROID_SDK_ROOT
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           flutter doctor -v
 
-      - name: Restore dependencies and build APK
+      - name: Restore dependencies
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-Location -LiteralPath $env:NEURA_ANDROID_SOURCE_ROOT
-          flutter pub get
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $pubLog = Join-Path $PWD 'pub-get.log'
+          flutter pub get --verbose *> $pubLog
+          $pubExitCode = $LASTEXITCODE
+          if (Test-Path -LiteralPath $pubLog -PathType Leaf) {
+            Get-Content -LiteralPath $pubLog | Out-Host
+          }
+          if ($pubExitCode -ne 0) {
+            throw "flutter pub get failed with exit code $pubExitCode. See $pubLog."
+          }
 
-          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$').Matches[0].Groups[1].Value.Trim()
+      - name: Build APK
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-Location -LiteralPath $env:NEURA_ANDROID_SOURCE_ROOT
+          $buildLog = Join-Path $PWD 'android-build.log'
+          $versionLine = Select-String -Path pubspec.yaml -Pattern '^version:\s*(.+)$'
+          if (-not $versionLine) {
+            throw 'pubspec.yaml does not contain a valid version line.'
+          }
+          $version = $versionLine.Matches[0].Groups[1].Value.Trim()
           $buildName = $version.Split('+')[0]
-          flutter build apk --debug --no-pub `
-            --build-name $buildName `
-            --build-number $env:GITHUB_RUN_NUMBER *>&1 |
-            Tee-Object -FilePath android-build.log |
-            Out-Host
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ([string]::IsNullOrWhiteSpace($buildName)) {
+            throw 'The Flutter build name resolved to an empty value.'
+          }
+          flutter build apk --debug --no-pub --verbose --build-name $buildName --build-number $env:GITHUB_RUN_NUMBER *> $buildLog
+          $buildExitCode = $LASTEXITCODE
+          if (Test-Path -LiteralPath $buildLog -PathType Leaf) {
+            Get-Content -LiteralPath $buildLog | Out-Host
+          }
+          if ($buildExitCode -ne 0) {
+            throw "flutter build apk failed with exit code $buildExitCode. See $buildLog."
+          }
 
+      - name: Upload Android restore and build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Neura-SelfHosted-Android-restore-build-logs
+          path: |
+            ${{ github.workspace }}\source\pub-get.log
+            ${{ github.workspace }}\source\android-build.log
+          if-no-files-found: warn
+          retention-days: 14
       - name: Verify Android APK
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
