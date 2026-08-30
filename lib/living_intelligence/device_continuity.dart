@@ -71,8 +71,7 @@ class NeuraPairingSession {
   final String challenge;
   final DateTime expiresAtUtc;
 
-  bool isExpired(DateTime now) =>
-      !now.toUtc().isBefore(expiresAtUtc);
+  bool isExpired(DateTime now) => !now.toUtc().isBefore(expiresAtUtc);
 }
 
 /// A signed, encrypted handoff preview. It contains no plaintext payload and
@@ -108,9 +107,9 @@ class NeuraHandoffPreview {
   final DateTime createdAtUtc;
   final DateTime expiresAtUtc;
 
-  bool isExpired(DateTime now) =>
-      !now.toUtc().isBefore(expiresAtUtc);
+  bool isExpired(DateTime now) => !now.toUtc().isBefore(expiresAtUtc);
 }
+
 /// An already-encrypted payload produced by a platform crypto bridge.
 ///
 /// This class deliberately does not accept plaintext.
@@ -318,9 +317,12 @@ class NeuraDeviceContinuityRegistry {
     final recipient = _devices[preview.recipientDeviceId];
     final senderPolicy = _policies[preview.senderDeviceId];
     final recipientPolicy = _policies[preview.recipientDeviceId];
-    if (sender == null || recipient == null ||
-        sender.revoked || recipient.revoked ||
-        senderPolicy == null || recipientPolicy == null) {
+    if (sender == null ||
+        recipient == null ||
+        sender.revoked ||
+        recipient.revoked ||
+        senderPolicy == null ||
+        recipientPolicy == null) {
       return const NeuraContinuityDecision(
         allowed: false,
         reason: 'Both active devices must be paired before handoff.',
@@ -352,6 +354,7 @@ class NeuraDeviceContinuityRegistry {
       reason: 'The signed handoff preview may be shown for guarded apply.',
     );
   }
+
   NeuraContinuityDecision validateEnvelope(
     NeuraContinuityEnvelope envelope,
   ) {
