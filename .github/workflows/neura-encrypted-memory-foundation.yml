@@ -24,25 +24,29 @@ env:
 jobs:
   validate:
     name: Validate encrypted memory contracts
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows, X64, neura]
     timeout-minutes: 30
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-      - name: Install Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
+      - name: Use retained Flutter 3.44.7
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $flutter = Get-Command flutter -ErrorAction Stop
+          $version = (& $flutter.Source --version | Select-Object -First 1)
+          if ($version -notmatch 'Flutter 3\.44\.7') {
+            throw "Expected retained Flutter 3.44.7; found: $version"
+          }
       - name: Restore dependencies
+        shell: pwsh
         run: flutter pub get
       - name: Verify canonical formatting
-        shell: bash
+        shell: pwsh
         run: dart format --output=none --set-exit-if-changed lib/encrypted_memory test/encrypted_memory
       - name: Require zero analyzer findings in foundation
-        shell: bash
+        shell: pwsh
         run: flutter analyze --fatal-infos lib/encrypted_memory test/encrypted_memory
       - name: Run encrypted memory contract tests
-        shell: bash
+        shell: pwsh
         run: flutter test --no-pub --reporter expanded test/encrypted_memory
