@@ -107,9 +107,9 @@ if ($PreviousArtifactRoot) {
     Remove-Item -LiteralPath $rehearsal -Recurse -Force
   }
   New-Item -ItemType Directory -Path $slotA, $slotB -Force | Out-Null
-  Copy-Item -LiteralPath (Join-Path $previous '*') -Destination $slotA -Recurse
+  Copy-Item -Path (Join-Path $previous '*') -Destination $slotA -Recurse
   $before = Get-PayloadManifest $slotA
-  Copy-Item -LiteralPath (Join-Path $artifact '*') -Destination $slotB -Recurse
+  Copy-Item -Path (Join-Path $artifact '*') -Destination $slotB -Recurse
   Assert-Manifest $slotB $manifestFiles
   Remove-Item -LiteralPath $slotB -Recurse -Force
   Assert-Manifest $slotA $before
