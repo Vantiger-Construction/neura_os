@@ -1,0 +1,48 @@
+name: Neura encrypted memory foundation
+
+on:
+  pull_request:
+    branches:
+      - agent/neura-release-readiness-v1.5.2
+    paths:
+      - ".github/workflows/neura-encrypted-memory-foundation.yml"
+      - "lib/encrypted_memory/**"
+      - "test/encrypted_memory/**"
+      - "docs/ENCRYPTED_MEMORY_FOUNDATION_v1.6.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-encrypted-memory-foundation-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: "3.44.7"
+
+jobs:
+  validate:
+    name: Validate encrypted memory contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Restore dependencies
+        run: flutter pub get
+      - name: Verify canonical formatting
+        shell: bash
+        run: dart format --output=none --set-exit-if-changed lib/encrypted_memory test/encrypted_memory
+      - name: Require zero analyzer findings in foundation
+        shell: bash
+        run: flutter analyze --fatal-infos lib/encrypted_memory test/encrypted_memory
+      - name: Run encrypted memory contract tests
+        shell: bash
+        run: flutter test --no-pub --reporter expanded test/encrypted_memory
