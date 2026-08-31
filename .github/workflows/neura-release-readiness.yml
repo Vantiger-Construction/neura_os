@@ -29,15 +29,63 @@ concurrency:
 
 env:
   FLUTTER_VERSION: "3.44.7"
+  POWERSHELL_VERSION: "7.4.6"
 
 jobs:
   contract:
     name: Verify release gate contracts
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows, X64, neura]
     timeout-minutes: 10
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+      - name: Provision pinned PowerShell Core
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+          $requiredVersion = [version]$env:POWERSHELL_VERSION
+          $existing = Get-Command pwsh -ErrorAction SilentlyContinue
+          if ($existing) {
+            $existingVersion = & $existing.Source -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+            if ([version]$existingVersion -ge [version]'7.2.0') {
+              Split-Path -Parent $existing.Source | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              exit 0
+            }
+          }
+
+          $installRoot = Join-Path $env:RUNNER_TEMP "neura-pwsh-$requiredVersion"
+          $pwsh = Join-Path $installRoot 'pwsh.exe'
+          if (-not (Test-Path -LiteralPath $pwsh -PathType Leaf)) {
+            $archiveName = "PowerShell-$requiredVersion-win-x64.zip"
+            $releaseRoot = "https://github.com/PowerShell/PowerShell/releases/download/v$requiredVersion"
+            $archive = Join-Path $env:RUNNER_TEMP $archiveName
+            $hashes = Join-Path $env:RUNNER_TEMP "PowerShell-$requiredVersion-hashes.sha256"
+
+            Invoke-WebRequest -Uri "$releaseRoot/$archiveName" -OutFile $archive -UseBasicParsing
+            Invoke-WebRequest -Uri "$releaseRoot/hashes.sha256" -OutFile $hashes -UseBasicParsing
+
+            $hashLine = Get-Content -LiteralPath $hashes |
+              Where-Object { $_ -match [regex]::Escape($archiveName) } |
+              Select-Object -First 1
+            if (-not $hashLine -or $hashLine -notmatch '^(?<hash>[A-Fa-f0-9]{64})\s+\*?.+$') {
+              throw "No valid SHA-256 entry found for $archiveName."
+            }
+            $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+            if ($actualHash -ne $Matches.hash) {
+              throw "PowerShell archive checksum mismatch for $archiveName."
+            }
+
+            New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
+            Expand-Archive -LiteralPath $archive -DestinationPath $installRoot -Force
+          }
+
+          $installedVersion = & $pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+          if ([version]$installedVersion -ne $requiredVersion) {
+            throw "Expected PowerShell $requiredVersion; found $installedVersion."
+          }
+          $installRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Run fail-closed contract tests
         shell: pwsh
         run: ./tools/release/Test-NeuraReleaseReadiness.Tests.ps1
@@ -51,6 +99,53 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+      - name: Provision pinned PowerShell Core
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+          $requiredVersion = [version]$env:POWERSHELL_VERSION
+          $existing = Get-Command pwsh -ErrorAction SilentlyContinue
+          if ($existing) {
+            $existingVersion = & $existing.Source -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+            if ([version]$existingVersion -ge [version]'7.2.0') {
+              Split-Path -Parent $existing.Source | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              exit 0
+            }
+          }
+
+          $installRoot = Join-Path $env:RUNNER_TEMP "neura-pwsh-$requiredVersion"
+          $pwsh = Join-Path $installRoot 'pwsh.exe'
+          if (-not (Test-Path -LiteralPath $pwsh -PathType Leaf)) {
+            $archiveName = "PowerShell-$requiredVersion-win-x64.zip"
+            $releaseRoot = "https://github.com/PowerShell/PowerShell/releases/download/v$requiredVersion"
+            $archive = Join-Path $env:RUNNER_TEMP $archiveName
+            $hashes = Join-Path $env:RUNNER_TEMP "PowerShell-$requiredVersion-hashes.sha256"
+
+            Invoke-WebRequest -Uri "$releaseRoot/$archiveName" -OutFile $archive -UseBasicParsing
+            Invoke-WebRequest -Uri "$releaseRoot/hashes.sha256" -OutFile $hashes -UseBasicParsing
+
+            $hashLine = Get-Content -LiteralPath $hashes |
+              Where-Object { $_ -match [regex]::Escape($archiveName) } |
+              Select-Object -First 1
+            if (-not $hashLine -or $hashLine -notmatch '^(?<hash>[A-Fa-f0-9]{64})\s+\*?.+$') {
+              throw "No valid SHA-256 entry found for $archiveName."
+            }
+            $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+            if ($actualHash -ne $Matches.hash) {
+              throw "PowerShell archive checksum mismatch for $archiveName."
+            }
+
+            New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
+            Expand-Archive -LiteralPath $archive -DestinationPath $installRoot -Force
+          }
+
+          $installedVersion = & $pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+          if ([version]$installedVersion -ne $requiredVersion) {
+            throw "Expected PowerShell $requiredVersion; found $installedVersion."
+          }
+          $installRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Use retained Flutter 3.44.7
         shell: pwsh
         run: |
