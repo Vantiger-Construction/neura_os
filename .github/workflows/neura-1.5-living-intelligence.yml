@@ -1,0 +1,166 @@
+name: Neura 1.5 Living Intelligence
+
+on:
+  push:
+    branches:
+      - agent/neura-living-intelligence-v1.5
+  pull_request:
+    branches:
+      - Neura
+    paths:
+      - 'lib/living_intelligence/**'
+      - 'test/living_intelligence/**'
+      - 'docs/LIVING_INTELLIGENCE_V1_5.md'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/neura-1.5-living-intelligence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-living-intelligence-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.44.7'
+
+jobs:
+  validate:
+    name: Validate Living Intelligence safety and integration
+    runs-on: [self-hosted, Windows, X64, neura]
+    timeout-minutes: 50
+
+    steps:
+      - name: Route checkout and temporary data off the system volume
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $runnerWork = Split-Path -Parent $env:RUNNER_TEMP
+          $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+          $systemDriveName = $systemRoot.TrimEnd('\').TrimEnd(':')
+          $systemFree = (Get-PSDrive -Name $systemDriveName -ErrorAction Stop).Free
+          $drive = [System.IO.DriveInfo]::GetDrives() |
+            Where-Object {
+              $_.IsReady -and
+              ($_.Name -ne $systemRoot -or $systemFree -ge 6.0GB) -and
+              ($_.DriveType -eq [System.IO.DriveType]::Fixed -or
+               $_.DriveType -eq [System.IO.DriveType]::Removable) -and
+              $_.AvailableFreeSpace -ge 2.5GB
+            } |
+            Sort-Object -Property AvailableFreeSpace -Descending |
+            Select-Object -First 1
+          if (-not $drive) {
+            throw 'Living Intelligence validation requires one writable volume with at least 2.5 GB free; the system volume requires at least 6.0 GB free.'
+          }
+
+          $root = Join-Path $drive.RootDirectory.FullName 'neura-ci\living-intelligence'
+          $workspace = Join-Path $root 'workspace'
+          $sourceLink = Join-Path $env:GITHUB_WORKSPACE 'source'
+          foreach ($path in @($sourceLink, $root)) {
+            if (Test-Path -LiteralPath $path) {
+              $item = Get-Item -LiteralPath $path -Force
+              if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$path"
+              } else {
+                Remove-Item -LiteralPath $path -Recurse -Force
+              }
+            }
+          }
+          New-Item -ItemType Directory -Path $workspace -Force | Out-Null
+          New-Item -ItemType Directory -Path (Join-Path $root 'pub-cache') -Force | Out-Null
+          New-Item -ItemType Directory -Path (Join-Path $root 'temp') -Force | Out-Null
+          New-Item -ItemType Junction -Path $sourceLink -Target $workspace | Out-Null
+          @(
+            "NEURA_SOURCE_ROOT=$sourceLink",
+            "PUB_CACHE=$(Join-Path $root 'pub-cache')",
+            "TEMP=$(Join-Path $root 'temp')",
+            "TMP=$(Join-Path $root 'temp')"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      - name: Reject unresolved merge markers
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+          $matches = Get-ChildItem -Path 'lib\living_intelligence','test\living_intelligence' -File -Recurse |
+            Select-String -Pattern '^(<<<<<<<|=======|>>>>>>>)'
+          if ($matches) {
+            $matches | ForEach-Object { Write-Host "::error::$($_.Path):$($_.LineNumber):$($_.Line)" }
+            throw 'Unresolved merge markers are committed.'
+          }
+
+      - name: Enable pinned Flutter
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $flutterRoot = Join-Path $env:RUNNER_TOOL_CACHE "flutter\$env:FLUTTER_VERSION\x64"
+          $flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
+          if (-not (Test-Path -LiteralPath $flutterExe -PathType Leaf)) {
+            throw "Pinned Flutter $env:FLUTTER_VERSION is missing from the runner tool cache."
+          }
+          (Join-Path $flutterRoot 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $flutterExe --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Restore dependencies
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+          flutter pub get
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify Living Intelligence formatting
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+          dart format --output=none --set-exit-if-changed `
+            lib/living_intelligence `
+            test/living_intelligence
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Require zero analyzer findings
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+          flutter analyze --fatal-infos *>&1 |
+            Tee-Object -FilePath analyze.log |
+            Out-Host
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run focused Living Intelligence tests
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+          flutter test --no-pub --reporter expanded test/living_intelligence *>&1 |
+            Tee-Object -FilePath living-intelligence-tests.log |
+            Out-Host
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run complete Flutter suite
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+          flutter test --no-pub --reporter expanded *>&1 |
+            Tee-Object -FilePath complete-tests.log |
+            Out-Host
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Neura-1.5-living-intelligence-evidence
+          path: |
+            ${{ github.workspace }}\source\analyze.log
+            ${{ github.workspace }}\source\living-intelligence-tests.log
+            ${{ github.workspace }}\source\complete-tests.log
+            ${{ github.workspace }}\source\pubspec.lock
+          if-no-files-found: warn
+          retention-days: 14

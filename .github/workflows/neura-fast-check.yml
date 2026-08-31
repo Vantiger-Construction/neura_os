@@ -12,6 +12,7 @@ on:
       - 'pubspec.lock'
       - 'analysis_options.yaml'
       - 'tools/Neura-FastCheck.ps1'
+      - 'tools/Neura-ReclaimCiDisk.ps1'
       - '.github/workflows/neura-fast-check.yml'
   workflow_dispatch:
 
@@ -20,14 +21,337 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate:
-    # Uses the owner's Windows computer instead of paid GitHub-hosted minutes.
+  reclaim-runner-space:
+    name: Select bounded CI output volumes
     runs-on: [self-hosted, Windows, X64, neura]
-    timeout-minutes: 45
+    timeout-minutes: 10
+    outputs:
+      flutter_volume: ${{ steps.select_volumes.outputs.flutter_volume }}
+      rust_volume: ${{ steps.select_volumes.outputs.rust_volume }}
 
     steps:
+      # This job intentionally uses no marketplace actions or repository
+      # checkout. It can recover and route output even when C: is nearly full.
+      - name: Reclaim generated data and select writable volumes
+        id: select_volumes
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          function Remove-GeneratedPath {
+            param([Parameter(Mandatory)][string]$Path)
+
+            if (-not (Test-Path -LiteralPath $Path)) {
+              return
+            }
+
+            Write-Host "Removing generated runner data: $Path"
+            try {
+              $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+              if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$Path"
+                if ($LASTEXITCODE -ne 0) {
+                  throw "rmdir exited with code $LASTEXITCODE"
+                }
+              } else {
+                Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+              }
+            } catch {
+              Write-Warning "Could not completely remove ${Path}: $($_.Exception.Message)"
+            }
+          }
+
+          function Test-CiVolume {
+            param([Parameter(Mandatory)][System.IO.DriveInfo]$Drive)
+
+            if (-not $Drive.IsReady -or
+                ($Drive.DriveType -ne [System.IO.DriveType]::Fixed -and
+                 $Drive.DriveType -ne [System.IO.DriveType]::Removable) -or
+                $Drive.AvailableFreeSpace -lt 3.0GB) {
+              return $false
+            }
+
+            $ownedRoot = Join-Path $Drive.RootDirectory.FullName 'neura-ci'
+            $probe = Join-Path $ownedRoot "probe-$env:GITHUB_RUN_ID"
+            try {
+              New-Item -ItemType Directory -Path $probe -Force | Out-Null
+              Set-Content -LiteralPath (Join-Path $probe 'write-test.txt') `
+                -Value 'Neura CI volume probe' `
+                -NoNewline
+              Remove-Item -LiteralPath $probe -Recurse -Force
+              return $true
+            } catch {
+              Write-Warning (
+                "Volume {0} is not writable by the runner: {1}" -f
+                $Drive.Name,
+                $_.Exception.Message
+              )
+              return $false
+            }
+          }
+
+          $runnerWork = Split-Path -Parent $env:RUNNER_TEMP
+          $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+          $systemDriveName = $systemRoot.TrimEnd('\').TrimEnd(':')
+          $systemBefore = (Get-PSDrive -Name $systemDriveName -ErrorAction Stop).Free
+
+          foreach ($repository in Get-ChildItem -LiteralPath $runnerWork -Directory -ErrorAction SilentlyContinue) {
+            if ($repository.Name.StartsWith('_')) {
+              continue
+            }
+            $checkout = Join-Path $repository.FullName $repository.Name
+            Remove-GeneratedPath -Path (Join-Path $checkout 'build')
+            Remove-GeneratedPath -Path (Join-Path $checkout 'rust\target')
+          }
+
+          foreach ($path in @(
+            (Join-Path $env:USERPROFILE '.gradle\caches'),
+            (Join-Path $env:USERPROFILE '.gradle\daemon'),
+            (Join-Path $env:USERPROFILE '.gradle\native'),
+            (Join-Path $env:USERPROFILE '.gradle\notifications')
+          )) {
+            Remove-GeneratedPath -Path $path
+          }
+
+          $cutoff = (Get-Date).AddHours(-2)
+          if (Test-Path -LiteralPath $env:RUNNER_TEMP -PathType Container) {
+            Get-ChildItem -LiteralPath $env:RUNNER_TEMP -Force -ErrorAction SilentlyContinue |
+              Where-Object { $_.LastWriteTime -lt $cutoff } |
+              ForEach-Object {
+                Remove-GeneratedPath -Path $_.FullName
+              }
+          }
+
+          # Remove only stale directories below Neura's own alternate-volume
+          # namespace. No other root-level data is inspected or changed.
+          foreach ($drive in [System.IO.DriveInfo]::GetDrives()) {
+            if (-not $drive.IsReady -or $drive.Name -eq $systemRoot) {
+              continue
+            }
+            $ownedRoot = Join-Path $drive.RootDirectory.FullName 'neura-ci'
+            if (Test-Path -LiteralPath $ownedRoot -PathType Container) {
+              Get-ChildItem -LiteralPath $ownedRoot -Directory -Force -ErrorAction SilentlyContinue |
+                Where-Object { $_.LastWriteTime -lt $cutoff } |
+                ForEach-Object {
+                  Remove-GeneratedPath -Path $_.FullName
+                }
+            }
+          }
+
+          [GC]::Collect()
+          [GC]::WaitForPendingFinalizers()
+
+          $systemAfter = (Get-PSDrive -Name $systemDriveName -ErrorAction Stop).Free
+          Write-Host (
+            "System volume {0} free: {1:N2} GB (reclaimed {2:N2} GB)" -f
+            $systemRoot,
+            ($systemAfter / 1GB),
+            ([Math]::Max(0, $systemAfter - $systemBefore) / 1GB)
+          )
+
+          # Prefer non-system volumes. When the runner has at least 6.0 GB free
+          # on its system volume, it may safely serve as one of the two bounded
+          # output volumes while retaining headroom for runner metadata.
+          if ($systemAfter -lt 0.25GB) {
+            throw (
+              "The runner needs at least 0.25 GB on {0} for runner metadata; " +
+              "only {1:N2} GB is free."
+            ) -f $systemRoot, ($systemAfter / 1GB)
+          }
+
+          $eligible = @(
+            [System.IO.DriveInfo]::GetDrives() |
+              Where-Object {
+                $_.IsReady -and
+                ($_.Name -ne $systemRoot -or $systemAfter -ge 6.0GB)
+              } |
+              Where-Object { Test-CiVolume -Drive $_ } |
+              Sort-Object -Property AvailableFreeSpace -Descending
+          )
+
+          foreach ($drive in $eligible) {
+            Write-Host (
+              "Writable CI volume: {0} free={1:N2} GB total={2:N2} GB" -f
+              $drive.Name,
+              ($drive.AvailableFreeSpace / 1GB),
+              ($drive.TotalSize / 1GB)
+            )
+          }
+
+          if ($eligible.Count -eq 0 -or
+              ($eligible.Count -eq 1 -and
+               $eligible[0].AvailableFreeSpace -lt 8.0GB)) {
+            throw (
+              'Validation requires either two writable volumes with at least ' +
+              '3.0 GB free each, or one shared writable volume with at least ' +
+              '8.0 GB free. The system volume is eligible only when at least ' +
+              '6.0 GB remains free.'
+            )
+          }
+
+          $rustDrive = $eligible[0]
+          $flutterDrive = if ($eligible.Count -ge 2) { $eligible[1] } else { $eligible[0] }
+          "rust_volume=$($rustDrive.RootDirectory.FullName)" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "flutter_volume=$($flutterDrive.RootDirectory.FullName)" |
+            Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+          Write-Host (
+            "Selected Rust output: {0}; Flutter/Windows output: {1}" -f
+            $rustDrive.Name,
+            $flutterDrive.Name
+          )
+
+  validate:
+    name: validate
+    needs: reclaim-runner-space
+    runs-on: [self-hosted, Windows, X64, neura]
+    timeout-minutes: 60
+    env:
+      NEURA_FLUTTER_VOLUME: ${{ needs.reclaim-runner-space.outputs.flutter_volume }}
+      NEURA_RUST_VOLUME: ${{ needs.reclaim-runner-space.outputs.rust_volume }}
+
+    steps:
+      - name: Route source checkout to an alternate volume
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          function Remove-LinkOrDirectory {
+            param([Parameter(Mandatory)][string]$Path)
+
+            if (-not (Test-Path -LiteralPath $Path)) {
+              return
+            }
+
+            $item = Get-Item -LiteralPath $Path -Force
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+              & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$Path"
+              if ($LASTEXITCODE -ne 0) {
+                throw "Could not remove junction $Path."
+              }
+            } else {
+              Remove-Item -LiteralPath $Path -Recurse -Force
+            }
+          }
+
+          $runKey = "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $workspaceTarget = Join-Path $env:NEURA_FLUTTER_VOLUME "neura-ci\$runKey\workspace"
+          $sourceLink = Join-Path $env:GITHUB_WORKSPACE 'source'
+
+          # The runner holds GITHUB_WORKSPACE open, so keep that root in place.
+          # Only the unheld source child becomes a junction to the alternate
+          # volume; actions/checkout writes through it.
+          Set-Location -LiteralPath $env:RUNNER_TEMP
+          Remove-LinkOrDirectory -Path $sourceLink
+          Remove-LinkOrDirectory -Path $workspaceTarget
+
+          New-Item -ItemType Directory -Path $workspaceTarget -Force | Out-Null
+          New-Item `
+            -ItemType Junction `
+            -Path $sourceLink `
+            -Target $workspaceTarget | Out-Null
+
+          @(
+            "NEURA_SOURCE_ROOT=$sourceLink",
+            "NEURA_WORKSPACE_ROOT=$workspaceTarget"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Source checkout junction: $sourceLink -> $workspaceTarget"
+
       - name: Check out source
         uses: actions/checkout@v4
+        with:
+          path: source
+
+      - name: Confirm bounded system-volume headroom
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $runnerWork = Split-Path -Parent $env:RUNNER_TEMP
+          $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+          $driveName = $systemRoot.TrimEnd('\').TrimEnd(':')
+          $free = (Get-PSDrive -Name $driveName -ErrorAction Stop).Free
+          Write-Host ("System volume {0} free after checkout: {1:N2} GB" -f $systemRoot, ($free / 1GB))
+          if ($free -lt 0.20GB) {
+            throw (
+              "The runner needs at least 0.20 GB on {0} for metadata and " +
+              "temporary step scripts; only {1:N2} GB is free."
+            ) -f $systemRoot, ($free / 1GB)
+          }
+
+      - name: Route generated output to alternate volumes
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          function Remove-LinkOrDirectory {
+            param([Parameter(Mandatory)][string]$Path)
+            if (-not (Test-Path -LiteralPath $Path)) {
+              return
+            }
+            $item = Get-Item -LiteralPath $Path -Force
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+              & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$Path"
+              if ($LASTEXITCODE -ne 0) {
+                throw "Could not remove junction $Path."
+              }
+            } else {
+              Remove-Item -LiteralPath $Path -Recurse -Force
+            }
+          }
+
+          $runKey = "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $flutterRoot = Join-Path $env:NEURA_FLUTTER_VOLUME "neura-ci\$runKey\flutter"
+          $rustRoot = Join-Path $env:NEURA_RUST_VOLUME "neura-ci\$runKey\rust"
+          $flutterBuild = Join-Path $flutterRoot 'build'
+          $rustTarget = Join-Path $rustRoot 'target'
+          $pubCache = Join-Path $flutterRoot 'pub-cache'
+          $nugetPackages = Join-Path $flutterRoot 'nuget-packages'
+          $tempRoot = Join-Path $flutterRoot 'temp'
+          $cargoHome = Join-Path $rustRoot 'cargo-home'
+
+          Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_SOURCE_ROOT 'build')
+          Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_SOURCE_ROOT 'rust\target')
+          Remove-LinkOrDirectory -Path $flutterRoot
+          Remove-LinkOrDirectory -Path $rustRoot
+
+          foreach ($path in @(
+            $flutterBuild,
+            $rustTarget,
+            $pubCache,
+            $nugetPackages,
+            $tempRoot,
+            $cargoHome
+          )) {
+            New-Item -ItemType Directory -Path $path -Force | Out-Null
+          }
+
+          New-Item `
+            -ItemType Junction `
+            -Path (Join-Path $env:NEURA_SOURCE_ROOT 'build') `
+            -Target $flutterBuild | Out-Null
+          New-Item `
+            -ItemType Junction `
+            -Path (Join-Path $env:NEURA_SOURCE_ROOT 'rust\target') `
+            -Target $rustTarget | Out-Null
+
+          @(
+            "NEURA_FLUTTER_ROOT=$flutterRoot",
+            "NEURA_RUST_ROOT=$rustRoot",
+            "NEURA_CARGO_HOME=$cargoHome",
+            "PUB_CACHE=$pubCache",
+            "CARGO_TARGET_DIR=$rustTarget",
+            "NUGET_PACKAGES=$nugetPackages",
+            "TEMP=$tempRoot",
+            "TMP=$tempRoot"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          Write-Host "Flutter/Windows build junction: $flutterBuild"
+          Write-Host "Rust target junction: $rustTarget"
+          Write-Host "Pub cache: $pubCache"
+          Write-Host "Cargo cache: $cargoHome"
 
       - name: Install Flutter
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
@@ -37,18 +361,10 @@ jobs:
           $flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
 
           if (-not (Test-Path -LiteralPath $flutterExe -PathType Leaf)) {
-            $stagingRoot = Join-Path $env:RUNNER_TEMP "flutter-$flutterVersion-$env:GITHUB_RUN_ID"
-            if (Test-Path -LiteralPath $stagingRoot) {
-              Remove-Item -LiteralPath $stagingRoot -Recurse -Force
-            }
-
-            git clone --depth 1 --branch $flutterVersion https://github.com/flutter/flutter.git $stagingRoot
-            if ($LASTEXITCODE -ne 0) {
-              throw "Flutter $flutterVersion clone failed with exit code $LASTEXITCODE."
-            }
-
-            New-Item -ItemType Directory -Path (Split-Path -Parent $flutterRoot) -Force | Out-Null
-            Move-Item -LiteralPath $stagingRoot -Destination $flutterRoot
+            throw (
+              "Pinned Flutter $flutterVersion is missing from the retained " +
+              "runner tool cache. Re-provision the toolchain before validation."
+            )
           }
 
           $flutterBin = Join-Path $flutterRoot 'bin'
@@ -63,54 +379,114 @@ jobs:
           }
 
       - name: Install Rust
-        shell: powershell
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
-          # Download and install rustup (Rust installer)
-          $rustupUrl = "https://win.rustup.rs/x86_64"
-          $rustupPath = "$env:TEMP\rustup-init.exe"
-          
-          Write-Host "Downloading Rust installer from $rustupUrl"
-          Invoke-WebRequest -Uri $rustupUrl -OutFile $rustupPath
-          
-          Write-Host "Installing Rust..."
-          & $rustupPath -y
-          
-          if ($LASTEXITCODE -ne 0) {
-            throw "Rust installation failed with exit code $LASTEXITCODE."
+          $ErrorActionPreference = 'Stop'
+          $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
+          $cargoExe = Join-Path $cargoBin 'cargo.exe'
+          $rustcExe = Join-Path $cargoBin 'rustc.exe'
+
+          if (-not (Test-Path -LiteralPath $cargoExe -PathType Leaf) -or
+              -not (Test-Path -LiteralPath $rustcExe -PathType Leaf)) {
+            throw 'The retained Rust toolchain is missing from the runner profile.'
           }
-          
-          # Add Rust to PATH for this session
-          $env:PATH += ";$env:USERPROFILE\.cargo\bin"
-          [System.Environment]::SetEnvironmentVariable("PATH", $env:PATH, [System.EnvironmentVariableTarget]::Process)
-          
-          # Verify installation
-          Write-Host "Verifying Rust installation..."
-          cargo --version
+
+          $cargoBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH = "$cargoBin;$env:PATH"
+
+          & $cargoExe --version
           if ($LASTEXITCODE -ne 0) {
             throw "cargo verification failed with exit code $LASTEXITCODE."
           }
-          
-          rustc --version
+          & $rustcExe --version
           if ($LASTEXITCODE -ne 0) {
             throw "rustc verification failed with exit code $LASTEXITCODE."
           }
 
-      - name: Verify local tools
-        # GitHub writes each run block to an unsigned temporary .ps1 file.
-        # Bypass applies only to this CI process and does not change machine
-        # or user execution-policy settings on the self-hosted runner.
+      - name: Route Cargo registry cache
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          New-Item -ItemType Directory -Path $env:NEURA_CARGO_HOME -Force | Out-Null
+          "CARGO_HOME=$env:NEURA_CARGO_HOME" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Locate or install NuGet
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $nugetExe = Get-ChildItem -LiteralPath $env:RUNNER_TOOL_CACHE `
+              -Filter 'nuget.exe' -File -Recurse -ErrorAction SilentlyContinue |
+            Sort-Object -Property FullName -Descending |
+            Select-Object -First 1
+
+          if (-not $nugetExe) {
+            $nugetRoot = Join-Path $env:NEURA_FLUTTER_ROOT 'nuget-tool'
+            New-Item -ItemType Directory -Path $nugetRoot -Force | Out-Null
+            $nugetPath = Join-Path $nugetRoot 'nuget.exe'
+            Invoke-WebRequest `
+              -Uri 'https://dist.nuget.org/win-x86-commandline/v7.9.0/nuget.exe' `
+              -OutFile $nugetPath
+            $nugetExe = Get-Item -LiteralPath $nugetPath
+          }
+
+          $nugetExe.Directory.FullName |
+            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH = "$($nugetExe.Directory.FullName);$env:PATH"
+          & $nugetExe.FullName help | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            throw "NuGet verification failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Verify local tools and output volumes
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           flutter --version
           dart --version
           git --version
-          # neura_swarm (rust/) needs cargo on this machine's PATH.
           cargo --version
-          # The authored Windows runner fetches C++/WinRT through NuGet.
-          nuget help | Select-Object -First 1
+          $nugetOutput = & nuget help 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            throw "nuget help failed with exit code $LASTEXITCODE."
+          }
+          Write-Host ($nugetOutput | Select-Object -First 1)
+
+          foreach ($path in @(
+            $env:NEURA_WORKSPACE_ROOT,
+            $env:NEURA_FLUTTER_ROOT,
+            $env:NEURA_RUST_ROOT
+          )) {
+            $root = [System.IO.Path]::GetPathRoot($path)
+            $driveName = $root.TrimEnd('\').TrimEnd(':')
+            $drive = Get-PSDrive -Name $driveName -ErrorAction Stop
+            Write-Host ("{0} free: {1:N2} GB" -f $root, ($drive.Free / 1GB))
+          }
 
       - name: Run optimized validation
-        shell: pwsh
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: '& "$env:NEURA_SOURCE_ROOT\tools\Neura-FastCheck.ps1" -Root $env:NEURA_SOURCE_ROOT -BuildWindows'
+
+      - name: Release generated build space
+        if: always()
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
-          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
-          ./tools/Neura-FastCheck.ps1 -Root . -BuildWindows
+          function Remove-LinkOrDirectory {
+            param([Parameter(Mandatory)][string]$Path)
+            if (-not (Test-Path -LiteralPath $Path)) {
+              return
+            }
+            $item = Get-Item -LiteralPath $Path -Force
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+              & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$Path"
+            } else {
+              Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+          Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_SOURCE_ROOT 'build')
+          Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_SOURCE_ROOT 'rust\target')
+
+          foreach ($path in @($env:NEURA_FLUTTER_ROOT, $env:NEURA_RUST_ROOT)) {
+            if (-not [string]::IsNullOrWhiteSpace($path)) {
+              Remove-LinkOrDirectory -Path $path
+            }
+          }

@@ -1,0 +1,92 @@
+name: Neura Runner Toolchain Inventory
+
+on:
+  push:
+    branches:
+      - agent/neura-living-intelligence-v1.5
+    paths:
+      - '.github/workflows/neura-runner-disk-inventory.yml'
+  pull_request:
+    branches:
+      - Neura
+    paths:
+      - '.github/workflows/neura-runner-disk-inventory.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    name: Read-only Android and Java inventory
+    runs-on: [self-hosted, Windows, X64, neura]
+    timeout-minutes: 10
+
+    steps:
+      # No checkout, marketplace action, install, or configuration change is
+      # performed. The report is safe to run while the system volume is low.
+      - name: Report runner toolchains and volumes
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Continue'
+
+          Write-Host '=== Environment ==='
+          foreach ($name in @(
+            'JAVA_HOME',
+            'ANDROID_HOME',
+            'ANDROID_SDK_ROOT',
+            'RUNNER_TEMP',
+            'RUNNER_TOOL_CACHE',
+            'USERPROFILE'
+          )) {
+            $value = [System.Environment]::GetEnvironmentVariable($name)
+            if ([string]::IsNullOrWhiteSpace($value)) {
+              $value = '<unset>'
+            }
+            Write-Host ("{0}={1}" -f $name, $value)
+          }
+
+          Write-Host '=== Command discovery ==='
+          foreach ($command in @('java', 'javac', 'sdkmanager', 'adb')) {
+            $resolved = Get-Command $command -ErrorAction SilentlyContinue
+            if ($resolved) {
+              Write-Host ("{0}: {1}" -f $command, $resolved.Source)
+            } else {
+              Write-Host ("{0}: not found" -f $command)
+            }
+          }
+
+          Write-Host '=== Java ==='
+          if (Get-Command java -ErrorAction SilentlyContinue) {
+            & java -version 2>&1 | ForEach-Object { Write-Host $_ }
+          } else {
+            Write-Host 'No Java runtime is on PATH.'
+          }
+
+          Write-Host '=== Flutter 3.44.7 Android diagnosis ==='
+          $flutterExe = Join-Path $env:RUNNER_TOOL_CACHE 'flutter\3.44.7\x64\bin\flutter.bat'
+          if (Test-Path -LiteralPath $flutterExe -PathType Leaf) {
+            & $flutterExe doctor -v 2>&1 | ForEach-Object { Write-Host $_ }
+            Write-Host ("flutter doctor exit code: {0}" -f $LASTEXITCODE)
+          } else {
+            Write-Host ("Pinned Flutter executable not found: {0}" -f $flutterExe)
+          }
+
+          Write-Host '=== Ready filesystem volumes ==='
+          foreach ($drive in [System.IO.DriveInfo]::GetDrives() |
+              Where-Object { $_.IsReady } |
+              Sort-Object -Property Name) {
+            Write-Host (
+              "{0} type={1} label='{2}' free={3:N2} GB used={4:N2} GB total={5:N2} GB" -f
+              $drive.Name,
+              $drive.DriveType,
+              $drive.VolumeLabel,
+              ($drive.AvailableFreeSpace / 1GB),
+              (($drive.TotalSize - $drive.AvailableFreeSpace) / 1GB),
+              ($drive.TotalSize / 1GB)
+            )
+          }
+
+          Write-Host '=== Inventory boundary ==='
+          Write-Host 'No files, tools, services, SDK settings, or volume settings were modified.'

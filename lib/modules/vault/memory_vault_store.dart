@@ -1,7 +1,8 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../core/app_log.dart';
 import 'memory_vault_models.dart';
 import '../../startup/neura_prefs_cache.dart';
@@ -15,26 +16,109 @@ class MemoryVaultStore {
   static const _keyPinLegacy = 'neura.vault.pin.v1';
   static const _keyPinVerifier = 'neura.vault.pinVerifier.v1';
   static const _keySeed = 'neura.vault.seed.v1';
+  static const _keySeedSecure = 'neura.vault.seed.secure.v2';
+  static const _keySeedSecureMarker = 'neura.vault.seed.secure.marker.v2';
   static const _keyData = 'neura.vault.data.v2';
 
   // Legacy v1 blob (XOR) is stored here. We transparently migrate it to v2.
   static const _keyDataLegacy = 'neura.vault.data.v1';
+  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
 
   static const _verifierPlain = '{"neura":"vault_ok"}';
 
   Future<String> _getOrCreateSeed() async {
     final sp = NeuraPrefsCache.prefs;
-    var seed = sp.getString(_keySeed);
-    if (seed != null && seed.trim().isNotEmpty) return seed;
-    final r = Random.secure();
-    final bytes = List<int>.generate(32, (_) => r.nextInt(256));
-    seed = base64UrlEncode(bytes);
-    await sp.setString(_keySeed, seed);
-    return seed;
+    final expectsSecureSeed = sp.getBool(_keySeedSecureMarker) == true;
+    String? secureSeed;
+    try {
+      secureSeed = (await _secureStorage.read(key: _keySeedSecure))?.trim();
+    } catch (e, st) {
+      await AppLog.instance.caught('vault_secure_seed_read_failed', e, st);
+      if (expectsSecureSeed) {
+        throw StateError(
+          'The OS credential store is unavailable; refusing to replace the '
+          'existing vault key.',
+        );
+      }
+    }
+
+    if (expectsSecureSeed) {
+      if (!_isValidSeed(secureSeed)) {
+        throw StateError(
+          'The secure vault key is missing or invalid; refusing to unlock '
+          'existing vault data.',
+        );
+      }
+      return secureSeed!;
+    }
+
+    final legacySeed = sp.getString(_keySeed)?.trim();
+    if (_isValidSeed(legacySeed)) {
+      try {
+        await _secureStorage.write(key: _keySeedSecure, value: legacySeed!);
+        final verified =
+            (await _secureStorage.read(key: _keySeedSecure))?.trim();
+        if (verified != legacySeed) {
+          throw StateError('The secure vault key could not be verified.');
+        }
+        await sp.setBool(_keySeedSecureMarker, true);
+        await sp.remove(_keySeed);
+        return verified!;
+      } catch (e, st) {
+        await AppLog.instance.caught('vault_secure_seed_migration_failed', e, st);
+        throw StateError(
+          'The OS credential store is unavailable; refusing to continue '
+          'with an unprotected vault seed.',
+        );
+      }
+    }
+
+    // A secure write may have completed immediately before its marker.
+    if (_isValidSeed(secureSeed)) {
+      await sp.setBool(_keySeedSecureMarker, true);
+      await sp.remove(_keySeed);
+      return secureSeed!;
+    }
+
+    final bytes = List<int>.generate(32, (_) => Random.secure().nextInt(256));
+    final generated = base64UrlEncode(bytes);
+    try {
+      await _secureStorage.write(key: _keySeedSecure, value: generated);
+      final verified =
+          (await _secureStorage.read(key: _keySeedSecure))?.trim();
+      if (verified != generated) {
+        throw StateError('The secure vault key could not be verified.');
+      }
+      await sp.setBool(_keySeedSecureMarker, true);
+      await sp.remove(_keySeed);
+      return verified!;
+    } catch (e, st) {
+      try {
+        await _secureStorage.delete(key: _keySeedSecure);
+      } catch (_) {
+        // Preserve the original failure; the next attempt still fails closed.
+      }
+      await AppLog.instance.caught('vault_secure_seed_create_failed', e, st);
+      Error.throwWithStackTrace(
+        StateError('The OS credential store could not verify the vault key.'),
+        st,
+      );
+    }
   }
 
-  Future<SecretKey> _deriveKey(
-      {required String pin, required String seed}) async {
+  static bool _isValidSeed(String? value) {
+    if (value == null || value.isEmpty) return false;
+    try {
+      return base64Url.decode(value).length == 32;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<SecretKey> _deriveKey({
+    required String pin,
+    required String seed,
+  }) async {
     // PBKDF2: derive a 256-bit key from the PIN with a per-device salt.
     final pbkdf2 = Pbkdf2(
       macAlgorithm: Hmac.sha256(),
@@ -125,8 +209,9 @@ class MemoryVaultStore {
     if (legacyPin != null && legacyPin.trim().isNotEmpty) {
       await configurePin(legacyPin.trim());
       await sp.remove(_keyPinLegacy);
-      await AppLog.instance.info('vault_event',
-          {'msg': 'Vault PIN migrated to verifier (no PIN stored).'});
+      await AppLog.instance.info('vault_event', {
+        'msg': 'Vault PIN migrated to verifier (no PIN stored).',
+      });
     }
   }
 
@@ -192,20 +277,23 @@ class MemoryVaultStore {
     await sp.setString(_keyData, enc);
   }
 
-  Future<void> add(
-      {required String pin,
-      required String title,
-      required String body,
-      List<String> tags = const []}) async {
+  Future<void> add({
+    required String pin,
+    required String title,
+    required String body,
+    List<String> tags = const [],
+  }) async {
     final items = await getItems(pin: pin);
     final id = 'v_${DateTime.now().millisecondsSinceEpoch}';
-    items.add(VaultItem(
-      id: id,
-      createdAt: DateTime.now(),
-      title: title,
-      body: body,
-      tags: tags,
-    ));
+    items.add(
+      VaultItem(
+        id: id,
+        createdAt: DateTime.now(),
+        title: title,
+        body: body,
+        tags: tags,
+      ),
+    );
     await _save(items, pin: pin);
   }
 
@@ -220,7 +308,19 @@ class MemoryVaultStore {
     await sp.remove(_keyData);
     await sp.remove(_keyDataLegacy);
     await sp.remove(_keyPinVerifier);
-    // Keeping _keySeed is fine, but wiping it is also ok.
-    // We'll keep it to avoid breaking older entries if the user reconfigures with the same PIN.
+    await _secureStorage.delete(key: _keySeedSecure);
+    final remaining = (await _secureStorage.read(key: _keySeedSecure))?.trim();
+    if (remaining != null && remaining.isNotEmpty) {
+      throw StateError('The secure vault key could not be deleted.');
+    }
+    await sp.remove(_keySeedSecureMarker);
+    await sp.remove(_keySeed);
+    if (sp.containsKey(_keySeedSecureMarker) ||
+        sp.containsKey(_keySeed) ||
+        sp.containsKey(_keyPinVerifier) ||
+        sp.containsKey(_keyData) ||
+        sp.containsKey(_keyDataLegacy)) {
+      throw StateError('Vault deletion could not be verified.');
+    }
   }
 }
