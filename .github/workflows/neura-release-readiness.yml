@@ -40,7 +40,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
       - name: Provision pinned PowerShell Core
-        shell: powershell
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         run: |
           $ErrorActionPreference = 'Stop'
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -100,7 +100,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
       - name: Provision pinned PowerShell Core
-        shell: powershell
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         run: |
           $ErrorActionPreference = 'Stop'
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
