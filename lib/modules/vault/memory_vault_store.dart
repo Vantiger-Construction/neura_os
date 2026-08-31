@@ -285,13 +285,15 @@ class MemoryVaultStore {
   }) async {
     final items = await getItems(pin: pin);
     final id = 'v_${DateTime.now().millisecondsSinceEpoch}';
-    items.add(VaultItem(
-      id: id,
-      createdAt: DateTime.now(),
-      title: title,
-      body: body,
-      tags: tags,
-    ));
+    items.add(
+      VaultItem(
+        id: id,
+        createdAt: DateTime.now(),
+        title: title,
+        body: body,
+        tags: tags,
+      ),
+    );
     await _save(items, pin: pin);
   }
 

@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'cloud_inference_consent.dart';
-import 'compassionate_response_policy.dart';
 import 'neura_safety_policy.dart';
 
 enum NeuraModelPurpose {
@@ -40,9 +38,6 @@ class NeuraModelRequest {
     this.visibleContext = '',
     Iterable<String> permittedDataLabels = const <String>[],
     this.containsPrivateRecords = false,
-    this.contextCapsuleId = 'personal',
-    this.cloudConsentPermitId,
-    this.responseGuidance,
   }) : permittedDataLabels = List<String>.unmodifiable(permittedDataLabels);
 
   final NeuraModelPurpose purpose;
@@ -50,9 +45,6 @@ class NeuraModelRequest {
   final String visibleContext;
   final List<String> permittedDataLabels;
   final bool containsPrivateRecords;
-  final String contextCapsuleId;
-  final String? cloudConsentPermitId;
-  final NeuraCompassionateResponseGuidance? responseGuidance;
   final NeuraSafetyContext safetyContext;
 }
 
@@ -185,16 +177,10 @@ class NeuraLocalModelRouter {
   NeuraLocalModelRouter({
     required this.safetyPolicy,
     Iterable<NeuraModelBackend> backends = const <NeuraModelBackend>[],
-    NeuraCloudInferenceConsentRegistry? cloudConsentRegistry,
     this.enabled = false,
-  })  : _backends = List<NeuraModelBackend>.unmodifiable(backends),
-        cloudConsentRegistry = cloudConsentRegistry ??
-            NeuraCloudInferenceConsentRegistry(
-              safetyPolicy: safetyPolicy,
-            );
+  }) : _backends = List<NeuraModelBackend>.unmodifiable(backends);
 
   final NeuraLivingSafetyPolicy safetyPolicy;
-  final NeuraCloudInferenceConsentRegistry cloudConsentRegistry;
   final List<NeuraModelBackend> _backends;
   bool enabled;
 
@@ -208,7 +194,12 @@ class NeuraLocalModelRouter {
       throw StateError('Private Neural Core is disabled.');
     }
 
-    _requireInferenceAllowed(request);
+    if (safetyPolicy.safeModeActive || request.safetyContext.recoveryMode) {
+      throw StateError(
+        'Model inference is blocked by Safe Mode or Recovery mode.',
+      );
+    }
+
     cancellation.throwIfCancelled();
 
     final local = await _firstAvailable(
@@ -216,23 +207,15 @@ class NeuraLocalModelRouter {
     );
 
     NeuraModelBackend? selected = local;
-    if (selected == null &&
-        safetyPolicy.canUseCloudInference(request.safetyContext) &&
-        !request.containsPrivateRecords) {
-      final consent = _validateCloudConsent(request);
-      if (!consent.allowed) {
-        throw StateError(consent.reason);
-      }
+    if (selected == null) {
+      final cloudAllowed =
+          safetyPolicy.canUseCloudInference(request.safetyContext) &&
+              !request.containsPrivateRecords;
 
-      final cloud = await _firstAvailable(
-        _backends.where((backend) => !backend.runsLocally),
-      );
-      if (cloud != null) {
-        final consumed = _consumeCloudConsent(request);
-        if (!consumed.allowed) {
-          throw StateError(consumed.reason);
-        }
-        selected = cloud;
+      if (cloudAllowed) {
+        selected = await _firstAvailable(
+          _backends.where((backend) => !backend.runsLocally),
+        );
       }
     }
 
@@ -247,43 +230,8 @@ class NeuraLocalModelRouter {
       cancellation: cancellation,
     )) {
       cancellation.throwIfCancelled();
-      _requireInferenceAllowed(request);
       yield delta;
     }
-  }
-
-  void _requireInferenceAllowed(NeuraModelRequest request) {
-    if (safetyPolicy.safeModeActive || request.safetyContext.recoveryMode) {
-      throw StateError(
-        'Model inference is blocked by Safe Mode or Recovery mode.',
-      );
-    }
-  }
-
-  NeuraCloudInferenceConsentDecision _validateCloudConsent(
-    NeuraModelRequest request,
-  ) {
-    return cloudConsentRegistry.validate(
-      permitId: request.cloudConsentPermitId,
-      purposeId: request.purpose.name,
-      contextCapsuleId: request.contextCapsuleId,
-      requestedDataLabels: request.permittedDataLabels,
-      containsPrivateRecords: request.containsPrivateRecords,
-      context: request.safetyContext,
-    );
-  }
-
-  NeuraCloudInferenceConsentDecision _consumeCloudConsent(
-    NeuraModelRequest request,
-  ) {
-    return cloudConsentRegistry.validateAndConsume(
-      permitId: request.cloudConsentPermitId,
-      purposeId: request.purpose.name,
-      contextCapsuleId: request.contextCapsuleId,
-      requestedDataLabels: request.permittedDataLabels,
-      containsPrivateRecords: request.containsPrivateRecords,
-      context: request.safetyContext,
-    );
   }
 
   Future<NeuraModelBackend?> _firstAvailable(

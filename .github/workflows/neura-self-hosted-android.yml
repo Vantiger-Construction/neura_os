@@ -115,8 +115,9 @@ jobs:
               'volume is eligible only when at least 6.0 GB remains free.')
           }
 
-          $sdkDrive = $eligible[0]
-          $buildDrive = if ($eligible.Count -ge 2) { $eligible[1] } else { $eligible[0] }
+          # APK/Gradle output is the heavier workload; reserve the largest volume for it.
+          $buildDrive = $eligible[0]
+          $sdkDrive = if ($eligible.Count -ge 2) { $eligible[1] } else { $eligible[0] }
           @(
             "NEURA_ANDROID_SDK_VOLUME=$($sdkDrive.RootDirectory.FullName)",
             "NEURA_ANDROID_BUILD_VOLUME=$($buildDrive.RootDirectory.FullName)",

@@ -1,8 +1,5 @@
 export 'android_intelligence_bridge.dart';
-export 'cloud_inference_consent.dart';
-export 'compassionate_response_policy.dart';
 export 'context_capsules.dart';
-export 'conversation_turn_coordinator.dart';
 export 'device_continuity.dart';
 export 'future_paths_simulator.dart';
 export 'neura_living_intelligence_runtime.dart';
@@ -10,8 +7,6 @@ export 'neura_safety_policy.dart';
 export 'presence_engine.dart';
 export 'private_neural_core.dart';
 export 'reflex_safety_layer.dart';
-export 'safety/action_loom_fresh_approval_gate.dart';
-export 'safety/fresh_approval_lease.dart';
 export 'self_healing_runtime.dart';
 export 'signed_skill_capsules.dart';
 export 'trust_lens.dart';
