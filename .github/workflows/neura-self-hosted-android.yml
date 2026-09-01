@@ -67,8 +67,15 @@ jobs:
             }
           }
 
-          $runnerWork = Split-Path -Parent $env:RUNNER_TEMP
+          $runnerTemp = $env:RUNNER_TEMP
+          $runnerWork = Split-Path -Parent $runnerTemp
           $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+          if (-not $systemRoot -or -not (Test-Path -LiteralPath $systemRoot)) {
+            $runnerTemp = [System.IO.Path]::GetTempPath().TrimEnd('\')
+            $runnerWork = Split-Path -Parent $runnerTemp
+            $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+            Write-Warning "RUNNER_TEMP points to an unavailable volume; using $runnerTemp for runner-owned cleanup."
+          }
           $cutoff = (Get-Date).AddHours(-2)
 
           foreach ($repository in Get-ChildItem -LiteralPath $runnerWork -Directory -ErrorAction SilentlyContinue) {
@@ -89,7 +96,11 @@ jobs:
           }
 
           $systemDriveName = $systemRoot.TrimEnd('\').TrimEnd(':')
-          $systemFree = (Get-PSDrive -Name $systemDriveName -ErrorAction Stop).Free
+          $systemDrive = Get-PSDrive -Name $systemDriveName -ErrorAction SilentlyContinue
+          if (-not $systemDrive) {
+            throw "Unable to inspect the system volume $systemRoot."
+          }
+          $systemFree = $systemDrive.Free
           if ($systemFree -lt 0.25GB) {
             throw "The runner needs 0.25 GB on $systemRoot for metadata; only $([Math]::Round($systemFree / 1GB, 2)) GB is free."
           }
@@ -146,7 +157,7 @@ jobs:
 
           $sourceLink = Join-Path $env:GITHUB_WORKSPACE 'source'
           $workspaceTarget = Join-Path $env:NEURA_ANDROID_BUILD_VOLUME "neura-ci\$env:NEURA_ANDROID_RUN_KEY\workspace"
-          Set-Location -LiteralPath $env:RUNNER_TEMP
+          Set-Location -LiteralPath $runnerTemp
           Remove-LinkOrDirectory -Path $sourceLink
           Remove-LinkOrDirectory -Path $workspaceTarget
           New-Item -ItemType Directory -Path $workspaceTarget -Force | Out-Null

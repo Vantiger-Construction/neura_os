@@ -57,7 +57,15 @@ jobs:
               ForEach-Object { Remove-GeneratedPath -Path $_.FullName }
           }
 
-          $runnerWork = Split-Path -Parent $env:RUNNER_TEMP
+          $runnerTemp = $env:RUNNER_TEMP
+          $runnerWork = Split-Path -Parent $runnerTemp
+          $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+          if (-not $systemRoot -or -not (Test-Path -LiteralPath $systemRoot)) {
+            $runnerTemp = [System.IO.Path]::GetTempPath().TrimEnd('\')
+            $runnerWork = Split-Path -Parent $runnerTemp
+            $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+            Write-Warning "RUNNER_TEMP points to an unavailable volume; using $runnerTemp for runner-owned cleanup."
+          }
           $cutoff = (Get-Date).AddHours(-2)
 
           # GitHub action downloads are disposable runner cache content.
@@ -79,7 +87,7 @@ jobs:
           }
 
           # RUNNER_TEMP is runner-owned. Keep recent work for active jobs.
-          Remove-StaleChildren -Root $env:RUNNER_TEMP -Before $cutoff
+          Remove-StaleChildren -Root $runnerTemp -Before $cutoff
 
           # These are disposable Gradle caches; the pinned tool cache is kept.
           $gradleRoot = Join-Path $env:USERPROFILE '.gradle'
@@ -91,9 +99,12 @@ jobs:
           $runnerRoot = Split-Path -Parent $runnerWork
           Remove-StaleChildren -Root (Join-Path $runnerRoot '_diag') -Before (Get-Date).AddDays(-7)
 
-          $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
           $systemDriveName = $systemRoot.TrimEnd('\\').TrimEnd(':')
-          $free = (Get-PSDrive -Name $systemDriveName -ErrorAction Stop).Free
+          $systemDrive = Get-PSDrive -Name $systemDriveName -ErrorAction SilentlyContinue
+          if (-not $systemDrive) {
+            throw "Unable to inspect the system volume $systemRoot."
+          }
+          $free = $systemDrive.Free
           Write-Host ("System volume {0} free after cleanup: {1:N2} GB" -f $systemRoot, ($free / 1GB))
           if ($free -lt 0.25GB) {
             throw ("Runner still has less than 0.25 GB free on {0}. Manual cleanup is required before validation can run." -f $systemRoot)
