@@ -145,26 +145,27 @@ void main() {
     test(
       'wipe requires shutdown, deletion, key destruction, and verification',
       () {
-      const complete = EncryptedMemoryWipeContract(
-        stopWritersFirst: true,
-        deleteCiphertext: true,
-        destroyKey: true,
-        verifyCiphertextDeletion: true,
-        verifyKeyDeletion: true,
-      );
-      expect(complete.validate, returnsNormally);
+        const complete = EncryptedMemoryWipeContract(
+          stopWritersFirst: true,
+          deleteCiphertext: true,
+          destroyKey: true,
+          verifyCiphertextDeletion: true,
+          verifyKeyDeletion: true,
+        );
+        expect(complete.validate, returnsNormally);
 
-      const incomplete = EncryptedMemoryWipeContract(
-        stopWritersFirst: true,
-        deleteCiphertext: true,
-        destroyKey: true,
-        verifyCiphertextDeletion: false,
-        verifyKeyDeletion: true,
-      );
-      expect(
-        incomplete.validate,
-        throwsA(isA<EncryptedMemoryPolicyViolation>()),
-      );
-    });
+        const incomplete = EncryptedMemoryWipeContract(
+          stopWritersFirst: true,
+          deleteCiphertext: true,
+          destroyKey: true,
+          verifyCiphertextDeletion: false,
+          verifyKeyDeletion: true,
+        );
+        expect(
+          incomplete.validate,
+          throwsA(isA<EncryptedMemoryPolicyViolation>()),
+        );
+      },
+    );
   });
 }
