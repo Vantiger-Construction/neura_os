@@ -142,7 +142,9 @@ void main() {
       );
     });
 
-    test('wipe requires shutdown, deletion, key destruction, and verification', () {
+    test(
+      'wipe requires shutdown, deletion, key destruction, and verification',
+      () {
       const complete = EncryptedMemoryWipeContract(
         stopWritersFirst: true,
         deleteCiphertext: true,

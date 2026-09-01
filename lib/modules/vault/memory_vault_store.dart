@@ -65,7 +65,8 @@ class MemoryVaultStore {
         await sp.remove(_keySeed);
         return verified!;
       } catch (e, st) {
-        await AppLog.instance.caught('vault_secure_seed_migration_failed', e, st);
+        await AppLog.instance
+            .caught('vault_secure_seed_migration_failed', e, st);
         throw StateError(
           'The OS credential store is unavailable; refusing to continue '
           'with an unprotected vault seed.',

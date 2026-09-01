@@ -157,7 +157,12 @@ jobs:
 
           $sourceLink = Join-Path $env:GITHUB_WORKSPACE 'source'
           $workspaceTarget = Join-Path $env:NEURA_ANDROID_BUILD_VOLUME "neura-ci\$env:NEURA_ANDROID_RUN_KEY\workspace"
-          Set-Location -LiteralPath $runnerTemp
+          $cleanupTemp = [System.Environment]::GetEnvironmentVariable('RUNNER_TEMP')
+          if ([string]::IsNullOrWhiteSpace($cleanupTemp) -or
+              -not (Test-Path -LiteralPath $cleanupTemp)) {
+            $cleanupTemp = [System.IO.Path]::GetTempPath().TrimEnd('\')
+          }
+          Set-Location -LiteralPath $cleanupTemp
           Remove-LinkOrDirectory -Path $sourceLink
           Remove-LinkOrDirectory -Path $workspaceTarget
           New-Item -ItemType Directory -Path $workspaceTarget -Force | Out-Null

@@ -252,7 +252,12 @@ jobs:
         if: always()
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
-          Set-Location -LiteralPath $runnerTemp
+          $cleanupTemp = [System.Environment]::GetEnvironmentVariable('RUNNER_TEMP')
+          if ([string]::IsNullOrWhiteSpace($cleanupTemp) -or
+              -not (Test-Path -LiteralPath $cleanupTemp)) {
+            $cleanupTemp = [System.IO.Path]::GetTempPath().TrimEnd('\')
+          }
+          Set-Location -LiteralPath $cleanupTemp
           $sourceLink = Join-Path $env:GITHUB_WORKSPACE 'source'
           if (Test-Path -LiteralPath $sourceLink) {
             & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$sourceLink"
