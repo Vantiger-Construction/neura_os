@@ -42,7 +42,7 @@ jobs:
               }
               Write-Host "Removed runner-owned generated path: $Path"
             } catch {
-              Write-Warning "Could not remove $Path: $($_.Exception.Message)"
+              Write-Warning "Could not remove ${Path}: $($_.Exception.Message)"
             }
           }
 
