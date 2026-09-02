@@ -56,8 +56,9 @@ class MemoryVaultStore {
     if (_isValidSeed(legacySeed)) {
       try {
         await _secureStorage.write(key: _keySeedSecure, value: legacySeed!);
-        final verified =
-            (await _secureStorage.read(key: _keySeedSecure))?.trim();
+        final verified = (await _secureStorage.read(
+          key: _keySeedSecure,
+        ))?.trim();
         if (verified != legacySeed) {
           throw StateError('The secure vault key could not be verified.');
         }
@@ -65,8 +66,11 @@ class MemoryVaultStore {
         await sp.remove(_keySeed);
         return verified!;
       } catch (e, st) {
-        await AppLog.instance
-            .caught('vault_secure_seed_migration_failed', e, st);
+        await AppLog.instance.caught(
+          'vault_secure_seed_migration_failed',
+          e,
+          st,
+        );
         throw StateError(
           'The OS credential store is unavailable; refusing to continue '
           'with an unprotected vault seed.',
@@ -85,8 +89,7 @@ class MemoryVaultStore {
     final generated = base64UrlEncode(bytes);
     try {
       await _secureStorage.write(key: _keySeedSecure, value: generated);
-      final verified =
-          (await _secureStorage.read(key: _keySeedSecure))?.trim();
+      final verified = (await _secureStorage.read(key: _keySeedSecure))?.trim();
       if (verified != generated) {
         throw StateError('The secure vault key could not be verified.');
       }
@@ -196,8 +199,10 @@ class MemoryVaultStore {
     final raw = base64Url.decode(obf);
     if (pin.trim().isEmpty) return utf8.decode(raw);
     final key = utf8.encode(pin);
-    final out =
-        List<int>.generate(raw.length, (i) => raw[i] ^ key[i % key.length]);
+    final out = List<int>.generate(
+      raw.length,
+      (i) => raw[i] ^ key[i % key.length],
+    );
     return utf8.decode(out);
   }
 
@@ -254,14 +259,14 @@ class MemoryVaultStore {
       final legacy = sp.getString(_keyDataLegacy);
       if (legacy != null && legacy.trim().isNotEmpty) {
         final clear = await _decryptJson(legacy, pin: pin);
-        final items =
-            clear == null ? <VaultItem>[] : decodeVaultItems(clear);
+        final items = clear == null ? <VaultItem>[] : decodeVaultItems(clear);
         // Migrate to v2.
         final enc = await _encryptJson(encodeVaultItems(items), pin: pin);
         await sp.setString(_keyData, enc);
         await sp.remove(_keyDataLegacy);
-        await AppLog.instance
-            .info('vault_event', {'msg': 'Vault migrated to AES-GCM (v2).'});
+        await AppLog.instance.info('vault_event', {
+          'msg': 'Vault migrated to AES-GCM (v2).',
+        });
         return items;
       }
 
