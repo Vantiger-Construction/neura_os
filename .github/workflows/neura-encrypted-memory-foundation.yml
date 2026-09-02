@@ -4,11 +4,13 @@ on:
   pull_request:
     branches:
       - agent/neura-release-readiness-v1.5.2
+      - agent/neura-consent-turn-safety-v1.5.1
     paths:
       - ".github/workflows/neura-encrypted-memory-foundation.yml"
       - "lib/encrypted_memory/**"
       - "test/encrypted_memory/**"
       - "docs/ENCRYPTED_MEMORY_FOUNDATION_v1.6.md"
+      - "docs/ENCRYPTED_MEMORY_SESSION_ADAPTER_v1.6.1.md"
   workflow_dispatch:
 
 permissions:
