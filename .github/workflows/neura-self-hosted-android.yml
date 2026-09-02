@@ -240,8 +240,28 @@ jobs:
           $archive = Join-Path $env:NEURA_ANDROID_TOOL_ROOT 'temurin17.zip'
           $uri = 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.19%2B10/OpenJDK17U-jdk_x64_windows_hotspot_17.0.19_10.zip'
           $expected = 'b5b235c48adf6a081874b812c630b9f4b5f637b7a5ed18b9174d08a41ec4c235'
+          
+          # Retry logic for download
+          $maxRetries = 3
+          $retryCount = 0
+          $downloadSuccess = $false
+          
+          while ($retryCount -lt $maxRetries -and -not $downloadSuccess) {
+            try {
+              Write-Host "Downloading Temurin JDK (attempt $($retryCount + 1)/$maxRetries)..."
+              Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 300
+              $downloadSuccess = $true
+            } catch {
+              $retryCount++
+              if ($retryCount -lt $maxRetries) {
+                Write-Warning "Download failed: $($_.Exception.Message). Retrying in 10 seconds..."
+                Start-Sleep -Seconds 10
+              } else {
+                throw "Failed to download Temurin JDK after $maxRetries attempts: $($_.Exception.Message)"
+              }
+            }
+          }
 
-          Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive
           $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -ne $expected) { throw "Temurin JDK checksum mismatch: $actual" }
           Expand-Archive -LiteralPath $archive -DestinationPath $env:NEURA_ANDROID_JDK_ROOT -Force
@@ -270,8 +290,28 @@ jobs:
           $extract = Join-Path $env:NEURA_ANDROID_TOOL_ROOT '_extract'
           $uri = 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip'
           $expected = '90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a'
+          
+          # Retry logic for download
+          $maxRetries = 3
+          $retryCount = 0
+          $downloadSuccess = $false
+          
+          while ($retryCount -lt $maxRetries -and -not $downloadSuccess) {
+            try {
+              Write-Host "Downloading Android SDK command-line tools (attempt $($retryCount + 1)/$maxRetries)..."
+              Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 300
+              $downloadSuccess = $true
+            } catch {
+              $retryCount++
+              if ($retryCount -lt $maxRetries) {
+                Write-Warning "Download failed: $($_.Exception.Message). Retrying in 10 seconds..."
+                Start-Sleep -Seconds 10
+              } else {
+                throw "Failed to download Android SDK command-line tools after $maxRetries attempts: $($_.Exception.Message)"
+              }
+            }
+          }
 
-          Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive
           $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -ne $expected) { throw "Android command-line tools checksum mismatch: $actual" }
           Expand-Archive -LiteralPath $archive -DestinationPath $extract -Force
@@ -434,3 +474,4 @@ jobs:
               Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
             }
           }
+
