@@ -160,6 +160,26 @@ jobs:
             Out-Host
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Free disk space before upload
+        if: always()
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Continue'
+
+          Write-Host "Disk space before cleanup:"
+          Get-PSDrive -Name C | Select-Object Name, Used, Free
+          
+          Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+          
+          # Remove build and dependency artifacts
+          if (Test-Path '.dart_tool') { Remove-Item -LiteralPath '.dart_tool' -Recurse -Force -ErrorAction Continue }
+          if (Test-Path 'build') { Remove-Item -LiteralPath 'build' -Recurse -Force -ErrorAction Continue }
+          if (Test-Path '.packages') { Remove-Item -LiteralPath '.packages' -Force -ErrorAction Continue }
+          
+          Write-Host "Disk space after cleanup:"
+          Get-PSDrive -Name C | Select-Object Name, Used, Free
+
       - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@v4

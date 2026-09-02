@@ -66,11 +66,8 @@ class MemoryVaultStore {
         await sp.remove(_keySeed);
         return verified!;
       } catch (e, st) {
-        await AppLog.instance.caught(
-          'vault_secure_seed_migration_failed',
-          e,
-          st,
-        );
+        await AppLog.instance
+            .caught('vault_secure_seed_migration_failed', e, st);
         throw StateError(
           'The OS credential store is unavailable; refusing to continue '
           'with an unprotected vault seed.',
@@ -259,7 +256,8 @@ class MemoryVaultStore {
       final legacy = sp.getString(_keyDataLegacy);
       if (legacy != null && legacy.trim().isNotEmpty) {
         final clear = await _decryptJson(legacy, pin: pin);
-        final items = clear == null ? <VaultItem>[] : decodeVaultItems(clear);
+        final items =
+            clear == null ? <VaultItem>[] : decodeVaultItems(clear);
         // Migrate to v2.
         final enc = await _encryptJson(encodeVaultItems(items), pin: pin);
         await sp.setString(_keyData, enc);
