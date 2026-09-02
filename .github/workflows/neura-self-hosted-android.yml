@@ -241,7 +241,32 @@ jobs:
           $uri = 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.19%2B10/OpenJDK17U-jdk_x64_windows_hotspot_17.0.19_10.zip'
           $expected = 'b5b235c48adf6a081874b812c630b9f4b5f637b7a5ed18b9174d08a41ec4c235'
 
-          Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive
+          $downloaded = $false
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            $partial = "$archive.download-$attempt"
+            try {
+              Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
+              Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $partial -Headers @{ 'User-Agent' = 'neura-ci-android' }
+              $actual = (Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash.ToLowerInvariant()
+              if ($actual -ne $expected) {
+                throw "Temurin JDK checksum mismatch: $actual"
+              }
+              Move-Item -LiteralPath $partial -Destination $archive -Force
+              $downloaded = $true
+              break
+            } catch {
+              Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue
+              if ($attempt -eq 3) {
+                throw "Temurin JDK download failed after $attempt attempts: $($_.Exception.Message)"
+              }
+              $delay = 10 * $attempt
+              Write-Warning "Temurin JDK download attempt $attempt failed: $($_.Exception.Message). Retrying in $delay seconds."
+              Start-Sleep -Seconds $delay
+            }
+          }
+          if (-not $downloaded -or -not (Test-Path -LiteralPath $archive -PathType Leaf)) {
+            throw 'Temurin JDK archive was not downloaded.'
+          }
           $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -ne $expected) { throw "Temurin JDK checksum mismatch: $actual" }
           Expand-Archive -LiteralPath $archive -DestinationPath $env:NEURA_ANDROID_JDK_ROOT -Force
