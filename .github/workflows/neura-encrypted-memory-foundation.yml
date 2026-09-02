@@ -32,7 +32,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
       - name: Use retained Flutter 3.44.7
-        shell: powershell
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           $ErrorActionPreference = 'Stop'
           $flutter = Get-Command flutter -ErrorAction Stop
@@ -41,14 +41,14 @@ jobs:
             throw "Expected retained Flutter 3.44.7; found: $version"
           }
       - name: Restore dependencies
-        shell: powershell
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: flutter pub get
       - name: Verify canonical formatting
-        shell: powershell
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: dart format --output=none --set-exit-if-changed lib/encrypted_memory test/encrypted_memory
       - name: Require zero analyzer findings in foundation
-        shell: powershell
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: flutter analyze --fatal-infos lib/encrypted_memory test/encrypted_memory
       - name: Run encrypted memory contract tests
-        shell: powershell
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: flutter test --no-pub --reporter expanded test/encrypted_memory
