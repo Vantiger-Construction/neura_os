@@ -393,7 +393,10 @@ class MemoryVaultStore {
 
     // Decrypt items with old PIN and re-encrypt with new PIN.
     final items = await getItems(pin: oldPinTrim);
-    final encData = await _encryptJson(encodeVaultItems(items), pin: newPinTrim);
+    final encData = await _encryptJson(
+      encodeVaultItems(items),
+      pin: newPinTrim,
+    );
     final encVerifier = await _encryptJson(_verifierPlain, pin: newPinTrim);
 
     // Persist atomically as much as possible
