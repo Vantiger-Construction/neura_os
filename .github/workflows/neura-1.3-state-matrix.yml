@@ -26,66 +26,46 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Route checkout and temporary data off the system volume
+      - name: Prepare bounded State Matrix workspace
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
 
-          $runnerWork = Split-Path -Parent $env:RUNNER_TEMP
-          $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
-          if (-not $systemRoot -or -not (Test-Path -LiteralPath $systemRoot)) {
-            $systemRoot = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetTempPath())
-            Write-Warning "RUNNER_TEMP points to an unavailable volume; using $systemRoot as the system-volume root."
-          }
-          $systemDriveName = $systemRoot.TrimEnd('\').TrimEnd(':')
-          $systemDrive = Get-PSDrive -Name $systemDriveName -ErrorAction SilentlyContinue
-          if (-not $systemDrive) {
-            throw "Unable to inspect the system volume $systemRoot."
-          }
-          $systemFree = $systemDrive.Free
-          $drive = [System.IO.DriveInfo]::GetDrives() |
-            Where-Object {
-              $_.IsReady -and
-              ($_.Name -ne $systemRoot -or $systemFree -ge 5.5GB) -and
-              ($_.DriveType -eq [System.IO.DriveType]::Fixed -or
-               $_.DriveType -eq [System.IO.DriveType]::Removable) -and
-              $_.AvailableFreeSpace -ge 2.5GB
-            } |
-            Sort-Object -Property AvailableFreeSpace -Descending |
-            Select-Object -First 1
-          if (-not $drive) {
-            throw 'State Matrix requires one writable volume with at least 2.5 GB free; the system volume requires at least 5.5 GB free.'
+          $workspaceRoot = [System.IO.Path]::GetPathRoot($env:GITHUB_WORKSPACE)
+          if (-not $workspaceRoot -or -not (Test-Path -LiteralPath $workspaceRoot)) {
+            throw "GITHUB_WORKSPACE points to an unavailable volume: $env:GITHUB_WORKSPACE"
           }
 
-          $root = Join-Path $drive.RootDirectory.FullName 'neura-ci\state-matrix'
-          $workspace = Join-Path $root 'workspace'
-          $sourceLink = Join-Path $env:GITHUB_WORKSPACE 'source'
-          foreach ($path in @($sourceLink, $root)) {
-            if (Test-Path -LiteralPath $path) {
-              $item = Get-Item -LiteralPath $path -Force
-              if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-                & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$path"
-              } else {
-                Remove-Item -LiteralPath $path -Recurse -Force
-              }
-            }
+          $stateRoot = Join-Path $workspaceRoot 'neura-ci\state-matrix'
+          if (Test-Path -LiteralPath $stateRoot) {
+            Get-ChildItem -LiteralPath $stateRoot -Directory -Force -ErrorAction SilentlyContinue |
+              Where-Object { $_.LastWriteTimeUtc -lt [DateTime]::UtcNow.AddHours(-2) } |
+              ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
           }
-          New-Item -ItemType Directory -Path $workspace -Force | Out-Null
-          New-Item -ItemType Directory -Path (Join-Path $root 'pub-cache') -Force | Out-Null
-          New-Item -ItemType Directory -Path (Join-Path $root 'temp') -Force | Out-Null
-          New-Item -ItemType Junction -Path $sourceLink -Target $workspace | Out-Null
+
+          $workspaceDrive = [System.IO.DriveInfo]::new($workspaceRoot)
+          if (-not $workspaceDrive.IsReady -or $workspaceDrive.AvailableFreeSpace -lt 2.5GB) {
+            $freeGb = [Math]::Round($workspaceDrive.AvailableFreeSpace / 1GB, 2)
+            throw "State Matrix requires at least 2.5 GB free on the existing GitHub workspace volume; $freeGb GB is available on $workspaceRoot."
+          }
+
+          $runRoot = Join-Path $stateRoot "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          if (Test-Path -LiteralPath $runRoot) {
+            Remove-Item -LiteralPath $runRoot -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path (Join-Path $runRoot 'pub-cache') -Force | Out-Null
+          New-Item -ItemType Directory -Path (Join-Path $runRoot 'temp') -Force | Out-Null
+
           @(
-            "NEURA_SOURCE_ROOT=$sourceLink",
-            "PUB_CACHE=$(Join-Path $root 'pub-cache')",
-            "TEMP=$(Join-Path $root 'temp')",
-            "TMP=$(Join-Path $root 'temp')"
+            "NEURA_SOURCE_ROOT=$env:GITHUB_WORKSPACE",
+            "PUB_CACHE=$(Join-Path $runRoot 'pub-cache')",
+            "TEMP=$(Join-Path $runRoot 'temp')",
+            "TMP=$(Join-Path $runRoot 'temp')"
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Check out source
         uses: actions/checkout@v5
-        with:
-          path: source
 
       - name: Enable pinned Flutter
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
