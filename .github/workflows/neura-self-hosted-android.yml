@@ -86,7 +86,7 @@ jobs:
           }
 
           foreach ($drive in [System.IO.DriveInfo]::GetDrives()) {
-            if (-not $drive.IsReady -or $drive.Name -eq $systemRoot) { continue }
+            if (-not $drive.IsReady) { continue }
             $ownedRoot = Join-Path $drive.RootDirectory.FullName 'neura-ci'
             if (Test-Path -LiteralPath $ownedRoot -PathType Container) {
               Get-ChildItem -LiteralPath $ownedRoot -Directory -Force -ErrorAction SilentlyContinue |
