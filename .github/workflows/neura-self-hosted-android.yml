@@ -242,87 +242,28 @@ jobs:
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          $archiveName = 'OpenJDK17U-jdk_x64_windows_hotspot_17.0.19_10.zip'
-          $archive = Join-Path $env:NEURA_ANDROID_TOOL_ROOT $archiveName
-          $runnerToolCache = $env:RUNNER_TOOL_CACHE
-          if ([string]::IsNullOrWhiteSpace($runnerToolCache)) {
-            throw 'RUNNER_TOOL_CACHE is required for the persistent verified JDK cache.'
-          }
-          $cacheRoot = Join-Path $runnerToolCache 'neura\temurin17'
-          $cachedArchive = Join-Path $cacheRoot $archiveName
-          $uris = @(
-            'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.19%2B10/OpenJDK17U-jdk_x64_windows_hotspot_17.0.19_10.zip',
-            'https://api.adoptium.net/v3/binary/version/jdk-17.0.19%2B10/windows/x64/jdk/hotspot/normal/eclipse'
-          )
+          $archive = Join-Path $env:NEURA_ANDROID_TOOL_ROOT 'temurin17.zip'
+          $uri = 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.19%2B10/OpenJDK17U-jdk_x64_windows_hotspot_17.0.19_10.zip'
           $expected = 'b5b235c48adf6a081874b812c630b9f4b5f637b7a5ed18b9174d08a41ec4c235'
-          $verified = $false
-
-          New-Item -ItemType Directory -Path $cacheRoot -Force | Out-Null
-          if (Test-Path -LiteralPath $cachedArchive -PathType Leaf) {
-            Copy-Item -LiteralPath $cachedArchive -Destination $archive -Force
-            $cachedHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($cachedHash -eq $expected) {
-              Write-Host "Using checksum-verified cached Temurin JDK archive: $cachedArchive"
-              $verified = $true
-            } else {
-              Remove-Item -LiteralPath $cachedArchive -Force
-              Remove-Item -LiteralPath $archive -Force
-              Write-Warning "Removed cached JDK archive with checksum $cachedHash."
-            }
-          }
-
-          if (-not $verified) {
-            $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
-            if (-not $curl) {
-              throw 'curl.exe is required for resumable JDK provisioning.'
-            }
-            $maxAttemptsPerSource = 3
-            $lastError = 'unknown download failure'
-            for ($sourceIndex = 0; $sourceIndex -lt $uris.Count -and -not $verified; $sourceIndex++) {
-              $uri = $uris[$sourceIndex]
-              $partial = Join-Path $cacheRoot ("$archiveName.source$sourceIndex.part")
-              for ($attempt = 1; $attempt -le $maxAttemptsPerSource; $attempt++) {
-                try {
-                  Write-Host "Downloading Temurin JDK from source $($sourceIndex + 1)/$($uris.Count), attempt $attempt/$maxAttemptsPerSource..."
-                  & $curl.Source `
-                    '--fail' `
-                    '--location' `
-                    '--retry' '1' `
-                    '--retry-all-errors' `
-                    '--retry-delay' '10' `
-                    '--connect-timeout' '30' `
-                    '--max-time' '300' `
-                    '--continue-at' '-' `
-                    '--output' $partial `
-                    $uri
-                  if ($LASTEXITCODE -ne 0) {
-                    throw "curl.exe failed with exit code $LASTEXITCODE"
-                  }
-                  $actual = (Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash.ToLowerInvariant()
-                  if ($actual -ne $expected) {
-                    Remove-Item -LiteralPath $partial -Force
-                    throw "Temurin JDK checksum mismatch: $actual"
-                  }
-                  Move-Item -LiteralPath $partial -Destination $cachedArchive -Force
-                  Copy-Item -LiteralPath $cachedArchive -Destination $archive -Force
-                  Write-Host "Cached checksum-verified Temurin JDK at $cachedArchive"
-                  $verified = $true
-                  break
-                } catch {
-                  $lastError = $_.Exception.Message
-                  if ($lastError -match 'checksum mismatch') {
-                    throw $lastError
-                  }
-                  if ($attempt -lt $maxAttemptsPerSource) {
-                    $delay = 10 * $attempt
-                    Write-Warning "Temurin download failed: $lastError. Retrying in $delay seconds..."
-                    Start-Sleep -Seconds $delay
-                  }
-                }
+          
+          # Retry logic for download
+          $maxRetries = 3
+          $retryCount = 0
+          $downloadSuccess = $false
+          
+          while ($retryCount -lt $maxRetries -and -not $downloadSuccess) {
+            try {
+              Write-Host "Downloading Temurin JDK (attempt $($retryCount + 1)/$maxRetries)..."
+              Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 600
+              $downloadSuccess = $true
+            } catch {
+              $retryCount++
+              if ($retryCount -lt $maxRetries) {
+                Write-Warning "Download failed: $($_.Exception.Message). Retrying in 30 seconds..."
+                Start-Sleep -Seconds 30
+              } else {
+                throw "Failed to download Temurin JDK after $maxRetries attempts: $($_.Exception.Message)"
               }
-            }
-            if (-not $verified) {
-              throw "Failed to obtain checksum-verified Temurin JDK: $lastError"
             }
           }
 
@@ -363,13 +304,13 @@ jobs:
           while ($retryCount -lt $maxRetries -and -not $downloadSuccess) {
             try {
               Write-Host "Downloading Android SDK command-line tools (attempt $($retryCount + 1)/$maxRetries)..."
-              Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 300
+              Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 600
               $downloadSuccess = $true
             } catch {
               $retryCount++
               if ($retryCount -lt $maxRetries) {
-                Write-Warning "Download failed: $($_.Exception.Message). Retrying in 10 seconds..."
-                Start-Sleep -Seconds 10
+                Write-Warning "Download failed: $($_.Exception.Message). Retrying in 30 seconds..."
+                Start-Sleep -Seconds 30
               } else {
                 throw "Failed to download Android SDK command-line tools after $maxRetries attempts: $($_.Exception.Message)"
               }
