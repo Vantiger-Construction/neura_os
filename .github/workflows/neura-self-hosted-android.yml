@@ -252,6 +252,24 @@ jobs:
             $javaCandidates += $javaCommand.Source
           }
 
+          # Runner services do not always inherit machine-wide JAVA_HOME/PATH.
+          # Search only established toolchain roots; never scan user data.
+          $searchRoots = @(
+            $env:RUNNER_TOOL_CACHE,
+            (Join-Path $env:ProgramFiles 'Android\Android Studio\jbr'),
+            (Join-Path $env:ProgramFiles 'Eclipse Adoptium'),
+            (Join-Path $env:ProgramFiles 'Microsoft'),
+            (Join-Path $env:ProgramFiles 'Java')
+          ) | Where-Object {
+            -not [string]::IsNullOrWhiteSpace($_) -and
+            (Test-Path -LiteralPath $_ -PathType Container)
+          }
+          foreach ($searchRoot in $searchRoots) {
+            $javaCandidates += Get-ChildItem -LiteralPath $searchRoot `
+                -Filter 'java.exe' -File -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName
+          }
+
           $javaExe = $null
           foreach ($candidate in ($javaCandidates | Select-Object -Unique)) {
             if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
@@ -265,9 +283,9 @@ jobs:
           if (-not $javaExe) {
             throw (
               'A verified JDK 17 is required on the self-hosted runner. ' +
-              'Install Temurin JDK 17 once on the runner and set JAVA_HOME; ' +
-              'runtime downloads are intentionally disabled to avoid unreliable ' +
-              'network provisioning.'
+              'Install JDK 17 once in RUNNER_TOOL_CACHE or a standard machine-wide ' +
+              'installation directory; runtime downloads remain disabled to avoid ' +
+              'unreliable network provisioning.'
             )
           }
 
