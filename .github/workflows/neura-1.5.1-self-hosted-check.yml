@@ -1,0 +1,268 @@
+name: Neura 1.5.1 Self-Hosted Check
+
+on:
+  push:
+    branches:
+      - agent/neura-consent-turn-safety-v1.5.1
+  pull_request:
+    branches:
+      - agent/neura-living-intelligence-v1.5
+      - Neura
+    paths:
+      - 'lib/living_intelligence/**'
+      - 'lib/intelligence/action_loom.dart'
+      - 'lib/intelligence/fresh_approval_lease.dart'
+      - 'lib/intelligence/intelligence.dart'
+      - 'lib/persona/models/neura_audience.dart'
+      - 'test/living_intelligence/**'
+      - 'test/intelligence/action_loom_fresh_approval_test.dart'
+      - 'test/intelligence/fresh_approval_lease_test.dart'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/neura-1.5.1-self-hosted-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-1.5.1-self-hosted-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate consent and Action Loom safety on retained Flutter
+    runs-on: [self-hosted, Windows, X64, neura]
+    timeout-minutes: 60
+
+    steps:
+      - name: Select one bounded non-system workspace volume
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          function Remove-LinkOrDirectory {
+            param([Parameter(Mandatory)][string]$Path)
+            if (-not (Test-Path -LiteralPath $Path)) { return }
+            try {
+              $item = Get-Item -LiteralPath $Path -Force
+              if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$Path"
+                if ($LASTEXITCODE -ne 0) {
+                  throw "rmdir exited with code $LASTEXITCODE"
+                }
+              } else {
+                Remove-Item -LiteralPath $Path -Recurse -Force
+              }
+            } catch {
+              Write-Warning "Could not remove ${Path}: $($_.Exception.Message)"
+            }
+          }
+
+          function Test-NeuraVolume {
+            param([Parameter(Mandatory)][System.IO.DriveInfo]$Drive)
+            if (-not $Drive.IsReady -or
+                ($Drive.DriveType -ne [System.IO.DriveType]::Fixed -and
+                 $Drive.DriveType -ne [System.IO.DriveType]::Removable) -or
+                $Drive.AvailableFreeSpace -lt 3GB) {
+              return $false
+            }
+            $probe = Join-Path $Drive.RootDirectory.FullName "neura-ci\probe-$env:GITHUB_RUN_ID"
+            try {
+              New-Item -ItemType Directory -Path $probe -Force | Out-Null
+              Set-Content -LiteralPath (Join-Path $probe 'probe.txt') -Value 'ok' -NoNewline
+              Remove-Item -LiteralPath $probe -Recurse -Force
+              return $true
+            } catch {
+              Write-Warning "Volume $($Drive.Name) is not writable: $($_.Exception.Message)"
+              return $false
+            }
+          }
+
+          $runnerTemp = $env:RUNNER_TEMP
+          $runnerWork = Split-Path -Parent $runnerTemp
+          $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+          if (-not $systemRoot -or -not (Test-Path -LiteralPath $systemRoot)) {
+            $runnerTemp = [System.IO.Path]::GetTempPath().TrimEnd('\')
+            $runnerWork = Split-Path -Parent $runnerTemp
+            $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+            Write-Warning "RUNNER_TEMP points to an unavailable volume; using $runnerTemp for runner-owned cleanup."
+          }
+          $systemDriveName = $systemRoot.TrimEnd('\').TrimEnd(':')
+          $systemDrive = Get-PSDrive -Name $systemDriveName -ErrorAction SilentlyContinue
+          if (-not $systemDrive) {
+            throw "Unable to inspect the system volume $systemRoot."
+          }
+          $systemFree = $systemDrive.Free
+          if ($systemFree -lt 0.20GB) {
+            throw "The runner needs at least 0.20 GB on $systemRoot for metadata."
+          }
+
+          foreach ($repository in Get-ChildItem -LiteralPath $runnerWork -Directory -ErrorAction SilentlyContinue) {
+            if ($repository.Name.StartsWith('_')) { continue }
+            $checkout = Join-Path $repository.FullName $repository.Name
+            Remove-LinkOrDirectory -Path (Join-Path $checkout 'build')
+            Remove-LinkOrDirectory -Path (Join-Path $checkout 'rust\target')
+          }
+
+          $cutoff = (Get-Date).AddHours(-2)
+          foreach ($drive in [System.IO.DriveInfo]::GetDrives()) {
+            if (-not $drive.IsReady -or $drive.Name -eq $systemRoot) { continue }
+            $ownedRoot = Join-Path $drive.RootDirectory.FullName 'neura-ci'
+            if (Test-Path -LiteralPath $ownedRoot -PathType Container) {
+              Get-ChildItem -LiteralPath $ownedRoot -Directory -Force -ErrorAction SilentlyContinue |
+                Where-Object { $_.LastWriteTime -lt $cutoff } |
+                ForEach-Object { Remove-LinkOrDirectory -Path $_.FullName }
+            }
+          }
+
+          $volume = [System.IO.DriveInfo]::GetDrives() |
+            Where-Object { $_.IsReady -and $_.Name -ne $systemRoot } |
+            Where-Object { Test-NeuraVolume -Drive $_ } |
+            Sort-Object -Property AvailableFreeSpace -Descending |
+            Select-Object -First 1
+          if (-not $volume) {
+            throw 'A writable non-system volume with at least 3 GB free is required.'
+          }
+
+          $runKey = "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $runRoot = Join-Path $volume.RootDirectory.FullName "neura-ci\$runKey\living-intelligence"
+          $workspaceTarget = Join-Path $runRoot 'workspace'
+          $sourceLink = Join-Path $env:GITHUB_WORKSPACE 'source'
+          $pubCache = Join-Path $runRoot 'pub-cache'
+          $tempRoot = Join-Path $runRoot 'temp'
+
+          Set-Location -LiteralPath $runnerTemp
+          Remove-LinkOrDirectory -Path $sourceLink
+          Remove-LinkOrDirectory -Path $runRoot
+          foreach ($path in @($workspaceTarget, $pubCache, $tempRoot)) {
+            New-Item -ItemType Directory -Path $path -Force | Out-Null
+          }
+          New-Item -ItemType Junction -Path $sourceLink -Target $workspaceTarget | Out-Null
+
+          @(
+            "NEURA_SOURCE_ROOT=$sourceLink",
+            "NEURA_RUN_ROOT=$runRoot",
+            "PUB_CACHE=$pubCache",
+            "TEMP=$tempRoot",
+            "TMP=$tempRoot"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          Write-Host "Validation workspace: $sourceLink -> $workspaceTarget"
+          Write-Host "Selected volume: $($volume.Name) ($([Math]::Round($volume.AvailableFreeSpace / 1GB, 2)) GB free)"
+
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      - name: Enable pinned Flutter 3.44.7
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $flutterRoot = Join-Path $env:RUNNER_TOOL_CACHE 'flutter\3.44.7\x64'
+          $flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
+          if (-not (Test-Path -LiteralPath $flutterExe -PathType Leaf)) {
+            throw 'Pinned Flutter 3.44.7 is missing from the retained runner tool cache.'
+          }
+          (Join-Path $flutterRoot 'bin') |
+            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $flutterExe --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Restore dependencies
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+          flutter pub get
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Prepare canonical source evidence
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+          $formatPaths = @(
+            'lib\living_intelligence',
+            'lib\intelligence\action_loom.dart',
+            'lib\intelligence\fresh_approval_lease.dart',
+            'lib\intelligence\intelligence.dart',
+            'test\living_intelligence',
+            'test\intelligence\action_loom_fresh_approval_test.dart',
+            'test\intelligence\fresh_approval_lease_test.dart'
+          )
+          & dart format @formatPaths
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & git diff --no-ext-diff -- pubspec.lock @formatPaths |
+            Out-File -LiteralPath canonical-source.patch -Encoding utf8
+          & git diff --name-only -- pubspec.lock @formatPaths
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload canonical source evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: Neura-1.5.1-canonical-source
+          path: |
+            ${{ env.NEURA_SOURCE_ROOT }}\pubspec.lock
+            ${{ env.NEURA_SOURCE_ROOT }}\canonical-source.patch
+            ${{ env.NEURA_SOURCE_ROOT }}\lib\living_intelligence\cloud_inference_consent.dart
+            ${{ env.NEURA_SOURCE_ROOT }}\lib\living_intelligence\compassionate_response_policy.dart
+            ${{ env.NEURA_SOURCE_ROOT }}\lib\intelligence\action_loom.dart
+            ${{ env.NEURA_SOURCE_ROOT }}\test\living_intelligence\neura_consent_turn_safety_test.dart
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Verify canonical generated files are committed
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+          $checkedPaths = @(
+            'pubspec.lock',
+            'lib\living_intelligence',
+            'lib\intelligence\action_loom.dart',
+            'lib\intelligence\fresh_approval_lease.dart',
+            'lib\intelligence\intelligence.dart',
+            'test\living_intelligence',
+            'test\intelligence\action_loom_fresh_approval_test.dart',
+            'test\intelligence\fresh_approval_lease_test.dart'
+          )
+          & git diff --exit-code -- @checkedPaths
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host 'The canonical source artifact contains the exact files to commit.'
+            exit 1
+          }
+
+      - name: Require zero analyzer findings
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+          flutter analyze --fatal-infos
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run focused safety tests
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+          flutter test --no-pub --reporter expanded `
+            test\living_intelligence `
+            test\intelligence\action_loom_fresh_approval_test.dart `
+            test\intelligence\fresh_approval_lease_test.dart
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Release generated validation space
+        if: always()
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $cleanupTemp = [System.Environment]::GetEnvironmentVariable('RUNNER_TEMP')
+          if ([string]::IsNullOrWhiteSpace($cleanupTemp) -or
+              -not (Test-Path -LiteralPath $cleanupTemp)) {
+            $cleanupTemp = [System.IO.Path]::GetTempPath().TrimEnd('\')
+          }
+          Set-Location -LiteralPath $cleanupTemp
+          $sourceLink = Join-Path $env:GITHUB_WORKSPACE 'source'
+          if (Test-Path -LiteralPath $sourceLink) {
+            & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$sourceLink"
+          }
+          if (-not [string]::IsNullOrWhiteSpace($env:NEURA_RUN_ROOT) -and
+              (Test-Path -LiteralPath $env:NEURA_RUN_ROOT)) {
+            Remove-Item -LiteralPath $env:NEURA_RUN_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+          }

@@ -4,6 +4,7 @@ export 'approval_broker.dart';
 export 'autonomy_kernel.dart';
 export 'capability_registry.dart';
 export 'consent_ledger.dart';
+export 'fresh_approval_lease.dart';
 export 'intelligence_center_screen.dart';
 export 'intelligence_preferences.dart';
 export 'models.dart';
