@@ -249,13 +249,13 @@ jobs:
           while ($retryCount -lt $maxRetries -and -not $downloadSuccess) {
             try {
               Write-Host "Downloading Temurin JDK (attempt $($retryCount + 1)/$maxRetries)..."
-              Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 300
+              Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 600
               $downloadSuccess = $true
             } catch {
               $retryCount++
               if ($retryCount -lt $maxRetries) {
-                Write-Warning "Download failed: $($_.Exception.Message). Retrying in 10 seconds..."
-                Start-Sleep -Seconds 10
+                Write-Warning "Download failed: $($_.Exception.Message). Retrying in 30 seconds..."
+                Start-Sleep -Seconds 30
               } else {
                 throw "Failed to download Temurin JDK after $maxRetries attempts: $($_.Exception.Message)"
               }
@@ -299,13 +299,13 @@ jobs:
           while ($retryCount -lt $maxRetries -and -not $downloadSuccess) {
             try {
               Write-Host "Downloading Android SDK command-line tools (attempt $($retryCount + 1)/$maxRetries)..."
-              Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 300
+              Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 600
               $downloadSuccess = $true
             } catch {
               $retryCount++
               if ($retryCount -lt $maxRetries) {
-                Write-Warning "Download failed: $($_.Exception.Message). Retrying in 10 seconds..."
-                Start-Sleep -Seconds 10
+                Write-Warning "Download failed: $($_.Exception.Message). Retrying in 30 seconds..."
+                Start-Sleep -Seconds 30
               } else {
                 throw "Failed to download Android SDK command-line tools after $maxRetries attempts: $($_.Exception.Message)"
               }
@@ -474,4 +474,3 @@ jobs:
               Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
             }
           }
-
