@@ -98,7 +98,9 @@ class MemoryVaultStore {
       }
 
       final bytes = List<int>.generate(
-          _kSeedLengthBytes, (_) => Random.secure().nextInt(256));
+        _kSeedLengthBytes,
+        (_) => Random.secure().nextInt(256),
+      );
       final generated = base64UrlEncode(bytes);
       try {
         await _secureStorage.write(key: _keySeedSecure, value: generated);
