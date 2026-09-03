@@ -150,7 +150,7 @@ jobs:
             ([Math]::Max(0, $systemAfter - $systemBefore) / 1GB)
           )
 
-          # Prefer non-system volumes. When the runner has at least 6.0 GB free
+          # Prefer non-system volumes. When the runner has at least 5.5 GB free
           # on its system volume, it may safely serve as one of the two bounded
           # output volumes while retaining headroom for runner metadata.
           if ($systemAfter -lt 0.25GB) {
@@ -164,7 +164,7 @@ jobs:
             [System.IO.DriveInfo]::GetDrives() |
               Where-Object {
                 $_.IsReady -and
-                ($_.Name -ne $systemRoot -or $systemAfter -ge 6.0GB)
+                ($_.Name -ne $systemRoot -or $systemAfter -ge 5.5GB)
               } |
               Where-Object { Test-CiVolume -Drive $_ } |
               Sort-Object -Property AvailableFreeSpace -Descending
@@ -186,7 +186,7 @@ jobs:
               'Validation requires either two writable volumes with at least ' +
               '3.0 GB free each, or one shared writable volume with at least ' +
               '8.0 GB free. The system volume is eligible only when at least ' +
-              '6.0 GB remains free.'
+              '5.5 GB remains free.'
             )
           }
 
