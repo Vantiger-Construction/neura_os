@@ -265,40 +265,64 @@ jobs:
               Write-Host "Using checksum-verified cached Temurin JDK archive: $cachedArchive"
               $verified = $true
             } else {
+              Remove-Item -LiteralPath $cachedArchive -Force
               Remove-Item -LiteralPath $archive -Force
-              Write-Warning "Ignoring cached JDK archive with checksum $cachedHash."
+              Write-Warning "Removed cached JDK archive with checksum $cachedHash."
             }
           }
 
           if (-not $verified) {
-            $maxAttempts = 3
+            $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+            if (-not $curl) {
+              throw 'curl.exe is required for resumable JDK provisioning.'
+            }
+            $maxAttemptsPerSource = 3
             $lastError = 'unknown download failure'
-            for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-              $uri = $uris[($attempt - 1) % $uris.Count]
-              if (Test-Path -LiteralPath $archive) {
-                Remove-Item -LiteralPath $archive -Force
-              }
-              try {
-                Write-Host "Downloading Temurin JDK (attempt $attempt/$maxAttempts)..."
-                Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 300
-                $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-                if ($actual -ne $expected) {
-                  throw "Temurin JDK checksum mismatch: $actual"
-                }
-                Copy-Item -LiteralPath $archive -Destination $cachedArchive -Force
-                $verified = $true
-                break
-              } catch {
-                $lastError = $_.Exception.Message
-                if ($attempt -lt $maxAttempts) {
-                  $delay = 10 * $attempt
-                  Write-Warning "Temurin download failed: $lastError. Retrying in $delay seconds..."
-                  Start-Sleep -Seconds $delay
+            for ($sourceIndex = 0; $sourceIndex -lt $uris.Count -and -not $verified; $sourceIndex++) {
+              $uri = $uris[$sourceIndex]
+              $partial = Join-Path $cacheRoot ("$archiveName.source$sourceIndex.part")
+              for ($attempt = 1; $attempt -le $maxAttemptsPerSource; $attempt++) {
+                try {
+                  Write-Host "Downloading Temurin JDK from source $($sourceIndex + 1)/$($uris.Count), attempt $attempt/$maxAttemptsPerSource..."
+                  & $curl.Source `
+                    '--fail' `
+                    '--location' `
+                    '--retry' '1' `
+                    '--retry-all-errors' `
+                    '--retry-delay' '10' `
+                    '--connect-timeout' '30' `
+                    '--max-time' '300' `
+                    '--continue-at' '-' `
+                    '--output' $partial `
+                    $uri
+                  if ($LASTEXITCODE -ne 0) {
+                    throw "curl.exe failed with exit code $LASTEXITCODE"
+                  }
+                  $actual = (Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash.ToLowerInvariant()
+                  if ($actual -ne $expected) {
+                    Remove-Item -LiteralPath $partial -Force
+                    throw "Temurin JDK checksum mismatch: $actual"
+                  }
+                  Move-Item -LiteralPath $partial -Destination $cachedArchive -Force
+                  Copy-Item -LiteralPath $cachedArchive -Destination $archive -Force
+                  Write-Host "Cached checksum-verified Temurin JDK at $cachedArchive"
+                  $verified = $true
+                  break
+                } catch {
+                  $lastError = $_.Exception.Message
+                  if ($lastError -match 'checksum mismatch') {
+                    throw $lastError
+                  }
+                  if ($attempt -lt $maxAttemptsPerSource) {
+                    $delay = 10 * $attempt
+                    Write-Warning "Temurin download failed: $lastError. Retrying in $delay seconds..."
+                    Start-Sleep -Seconds $delay
+                  }
                 }
               }
             }
             if (-not $verified) {
-              throw "Failed to obtain checksum-verified Temurin JDK after $maxAttempts attempts: $lastError"
+              throw "Failed to obtain checksum-verified Temurin JDK: $lastError"
             }
           }
 
