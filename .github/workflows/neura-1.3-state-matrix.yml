@@ -113,6 +113,14 @@ jobs:
           dart format --output=none --set-exit-if-changed lib test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Diagnose formatter output
+        if: failure()
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+          dart format --output=show lib/modules/vault/memory_vault_store.dart
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Analyze startup state code
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
