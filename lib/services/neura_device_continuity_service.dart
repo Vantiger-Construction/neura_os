@@ -34,39 +34,74 @@ class NeuraDeviceContinuityService {
     try {
       final raw = NeuraPrefsCache.prefsOrNull?.getString(_kStoreKey);
       if (raw == null || raw.isEmpty) return;
-      final decoded = jsonDecode(raw) as List<dynamic>;
+
+      final decoded = jsonDecode(raw);
+      if (decoded is! List<dynamic>) {
+        throw const FormatException('Paired-device store must be a list.');
+      }
+      final restored = <({
+        NeuraDeviceIdentity identity,
+        NeuraDeviceSyncPolicy policy,
+        bool revoked,
+      })>[];
       for (final entry in decoded) {
-        final map = entry as Map<String, dynamic>;
-        final identity = NeuraDeviceIdentity(
-          deviceId: map['deviceId'] as String,
-          displayName: map['displayName'] as String,
-          publicKeyFingerprint: map['publicKeyFingerprint'] as String,
-        );
-        final categories = (map['allowedCategories'] as List<dynamic>)
-            .map(
-              (name) => NeuraContinuityCategory.values
-                  .firstWhere((category) => category.name == name),
-            )
-            .toSet();
+        if (entry is! Map<String, dynamic>) {
+          throw const FormatException('Invalid paired-device entry.');
+        }
+        final deviceId = entry['deviceId'];
+        final displayName = entry['displayName'];
+        final fingerprint = entry['publicKeyFingerprint'];
+        final categoryNames = entry['allowedCategories'];
+        if (deviceId is! String ||
+            deviceId.trim().isEmpty ||
+            displayName is! String ||
+            displayName.trim().isEmpty ||
+            fingerprint is! String ||
+            fingerprint.trim().isEmpty ||
+            categoryNames is! List<dynamic>) {
+          throw const FormatException('Incomplete paired-device entry.');
+        }
+        final categories = categoryNames.map((name) {
+          if (name is! String) {
+            throw const FormatException('Invalid continuity category.');
+          }
+          return NeuraContinuityCategory.values.firstWhere(
+            (category) => category.name == name,
+            orElse: () =>
+                throw const FormatException('Unknown continuity category.'),
+          );
+        }).toSet();
         final policy = NeuraDeviceSyncPolicy(
           allowedCategories: categories,
-          allowCloudRelay: map['allowCloudRelay'] as bool? ?? false,
+          allowCloudRelay: entry['allowCloudRelay'] as bool? ?? false,
         );
-        // Restoring already-approved state, not making a new pairing
-        // decision, so this replays trust rather than re-asserting consent.
-        registry.pairDevice(
-          identity: identity,
+        restored.add((
+          identity: NeuraDeviceIdentity(
+            deviceId: deviceId,
+            displayName: displayName,
+            publicKeyFingerprint: fingerprint,
+          ),
           policy: policy,
+          revoked: entry['revoked'] as bool? ?? false,
+        ));
+      }
+
+      // Apply only after every entry validates, so corrupted storage cannot
+      // restore a partial trust set.
+      for (final entry in restored) {
+        registry.pairDevice(
+          identity: entry.identity,
+          policy: entry.policy,
           directUserGesture: true,
           fingerprintVerified: true,
         );
-        if (map['revoked'] as bool? ?? false) {
-          registry.revokeDevice(identity.deviceId);
+        if (entry.revoked) {
+          registry.revokeDevice(entry.identity.deviceId);
         }
-        _policies[identity.deviceId] = policy;
+        _policies[entry.identity.deviceId] = entry.policy;
       }
     } catch (_) {
-      // A corrupted store starts fresh rather than blocking the screen.
+      // A corrupted store fails closed with no restored trust relationships.
     }
   }
 
