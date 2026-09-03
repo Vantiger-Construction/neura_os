@@ -432,7 +432,8 @@ class _AddDeviceDialogState extends State<_AddDeviceDialog> {
     final blob = _PairingBlob.tryParse(_controller.text);
     setState(() {
       _blob = blob;
-      _parseError = blob == null ? 'That doesn\'t look like a valid code.' : null;
+      _parseError =
+          blob == null ? 'That doesn\'t look like a valid code.' : null;
       _fingerprintConfirmed = false;
     });
   }
