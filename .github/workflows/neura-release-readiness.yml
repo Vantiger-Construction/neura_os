@@ -1,0 +1,193 @@
+name: Neura release readiness
+
+on:
+  pull_request:
+    branches:
+      - agent/neura-consent-turn-safety-v1.5.1
+    paths:
+      - ".github/workflows/neura-release-readiness.yml"
+      - "tools/release/**"
+      - "BUILD_ALL_NEURA_UPGRADES.ps1"
+  workflow_dispatch:
+    inputs:
+      require_authenticode:
+        description: Require valid Authenticode on every EXE and DLL
+        required: true
+        default: true
+        type: boolean
+      expected_publisher:
+        description: Expected publisher fragment in the signing certificate
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-release-readiness-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: "3.44.7"
+  POWERSHELL_VERSION: "7.4.6"
+
+jobs:
+  contract:
+    name: Verify release gate contracts
+    runs-on: [self-hosted, Windows, X64, neura]
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+      - name: Provision pinned PowerShell Core
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+          $requiredVersion = [version]$env:POWERSHELL_VERSION
+          $existing = Get-Command pwsh -ErrorAction SilentlyContinue
+          if ($existing) {
+            $existingVersion = & $existing.Source -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+            if ([version]$existingVersion -ge [version]'7.2.0') {
+              Split-Path -Parent $existing.Source | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              exit 0
+            }
+          }
+
+          $installRoot = Join-Path $env:RUNNER_TEMP "neura-pwsh-$requiredVersion"
+          $pwsh = Join-Path $installRoot 'pwsh.exe'
+          if (-not (Test-Path -LiteralPath $pwsh -PathType Leaf)) {
+            $archiveName = "PowerShell-$requiredVersion-win-x64.zip"
+            $releaseRoot = "https://github.com/PowerShell/PowerShell/releases/download/v$requiredVersion"
+            $archive = Join-Path $env:RUNNER_TEMP $archiveName
+            $hashes = Join-Path $env:RUNNER_TEMP "PowerShell-$requiredVersion-hashes.sha256"
+
+            Invoke-WebRequest -Uri "$releaseRoot/$archiveName" -OutFile $archive -UseBasicParsing
+            Invoke-WebRequest -Uri "$releaseRoot/hashes.sha256" -OutFile $hashes -UseBasicParsing
+
+            $hashLine = Get-Content -LiteralPath $hashes |
+              Where-Object { $_ -match [regex]::Escape($archiveName) } |
+              Select-Object -First 1
+            if (-not $hashLine -or $hashLine -notmatch '^(?<hash>[A-Fa-f0-9]{64})\s+\*?.+$') {
+              throw "No valid SHA-256 entry found for $archiveName."
+            }
+            $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+            if ($actualHash -ne $Matches.hash) {
+              throw "PowerShell archive checksum mismatch for $archiveName."
+            }
+
+            New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
+            Expand-Archive -LiteralPath $archive -DestinationPath $installRoot -Force
+          }
+
+          $installedVersion = & $pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+          if ([version]$installedVersion -ne $requiredVersion) {
+            throw "Expected PowerShell $requiredVersion; found $installedVersion."
+          }
+          $installRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Run fail-closed contract tests
+        shell: pwsh
+        run: ./tools/release/Test-NeuraReleaseReadiness.Tests.ps1
+
+  windows-release:
+    name: Build and verify Windows release
+    if: github.event_name == 'workflow_dispatch'
+    needs: contract
+    runs-on: [self-hosted, Windows, X64, neura]
+    timeout-minutes: 120
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+      - name: Provision pinned PowerShell Core
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+          $requiredVersion = [version]$env:POWERSHELL_VERSION
+          $existing = Get-Command pwsh -ErrorAction SilentlyContinue
+          if ($existing) {
+            $existingVersion = & $existing.Source -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+            if ([version]$existingVersion -ge [version]'7.2.0') {
+              Split-Path -Parent $existing.Source | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              exit 0
+            }
+          }
+
+          $installRoot = Join-Path $env:RUNNER_TEMP "neura-pwsh-$requiredVersion"
+          $pwsh = Join-Path $installRoot 'pwsh.exe'
+          if (-not (Test-Path -LiteralPath $pwsh -PathType Leaf)) {
+            $archiveName = "PowerShell-$requiredVersion-win-x64.zip"
+            $releaseRoot = "https://github.com/PowerShell/PowerShell/releases/download/v$requiredVersion"
+            $archive = Join-Path $env:RUNNER_TEMP $archiveName
+            $hashes = Join-Path $env:RUNNER_TEMP "PowerShell-$requiredVersion-hashes.sha256"
+
+            Invoke-WebRequest -Uri "$releaseRoot/$archiveName" -OutFile $archive -UseBasicParsing
+            Invoke-WebRequest -Uri "$releaseRoot/hashes.sha256" -OutFile $hashes -UseBasicParsing
+
+            $hashLine = Get-Content -LiteralPath $hashes |
+              Where-Object { $_ -match [regex]::Escape($archiveName) } |
+              Select-Object -First 1
+            if (-not $hashLine -or $hashLine -notmatch '^(?<hash>[A-Fa-f0-9]{64})\s+\*?.+$') {
+              throw "No valid SHA-256 entry found for $archiveName."
+            }
+            $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
+            if ($actualHash -ne $Matches.hash) {
+              throw "PowerShell archive checksum mismatch for $archiveName."
+            }
+
+            New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
+            Expand-Archive -LiteralPath $archive -DestinationPath $installRoot -Force
+          }
+
+          $installedVersion = & $pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+          if ([version]$installedVersion -ne $requiredVersion) {
+            throw "Expected PowerShell $requiredVersion; found $installedVersion."
+          }
+          $installRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Use retained Flutter 3.44.7
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $flutter = Get-Command flutter -ErrorAction Stop
+          $version = (& $flutter.Source --version | Select-Object -First 1)
+          if ($version -notmatch 'Flutter 3\.44\.7') {
+            throw "Expected retained Flutter 3.44.7; found: $version"
+          }
+      - name: Build tested Windows package
+        shell: pwsh
+        run: ./BUILD_ALL_NEURA_UPGRADES.ps1 -Root "${{ github.workspace }}"
+      - name: Run release readiness gates
+        shell: pwsh
+        env:
+          REQUIRE_AUTHENTICODE: ${{ inputs.require_authenticode }}
+          EXPECTED_PUBLISHER: ${{ inputs.expected_publisher }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dist = Get-ChildItem -LiteralPath (Join-Path $PWD 'dist') -Directory |
+            Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          if (-not $dist) { throw 'Build did not produce a distribution directory.' }
+          $app = Join-Path $dist.FullName 'app'
+          $arguments = @{
+            ArtifactRoot = $app
+            PreviousArtifactRoot = $app
+            OutputRoot = (Join-Path $dist.FullName 'release-readiness')
+          }
+          if ($env:REQUIRE_AUTHENTICODE -eq 'true') {
+            $arguments.RequireAuthenticode = $true
+            if (-not [string]::IsNullOrWhiteSpace($env:EXPECTED_PUBLISHER)) {
+              $arguments.ExpectedPublisher = $env:EXPECTED_PUBLISHER
+            }
+          }
+          ./tools/release/Test-NeuraReleaseReadiness.ps1 @arguments
+      - name: Upload verified release evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: Neura-release-readiness-evidence
+          path: |
+            dist/*/release-readiness/
+            dist/*.zip
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,118 @@
+name: Neura 1.5.1 Consent and Turn Safety
+
+on:
+  push:
+    branches:
+      - agent/neura-consent-turn-safety-v1.5.1
+  pull_request:
+    branches:
+      - agent/neura-living-intelligence-v1.5
+      - Neura
+    paths:
+      - 'lib/living_intelligence/**'
+      - 'lib/intelligence/action_loom.dart'
+      - 'lib/intelligence/fresh_approval_lease.dart'
+      - 'lib/intelligence/intelligence.dart'
+      - 'lib/persona/models/neura_audience.dart'
+      - 'test/living_intelligence/**'
+      - 'test/intelligence/action_loom_fresh_approval_test.dart'
+      - 'test/intelligence/fresh_approval_lease_test.dart'
+      - 'docs/LIVING_INTELLIGENCE_V1_5_1.md'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/neura-1.5.1-consent-turn-safety.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-consent-turn-safety-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.44.7'
+
+jobs:
+  validate:
+    name: Validate consent, turn, and Action Loom approval safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Reject unresolved merge markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RInE '^(<<<<<<<|=======|>>>>>>>)' \
+            lib/living_intelligence \
+            lib/intelligence/action_loom.dart \
+            lib/intelligence/fresh_approval_lease.dart \
+            test/living_intelligence \
+            test/intelligence/action_loom_fresh_approval_test.dart \
+            test/intelligence/fresh_approval_lease_test.dart; then
+            echo "::error::Unresolved merge markers are committed."
+            exit 1
+          fi
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Restore dependencies
+        run: flutter pub get
+
+      - name: Verify canonical formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          dart format --output=none --set-exit-if-changed \
+            lib/living_intelligence \
+            lib/intelligence/action_loom.dart \
+            lib/intelligence/fresh_approval_lease.dart \
+            lib/intelligence/intelligence.dart \
+            test/living_intelligence \
+            test/intelligence/action_loom_fresh_approval_test.dart \
+            test/intelligence/fresh_approval_lease_test.dart
+
+      - name: Require zero analyzer findings
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter analyze --fatal-infos 2>&1 | tee analyze.log
+
+      - name: Run focused safety tests
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter test --no-pub --reporter expanded \
+            test/living_intelligence \
+            test/intelligence/action_loom_fresh_approval_test.dart \
+            test/intelligence/fresh_approval_lease_test.dart \
+            2>&1 | tee focused-safety-tests.log
+
+      - name: Run complete Flutter suite
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter test --no-pub --reporter expanded \
+            2>&1 | tee complete-tests.log
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: Neura-1.5.1-consent-turn-safety-evidence
+          path: |
+            analyze.log
+            focused-safety-tests.log
+            complete-tests.log
+            pubspec.lock
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,9 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:mutex/mutex.dart';
 import '../core/app_log.dart';
 import 'memory_vault_models.dart';
 import '../../startup/neura_prefs_cache.dart';
@@ -33,8 +33,15 @@ class MemoryVaultStore {
 
   static const _verifierPlain = '{"neura":"vault_ok"}';
 
-  // Protect seed creation/migration against concurrent access.
-  final Mutex _seedMutex = Mutex();
+  // Serialize seed creation/migration without adding a package dependency.
+  Future<void> _seedMutexTail = Future<void>.value();
+
+  Future<T> _protectSeed<T>(Future<T> Function() operation) {
+    final previous = _seedMutexTail;
+    final release = Completer<void>();
+    _seedMutexTail = release.future;
+    return previous.then((_) => operation()).whenComplete(release.complete);
+  }
 
   // Cache derived key per app session to avoid repeated PBKDF2 cost.
   SecretKey? _cachedKey;
@@ -42,7 +49,7 @@ class MemoryVaultStore {
   String? _cachedSeedForKey;
 
   Future<String> _getOrCreateSeed() async {
-    return await _seedMutex.protect(() async {
+    return await _protectSeed(() async {
       final sp = NeuraPrefsCache.prefs;
       final expectsSecureSeed = sp.getBool(_keySeedSecureMarker) == true;
       String? secureSeed;

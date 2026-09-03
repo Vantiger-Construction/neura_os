@@ -1,0 +1,61 @@
+name: Neura encrypted memory foundation
+
+on:
+  pull_request:
+    branches:
+      - agent/neura-release-readiness-v1.5.2
+      - agent/neura-consent-turn-safety-v1.5.1
+    paths:
+      - ".github/workflows/neura-encrypted-memory-foundation.yml"
+      - "lib/encrypted_memory/**"
+      - "test/encrypted_memory/**"
+      - "docs/ENCRYPTED_MEMORY_FOUNDATION_v1.6.md"
+      - "docs/ENCRYPTED_MEMORY_SESSION_ADAPTER_v1.6.1.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-encrypted-memory-foundation-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: "3.44.7"
+
+jobs:
+  validate:
+    name: Validate encrypted memory contracts
+    runs-on: [self-hosted, Windows, X64, neura]
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+      - name: Use retained Flutter 3.44.7
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $flutterRoot = Join-Path $env:RUNNER_TOOL_CACHE 'flutter\3.44.7\x64'
+          $flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
+          if (-not (Test-Path -LiteralPath $flutterExe -PathType Leaf)) {
+            throw 'Pinned Flutter 3.44.7 is missing from the runner tool cache.'
+          }
+          (Join-Path $flutterRoot 'bin') |
+            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $version = (& $flutterExe --version | Select-Object -First 1)
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($version -notmatch 'Flutter 3\.44\.7') {
+            throw "Expected retained Flutter 3.44.7; found: $version"
+          }
+      - name: Restore dependencies
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: flutter pub get
+      - name: Verify canonical formatting
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: dart format --output=none --set-exit-if-changed lib/encrypted_memory test/encrypted_memory
+      - name: Require zero analyzer findings in foundation
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: flutter analyze --fatal-infos lib/encrypted_memory test/encrypted_memory
+      - name: Run encrypted memory contract tests
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: flutter test --no-pub --reporter expanded test/encrypted_memory
