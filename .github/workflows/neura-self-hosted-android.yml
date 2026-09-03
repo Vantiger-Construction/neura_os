@@ -165,10 +165,62 @@ jobs:
           "NEURA_ANDROID_SOURCE_ROOT=$sourceLink" |
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Check out source
+      - name: Check out source (first attempt)
+        id: checkout_first
+        continue-on-error: true
+        timeout-minutes: 10
         uses: actions/checkout@v4
         with:
           path: source
+          fetch-depth: 1
+          fetch-tags: false
+          lfs: false
+          submodules: false
+          show-progress: false
+
+      - name: Reset partial checkout before retry
+        if: steps.checkout_first.outcome != 'success'
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $sourceLink = Join-Path $env:GITHUB_WORKSPACE 'source'
+          $workspaceTarget = Join-Path $env:NEURA_ANDROID_BUILD_VOLUME "neura-ci\$env:NEURA_ANDROID_RUN_KEY\workspace"
+          Set-Location -LiteralPath $env:RUNNER_TEMP
+          if (Test-Path -LiteralPath $sourceLink) {
+            & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$sourceLink"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not remove partial checkout junction $sourceLink."
+            }
+          }
+          if (Test-Path -LiteralPath $workspaceTarget) {
+            Remove-Item -LiteralPath $workspaceTarget -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $workspaceTarget -Force | Out-Null
+          New-Item -ItemType Junction -Path $sourceLink -Target $workspaceTarget | Out-Null
+          Write-Warning 'The first checkout attempt failed or timed out; retrying with a clean target.'
+
+      - name: Check out source (retry)
+        if: steps.checkout_first.outcome != 'success'
+        timeout-minutes: 10
+        uses: actions/checkout@v4
+        with:
+          path: source
+          fetch-depth: 1
+          fetch-tags: false
+          lfs: false
+          submodules: false
+          show-progress: false
+
+      - name: Verify checked-out source
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $gitDirectory = Join-Path $env:NEURA_ANDROID_SOURCE_ROOT '.git'
+          $pubspec = Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'pubspec.yaml'
+          if (-not (Test-Path -LiteralPath $gitDirectory) -or
+              -not (Test-Path -LiteralPath $pubspec -PathType Leaf)) {
+            throw 'Source checkout did not produce a complete Neura working tree.'
+          }
 
       - name: Route Android caches and output
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
