@@ -80,10 +80,21 @@ jobs:
             }
           }
 
-          $runnerWork = Split-Path -Parent $env:RUNNER_TEMP
+          $runnerTemp = $env:RUNNER_TEMP
+          $runnerWork = Split-Path -Parent $runnerTemp
           $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+          if (-not $systemRoot -or -not (Test-Path -LiteralPath $systemRoot)) {
+            $runnerTemp = [System.IO.Path]::GetTempPath().TrimEnd('\')
+            $runnerWork = Split-Path -Parent $runnerTemp
+            $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+            Write-Warning "RUNNER_TEMP points to an unavailable volume; using $runnerTemp for runner-owned cleanup."
+          }
           $systemDriveName = $systemRoot.TrimEnd('\').TrimEnd(':')
-          $systemFree = (Get-PSDrive -Name $systemDriveName -ErrorAction Stop).Free
+          $systemDrive = Get-PSDrive -Name $systemDriveName -ErrorAction SilentlyContinue
+          if (-not $systemDrive) {
+            throw "Unable to inspect the system volume $systemRoot."
+          }
+          $systemFree = $systemDrive.Free
           if ($systemFree -lt 0.20GB) {
             throw "The runner needs at least 0.20 GB on $systemRoot for metadata."
           }
@@ -122,7 +133,7 @@ jobs:
           $pubCache = Join-Path $runRoot 'pub-cache'
           $tempRoot = Join-Path $runRoot 'temp'
 
-          Set-Location -LiteralPath $env:RUNNER_TEMP
+          Set-Location -LiteralPath $runnerTemp
           Remove-LinkOrDirectory -Path $sourceLink
           Remove-LinkOrDirectory -Path $runRoot
           foreach ($path in @($workspaceTarget, $pubCache, $tempRoot)) {
@@ -241,7 +252,12 @@ jobs:
         if: always()
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
-          Set-Location -LiteralPath $env:RUNNER_TEMP
+          $cleanupTemp = [System.Environment]::GetEnvironmentVariable('RUNNER_TEMP')
+          if ([string]::IsNullOrWhiteSpace($cleanupTemp) -or
+              -not (Test-Path -LiteralPath $cleanupTemp)) {
+            $cleanupTemp = [System.IO.Path]::GetTempPath().TrimEnd('\')
+          }
+          Set-Location -LiteralPath $cleanupTemp
           $sourceLink = Join-Path $env:GITHUB_WORKSPACE 'source'
           if (Test-Path -LiteralPath $sourceLink) {
             & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$sourceLink"

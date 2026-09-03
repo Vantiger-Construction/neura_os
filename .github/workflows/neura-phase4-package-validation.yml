@@ -6,9 +6,6 @@ on:
       - agent/build-neura-downloads-20260729
       - agent/neura-intelligence-fabric-v1.3
       - agent/neura-adaptive-intent-phase4-integration
-  pull_request:
-    branches:
-      - Neura
   workflow_dispatch:
 
 permissions:

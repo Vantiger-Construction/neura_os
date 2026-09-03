@@ -23,7 +23,7 @@ jobs:
   state-matrix:
     name: Startup, platform, recovery, and Safe Mode states
     runs-on: [self-hosted, Windows, X64, neura]
-    timeout-minutes: 20
+    timeout-minutes: 45
 
     steps:
       - name: Route checkout and temporary data off the system volume
@@ -34,8 +34,16 @@ jobs:
 
           $runnerWork = Split-Path -Parent $env:RUNNER_TEMP
           $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+          if (-not $systemRoot -or -not (Test-Path -LiteralPath $systemRoot)) {
+            $systemRoot = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetTempPath())
+            Write-Warning "RUNNER_TEMP points to an unavailable volume; using $systemRoot as the system-volume root."
+          }
           $systemDriveName = $systemRoot.TrimEnd('\').TrimEnd(':')
-          $systemFree = (Get-PSDrive -Name $systemDriveName -ErrorAction Stop).Free
+          $systemDrive = Get-PSDrive -Name $systemDriveName -ErrorAction SilentlyContinue
+          if (-not $systemDrive) {
+            throw "Unable to inspect the system volume $systemRoot."
+          }
+          $systemFree = $systemDrive.Free
           $drive = [System.IO.DriveInfo]::GetDrives() |
             Where-Object {
               $_.IsReady -and

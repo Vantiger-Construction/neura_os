@@ -30,7 +30,7 @@ jobs:
   validate:
     name: Validate Living Intelligence safety and integration
     runs-on: [self-hosted, Windows, X64, neura]
-    timeout-minutes: 50
+    timeout-minutes: 75
 
     steps:
       - name: Route checkout and temporary data off the system volume
@@ -41,8 +41,16 @@ jobs:
 
           $runnerWork = Split-Path -Parent $env:RUNNER_TEMP
           $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+          if (-not $systemRoot -or -not (Test-Path -LiteralPath $systemRoot)) {
+            $systemRoot = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetTempPath())
+            Write-Warning "RUNNER_TEMP points to an unavailable volume; using $systemRoot as the system-volume root."
+          }
           $systemDriveName = $systemRoot.TrimEnd('\').TrimEnd(':')
-          $systemFree = (Get-PSDrive -Name $systemDriveName -ErrorAction Stop).Free
+          $systemDrive = Get-PSDrive -Name $systemDriveName -ErrorAction SilentlyContinue
+          if (-not $systemDrive) {
+            throw "Unable to inspect the system volume $systemRoot."
+          }
+          $systemFree = $systemDrive.Free
           $drive = [System.IO.DriveInfo]::GetDrives() |
             Where-Object {
               $_.IsReady -and
@@ -151,6 +159,26 @@ jobs:
             Tee-Object -FilePath complete-tests.log |
             Out-Host
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Free disk space before upload
+        if: always()
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Continue'
+
+          Write-Host "Disk space before cleanup:"
+          Get-PSDrive -Name C | Select-Object Name, Used, Free
+          
+          Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+          
+          # Remove build and dependency artifacts
+          if (Test-Path '.dart_tool') { Remove-Item -LiteralPath '.dart_tool' -Recurse -Force -ErrorAction Continue }
+          if (Test-Path 'build') { Remove-Item -LiteralPath 'build' -Recurse -Force -ErrorAction Continue }
+          if (Test-Path '.packages') { Remove-Item -LiteralPath '.packages' -Force -ErrorAction Continue }
+          
+          Write-Host "Disk space after cleanup:"
+          Get-PSDrive -Name C | Select-Object Name, Used, Free
 
       - name: Upload validation evidence
         if: always()

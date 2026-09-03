@@ -67,8 +67,15 @@ jobs:
             }
           }
 
-          $runnerWork = Split-Path -Parent $env:RUNNER_TEMP
+          $runnerTemp = $env:RUNNER_TEMP
+          $runnerWork = Split-Path -Parent $runnerTemp
           $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+          if (-not $systemRoot -or -not (Test-Path -LiteralPath $systemRoot)) {
+            $runnerTemp = [System.IO.Path]::GetTempPath().TrimEnd('\')
+            $runnerWork = Split-Path -Parent $runnerTemp
+            $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+            Write-Warning "RUNNER_TEMP points to an unavailable volume; using $runnerTemp for runner-owned cleanup."
+          }
           $cutoff = (Get-Date).AddHours(-2)
 
           foreach ($repository in Get-ChildItem -LiteralPath $runnerWork -Directory -ErrorAction SilentlyContinue) {
@@ -89,7 +96,11 @@ jobs:
           }
 
           $systemDriveName = $systemRoot.TrimEnd('\').TrimEnd(':')
-          $systemFree = (Get-PSDrive -Name $systemDriveName -ErrorAction Stop).Free
+          $systemDrive = Get-PSDrive -Name $systemDriveName -ErrorAction SilentlyContinue
+          if (-not $systemDrive) {
+            throw "Unable to inspect the system volume $systemRoot."
+          }
+          $systemFree = $systemDrive.Free
           if ($systemFree -lt 0.25GB) {
             throw "The runner needs 0.25 GB on $systemRoot for metadata; only $([Math]::Round($systemFree / 1GB, 2)) GB is free."
           }
@@ -115,8 +126,9 @@ jobs:
               'volume is eligible only when at least 6.0 GB remains free.')
           }
 
-          $sdkDrive = $eligible[0]
-          $buildDrive = if ($eligible.Count -ge 2) { $eligible[1] } else { $eligible[0] }
+          # APK/Gradle output is the heavier workload; reserve the largest volume for it.
+          $buildDrive = $eligible[0]
+          $sdkDrive = if ($eligible.Count -ge 2) { $eligible[1] } else { $eligible[0] }
           @(
             "NEURA_ANDROID_SDK_VOLUME=$($sdkDrive.RootDirectory.FullName)",
             "NEURA_ANDROID_BUILD_VOLUME=$($buildDrive.RootDirectory.FullName)",
@@ -145,7 +157,12 @@ jobs:
 
           $sourceLink = Join-Path $env:GITHUB_WORKSPACE 'source'
           $workspaceTarget = Join-Path $env:NEURA_ANDROID_BUILD_VOLUME "neura-ci\$env:NEURA_ANDROID_RUN_KEY\workspace"
-          Set-Location -LiteralPath $env:RUNNER_TEMP
+          $cleanupTemp = [System.Environment]::GetEnvironmentVariable('RUNNER_TEMP')
+          if ([string]::IsNullOrWhiteSpace($cleanupTemp) -or
+              -not (Test-Path -LiteralPath $cleanupTemp)) {
+            $cleanupTemp = [System.IO.Path]::GetTempPath().TrimEnd('\')
+          }
+          Set-Location -LiteralPath $cleanupTemp
           Remove-LinkOrDirectory -Path $sourceLink
           Remove-LinkOrDirectory -Path $workspaceTarget
           New-Item -ItemType Directory -Path $workspaceTarget -Force | Out-Null
@@ -228,8 +245,28 @@ jobs:
           $archive = Join-Path $env:NEURA_ANDROID_TOOL_ROOT 'temurin17.zip'
           $uri = 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.19%2B10/OpenJDK17U-jdk_x64_windows_hotspot_17.0.19_10.zip'
           $expected = 'b5b235c48adf6a081874b812c630b9f4b5f637b7a5ed18b9174d08a41ec4c235'
+          
+          # Retry logic for download
+          $maxRetries = 3
+          $retryCount = 0
+          $downloadSuccess = $false
+          
+          while ($retryCount -lt $maxRetries -and -not $downloadSuccess) {
+            try {
+              Write-Host "Downloading Temurin JDK (attempt $($retryCount + 1)/$maxRetries)..."
+              Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 600
+              $downloadSuccess = $true
+            } catch {
+              $retryCount++
+              if ($retryCount -lt $maxRetries) {
+                Write-Warning "Download failed: $($_.Exception.Message). Retrying in 30 seconds..."
+                Start-Sleep -Seconds 30
+              } else {
+                throw "Failed to download Temurin JDK after $maxRetries attempts: $($_.Exception.Message)"
+              }
+            }
+          }
 
-          Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive
           $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -ne $expected) { throw "Temurin JDK checksum mismatch: $actual" }
           Expand-Archive -LiteralPath $archive -DestinationPath $env:NEURA_ANDROID_JDK_ROOT -Force
@@ -258,8 +295,28 @@ jobs:
           $extract = Join-Path $env:NEURA_ANDROID_TOOL_ROOT '_extract'
           $uri = 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip'
           $expected = '90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a'
+          
+          # Retry logic for download
+          $maxRetries = 3
+          $retryCount = 0
+          $downloadSuccess = $false
+          
+          while ($retryCount -lt $maxRetries -and -not $downloadSuccess) {
+            try {
+              Write-Host "Downloading Android SDK command-line tools (attempt $($retryCount + 1)/$maxRetries)..."
+              Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 600
+              $downloadSuccess = $true
+            } catch {
+              $retryCount++
+              if ($retryCount -lt $maxRetries) {
+                Write-Warning "Download failed: $($_.Exception.Message). Retrying in 30 seconds..."
+                Start-Sleep -Seconds 30
+              } else {
+                throw "Failed to download Android SDK command-line tools after $maxRetries attempts: $($_.Exception.Message)"
+              }
+            }
+          }
 
-          Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive
           $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -ne $expected) { throw "Android command-line tools checksum mismatch: $actual" }
           Expand-Archive -LiteralPath $archive -DestinationPath $extract -Force
@@ -422,3 +479,4 @@ jobs:
               Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
             }
           }
+
