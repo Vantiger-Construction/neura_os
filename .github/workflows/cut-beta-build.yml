@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust (neura_swarm crate)
         uses: dtolnay/rust-toolchain@stable
@@ -41,7 +41,7 @@ jobs:
 
       - name: Upload beta package
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: neura-beta-dist
           path: dist/*.zip

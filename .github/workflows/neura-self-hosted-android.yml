@@ -169,7 +169,7 @@ jobs:
         id: checkout_first
         continue-on-error: true
         timeout-minutes: 10
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: source
           fetch-depth: 1
@@ -203,7 +203,7 @@ jobs:
       - name: Check out source (retry)
         if: steps.checkout_first.outcome != 'success'
         timeout-minutes: 10
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: source
           fetch-depth: 1
@@ -472,7 +472,7 @@ jobs:
 
       - name: Upload Android restore and build logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Neura-SelfHosted-Android-restore-build-logs
           path: |
@@ -502,7 +502,7 @@ jobs:
           Write-Host "SHA256: $hash"
 
       - name: Upload Android APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: NeuraCompanion-SelfHosted-Android-APK
           path: ${{ github.workspace }}\source\recovery_downloads\android\

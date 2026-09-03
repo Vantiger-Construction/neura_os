@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Announce Phase 4 package validation
         if: >-
@@ -100,7 +100,7 @@ jobs:
 
       - name: Upload verification logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Neura-verification-logs
           path: |
@@ -120,7 +120,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -322,7 +322,7 @@ jobs:
 
       - name: Upload Windows download
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: NeuraCompanion-Windows-x64
           path: recovery_downloads/windows/
@@ -331,7 +331,7 @@ jobs:
 
       - name: Upload Windows failure log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Neura-Windows-build-log
           path: windows-build.log
@@ -346,7 +346,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Java
         uses: actions/setup-java@v5
@@ -411,7 +411,7 @@ jobs:
 
       - name: Upload Android download
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: NeuraCompanion-Android-APK
           path: recovery_downloads/android/
@@ -420,7 +420,7 @@ jobs:
 
       - name: Upload Android failure log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Neura-Android-build-log
           path: android-build.log
