@@ -109,7 +109,7 @@ jobs:
             [System.IO.DriveInfo]::GetDrives() |
               Where-Object {
                 $_.IsReady -and
-                ($_.Name -ne $systemRoot -or $systemFree -ge 6.0GB)
+                ($_.Name -ne $systemRoot -or $systemFree -ge 5.5GB)
               } |
               Where-Object { Test-NeuraCiVolume -Drive $_ } |
               Sort-Object -Property AvailableFreeSpace -Descending
@@ -123,7 +123,7 @@ jobs:
             throw ('Android validation requires either separate writable volumes with ' +
               'at least 3.25 GB for SDK/JDK data and 2.75 GB for source/build data, ' +
               'or one shared writable volume with at least 8.0 GB free. The system ' +
-              'volume is eligible only when at least 6.0 GB remains free.')
+              'volume is eligible only when at least 5.5 GB remains free.')
           }
 
           # APK/Gradle output is the heavier workload; reserve the largest volume for it.
