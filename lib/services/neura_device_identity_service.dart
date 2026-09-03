@@ -55,9 +55,16 @@ class NeuraDeviceIdentityService {
   Future<void> ensureLoaded() {
     final existing = _loadFuture;
     if (existing != null) return existing;
-    final future = _load();
-    _loadFuture = future;
-    return future;
+
+    late final Future<void> attempt;
+    attempt = _load().onError((Object error, StackTrace stackTrace) {
+      if (identical(_loadFuture, attempt)) {
+        _loadFuture = null;
+      }
+      Error.throwWithStackTrace(error, stackTrace);
+    });
+    _loadFuture = attempt;
+    return attempt;
   }
 
   Future<void> setDisplayName(String name) async {
