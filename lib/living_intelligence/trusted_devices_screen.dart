@@ -131,21 +131,34 @@ class _TrustedDevicesScreenState extends State<TrustedDevicesScreen> {
       context: context,
       builder: (context) => const _AddDeviceDialog(),
     );
-    if (device == null) return;
-    await _continuity.pairDevice(
-      identity: NeuraDeviceIdentity(
-        deviceId: device.blob.deviceId,
-        displayName: device.blob.displayName,
-        publicKeyFingerprint: device.blob.publicKeyFingerprint,
-      ),
-      policy: NeuraDeviceSyncPolicy(
-        allowedCategories: device.allowedCategories,
-        allowCloudRelay: false,
-      ),
-      directUserGesture: true,
-      fingerprintVerified: device.fingerprintConfirmed,
-    );
-    if (mounted) setState(() {});
+    if (device == null || !mounted) return;
+    if (device.blob.deviceId == _identity.deviceId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This code belongs to this device.')),
+      );
+      return;
+    }
+    try {
+      await _continuity.pairDevice(
+        identity: NeuraDeviceIdentity(
+          deviceId: device.blob.deviceId,
+          displayName: device.blob.displayName,
+          publicKeyFingerprint: device.blob.publicKeyFingerprint,
+        ),
+        policy: NeuraDeviceSyncPolicy(
+          allowedCategories: device.allowedCategories,
+          allowCloudRelay: false,
+        ),
+        directUserGesture: true,
+        fingerprintVerified: device.fingerprintConfirmed,
+      );
+      if (mounted) setState(() {});
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not add device: $error')),
+      );
+    }
   }
 
   @override
@@ -272,7 +285,7 @@ class _PairingBlob {
   final String code;
   final DateTime expiresAtUtc;
 
-  bool get isExpired => DateTime.now().toUtc().isAfter(expiresAtUtc);
+  bool get isExpired => !DateTime.now().toUtc().isBefore(expiresAtUtc);
 
   String encode() {
     final json = jsonEncode({
@@ -286,16 +299,743 @@ class _PairingBlob {
     return base64Encode(utf8.encode(json));
   }
 
+  static final RegExp _deviceIdPattern = RegExp(r'^[A-Za-z0-9_-]{16,128}
+}
+
+class _MyPairingCodeDialog extends StatefulWidget {
+  const _MyPairingCodeDialog({required this.blob});
+
+  final _PairingBlob blob;
+
+  @override
+  State<_MyPairingCodeDialog> createState() => _MyPairingCodeDialogState();
+}
+
+class _MyPairingCodeDialogState extends State<_MyPairingCodeDialog> {
+  late final Timer _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final blob = widget.blob;
+    final remaining = blob.expiresAtUtc.difference(DateTime.now().toUtc());
+    final encoded = blob.encode();
+
+    return AlertDialog(
+      title: const Text('Your pairing code'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Send this code to the other device (message, email, or read '
+              'it aloud). On that device, choose "Add a device from a code" '
+              'and paste it in.',
+            ),
+            const SizedBox(height: 16),
+            SelectableText(
+              blob.code,
+              style: Theme.of(context)
+                  .textTheme
+                  .headlineMedium
+                  ?.copyWith(letterSpacing: 4),
+            ),
+            const SizedBox(height: 8),
+            Text('Fingerprint: ${blob.publicKeyFingerprint}'),
+            const SizedBox(height: 4),
+            Text(
+              remaining.isNegative
+                  ? 'Expired — reopen this to get a new code.'
+                  : 'Expires in ${remaining.inMinutes}m ${remaining.inSeconds % 60}s',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton.icon(
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: encoded));
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Pairing code copied')),
+              );
+            }
+          },
+          icon: const Icon(Icons.copy_outlined),
+          label: const Text('Copy'),
+        ),
+        TextButton.icon(
+          onPressed: () => unawaited(Share.share(encoded)),
+          icon: const Icon(Icons.share_outlined),
+          label: const Text('Share'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Done'),
+        ),
+      ],
+    );
+  }
+}
+
+class _PairedDeviceInput {
+  const _PairedDeviceInput({
+    required this.blob,
+    required this.fingerprintConfirmed,
+    required this.allowedCategories,
+  });
+
+  final _PairingBlob blob;
+  final bool fingerprintConfirmed;
+  final Set<NeuraContinuityCategory> allowedCategories;
+}
+
+class _AddDeviceDialog extends StatefulWidget {
+  const _AddDeviceDialog();
+
+  @override
+  State<_AddDeviceDialog> createState() => _AddDeviceDialogState();
+}
+
+class _AddDeviceDialogState extends State<_AddDeviceDialog> {
+  final _controller = TextEditingController();
+  _PairingBlob? _blob;
+  String? _parseError;
+  bool _fingerprintConfirmed = false;
+  final Set<NeuraContinuityCategory> _categories = {
+    NeuraContinuityCategory.preferences,
+  };
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _parse() {
+    final blob = _PairingBlob.tryParse(_controller.text);
+    setState(() {
+      _blob = blob;
+      _parseError =
+          blob == null ? 'That doesn\'t look like a valid code.' : null;
+      _fingerprintConfirmed = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final blob = _blob;
+    return AlertDialog(
+      title: const Text('Add a device'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'Paste the pairing code',
+                errorText: _parseError,
+              ),
+              onChanged: (_) => _parse(),
+            ),
+            if (blob != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                blob.isExpired
+                    ? 'This code has expired — ask for a new one.'
+                    : 'From: ${blob.displayName}',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 4),
+              Text('Confirmation code: ${blob.code}'),
+              const SizedBox(height: 4),
+              Text('Fingerprint: ${blob.publicKeyFingerprint}'),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _fingerprintConfirmed,
+                onChanged: blob.isExpired
+                    ? null
+                    : (value) =>
+                        setState(() => _fingerprintConfirmed = value ?? false),
+                title: const Text(
+                  'This fingerprint matches what\'s shown on the other device',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Allow syncing for:',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              Wrap(
+                spacing: 8,
+                children: NeuraContinuityCategory.values
+                    .map(
+                      (category) => FilterChip(
+                        label: Text(category.name),
+                        selected: _categories.contains(category),
+                        onSelected: (selected) => setState(() {
+                          if (selected) {
+                            _categories.add(category);
+                          } else {
+                            _categories.remove(category);
+                          }
+                        }),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: blob == null ||
+                  blob.isExpired ||
+                  !_fingerprintConfirmed ||
+                  _categories.isEmpty
+              ? null
+              : () => Navigator.of(context).pop(
+                    _PairedDeviceInput(
+                      blob: blob,
+                      fingerprintConfirmed: _fingerprintConfirmed,
+                      allowedCategories: _categories,
+                    ),
+                  ),
+          child: const Text('Add device'),
+        ),
+      ],
+    );
+  }
+}
+);
+  static final RegExp _fingerprintPattern =
+      RegExp(r'^[0-9A-F]{4}(?:-[0-9A-F]{4}){3}
+}
+
+class _MyPairingCodeDialog extends StatefulWidget {
+  const _MyPairingCodeDialog({required this.blob});
+
+  final _PairingBlob blob;
+
+  @override
+  State<_MyPairingCodeDialog> createState() => _MyPairingCodeDialogState();
+}
+
+class _MyPairingCodeDialogState extends State<_MyPairingCodeDialog> {
+  late final Timer _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final blob = widget.blob;
+    final remaining = blob.expiresAtUtc.difference(DateTime.now().toUtc());
+    final encoded = blob.encode();
+
+    return AlertDialog(
+      title: const Text('Your pairing code'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Send this code to the other device (message, email, or read '
+              'it aloud). On that device, choose "Add a device from a code" '
+              'and paste it in.',
+            ),
+            const SizedBox(height: 16),
+            SelectableText(
+              blob.code,
+              style: Theme.of(context)
+                  .textTheme
+                  .headlineMedium
+                  ?.copyWith(letterSpacing: 4),
+            ),
+            const SizedBox(height: 8),
+            Text('Fingerprint: ${blob.publicKeyFingerprint}'),
+            const SizedBox(height: 4),
+            Text(
+              remaining.isNegative
+                  ? 'Expired — reopen this to get a new code.'
+                  : 'Expires in ${remaining.inMinutes}m ${remaining.inSeconds % 60}s',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton.icon(
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: encoded));
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Pairing code copied')),
+              );
+            }
+          },
+          icon: const Icon(Icons.copy_outlined),
+          label: const Text('Copy'),
+        ),
+        TextButton.icon(
+          onPressed: () => unawaited(Share.share(encoded)),
+          icon: const Icon(Icons.share_outlined),
+          label: const Text('Share'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Done'),
+        ),
+      ],
+    );
+  }
+}
+
+class _PairedDeviceInput {
+  const _PairedDeviceInput({
+    required this.blob,
+    required this.fingerprintConfirmed,
+    required this.allowedCategories,
+  });
+
+  final _PairingBlob blob;
+  final bool fingerprintConfirmed;
+  final Set<NeuraContinuityCategory> allowedCategories;
+}
+
+class _AddDeviceDialog extends StatefulWidget {
+  const _AddDeviceDialog();
+
+  @override
+  State<_AddDeviceDialog> createState() => _AddDeviceDialogState();
+}
+
+class _AddDeviceDialogState extends State<_AddDeviceDialog> {
+  final _controller = TextEditingController();
+  _PairingBlob? _blob;
+  String? _parseError;
+  bool _fingerprintConfirmed = false;
+  final Set<NeuraContinuityCategory> _categories = {
+    NeuraContinuityCategory.preferences,
+  };
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _parse() {
+    final blob = _PairingBlob.tryParse(_controller.text);
+    setState(() {
+      _blob = blob;
+      _parseError =
+          blob == null ? 'That doesn\'t look like a valid code.' : null;
+      _fingerprintConfirmed = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final blob = _blob;
+    return AlertDialog(
+      title: const Text('Add a device'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'Paste the pairing code',
+                errorText: _parseError,
+              ),
+              onChanged: (_) => _parse(),
+            ),
+            if (blob != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                blob.isExpired
+                    ? 'This code has expired — ask for a new one.'
+                    : 'From: ${blob.displayName}',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 4),
+              Text('Fingerprint: ${blob.publicKeyFingerprint}'),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _fingerprintConfirmed,
+                onChanged: blob.isExpired
+                    ? null
+                    : (value) =>
+                        setState(() => _fingerprintConfirmed = value ?? false),
+                title: const Text(
+                  'This fingerprint matches what\'s shown on the other device',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Allow syncing for:',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              Wrap(
+                spacing: 8,
+                children: NeuraContinuityCategory.values
+                    .map(
+                      (category) => FilterChip(
+                        label: Text(category.name),
+                        selected: _categories.contains(category),
+                        onSelected: (selected) => setState(() {
+                          if (selected) {
+                            _categories.add(category);
+                          } else {
+                            _categories.remove(category);
+                          }
+                        }),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: blob == null ||
+                  blob.isExpired ||
+                  !_fingerprintConfirmed ||
+                  _categories.isEmpty
+              ? null
+              : () => Navigator.of(context).pop(
+                    _PairedDeviceInput(
+                      blob: blob,
+                      fingerprintConfirmed: _fingerprintConfirmed,
+                      allowedCategories: _categories,
+                    ),
+                  ),
+          child: const Text('Add device'),
+        ),
+      ],
+    );
+  }
+}
+);
+  static final RegExp _codePattern = RegExp(r'^\d{6}
+}
+
+class _MyPairingCodeDialog extends StatefulWidget {
+  const _MyPairingCodeDialog({required this.blob});
+
+  final _PairingBlob blob;
+
+  @override
+  State<_MyPairingCodeDialog> createState() => _MyPairingCodeDialogState();
+}
+
+class _MyPairingCodeDialogState extends State<_MyPairingCodeDialog> {
+  late final Timer _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final blob = widget.blob;
+    final remaining = blob.expiresAtUtc.difference(DateTime.now().toUtc());
+    final encoded = blob.encode();
+
+    return AlertDialog(
+      title: const Text('Your pairing code'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Send this code to the other device (message, email, or read '
+              'it aloud). On that device, choose "Add a device from a code" '
+              'and paste it in.',
+            ),
+            const SizedBox(height: 16),
+            SelectableText(
+              blob.code,
+              style: Theme.of(context)
+                  .textTheme
+                  .headlineMedium
+                  ?.copyWith(letterSpacing: 4),
+            ),
+            const SizedBox(height: 8),
+            Text('Fingerprint: ${blob.publicKeyFingerprint}'),
+            const SizedBox(height: 4),
+            Text(
+              remaining.isNegative
+                  ? 'Expired — reopen this to get a new code.'
+                  : 'Expires in ${remaining.inMinutes}m ${remaining.inSeconds % 60}s',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton.icon(
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: encoded));
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Pairing code copied')),
+              );
+            }
+          },
+          icon: const Icon(Icons.copy_outlined),
+          label: const Text('Copy'),
+        ),
+        TextButton.icon(
+          onPressed: () => unawaited(Share.share(encoded)),
+          icon: const Icon(Icons.share_outlined),
+          label: const Text('Share'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Done'),
+        ),
+      ],
+    );
+  }
+}
+
+class _PairedDeviceInput {
+  const _PairedDeviceInput({
+    required this.blob,
+    required this.fingerprintConfirmed,
+    required this.allowedCategories,
+  });
+
+  final _PairingBlob blob;
+  final bool fingerprintConfirmed;
+  final Set<NeuraContinuityCategory> allowedCategories;
+}
+
+class _AddDeviceDialog extends StatefulWidget {
+  const _AddDeviceDialog();
+
+  @override
+  State<_AddDeviceDialog> createState() => _AddDeviceDialogState();
+}
+
+class _AddDeviceDialogState extends State<_AddDeviceDialog> {
+  final _controller = TextEditingController();
+  _PairingBlob? _blob;
+  String? _parseError;
+  bool _fingerprintConfirmed = false;
+  final Set<NeuraContinuityCategory> _categories = {
+    NeuraContinuityCategory.preferences,
+  };
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _parse() {
+    final blob = _PairingBlob.tryParse(_controller.text);
+    setState(() {
+      _blob = blob;
+      _parseError =
+          blob == null ? 'That doesn\'t look like a valid code.' : null;
+      _fingerprintConfirmed = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final blob = _blob;
+    return AlertDialog(
+      title: const Text('Add a device'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'Paste the pairing code',
+                errorText: _parseError,
+              ),
+              onChanged: (_) => _parse(),
+            ),
+            if (blob != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                blob.isExpired
+                    ? 'This code has expired — ask for a new one.'
+                    : 'From: ${blob.displayName}',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 4),
+              Text('Fingerprint: ${blob.publicKeyFingerprint}'),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _fingerprintConfirmed,
+                onChanged: blob.isExpired
+                    ? null
+                    : (value) =>
+                        setState(() => _fingerprintConfirmed = value ?? false),
+                title: const Text(
+                  'This fingerprint matches what\'s shown on the other device',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Allow syncing for:',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              Wrap(
+                spacing: 8,
+                children: NeuraContinuityCategory.values
+                    .map(
+                      (category) => FilterChip(
+                        label: Text(category.name),
+                        selected: _categories.contains(category),
+                        onSelected: (selected) => setState(() {
+                          if (selected) {
+                            _categories.add(category);
+                          } else {
+                            _categories.remove(category);
+                          }
+                        }),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: blob == null ||
+                  blob.isExpired ||
+                  !_fingerprintConfirmed ||
+                  _categories.isEmpty
+              ? null
+              : () => Navigator.of(context).pop(
+                    _PairedDeviceInput(
+                      blob: blob,
+                      fingerprintConfirmed: _fingerprintConfirmed,
+                      allowedCategories: _categories,
+                    ),
+                  ),
+          child: const Text('Add device'),
+        ),
+      ],
+    );
+  }
+}
+);
+
   static _PairingBlob? tryParse(String text) {
+    final encoded = text.trim();
+    if (encoded.isEmpty || encoded.length > 2048) return null;
     try {
-      final json = jsonDecode(utf8.decode(base64Decode(text.trim())))
-          as Map<String, dynamic>;
+      final decoded = jsonDecode(utf8.decode(base64Decode(encoded)));
+      if (decoded is! Map<String, dynamic> || decoded['v'] != 1) return null;
+
+      final deviceId = decoded['deviceId'];
+      final displayName = decoded['displayName'];
+      final fingerprint = decoded['publicKeyFingerprint'];
+      final code = decoded['code'];
+      final expiresAtText = decoded['expiresAt'];
+      if (deviceId is! String ||
+          !_deviceIdPattern.hasMatch(deviceId) ||
+          displayName is! String ||
+          displayName.trim().isEmpty ||
+          displayName.length > 80 ||
+          fingerprint is! String ||
+          !_fingerprintPattern.hasMatch(fingerprint) ||
+          code is! String ||
+          !_codePattern.hasMatch(code) ||
+          expiresAtText is! String) {
+        return null;
+      }
+
+      final expiresAt = DateTime.parse(expiresAtText).toUtc();
+      final now = DateTime.now().toUtc();
+      if (!now.isBefore(expiresAt) ||
+          expiresAt.isAfter(now.add(const Duration(minutes: 10)))) {
+        return null;
+      }
       return _PairingBlob(
-        deviceId: json['deviceId'] as String,
-        displayName: json['displayName'] as String,
-        publicKeyFingerprint: json['publicKeyFingerprint'] as String,
-        code: json['code'] as String,
-        expiresAtUtc: DateTime.parse(json['expiresAt'] as String),
+        deviceId: deviceId,
+        displayName: displayName.trim(),
+        publicKeyFingerprint: fingerprint,
+        code: code,
+        expiresAtUtc: expiresAt,
       );
     } catch (_) {
       return null;
