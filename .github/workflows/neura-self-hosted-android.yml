@@ -237,53 +237,57 @@ jobs:
           & $flutterExe --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Install verified Temurin JDK 17
+      - name: Use verified runner JDK 17
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          $archive = Join-Path $env:NEURA_ANDROID_TOOL_ROOT 'temurin17.zip'
-          $uri = 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.19%2B10/OpenJDK17U-jdk_x64_windows_hotspot_17.0.19_10.zip'
-          $expected = 'b5b235c48adf6a081874b812c630b9f4b5f637b7a5ed18b9174d08a41ec4c235'
-          
-          # Retry logic for download
-          $maxRetries = 3
-          $retryCount = 0
-          $downloadSuccess = $false
-          
-          while ($retryCount -lt $maxRetries -and -not $downloadSuccess) {
-            try {
-              Write-Host "Downloading Temurin JDK (attempt $($retryCount + 1)/$maxRetries)..."
-              Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 600
-              $downloadSuccess = $true
-            } catch {
-              $retryCount++
-              if ($retryCount -lt $maxRetries) {
-                Write-Warning "Download failed: $($_.Exception.Message). Retrying in 30 seconds..."
-                Start-Sleep -Seconds 30
-              } else {
-                throw "Failed to download Temurin JDK after $maxRetries attempts: $($_.Exception.Message)"
-              }
+
+          $javaCandidates = @()
+          if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
+            $javaCandidates += Join-Path $env:JAVA_HOME 'bin\java.exe'
+          }
+          $javaCommand = Get-Command java.exe -ErrorAction SilentlyContinue
+          if ($javaCommand -and $javaCommand.Source) {
+            $javaCandidates += $javaCommand.Source
+          }
+
+          $javaExe = $null
+          foreach ($candidate in ($javaCandidates | Select-Object -Unique)) {
+            if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+            $versionOutput = (& $candidate -version 2>&1 | Out-String)
+            if ($versionOutput -match 'version\s+"17(?:\.|")') {
+              $javaExe = (Get-Item -LiteralPath $candidate).FullName
+              break
             }
           }
 
-          $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne $expected) { throw "Temurin JDK checksum mismatch: $actual" }
-          Expand-Archive -LiteralPath $archive -DestinationPath $env:NEURA_ANDROID_JDK_ROOT -Force
-          Remove-Item -LiteralPath $archive -Force
+          if (-not $javaExe) {
+            throw (
+              'A verified JDK 17 is required on the self-hosted runner. ' +
+              'Install Temurin JDK 17 once on the runner and set JAVA_HOME; ' +
+              'runtime downloads are intentionally disabled to avoid unreliable ' +
+              'network provisioning.'
+            )
+          }
 
-          $javaExe = Get-ChildItem -LiteralPath $env:NEURA_ANDROID_JDK_ROOT -Filter java.exe -File -Recurse |
-            Where-Object { $_.Directory.Name -eq 'bin' } |
-            Select-Object -First 1
-          if (-not $javaExe) { throw 'The Temurin archive did not contain bin\java.exe.' }
-          $javaHome = Split-Path -Parent $javaExe.Directory.FullName
+          $javaHome = Split-Path -Parent (Split-Path -Parent $javaExe)
+          $javacExe = Join-Path $javaHome 'bin\javac.exe'
+          if (-not (Test-Path -LiteralPath $javacExe -PathType Leaf)) {
+            throw "JDK 17 was found at $javaHome but javac.exe is missing."
+          }
+
           @(
             "JAVA_HOME=$javaHome",
+            "NEURA_ANDROID_JDK_ROOT=$javaHome",
             "JAVA_TOOL_OPTIONS=-Djava.io.tmpdir=$env:TEMP"
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          $javaExe.Directory.FullName |
+          (Join-Path $javaHome 'bin') |
             Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          & $javaExe.FullName -version
+
+          & $javaExe -version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $javacExe -version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Install verified Android SDK packages
