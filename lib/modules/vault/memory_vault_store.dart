@@ -196,8 +196,10 @@ class MemoryVaultStore {
     final raw = base64Url.decode(obf);
     if (pin.trim().isEmpty) return utf8.decode(raw);
     final key = utf8.encode(pin);
-    final out =
-        List<int>.generate(raw.length, (i) => raw[i] ^ key[i % key.length]);
+    final out = List<int>.generate(
+      raw.length,
+      (i) => raw[i] ^ key[i % key.length],
+    );
     return utf8.decode(out);
   }
 
