@@ -41,7 +41,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Reject unresolved merge markers
         shell: bash
@@ -106,7 +106,7 @@ jobs:
 
       - name: Upload validation evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Neura-1.5.1-consent-turn-safety-evidence
           path: |

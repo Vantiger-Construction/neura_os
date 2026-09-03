@@ -171,7 +171,7 @@ jobs:
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: source
 
@@ -425,7 +425,7 @@ jobs:
 
       - name: Upload Android restore and build logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Neura-SelfHosted-Android-restore-build-logs
           path: |
@@ -455,7 +455,7 @@ jobs:
           Write-Host "SHA256: $hash"
 
       - name: Upload Android APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: NeuraCompanion-SelfHosted-Android-APK
           path: ${{ github.workspace }}\source\recovery_downloads\android\
