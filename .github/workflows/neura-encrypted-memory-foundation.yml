@@ -3,6 +3,7 @@ name: Neura encrypted memory foundation
 on:
   pull_request:
     branches:
+      - Neura
       - agent/neura-release-readiness-v1.5.2
       - agent/neura-consent-turn-safety-v1.5.1
     paths:
