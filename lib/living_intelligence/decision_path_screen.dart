@@ -216,8 +216,7 @@ class _AddStepDialogState extends State<_AddStepDialog> {
             TextField(
               controller: _minutesController,
               keyboardType: TextInputType.number,
-              decoration:
-                  const InputDecoration(labelText: 'Estimated minutes'),
+              decoration: const InputDecoration(labelText: 'Estimated minutes'),
             ),
             const SizedBox(height: 12),
             _LabeledSlider(
@@ -244,8 +243,7 @@ class _AddStepDialogState extends State<_AddStepDialog> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _hasExternalEffect,
-              onChanged: (value) =>
-                  setState(() => _hasExternalEffect = value),
+              onChanged: (value) => setState(() => _hasExternalEffect = value),
               title: const Text('Affects something outside the app'),
             ),
           ],
