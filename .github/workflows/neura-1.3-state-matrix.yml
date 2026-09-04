@@ -147,9 +147,10 @@ jobs:
 
       - name: Upload state matrix evidence
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: Neura-1.3-state-matrix
           path: ${{ github.workspace }}\source\state-matrix.log
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
