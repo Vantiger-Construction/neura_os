@@ -320,7 +320,8 @@ class MemoryVaultStore {
       final legacy = sp.getString(_keyDataLegacy);
       if (legacy != null && legacy.trim().isNotEmpty) {
         final clear = await _decryptJson(legacy, pin: pin);
-        final items = clear == null ? <VaultItem>[] : decodeVaultItems(clear);
+        final items =
+            clear == null ? <VaultItem>[] : decodeVaultItems(clear);
         // Migrate to v2.
         final enc = await _encryptJson(encodeVaultItems(items), pin: pin);
         await sp.setString(_keyData, enc);
@@ -392,8 +393,7 @@ class MemoryVaultStore {
 
     // Decrypt items with old PIN and re-encrypt with new PIN.
     final items = await getItems(pin: oldPinTrim);
-    final encData =
-        await _encryptJson(encodeVaultItems(items), pin: newPinTrim);
+    final encData = await _encryptJson(encodeVaultItems(items), pin: newPinTrim);
     final encVerifier = await _encryptJson(_verifierPlain, pin: newPinTrim);
 
     // Persist atomically as much as possible
