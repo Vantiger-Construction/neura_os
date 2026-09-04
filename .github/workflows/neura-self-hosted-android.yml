@@ -271,7 +271,7 @@ jobs:
 
           $javaCandidates = @()
           if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
-            $javaCandidates += Join-Path $env:JAVA_HOME 'bin\\java.exe'
+            $javaCandidates += Join-Path $env:JAVA_HOME 'bin\java.exe'
           }
           $javaCommand = Get-Command java.exe -ErrorAction SilentlyContinue
           if ($javaCommand -and $javaCommand.Source) {
@@ -282,7 +282,7 @@ jobs:
           # Search only established toolchain roots; never scan user data.
           $searchRoots = @(
             $env:RUNNER_TOOL_CACHE,
-            (Join-Path $env:ProgramFiles 'Android\\Android Studio\\jbr'),
+            (Join-Path $env:ProgramFiles 'Android\Android Studio\jbr'),
             (Join-Path $env:ProgramFiles 'Eclipse Adoptium'),
             (Join-Path $env:ProgramFiles 'Microsoft'),
             (Join-Path $env:ProgramFiles 'Java')
@@ -299,7 +299,7 @@ jobs:
           foreach ($candidate in ($javaCandidates | Select-Object -Unique)) {
             if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
             $versionOutput = (& $candidate -version 2>&1 | Out-String)
-            if ($versionOutput -match 'version\\s+"17(?:\\.|")') {
+            if ($versionOutput -match 'version\s+"17(?:\.|")') {
               $javaExe = (Get-Item -LiteralPath $candidate).FullName
               break
             }
@@ -315,7 +315,7 @@ jobs:
           }
 
           $javaHome = Split-Path -Parent (Split-Path -Parent $javaExe)
-          $javacExe = Join-Path $javaHome 'bin\\javac.exe'
+          $javacExe = Join-Path $javaHome 'bin\javac.exe'
           if (-not (Test-Path -LiteralPath $javacExe -PathType Leaf)) {
             throw "JDK 17 was found at $javaHome but javac.exe is missing."
           }
