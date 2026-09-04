@@ -126,7 +126,7 @@ jobs:
           # Remove only stale directories below Neura's own alternate-volume
           # namespace. No other root-level data is inspected or changed.
           foreach ($drive in [System.IO.DriveInfo]::GetDrives()) {
-            if (-not $drive.IsReady -or $drive.Name -eq $systemRoot) {
+            if (-not $drive.IsReady) {
               continue
             }
             $ownedRoot = Join-Path $drive.RootDirectory.FullName 'neura-ci'
