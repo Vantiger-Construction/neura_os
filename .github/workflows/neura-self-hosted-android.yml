@@ -248,56 +248,87 @@ jobs:
           & $flutterExe --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Use verified runner JDK 17
+      - name: Use verified JDK 17
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
 
-          $javaCandidates = @()
-          if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
-            $javaCandidates += Join-Path $env:JAVA_HOME 'bin\java.exe'
-          }
-          $javaCommand = Get-Command java.exe -ErrorAction SilentlyContinue
-          if ($javaCommand -and $javaCommand.Source) {
-            $javaCandidates += $javaCommand.Source
-          }
-
-          # Runner services do not always inherit machine-wide JAVA_HOME/PATH.
-          # Search only established toolchain roots; never scan user data.
-          $searchRoots = @(
-            $env:RUNNER_TOOL_CACHE,
-            (Join-Path $env:ProgramFiles 'Android\Android Studio\jbr'),
-            (Join-Path $env:ProgramFiles 'Eclipse Adoptium'),
-            (Join-Path $env:ProgramFiles 'Microsoft'),
-            (Join-Path $env:ProgramFiles 'Java')
-          ) | Where-Object {
-            -not [string]::IsNullOrWhiteSpace($_) -and
-            (Test-Path -LiteralPath $_ -PathType Container)
-          }
-          foreach ($searchRoot in $searchRoots) {
-            $javaCandidates += Get-ChildItem -LiteralPath $searchRoot `
-                -Filter 'java.exe' -File -Recurse -ErrorAction SilentlyContinue |
-              Select-Object -ExpandProperty FullName
-          }
-
-          $javaExe = $null
-          foreach ($candidate in ($javaCandidates | Select-Object -Unique)) {
-            if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
-            $versionOutput = (& $candidate -version 2>&1 | Out-String)
-            if ($versionOutput -match 'version\s+"17(?:\.|")') {
-              $javaExe = (Get-Item -LiteralPath $candidate).FullName
-              break
+          function Find-VerifiedJdk17 {
+            $candidates = @()
+            if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
+              $candidates += Join-Path $env:JAVA_HOME 'bin\java.exe'
             }
+            $javaCommand = Get-Command java.exe -ErrorAction SilentlyContinue
+            if ($javaCommand -and $javaCommand.Source) {
+              $candidates += $javaCommand.Source
+            }
+
+            # Prefer established runner toolchain locations before using the
+            # verified, bounded fallback download below.
+            $searchRoots = @(
+              $env:RUNNER_TOOL_CACHE,
+              (Join-Path $env:ProgramFiles 'Android\Android Studio\jbr'),
+              (Join-Path $env:ProgramFiles 'Eclipse Adoptium'),
+              (Join-Path $env:ProgramFiles 'Microsoft'),
+              (Join-Path $env:ProgramFiles 'Java')
+            ) | Where-Object {
+              -not [string]::IsNullOrWhiteSpace($_) -and
+              (Test-Path -LiteralPath $_ -PathType Container)
+            }
+            foreach ($searchRoot in $searchRoots) {
+              $candidates += Get-ChildItem -LiteralPath $searchRoot -Filter 'java.exe' -File -Recurse -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty FullName
+            }
+
+            foreach ($candidate in ($candidates | Select-Object -Unique)) {
+              if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+              $versionOutput = (& $candidate -version 2>&1 | Out-String)
+              if ($versionOutput -match 'version\s+' -and $versionOutput -match '17') {
+                $javaHome = Split-Path -Parent (Split-Path -Parent $candidate)
+                $javacExe = Join-Path $javaHome 'bin\javac.exe'
+                if (Test-Path -LiteralPath $javacExe -PathType Leaf) {
+                  return (Get-Item -LiteralPath $candidate).FullName
+                }
+              }
+            }
+            return $null
           }
 
+          $javaExe = Find-VerifiedJdk17
           if (-not $javaExe) {
-            throw (
-              'A verified JDK 17 is required on the self-hosted runner. ' +
-              'Install JDK 17 once in RUNNER_TOOL_CACHE or a standard machine-wide ' +
-              'installation directory; runtime downloads remain disabled to avoid ' +
-              'unreliable network provisioning.'
-            )
+            $archive = Join-Path $env:NEURA_ANDROID_TOOL_ROOT 'temurin17.zip'
+            $uri = 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.19%2B10/OpenJDK17U-jdk_x64_windows_hotspot_17.0.19_10.zip'
+            $expected = 'b5b235c48adf6a081874b812c630b9f4b5f637b7a5ed18b9174d08a41ec4c235'
+            $downloaded = $false
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              try {
+                Write-Host "Downloading verified Temurin JDK 17 (attempt $attempt/3)..."
+                Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 600
+                $downloaded = $true
+                break
+              } catch {
+                Write-Warning "JDK download attempt $attempt failed: $($_.Exception.Message)"
+                Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue
+                if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
+              }
+            }
+            if (-not $downloaded) {
+              throw 'Unable to download verified Temurin JDK 17 after 3 attempts.'
+            }
+
+            $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $expected) {
+              throw "Temurin JDK checksum mismatch: $actual"
+            }
+            Expand-Archive -LiteralPath $archive -DestinationPath $env:NEURA_ANDROID_JDK_ROOT -Force
+            Remove-Item -LiteralPath $archive -Force
+            $javaExe = Get-ChildItem -LiteralPath $env:NEURA_ANDROID_JDK_ROOT -Filter 'java.exe' -File -Recurse -ErrorAction SilentlyContinue |
+              Where-Object { $_.Directory.Name -eq 'bin' } |
+              Select-Object -First 1 -ExpandProperty FullName
+            if (-not $javaExe) {
+              throw 'Verified Temurin archive did not contain bin\java.exe.'
+            }
           }
 
           $javaHome = Split-Path -Parent (Split-Path -Parent $javaExe)
@@ -318,7 +349,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $javacExe -version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
       - name: Install verified Android SDK packages
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
