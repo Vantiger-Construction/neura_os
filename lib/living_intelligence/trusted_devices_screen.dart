@@ -307,8 +307,7 @@ class _PairingBlob {
     return groups.length == 4 &&
         groups.every(
           (group) =>
-              group.length == 4 &&
-              _containsOnly(group, '0123456789ABCDEF'),
+              group.length == 4 && _containsOnly(group, '0123456789ABCDEF'),
         );
   }
 
