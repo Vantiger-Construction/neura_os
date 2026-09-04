@@ -461,6 +461,40 @@ jobs:
             Write-Host ("{0} free: {1:N2} GB" -f $root, ($drive.Free / 1GB))
           }
 
+      - name: Ensure Visual C++ ATL headers
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) {
+            throw 'Visual Studio locator is missing; cannot provision ATL headers.'
+          }
+          $installation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format json |
+            ConvertFrom-Json | Select-Object -First 1
+          if (-not $installation -or [string]::IsNullOrWhiteSpace($installation.installationPath)) {
+            throw 'A Visual Studio C++ toolchain installation is required for the Windows build.'
+          }
+          $atlHeader = Get-ChildItem -LiteralPath $installation.installationPath -Filter 'atlbase.h' -File -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if (-not $atlHeader) {
+            $installer = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vs_installer.exe'
+            if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
+              throw 'Visual Studio Installer is missing; ATL headers cannot be provisioned.'
+            }
+            & $installer modify --installPath $installation.installationPath --add Microsoft.VisualStudio.Component.VC.ATL --quiet --norestart --wait
+            if ($LASTEXITCODE -ne 0) {
+              throw "Visual Studio ATL component installation failed with exit code $LASTEXITCODE."
+            }
+            $atlHeader = Get-ChildItem -LiteralPath $installation.installationPath -Filter 'atlbase.h' -File -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+          }
+          if (-not $atlHeader) {
+            throw 'ATL headers remain unavailable after Visual Studio component provisioning.'
+          }
+          Write-Host "ATL headers available at $($atlHeader.FullName)"
+
       - name: Run optimized validation
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: '& "$env:NEURA_SOURCE_ROOT\tools\Neura-FastCheck.ps1" -Root $env:NEURA_SOURCE_ROOT -BuildWindows'
