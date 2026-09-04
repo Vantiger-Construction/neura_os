@@ -106,6 +106,7 @@ jobs:
 
       - name: Upload validation evidence
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: Neura-1.5.1-consent-turn-safety-evidence
@@ -115,4 +116,4 @@ jobs:
             complete-tests.log
             pubspec.lock
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
