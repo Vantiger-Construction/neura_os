@@ -444,6 +444,8 @@ jobs:
 
       - name: Upload Android restore and build logs
         if: always()
+        # Diagnostic only; exhausted artifact quota must not fail Android validation.
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: Neura-SelfHosted-Android-restore-build-logs
@@ -451,7 +453,7 @@ jobs:
             ${{ github.workspace }}\source\pub-get.log
             ${{ github.workspace }}\source\android-build.log
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
       - name: Verify Android APK
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
