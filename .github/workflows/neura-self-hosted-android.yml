@@ -146,6 +146,7 @@ jobs:
             "NEURA_ANDROID_RUN_KEY=$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+          Write-Host "Android volume layout: $layout"
           Write-Host "SDK/JDK volume: $($sdkDrive.Name) ($([Math]::Round($sdkDrive.AvailableFreeSpace / 1GB, 2)) GB free)"
           Write-Host "Source/build volume: $($buildDrive.Name) ($([Math]::Round($buildDrive.AvailableFreeSpace / 1GB, 2)) GB free)"
 
@@ -253,10 +254,6 @@ jobs:
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          # Invoke-WebRequest's default progress-bar rendering is extremely
-          # slow on a non-interactive host (this can turn a sub-minute
-          # download into a multi-hour one). Disable it before downloading.
-          $ProgressPreference = 'SilentlyContinue'
 
           function Find-VerifiedJdk17 {
             $candidates = @()
