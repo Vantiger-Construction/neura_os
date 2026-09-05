@@ -467,29 +467,75 @@ jobs:
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
 
-          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\\Installer\\vswhere.exe'
           if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) {
             throw 'Visual Studio locator is missing; cannot provision ATL headers.'
           }
+
+          function Find-AtlHeader {
+            param([Parameter(Mandatory)][string]$InstallationPath)
+
+            if (-not (Test-Path -LiteralPath $InstallationPath -PathType Container)) {
+              return $null
+            }
+            return Get-ChildItem -LiteralPath $InstallationPath -Filter 'atlbase.h' -File -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+          }
+
           $installation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format json |
             ConvertFrom-Json | Select-Object -First 1
           if (-not $installation -or [string]::IsNullOrWhiteSpace($installation.installationPath)) {
             throw 'A Visual Studio C++ toolchain installation is required for the Windows build.'
           }
-          $atlHeader = Get-ChildItem -LiteralPath $installation.installationPath -Filter 'atlbase.h' -File -Recurse -ErrorAction SilentlyContinue |
-            Select-Object -First 1
+
+          $atlHeader = Find-AtlHeader -InstallationPath $installation.installationPath
           if (-not $atlHeader) {
-            $installer = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vs_installer.exe'
+            $installer = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\\Installer\\vs_installer.exe'
             if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
               throw 'Visual Studio Installer is missing; ATL headers cannot be provisioned.'
             }
-            & $installer modify --installPath $installation.installationPath --add Microsoft.VisualStudio.Component.VC.ATL --quiet --norestart --wait
-            if ($LASTEXITCODE -ne 0) {
-              throw "Visual Studio ATL component installation failed with exit code $LASTEXITCODE."
+
+            $installerArguments = @(
+              'modify',
+              '--installPath',
+              $installation.installationPath,
+              '--add',
+              'Microsoft.VisualStudio.Component.VC.ATL',
+              '--quiet',
+              '--norestart',
+              '--wait'
+            )
+            $installerProcess = Start-Process `
+              -FilePath $installer `
+              -ArgumentList $installerArguments `
+              -Wait `
+              -PassThru `
+              -NoNewWindow
+            if ($installerProcess.ExitCode -notin @(0, 3010)) {
+              throw "Visual Studio ATL component installation failed with exit code $($installerProcess.ExitCode)."
             }
-            $atlHeader = Get-ChildItem -LiteralPath $installation.installationPath -Filter 'atlbase.h' -File -Recurse -ErrorAction SilentlyContinue |
-              Select-Object -First 1
+
+            # The installer can return before the component files are visible
+            # to the filesystem. Poll briefly instead of failing mid-provision.
+            for ($attempt = 1; $attempt -le 12; $attempt++) {
+              $atlHeader = Find-AtlHeader -InstallationPath $installation.installationPath
+              if ($atlHeader) {
+                break
+              }
+              Start-Sleep -Seconds 5
+            }
           }
+
+          if (-not $atlHeader) {
+            $atlInstallationPath = & $vswhere -latest -products * `
+              -requires Microsoft.VisualStudio.Component.VC.ATL `
+              -property installationPath |
+              Select-Object -First 1
+            if ($atlInstallationPath) {
+              $atlHeader = Find-AtlHeader -InstallationPath $atlInstallationPath
+            }
+          }
+
           if (-not $atlHeader) {
             throw 'ATL headers remain unavailable after Visual Studio component provisioning.'
           }
