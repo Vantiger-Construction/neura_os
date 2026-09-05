@@ -47,7 +47,7 @@ jobs:
           $drive = [System.IO.DriveInfo]::GetDrives() |
             Where-Object {
               $_.IsReady -and
-              ($_.Name -ne $systemRoot -or $systemFree -ge 6.0GB) -and
+              ($_.Name -ne $systemRoot -or $systemFree -ge 4.5GB) -and
               ($_.DriveType -eq [System.IO.DriveType]::Fixed -or
                $_.DriveType -eq [System.IO.DriveType]::Removable) -and
               $_.AvailableFreeSpace -ge 2.5GB
@@ -55,7 +55,7 @@ jobs:
             Sort-Object -Property AvailableFreeSpace -Descending |
             Select-Object -First 1
           if (-not $drive) {
-            throw 'State Matrix requires one writable volume with at least 2.5 GB free; the system volume requires at least 6.0 GB free.'
+            throw 'State Matrix requires one writable volume with at least 2.5 GB free; the system volume requires at least 4.5 GB free.'
           }
 
           $root = Join-Path $drive.RootDirectory.FullName 'neura-ci\state-matrix'
