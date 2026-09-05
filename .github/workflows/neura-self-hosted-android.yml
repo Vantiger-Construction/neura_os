@@ -134,11 +134,13 @@ jobs:
           if ($sharedDrive) {
             $buildDrive = $sharedDrive
             $sdkDrive = $sharedDrive
+            $layout = 'shared'
           } else {
             # APK/Gradle output is the heavier workload; reserve the largest
             # remaining volume for it.
             $buildDrive = $eligible[0]
             $sdkDrive = $eligible[1]
+            $layout = 'separate'
           }
           @(
             "NEURA_ANDROID_SDK_VOLUME=$($sdkDrive.RootDirectory.FullName)",
@@ -355,10 +357,6 @@ jobs:
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          # Invoke-WebRequest's default progress-bar rendering is extremely
-          # slow on a non-interactive host (this can turn a sub-minute
-          # download into a multi-hour one). Disable it before downloading.
-          $ProgressPreference = 'SilentlyContinue'
           $archive = Join-Path $env:NEURA_ANDROID_TOOL_ROOT 'command-line-tools.zip'
           $extract = Join-Path $env:NEURA_ANDROID_TOOL_ROOT '_extract'
           $uri = 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip'
