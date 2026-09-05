@@ -1,5 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 
+import '../avatar/avatar_route_observer.dart';
+import '../core/neura_event_bus.dart';
 import '../modules/core/error_handler.dart';
 import '../modules/human/human_prefs.dart';
 import '../modules/human/human_prefs_controller.dart';
@@ -36,6 +38,7 @@ class NeuroCompanionApp extends StatelessWidget {
       builder: (context, prefs, _) {
         return MaterialApp(
           navigatorKey: navigatorKey,
+          navigatorObservers: [AvatarRouteObserver(NeuraEventBus.I)],
           title: 'Neura OS',
           themeMode: _themeModeFor(prefs.theme),
           theme: AppTheme.light(highContrast: prefs.highContrast),

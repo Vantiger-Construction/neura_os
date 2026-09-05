@@ -134,11 +134,13 @@ jobs:
           if ($sharedDrive) {
             $buildDrive = $sharedDrive
             $sdkDrive = $sharedDrive
+            $layout = 'shared'
           } else {
             # APK/Gradle output is the heavier workload; reserve the largest
             # remaining volume for it.
             $buildDrive = $eligible[0]
             $sdkDrive = $eligible[1]
+            $layout = 'separate'
           }
           @(
             "NEURA_ANDROID_SDK_VOLUME=$($sdkDrive.RootDirectory.FullName)",
@@ -146,6 +148,7 @@ jobs:
             "NEURA_ANDROID_RUN_KEY=$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+          Write-Host "Android volume layout: $layout"
           Write-Host "SDK/JDK volume: $($sdkDrive.Name) ($([Math]::Round($sdkDrive.AvailableFreeSpace / 1GB, 2)) GB free)"
           Write-Host "Source/build volume: $($buildDrive.Name) ($([Math]::Round($buildDrive.AvailableFreeSpace / 1GB, 2)) GB free)"
 
