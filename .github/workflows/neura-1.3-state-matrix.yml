@@ -147,7 +147,6 @@ jobs:
 
       - name: Upload state matrix evidence
         if: always()
-        continue-on-error: true
         uses: actions/upload-artifact@v6
         # Evidence upload is diagnostic; exhausted artifact quota must not
         # override the state/recovery validation result.
