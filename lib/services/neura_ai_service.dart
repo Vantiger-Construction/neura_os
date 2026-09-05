@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
 import '../after_storm/models/storm_event.dart';
-import '../care/services/care_mode_bridge.dart';
+import '../weekly/services/weekly_snapshot_bridge.dart';
 import '../guardrails/guardrails.dart';
 import '../guardrails/guardrails_types.dart';
 import '../guardrails/support_resources.dart';
@@ -687,7 +687,7 @@ class NeuraAiService {
     if (decision.allow) return null;
 
     if (signal.active) {
-      await CareModeBridge.instance.logStormEvent(
+      await WeeklySnapshotBridge.instance.logStormEvent(
         StormEvent(
           id: const Uuid().v4(),
           timestamp: DateTime.now(),
