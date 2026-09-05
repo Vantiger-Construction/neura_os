@@ -118,4 +118,4 @@ jobs:
             complete-tests.log
             pubspec.lock
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 3
