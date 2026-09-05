@@ -86,7 +86,7 @@ jobs:
           }
 
           foreach ($drive in [System.IO.DriveInfo]::GetDrives()) {
-            if (-not $drive.IsReady -or $drive.Name -eq $systemRoot) { continue }
+            if (-not $drive.IsReady) { continue }
             $ownedRoot = Join-Path $drive.RootDirectory.FullName 'neura-ci'
             if (Test-Path -LiteralPath $ownedRoot -PathType Container) {
               Get-ChildItem -LiteralPath $ownedRoot -Directory -Force -ErrorAction SilentlyContinue |
@@ -109,43 +109,36 @@ jobs:
             [System.IO.DriveInfo]::GetDrives() |
               Where-Object {
                 $_.IsReady -and
-                ($_.Name -ne $systemRoot -or $systemFree -ge 6.0GB)
+                ($_.Name -ne $systemRoot -or $systemFree -ge 5.5GB)
               } |
               Where-Object { Test-NeuraCiVolume -Drive $_ } |
               Sort-Object -Property AvailableFreeSpace -Descending
           )
+          if ($eligible.Count -eq 0 -or
+              ($eligible.Count -eq 1 -and
+               $eligible[0].AvailableFreeSpace -lt 8.0GB) -or
+              ($eligible.Count -ge 2 -and
+               ($eligible[0].AvailableFreeSpace -lt 3.25GB -or
+                $eligible[1].AvailableFreeSpace -lt 2.75GB))) {
+            throw ('Android validation requires either separate writable volumes with ' +
+              'at least 3.25 GB for SDK/JDK data and 2.75 GB for source/build data, ' +
+              'or one shared writable volume with at least 8.0 GB free. The system ' +
+              'volume is eligible only when at least 5.5 GB remains free.')
+          }
 
-          # Prefer one shared volume when it has enough headroom for the SDK,
-          # NDK extraction, JDK, Gradle, and the APK build at the same time.
+          # Prefer one roomy volume so SDK/NDK extraction is not forced onto a
+          # marginal second drive. Fall back to split volumes only when needed.
           $sharedDrive = $eligible |
             Where-Object { $_.AvailableFreeSpace -ge 8.0GB } |
             Select-Object -First 1
-
           if ($sharedDrive) {
             $buildDrive = $sharedDrive
             $sdkDrive = $sharedDrive
-            $layout = 'shared'
           } else {
-            # NDK installation expands a large archive in place, so the SDK/JDK
-            # volume needs materially more than the source/build minimum.
-            $sdkDrive = $eligible |
-              Where-Object { $_.AvailableFreeSpace -ge 6.0GB } |
-              Sort-Object -Property AvailableFreeSpace -Descending |
-              Select-Object -First 1
-            $buildDrive = $eligible |
-              Where-Object {
-                $_.AvailableFreeSpace -ge 2.75GB -and
-                (-not $sdkDrive -or $_.Name -ne $sdkDrive.Name)
-              } |
-              Sort-Object -Property AvailableFreeSpace -Descending |
-              Select-Object -First 1
-            if (-not $sdkDrive -or -not $buildDrive) {
-              throw ('Android validation requires either separate writable volumes with ' +
-                'at least 6.0 GB for SDK/JDK/NDK data and 2.75 GB for source/build data, ' +
-                'or one shared writable volume with at least 8.0 GB free. The system ' +
-                'volume is eligible only when at least 6.0 GB remains free.')
-            }
-            $layout = 'separate'
+            # APK/Gradle output is the heavier workload; reserve the largest
+            # remaining volume for it.
+            $buildDrive = $eligible[0]
+            $sdkDrive = $eligible[1]
           }
           @(
             "NEURA_ANDROID_SDK_VOLUME=$($sdkDrive.RootDirectory.FullName)",
@@ -153,7 +146,6 @@ jobs:
             "NEURA_ANDROID_RUN_KEY=$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-          Write-Host "Android volume layout: $layout"
           Write-Host "SDK/JDK volume: $($sdkDrive.Name) ($([Math]::Round($sdkDrive.AvailableFreeSpace / 1GB, 2)) GB free)"
           Write-Host "Source/build volume: $($buildDrive.Name) ($([Math]::Round($buildDrive.AvailableFreeSpace / 1GB, 2)) GB free)"
 
@@ -256,55 +248,107 @@ jobs:
           & $flutterExe --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Install verified Temurin JDK 17
+      - name: Use verified JDK 17
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          $archive = Join-Path $env:NEURA_ANDROID_TOOL_ROOT 'temurin17.zip'
-          $uri = 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.19%2B10/OpenJDK17U-jdk_x64_windows_hotspot_17.0.19_10.zip'
-          $expected = 'b5b235c48adf6a081874b812c630b9f4b5f637b7a5ed18b9174d08a41ec4c235'
-          
-          # Retry logic for download
-          $maxRetries = 3
-          $retryCount = 0
-          $downloadSuccess = $false
-          
-          while ($retryCount -lt $maxRetries -and -not $downloadSuccess) {
-            try {
-              Write-Host "Downloading Temurin JDK (attempt $($retryCount + 1)/$maxRetries)..."
-              Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 600
-              $downloadSuccess = $true
-            } catch {
-              $retryCount++
-              if ($retryCount -lt $maxRetries) {
-                Write-Warning "Download failed: $($_.Exception.Message). Retrying in 30 seconds..."
-                Start-Sleep -Seconds 30
-              } else {
-                throw "Failed to download Temurin JDK after $maxRetries attempts: $($_.Exception.Message)"
+
+          function Find-VerifiedJdk17 {
+            $candidates = @()
+            if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME)) {
+              $candidates += Join-Path $env:JAVA_HOME 'bin\java.exe'
+            }
+            $javaCommand = Get-Command java.exe -ErrorAction SilentlyContinue
+            if ($javaCommand -and $javaCommand.Source) {
+              $candidates += $javaCommand.Source
+            }
+
+            # Prefer established runner toolchain locations before using the
+            # verified, bounded fallback download below.
+            $searchRoots = @(
+              $env:RUNNER_TOOL_CACHE,
+              (Join-Path $env:ProgramFiles 'Android\Android Studio\jbr'),
+              (Join-Path $env:ProgramFiles 'Eclipse Adoptium'),
+              (Join-Path $env:ProgramFiles 'Microsoft'),
+              (Join-Path $env:ProgramFiles 'Java')
+            ) | Where-Object {
+              -not [string]::IsNullOrWhiteSpace($_) -and
+              (Test-Path -LiteralPath $_ -PathType Container)
+            }
+            foreach ($searchRoot in $searchRoots) {
+              $candidates += Get-ChildItem -LiteralPath $searchRoot -Filter 'java.exe' -File -Recurse -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty FullName
+            }
+
+            foreach ($candidate in ($candidates | Select-Object -Unique)) {
+              if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+              $versionOutput = (& $candidate -version 2>&1 | Out-String)
+              if ($versionOutput -match 'version\s+' -and $versionOutput -match '17') {
+                $javaHome = Split-Path -Parent (Split-Path -Parent $candidate)
+                $javacExe = Join-Path $javaHome 'bin\javac.exe'
+                if (Test-Path -LiteralPath $javacExe -PathType Leaf) {
+                  return (Get-Item -LiteralPath $candidate).FullName
+                }
               }
+            }
+            return $null
+          }
+
+          $javaExe = Find-VerifiedJdk17
+          if (-not $javaExe) {
+            $archive = Join-Path $env:NEURA_ANDROID_TOOL_ROOT 'temurin17.zip'
+            $uri = 'https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.19%2B10/OpenJDK17U-jdk_x64_windows_hotspot_17.0.19_10.zip'
+            $expected = 'b5b235c48adf6a081874b812c630b9f4b5f637b7a5ed18b9174d08a41ec4c235'
+            $downloaded = $false
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              try {
+                Write-Host "Downloading verified Temurin JDK 17 (attempt $attempt/3)..."
+                Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 600
+                $downloaded = $true
+                break
+              } catch {
+                Write-Warning "JDK download attempt $attempt failed: $($_.Exception.Message)"
+                Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue
+                if ($attempt -lt 3) { Start-Sleep -Seconds (10 * $attempt) }
+              }
+            }
+            if (-not $downloaded) {
+              throw 'Unable to download verified Temurin JDK 17 after 3 attempts.'
+            }
+
+            $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $expected) {
+              throw "Temurin JDK checksum mismatch: $actual"
+            }
+            Expand-Archive -LiteralPath $archive -DestinationPath $env:NEURA_ANDROID_JDK_ROOT -Force
+            Remove-Item -LiteralPath $archive -Force
+            $javaExe = Get-ChildItem -LiteralPath $env:NEURA_ANDROID_JDK_ROOT -Filter 'java.exe' -File -Recurse -ErrorAction SilentlyContinue |
+              Where-Object { $_.Directory.Name -eq 'bin' } |
+              Select-Object -First 1 -ExpandProperty FullName
+            if (-not $javaExe) {
+              throw 'Verified Temurin archive did not contain bin\java.exe.'
             }
           }
 
-          $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne $expected) { throw "Temurin JDK checksum mismatch: $actual" }
-          Expand-Archive -LiteralPath $archive -DestinationPath $env:NEURA_ANDROID_JDK_ROOT -Force
-          Remove-Item -LiteralPath $archive -Force
+          $javaHome = Split-Path -Parent (Split-Path -Parent $javaExe)
+          $javacExe = Join-Path $javaHome 'bin\javac.exe'
+          if (-not (Test-Path -LiteralPath $javacExe -PathType Leaf)) {
+            throw "JDK 17 was found at $javaHome but javac.exe is missing."
+          }
 
-          $javaExe = Get-ChildItem -LiteralPath $env:NEURA_ANDROID_JDK_ROOT -Filter java.exe -File -Recurse |
-            Where-Object { $_.Directory.Name -eq 'bin' } |
-            Select-Object -First 1
-          if (-not $javaExe) { throw 'The Temurin archive did not contain bin\java.exe.' }
-          $javaHome = Split-Path -Parent $javaExe.Directory.FullName
           @(
             "JAVA_HOME=$javaHome",
+            "NEURA_ANDROID_JDK_ROOT=$javaHome",
             "JAVA_TOOL_OPTIONS=-Djava.io.tmpdir=$env:TEMP"
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          $javaExe.Directory.FullName |
+          (Join-Path $javaHome 'bin') |
             Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          & $javaExe.FullName -version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+          & $javaExe -version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $javacExe -version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install verified Android SDK packages
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
