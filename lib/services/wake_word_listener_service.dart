@@ -49,6 +49,7 @@ class WakeWordListenerService {
   }
 
   Future<void> stop() async {
+    final wasListening = _sub != null;
     await _sub?.cancel();
     _sub = null;
     _awaitingMessageAfterWake = false;
@@ -57,6 +58,7 @@ class WakeWordListenerService {
       await stt.stopRecording();
     }
     _weStartedSession = false;
+    if (wasListening) NeuraEventBus.I.emit(const NeuraListeningEvent(false));
   }
 
   Future<void> resetAfterDataWipe() async {
@@ -77,9 +79,11 @@ class WakeWordListenerService {
   /// the shared [NeuraSpeechToTextService] — avoids double-processing the
   /// same phrases through two different listeners at once.
   void pause() {
+    final wasListening = _sub != null;
     _sub?.cancel();
     _sub = null;
     _awaitingMessageAfterWake = false;
+    if (wasListening) NeuraEventBus.I.emit(const NeuraListeningEvent(false));
   }
 
   Future<void> resume() async {
@@ -112,6 +116,7 @@ class WakeWordListenerService {
     }
     if (!listeningAllowed) return;
     _sub = stt.finalPhraseStream.listen(_onFinalPhrase);
+    NeuraEventBus.I.emit(const NeuraListeningEvent(true));
   }
 
   void _onFinalPhrase(String phrase) {
