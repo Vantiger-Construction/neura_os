@@ -29,6 +29,7 @@ import '../../adaptive_intent/neura_live_signal_adapter.dart';
 import '../../core/memory/memory_consolidation_service.dart';
 import '../../dashboard/widgets/proactive_banner_card.dart';
 import '../../intelligence/intelligence_center_screen.dart';
+import '../../living_intelligence/decision_path_screen.dart';
 import '../../insights/services/weekly_summarist_service.dart';
 import '../../notifications/neura_notifications_prefs.dart';
 import '../../notifications/neura_notifications_service.dart';
@@ -465,6 +466,13 @@ class _Dashboard extends StatelessWidget {
               subtitle: 'Reflection, Care, Dreams, Mirror, Persona, Kids.',
               onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const OsShellHomeScreen())),
+            ),
+            _Tile(
+              icon: Icons.route_outlined,
+              title: 'Decision Path Helper',
+              subtitle: 'List a plan, compare fastest vs. safest vs. cheapest.',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const DecisionPathScreen())),
             ),
           ],
         ),
