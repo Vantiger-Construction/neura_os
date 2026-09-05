@@ -134,11 +134,13 @@ jobs:
           if ($sharedDrive) {
             $buildDrive = $sharedDrive
             $sdkDrive = $sharedDrive
+            $layout = 'shared'
           } else {
             # APK/Gradle output is the heavier workload; reserve the largest
             # remaining volume for it.
             $buildDrive = $eligible[0]
             $sdkDrive = $eligible[1]
+            $layout = 'separate'
           }
           @(
             "NEURA_ANDROID_SDK_VOLUME=$($sdkDrive.RootDirectory.FullName)",
