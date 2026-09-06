@@ -461,7 +461,7 @@ jobs:
             Write-Host ("{0} free: {1:N2} GB" -f $root, ($drive.Free / 1GB))
           }
 
-      - name: Ensure Visual C++ ATL headers
+      - name: Ensure existing Visual C++ build tools
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-StrictMode -Version Latest
