@@ -467,78 +467,31 @@ jobs:
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
 
-          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\\Installer\\vswhere.exe'
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
           if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) {
-            throw 'Visual Studio locator is missing; cannot provision ATL headers.'
+            throw 'Visual Studio locator is missing; cannot validate the Windows C++ toolchain.'
           }
 
-          function Find-AtlHeader {
-            param([Parameter(Mandatory)][string]$InstallationPath)
-
-            if (-not (Test-Path -LiteralPath $InstallationPath -PathType Container)) {
-              return $null
-            }
-            return Get-ChildItem -LiteralPath $InstallationPath -Filter 'atlbase.h' -File -Recurse -ErrorAction SilentlyContinue |
-              Select-Object -First 1
-          }
-
-          $installation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format json |
-            ConvertFrom-Json | Select-Object -First 1
-          if (-not $installation -or [string]::IsNullOrWhiteSpace($installation.installationPath)) {
+          # This workflow must use the toolchain already present on the runner.
+          # Do not mutate the Visual Studio installation during CI.
+          $installationPath = & $vswhere -latest -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath |
+            Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($installationPath)) {
             throw 'A Visual Studio C++ toolchain installation is required for the Windows build.'
           }
 
-          $atlHeader = Find-AtlHeader -InstallationPath $installation.installationPath
-          if (-not $atlHeader) {
-            $installer = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\\Installer\\vs_installer.exe'
-            if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
-              throw 'Visual Studio Installer is missing; ATL headers cannot be provisioned.'
-            }
-
-            $installerArguments = @(
-              'modify',
-              '--installPath',
-              $installation.installationPath,
-              '--add',
-              'Microsoft.VisualStudio.Component.VC.ATL',
-              '--quiet',
-              '--norestart'
-            )
-            $installerProcess = Start-Process `
-              -FilePath $installer `
-              -ArgumentList $installerArguments `
-              -Wait `
-              -PassThru `
-              -NoNewWindow
-            if ($installerProcess.ExitCode -notin @(0, 3010)) {
-              throw "Visual Studio ATL component installation failed with exit code $($installerProcess.ExitCode)."
-            }
-
-            # The installer can return before the component files are visible
-            # to the filesystem. Poll briefly instead of failing mid-provision.
-            for ($attempt = 1; $attempt -le 12; $attempt++) {
-              $atlHeader = Find-AtlHeader -InstallationPath $installation.installationPath
-              if ($atlHeader) {
-                break
-              }
-              Start-Sleep -Seconds 5
-            }
+          $compilerRoot = Join-Path $installationPath 'VC\Tools\MSVC'
+          $compiler = Get-ChildItem -LiteralPath $compilerRoot -Filter 'cl.exe' -File -Recurse `
+            -ErrorAction SilentlyContinue |
+            Sort-Object -Property FullName -Descending |
+            Select-Object -First 1
+          if (-not $compiler) {
+            throw 'The existing Visual Studio installation does not contain the MSVC compiler.'
           }
 
-          if (-not $atlHeader) {
-            $atlInstallationPath = & $vswhere -latest -products * `
-              -requires Microsoft.VisualStudio.Component.VC.ATL `
-              -property installationPath |
-              Select-Object -First 1
-            if ($atlInstallationPath) {
-              $atlHeader = Find-AtlHeader -InstallationPath $atlInstallationPath
-            }
-          }
-
-          if (-not $atlHeader) {
-            throw 'ATL headers remain unavailable after Visual Studio component provisioning.'
-          }
-          Write-Host "ATL headers available at $($atlHeader.FullName)"
+          Write-Host "Visual C++ compiler available at $($compiler.FullName)"
 
       - name: Run optimized validation
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
