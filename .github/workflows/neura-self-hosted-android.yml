@@ -528,6 +528,9 @@ jobs:
           Write-Host "SHA256: $hash"
 
       - name: Upload Android APK
+        # APK delivery is useful but must not mask a successful build when
+        # repository-level artifact storage quota is exhausted.
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: NeuraCompanion-SelfHosted-Android-APK
