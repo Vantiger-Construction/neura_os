@@ -502,8 +502,7 @@ jobs:
               '--add',
               'Microsoft.VisualStudio.Component.VC.ATL',
               '--quiet',
-              '--norestart',
-              '--wait'
+              '--norestart'
             )
             $installerProcess = Start-Process `
               -FilePath $installer `
