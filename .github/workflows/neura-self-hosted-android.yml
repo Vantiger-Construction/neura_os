@@ -308,6 +308,14 @@ jobs:
               try {
                 Write-Host "Downloading verified Temurin JDK 17 (attempt $attempt/3)..."
                 Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 600
+                # Checksum verification is deliberately inside the retry loop:
+                # a mismatch is at least as likely to be a truncated/corrupted
+                # download over a flaky connection as a bad file, and a single
+                # bad byte previously failed the whole job with no retry.
+                $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+                if ($actual -ne $expected) {
+                  throw "Temurin JDK checksum mismatch: $actual"
+                }
                 $downloaded = $true
                 break
               } catch {
@@ -317,13 +325,9 @@ jobs:
               }
             }
             if (-not $downloaded) {
-              throw 'Unable to download verified Temurin JDK 17 after 3 attempts.'
+              throw 'Unable to download a checksum-verified Temurin JDK 17 after 3 attempts.'
             }
 
-            $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($actual -ne $expected) {
-              throw "Temurin JDK checksum mismatch: $actual"
-            }
             Expand-Archive -LiteralPath $archive -DestinationPath $env:NEURA_ANDROID_JDK_ROOT -Force
             Remove-Item -LiteralPath $archive -Force
             $javaExe = Get-ChildItem -LiteralPath $env:NEURA_ANDROID_JDK_ROOT -Filter 'java.exe' -File -Recurse -ErrorAction SilentlyContinue |
