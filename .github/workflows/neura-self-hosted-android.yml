@@ -78,6 +78,11 @@ jobs:
           }
           $cutoff = (Get-Date).AddHours(-2)
 
+          # Reclaim orphaned Android bridge processes before deleting stale run data.
+          # This is scoped to adb only; the GitHub Actions runner process is untouched.
+          Get-Process -Name adb -ErrorAction SilentlyContinue |
+            Stop-Process -Force -ErrorAction SilentlyContinue
+
           foreach ($repository in Get-ChildItem -LiteralPath $runnerWork -Directory -ErrorAction SilentlyContinue) {
             if ($repository.Name.StartsWith('_')) { continue }
             $checkout = Join-Path $repository.FullName $repository.Name
@@ -523,6 +528,9 @@ jobs:
           Write-Host "SHA256: $hash"
 
       - name: Upload Android APK
+        # APK delivery is useful but must not mask a successful build when
+        # repository-level artifact storage quota is exhausted.
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: NeuraCompanion-SelfHosted-Android-APK
