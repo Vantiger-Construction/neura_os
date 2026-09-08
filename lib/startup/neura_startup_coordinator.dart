@@ -235,26 +235,32 @@ class NeuraStartupCoordinator {
       }
     }
 
-    // 4 – OS-level shell state
+    // 4 – OS-level shell state. These nine controllers each only read their
+    // own key from the already-cached SharedPreferences instance and don't
+    // depend on one another, so they run concurrently instead of one at a
+    // time — _safe() still isolates and records each one's own success or
+    // failure independently.
     _emit('Loading shell settings…', 0.30);
-    await _safe(ShellPrefsController.instance.init, 'ShellPrefs');
-    await _safe(FocusController.instance.init, 'FocusController');
-    await _safe(HumanPrefsController.instance.init, 'HumanPrefs');
-    await _safe(
-      NeuraIntelligenceController.instance.initialize,
-      'IntelligenceFabric',
-    );
-    await _safe(AppLockPrefsController.instance.init, 'AppLockPrefs');
-    await _safe(JokePrefsController.instance.init, 'JokePrefs');
-    await _safe(
-      AmbientListeningPrefsController.instance.init,
-      'AmbientListeningPrefs',
-    );
-    await _safe(WakeWordPrefsController.instance.init, 'WakeWordPrefs');
-    await _safe(
-      NeuraNotificationsPrefsController.instance.init,
-      'NotificationsPrefs',
-    );
+    await Future.wait<bool>([
+      _safe(ShellPrefsController.instance.init, 'ShellPrefs'),
+      _safe(FocusController.instance.init, 'FocusController'),
+      _safe(HumanPrefsController.instance.init, 'HumanPrefs'),
+      _safe(
+        NeuraIntelligenceController.instance.initialize,
+        'IntelligenceFabric',
+      ),
+      _safe(AppLockPrefsController.instance.init, 'AppLockPrefs'),
+      _safe(JokePrefsController.instance.init, 'JokePrefs'),
+      _safe(
+        AmbientListeningPrefsController.instance.init,
+        'AmbientListeningPrefs',
+      ),
+      _safe(WakeWordPrefsController.instance.init, 'WakeWordPrefs'),
+      _safe(
+        NeuraNotificationsPrefsController.instance.init,
+        'NotificationsPrefs',
+      ),
+    ]);
     if (SafeBoot.instance.safeMode.value) {
       ModuleHealthMonitor.instance.skipped(
         'NotificationsService',
@@ -300,77 +306,88 @@ class NeuraStartupCoordinator {
       );
     }
 
-    // 6b – Provider credential + Rust swarm. Existing build-time credentials
-    // are migrated once into OS-backed secure storage. New builds should not
-    // contain provider secrets.
-    if (SafeBoot.instance.safeMode.value) {
-      ModuleHealthMonitor.instance.skipped(
-        'ProviderCredentials',
-        'Disabled by Safe Mode.',
-      );
-      ModuleHealthMonitor.instance.skipped(
-        'SwarmInit',
-        'Disabled by Safe Mode.',
-      );
-    } else {
-      final credentialsReady = await _safe(
-        NeuraProviderCredentials.instance.initialize,
-        'ProviderCredentials',
-      );
-      if (!credentialsReady) {
-        ModuleHealthMonitor.instance.skipped(
-          'SwarmInit',
-          'Provider credential storage is unavailable; native swarm remains unloaded.',
+    // 6b/7/8 – Provider credential + Rust swarm, room/memory runtime, and
+    // Supabase (network) are mutually independent: NeuraRuntimeController
+    // never touches the swarm/credential state, and Supabase init only reads
+    // its own static config. Run all three concurrently instead of one after
+    // another so the network round trip to Supabase doesn't add its full
+    // latency on top of the other two.
+    _emit('Finishing setup…', 0.80);
+    await Future.wait<void>([
+      () async {
+        // 6b – Provider credential + Rust swarm. Existing build-time
+        // credentials are migrated once into OS-backed secure storage. New
+        // builds should not contain provider secrets.
+        if (SafeBoot.instance.safeMode.value) {
+          ModuleHealthMonitor.instance.skipped(
+            'ProviderCredentials',
+            'Disabled by Safe Mode.',
+          );
+          ModuleHealthMonitor.instance.skipped(
+            'SwarmInit',
+            'Disabled by Safe Mode.',
+          );
+          return;
+        }
+        final credentialsReady = await _safe(
+          NeuraProviderCredentials.instance.initialize,
+          'ProviderCredentials',
         );
-      } else if (!NeuraProviderCredentials.instance.hasKey) {
-        ModuleHealthMonitor.instance.skipped(
-          'SwarmInit',
-          'No provider credential is configured; native swarm remains unloaded.',
+        if (!credentialsReady) {
+          ModuleHealthMonitor.instance.skipped(
+            'SwarmInit',
+            'Provider credential storage is unavailable; native swarm remains unloaded.',
+          );
+        } else if (!NeuraProviderCredentials.instance.hasKey) {
+          ModuleHealthMonitor.instance.skipped(
+            'SwarmInit',
+            'No provider credential is configured; native swarm remains unloaded.',
+          );
+        } else if (shouldInitializeNativeNeuraSwarm(
+          platform: defaultTargetPlatform,
+          isWeb: kIsWeb,
+          safeMode: SafeBoot.instance.safeMode.value,
+          hasProviderCredential: NeuraProviderCredentials.instance.hasKey,
+        )) {
+          _swarmStarted = await _safe(
+            () => NeuraSwarmService.instance
+                .init(NeuraProviderCredentials.instance.apiKey),
+            'SwarmInit',
+          );
+        } else {
+          ModuleHealthMonitor.instance.skipped(
+            'SwarmInit',
+            'The packaged native swarm is currently available on Windows only.',
+          );
+        }
+      }(),
+      () async {
+        // 7 – Room / memory runtime
+        if (SafeBoot.instance.safeMode.value) {
+          ModuleHealthMonitor.instance.skipped(
+            'NeuraRuntime',
+            'Disabled by Safe Mode because it can dispatch optional audio.',
+          );
+          return;
+        }
+        _runtimeStarted = await _safe(
+          NeuraRuntimeController.I.start,
+          'NeuraRuntime',
         );
-      } else if (shouldInitializeNativeNeuraSwarm(
-        platform: defaultTargetPlatform,
-        isWeb: kIsWeb,
-        safeMode: SafeBoot.instance.safeMode.value,
-        hasProviderCredential: NeuraProviderCredentials.instance.hasKey,
-      )) {
-        _swarmStarted = await _safe(
-          () => NeuraSwarmService.instance
-              .init(NeuraProviderCredentials.instance.apiKey),
-          'SwarmInit',
-        );
-      } else {
-        ModuleHealthMonitor.instance.skipped(
-          'SwarmInit',
-          'The packaged native swarm is currently available on Windows only.',
-        );
-      }
-    }
-
-    // 7 – Room / memory runtime
-    _emit('Loading memory…', 0.80);
-    if (SafeBoot.instance.safeMode.value) {
-      ModuleHealthMonitor.instance.skipped(
-        'NeuraRuntime',
-        'Disabled by Safe Mode because it can dispatch optional audio.',
-      );
-    } else {
-      _runtimeStarted = await _safe(
-        NeuraRuntimeController.I.start,
-        'NeuraRuntime',
-      );
-    }
-
-    // 8 – Supabase (network, last + optional; gracefully skipped if placeholder keys)
-    _emit('Connecting to cloud…', 0.90);
-    if (!SafeBoot.instance.safeMode.value) {
-      final initialized = await _safe(_initSupabase, 'Supabase');
-      _supabaseInitialized = SupabaseConfig.isConfigured && initialized;
-    } else {
-      ModuleHealthMonitor.instance.skipped(
-        'Supabase',
-        'Disabled by Safe Mode.',
-      );
-    }
+      }(),
+      () async {
+        // 8 – Supabase (network, optional; gracefully skipped if placeholder keys)
+        if (SafeBoot.instance.safeMode.value) {
+          ModuleHealthMonitor.instance.skipped(
+            'Supabase',
+            'Disabled by Safe Mode.',
+          );
+          return;
+        }
+        final initialized = await _safe(_initSupabase, 'Supabase');
+        _supabaseInitialized = SupabaseConfig.isConfigured && initialized;
+      }(),
+    ]);
 
     // Done
     _emit('Ready!', 1.0);
@@ -429,12 +446,14 @@ class NeuraStartupCoordinator {
       await fn();
       stopwatch.stop();
       ModuleHealthMonitor.instance.healthy(label, duration: stopwatch.elapsed);
-      try {
-        await TimelineVault.instance.append('module_healthy', data: {
+      // Telemetry only — don't hold up the next boot stage waiting for this
+      // write to land on disk.
+      unawaited(
+        TimelineVault.instance.append('module_healthy', data: {
           'module': label,
           'duration_ms': stopwatch.elapsedMilliseconds,
-        });
-      } catch (_) {}
+        }).catchError((_) {}),
+      );
       return true;
     } catch (e, st) {
       stopwatch.stop();
@@ -450,12 +469,12 @@ class NeuraStartupCoordinator {
       debugPrint(
         '[NeuraStartup] $label failed ($severity): ${e.runtimeType}',
       );
-      try {
-        await TimelineVault.instance.append('module_failed', data: {
+      unawaited(
+        TimelineVault.instance.append('module_failed', data: {
           'module': label,
           'error_type': e.runtimeType.toString(),
-        });
-      } catch (_) {}
+        }).catchError((_) {}),
+      );
       try {
         await AppLog.instance.exception(
           'startup_module_failed',

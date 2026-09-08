@@ -64,6 +64,23 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
 
   AgentPersona _activeAgent = AgentPersonaCatalog.general;
 
+  /// The "switched agent" caption for a new bot line, computed once at
+  /// insertion time from the current tail of [_lines] (mirrors the previous
+  /// per-rebuild backward scan in `itemBuilder`, just run once instead of on
+  /// every rebuild of every visible bubble).
+  String? _computeAgentCaption(String? agentId) {
+    if (agentId == null) return null;
+    _ChatLine? prevBotLine;
+    for (var j = _lines.length - 1; j >= 0; j--) {
+      if (!_lines[j].isUser) {
+        prevBotLine = _lines[j];
+        break;
+      }
+    }
+    if (prevBotLine?.agentId == agentId) return null;
+    return AgentPersonaCatalog.byId(agentId).displayName;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -345,7 +362,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       '',
       agentId: _activeAgent.id,
       utteranceId: generationId,
-    );
+    )..agentCaption = _computeAgentCaption(_activeAgent.id);
     setState(() {
       _lines.add(botLine);
       _activeBotLine = botLine;
@@ -446,7 +463,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       reply,
       agentId: _activeAgent.id,
       utteranceId: generationId,
-    );
+    )..agentCaption = _computeAgentCaption(_activeAgent.id);
     setState(() {
       _lines.add(fallbackLine);
       _activeBotLine = fallbackLine;
@@ -511,9 +528,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       );
 
       if (outcome.concernNote != null && mounted) {
-        setState(() => _lines.add(
-              _ChatLine.bot(outcome.concernNote!, agentId: _activeAgent.id),
-            ));
+        final concernLine =
+            _ChatLine.bot(outcome.concernNote!, agentId: _activeAgent.id)
+              ..agentCaption = _computeAgentCaption(_activeAgent.id);
+        setState(() => _lines.add(concernLine));
         _scrollToEnd();
       }
 
@@ -734,20 +752,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
                     ? Colors.blueGrey.shade700
                     : Colors.grey.shade900;
 
-                String? agentCaption;
-                if (!line.isUser && line.agentId != null) {
-                  _ChatLine? prevBotLine;
-                  for (var j = i - 1; j >= 0; j--) {
-                    if (!_lines[j].isUser) {
-                      prevBotLine = _lines[j];
-                      break;
-                    }
-                  }
-                  if (prevBotLine?.agentId != line.agentId) {
-                    agentCaption =
-                        AgentPersonaCatalog.byId(line.agentId!).displayName;
-                  }
-                }
+                final agentCaption = line.agentCaption;
 
                 return Align(
                   alignment: align,
@@ -887,6 +892,13 @@ class _ChatLine {
   final String? imageMediaType;
   int seq = 0;
   bool interrupted = false;
+
+  /// The "switched to a different agent" label shown above this bubble, or
+  /// null if the previous bot line was from the same agent. Computed once
+  /// when the line is added (see
+  /// `_NeuraChatScreenState._computeAgentCaption`) instead of rescanning
+  /// `_lines` on every rebuild of every visible bubble.
+  String? agentCaption;
 
   _ChatLine(
     this.isUser,
