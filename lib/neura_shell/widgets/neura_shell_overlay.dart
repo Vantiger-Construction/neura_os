@@ -6,8 +6,7 @@ import 'neura_room_selector_sheet.dart';
 
 /// Global background overlay.
 ///
-/// The avatar previously overlaid here (NeuraRiveResident) now lives in its
-/// own floating always-on-top OS window instead — see
+/// The avatar lives in its own floating always-on-top OS window — see
 /// lib/mascot/mascot_window_app.dart and NeuraShellState's showAvatar wiring.
 ///
 /// This wraps the Navigator via MaterialApp.builder so it affects all screens.
