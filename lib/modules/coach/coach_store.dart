@@ -71,9 +71,6 @@ class CoachStore {
     return note;
   }
 
-  Future<void> remove(CoachNote note) async {
-    await delete(note.id);
-  }
 
   Future<void> delete(String id) async {
     final all = await getAll();
