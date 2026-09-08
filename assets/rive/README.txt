@@ -1,27 +1,13 @@
-Neura Rive Rig Drop Zone
-=======================
+Neura Rive Assets
+=================
 
-Put your compiled Rive file here:
-  assets/rive/Neura.riv
+Optional compiled Rive files can be placed here:
 
-Recommended Rive setup
-----------------------
-State Machine name:
-  NeuraBrain
+  assets/rive/neura.riv
+  assets/rive/neuro.riv
 
-Inputs expected by the Flutter driver (lib/neura_shell/widgets/neura_rive_resident.dart):
-  - isWalking (bool)
-  - talkLevel (number)
-  - rest (number)
-  - aa   (number)
-  - ee   (number)
-  - oo   (number)
-  - ff   (number)
-  - mm   (number)
+The active avatar registry is defined in:
+  lib/avatar/avatar_registry.dart
 
-Notes
------
-- If Neura.riv is missing, the app falls back to assets/images/neura_fullbody.png
-  so builds never break.
-- If your state machine / input names differ, edit the mapper in:
-    lib/neura_shell/widgets/neura_rive_resident.dart
+Missing Rive assets are handled by the avatar fallback chain, so builds remain
+functional when these optional files are absent.
