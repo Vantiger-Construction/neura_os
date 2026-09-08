@@ -71,7 +71,6 @@ class CoachStore {
     return note;
   }
 
-
   Future<void> delete(String id) async {
     final all = await getAll();
     all.removeWhere((n) => n.id == id);
