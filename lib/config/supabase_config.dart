@@ -1,13 +1,19 @@
+/// Optional cloud backend configuration.
+///
+/// Values are supplied at build time and are never committed:
+///
+///   --dart-define=SUPABASE_URL=https://PROJECT.supabase.co
+///   --dart-define=SUPABASE_ANON_KEY=PUBLIC_PUBLISHABLE_KEY
+///
+/// Empty values preserve Neura's local-only boot path. Safe Mode separately
+/// prevents cloud initialization even when these values are present.
 abstract final class SupabaseConfig {
-  // Get these from https://supabase.com/dashboard/project/_/settings/api
-  // Project URL → "Project URL"   |   API Keys → "anon" / "public" key
-  static const String url = 'YOUR_SUPABASE_PROJECT_URL';
+  static const String url =
+      String.fromEnvironment('SUPABASE_URL', defaultValue: '');
   static const String anonKey =
-      'YOUR_SUPABASE_ANON_KEY'; // passed as publishableKey
+      String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: '');
 
-  /// False while these are still the placeholder values above — callers must
-  /// not touch Supabase.instance (auth included) until this is true, since
-  /// Supabase.initialize() is skipped entirely in that case.
-  static bool get isConfigured =>
-      !url.startsWith('YOUR_') && !anonKey.startsWith('YOUR_');
+  /// Callers must not touch Supabase.instance until this is true and startup
+  /// has successfully initialized the optional cloud backend.
+  static bool get isConfigured => url.isNotEmpty && anonKey.isNotEmpty;
 }
