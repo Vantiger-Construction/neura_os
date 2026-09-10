@@ -294,7 +294,13 @@ jobs:
 
             foreach ($candidate in ($candidates | Select-Object -Unique)) {
               if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
-              $versionOutput = (& $candidate -version 2>&1 | Out-String)
+              # java -version writes normal output to stderr. Capture it through
+              # cmd so Windows PowerShell does not promote it to NativeCommandError
+              # while ErrorActionPreference is Stop.
+              $versionOutput = (
+                & $env:ComSpec /d /s /c "`"$candidate`" -version 2>&1" |
+                  Out-String
+              )
               if ($versionOutput -match 'version\s+' -and $versionOutput -match '17') {
                 $javaHome = Split-Path -Parent (Split-Path -Parent $candidate)
                 $javacExe = Join-Path $javaHome 'bin\javac.exe'
