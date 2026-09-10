@@ -218,13 +218,16 @@ jobs:
           $gradleHome = Join-Path $buildRoot 'gradle-home'
           $androidUserHome = Join-Path $buildRoot 'android-user'
           $tempRoot = Join-Path $buildRoot 'temp'
-          $sdkRoot = Join-Path $toolRoot 'sdk'
-          $jdkRoot = Join-Path $toolRoot 'jdk'
+          # Keep verified platform tools across runs on this self-hosted runner.
+          # Per-run archives, build output, and temporary files remain isolated.
+          $persistentToolRoot = Join-Path $env:RUNNER_TOOL_CACHE 'neura-android'
+          $sdkRoot = Join-Path $persistentToolRoot 'sdk-36.0.0-ndk-28.2.13676358'
+          $jdkRoot = Join-Path $persistentToolRoot 'jdk-17.0.19+10'
 
           Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'build')
           Remove-LinkOrDirectory -Path $buildRoot
           Remove-LinkOrDirectory -Path $toolRoot
-          foreach ($path in @($outputRoot, $pubCache, $gradleHome, $androidUserHome, $tempRoot, $sdkRoot, $jdkRoot)) {
+          foreach ($path in @($outputRoot, $pubCache, $gradleHome, $androidUserHome, $tempRoot, $toolRoot, $persistentToolRoot)) {
             New-Item -ItemType Directory -Path $path -Force | Out-Null
           }
           New-Item -ItemType Junction `
@@ -366,84 +369,100 @@ jobs:
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          $archive = Join-Path $env:NEURA_ANDROID_TOOL_ROOT 'command-line-tools.zip'
-          $extract = Join-Path $env:NEURA_ANDROID_TOOL_ROOT '_extract'
-          $uri = 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip'
-          $expected = '90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a'
-          
-          # Retry logic for download
-          $maxRetries = 3
-          $retryCount = 0
-          $downloadSuccess = $false
-          
-          while ($retryCount -lt $maxRetries -and -not $downloadSuccess) {
-            try {
-              Write-Host "Downloading Android SDK command-line tools (attempt $($retryCount + 1)/$maxRetries)..."
-              Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 600
-              $downloadSuccess = $true
-            } catch {
-              $retryCount++
-              if ($retryCount -lt $maxRetries) {
-                Write-Warning "Download failed: $($_.Exception.Message). Retrying in 30 seconds..."
-                Start-Sleep -Seconds 30
-              } else {
-                throw "Failed to download Android SDK command-line tools after $maxRetries attempts: $($_.Exception.Message)"
+          $requiredPackages = @(
+            (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'cmdline-tools\\latest\\bin\\sdkmanager.bat'),
+            (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'platform-tools\\adb.exe'),
+            (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'platforms\\android-36\\android.jar'),
+            (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'build-tools\\36.0.0\\aapt2.exe'),
+            (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'ndk\\28.2.13676358\\source.properties')
+          )
+          $sdkCacheComplete = @($requiredPackages | Where-Object {
+            -not (Test-Path -LiteralPath $_ -PathType Leaf)
+          }).Count -eq 0
+
+          if ($sdkCacheComplete) {
+            Write-Host "Reusing verified Android SDK package cache at $env:NEURA_ANDROID_SDK_ROOT."
+          } else {
+            # Never trust or layer over a partial cache from an interrupted run.
+            Remove-Item -LiteralPath $env:NEURA_ANDROID_SDK_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Path $env:NEURA_ANDROID_SDK_ROOT -Force | Out-Null
+
+            $archive = Join-Path $env:NEURA_ANDROID_TOOL_ROOT 'command-line-tools.zip'
+            $extract = Join-Path $env:NEURA_ANDROID_TOOL_ROOT '_extract'
+            $uri = 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip'
+            $expected = '90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a'
+
+            $maxRetries = 3
+            $retryCount = 0
+            $downloadSuccess = $false
+            while ($retryCount -lt $maxRetries -and -not $downloadSuccess) {
+              try {
+                Write-Host "Downloading Android SDK command-line tools (attempt $($retryCount + 1)/$maxRetries)..."
+                Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $archive -TimeoutSec 600
+                $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+                if ($actual -ne $expected) {
+                  throw "Android command-line tools checksum mismatch: $actual"
+                }
+                $downloadSuccess = $true
+              } catch {
+                $retryCount++
+                Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue
+                if ($retryCount -lt $maxRetries) {
+                  Write-Warning "Download failed: $($_.Exception.Message). Retrying in 30 seconds..."
+                  Start-Sleep -Seconds 30
+                } else {
+                  throw "Failed to download a verified Android SDK command-line tools archive after $maxRetries attempts: $($_.Exception.Message)"
+                }
               }
+            }
+
+            Expand-Archive -LiteralPath $archive -DestinationPath $extract -Force
+            Remove-Item -LiteralPath $archive -Force
+            $latest = Join-Path $env:NEURA_ANDROID_SDK_ROOT 'cmdline-tools\\latest'
+            New-Item -ItemType Directory -Path (Split-Path -Parent $latest) -Force | Out-Null
+            Move-Item -LiteralPath (Join-Path $extract 'cmdline-tools') -Destination $latest
+            Remove-Item -LiteralPath $extract -Recurse -Force
+            $sdkManager = Join-Path $latest 'bin\\sdkmanager.bat'
+            if (-not (Test-Path -LiteralPath $sdkManager -PathType Leaf)) {
+              throw 'sdkmanager.bat was not installed.'
+            }
+
+            $licenseAnswers = Join-Path $env:TEMP 'android-sdk-license-answers.txt'
+            1..200 | ForEach-Object { 'y' } |
+              Set-Content -LiteralPath $licenseAnswers -Encoding ASCII
+            $licenseCommand = (
+              '"{0}" "--sdk_root={1}" --licenses < "{2}"' -f
+              $sdkManager,
+              $env:NEURA_ANDROID_SDK_ROOT,
+              $licenseAnswers
+            )
+            & "$env:SystemRoot\\System32\\cmd.exe" /d /s /c $licenseCommand
+            if ($LASTEXITCODE -ne 0) { throw "License acceptance failed: $LASTEXITCODE" }
+
+            & $sdkManager `
+              "--sdk_root=$env:NEURA_ANDROID_SDK_ROOT" `
+              'platform-tools' `
+              'platforms;android-36' `
+              'build-tools;36.0.0' `
+              'ndk;28.2.13676358'
+            if ($LASTEXITCODE -ne 0) { throw "Android SDK install failed: $LASTEXITCODE" }
+          }
+
+          foreach ($required in $requiredPackages) {
+            if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+              throw "Android SDK package cache is incomplete: $required"
             }
           }
 
-          $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne $expected) { throw "Android command-line tools checksum mismatch: $actual" }
-          Expand-Archive -LiteralPath $archive -DestinationPath $extract -Force
-          Remove-Item -LiteralPath $archive -Force
-
-          $latest = Join-Path $env:NEURA_ANDROID_SDK_ROOT 'cmdline-tools\latest'
-          New-Item -ItemType Directory -Path (Split-Path -Parent $latest) -Force | Out-Null
-          Move-Item -LiteralPath (Join-Path $extract 'cmdline-tools') -Destination $latest
-          Remove-Item -LiteralPath $extract -Recurse -Force
-          $sdkManager = Join-Path $latest 'bin\sdkmanager.bat'
-          if (-not (Test-Path -LiteralPath $sdkManager -PathType Leaf)) {
-            throw 'sdkmanager.bat was not installed.'
-          }
-
+          $sdkManager = Join-Path $env:NEURA_ANDROID_SDK_ROOT 'cmdline-tools\\latest\\bin\\sdkmanager.bat'
           @(
             "ANDROID_HOME=$env:NEURA_ANDROID_SDK_ROOT",
             "ANDROID_SDK_ROOT=$env:NEURA_ANDROID_SDK_ROOT"
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          (Join-Path $latest 'bin') |
+          (Join-Path (Split-Path -Parent $sdkManager) '') |
             Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'platform-tools') |
             Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-          $licenseAnswers = Join-Path $env:TEMP 'android-sdk-license-answers.txt'
-          1..200 | ForEach-Object { 'y' } |
-            Set-Content -LiteralPath $licenseAnswers -Encoding ASCII
-          $licenseCommand = (
-            '"{0}" "--sdk_root={1}" --licenses < "{2}"' -f
-            $sdkManager,
-            $env:NEURA_ANDROID_SDK_ROOT,
-            $licenseAnswers
-          )
-          & "$env:SystemRoot\System32\cmd.exe" /d /s /c $licenseCommand
-          if ($LASTEXITCODE -ne 0) { throw "License acceptance failed: $LASTEXITCODE" }
-
-          & $sdkManager `
-            "--sdk_root=$env:NEURA_ANDROID_SDK_ROOT" `
-            'platform-tools' `
-            'platforms;android-36' `
-            'build-tools;36.0.0' `
-            'ndk;28.2.13676358'
-          if ($LASTEXITCODE -ne 0) { throw "Android SDK install failed: $LASTEXITCODE" }
-
-          foreach ($required in @(
-            (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'platform-tools\adb.exe'),
-            (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'platforms\android-36\android.jar'),
-            (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'build-tools\36.0.0\aapt2.exe')
-          )) {
-            if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
-              throw "Android SDK package installation is incomplete: $required"
-            }
-          }
 
           flutter config --android-sdk $env:NEURA_ANDROID_SDK_ROOT
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
