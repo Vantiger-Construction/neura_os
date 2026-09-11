@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/portable_vault_backup_service.dart';
 import '../../widgets/neura_explain.dart';
 import 'memory_vault_models.dart';
 import 'memory_vault_store.dart';
@@ -15,6 +16,7 @@ class MemoryVaultScreen extends StatefulWidget {
 class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
   bool _loading = true;
   List<VaultItem> _items = const [];
+  final _backup = PortableVaultBackupService();
 
   @override
   void initState() {
@@ -131,6 +133,125 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
     await _load();
   }
 
+  Future<String?> _requestBackupPassphrase({
+    required String title,
+    required bool confirm,
+  }) async {
+    var passphrase = '';
+    var confirmation = '';
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              obscureText: true,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Backup passphrase',
+                helperText: 'At least 12 characters',
+              ),
+              onChanged: (value) => passphrase = value,
+            ),
+            if (confirm)
+              TextField(
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Confirm passphrase',
+                ),
+                onChanged: (value) => confirmation = value,
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (passphrase.length < 12 ||
+                  (confirm && passphrase != confirmation)) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Use at least 12 matching characters.',
+                    ),
+                  ),
+                );
+                return;
+              }
+              Navigator.of(dialogContext).pop(passphrase);
+            },
+            child: Text(confirm ? 'Export' : 'Import'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportBackup() async {
+    if (VaultSession.sessionPin == null) {
+      await _load();
+      if (!mounted || VaultSession.sessionPin == null) return;
+    }
+    final passphrase = await _requestBackupPassphrase(
+      title: 'Export encrypted backup',
+      confirm: true,
+    );
+    if (!mounted || passphrase == null) return;
+
+    try {
+      final path = await _backup.exportToFile(
+        pin: VaultSession.sessionPin!,
+        passphrase: passphrase,
+      );
+      if (!mounted || path == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Encrypted backup exported.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Backup export failed safely.')),
+      );
+    }
+  }
+
+  Future<void> _importBackup() async {
+    if (VaultSession.sessionPin == null) {
+      await _load();
+      if (!mounted || VaultSession.sessionPin == null) return;
+    }
+    final passphrase = await _requestBackupPassphrase(
+      title: 'Import encrypted backup',
+      confirm: false,
+    );
+    if (!mounted || passphrase == null) return;
+
+    try {
+      final count = await _backup.importFromFile(
+        pin: VaultSession.sessionPin!,
+        passphrase: passphrase,
+      );
+      if (!mounted || count == null) return;
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Imported $count vault entries.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Backup rejected. Check the file and passphrase.'),
+        ),
+      );
+    }
+  }
+
   Future<void> _wipe() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -165,6 +286,16 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
       appBar: AppBar(
         title: const Text('Memory Vault'),
         actions: [
+          IconButton(
+            tooltip: 'Export encrypted backup',
+            onPressed: _exportBackup,
+            icon: const Icon(Icons.file_upload_outlined),
+          ),
+          IconButton(
+            tooltip: 'Import encrypted backup',
+            onPressed: _importBackup,
+            icon: const Icon(Icons.file_download_outlined),
+          ),
           IconButton(
             tooltip: 'Explain',
             onPressed: () => NeuraExplain.show(
