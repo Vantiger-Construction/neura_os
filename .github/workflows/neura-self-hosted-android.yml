@@ -23,7 +23,7 @@ jobs:
   android:
     name: Build installable Android debug APK
     runs-on: [self-hosted, Windows, X64, neura]
-    timeout-minutes: 90
+    timeout-minutes: 180
 
     steps:
       - name: Select bounded Android build volumes
