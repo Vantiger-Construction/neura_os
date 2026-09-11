@@ -214,13 +214,13 @@ jobs:
           $buildRoot = Join-Path $env:NEURA_ANDROID_BUILD_VOLUME "neura-ci\$env:NEURA_ANDROID_RUN_KEY\android-build"
           $toolRoot = Join-Path $env:NEURA_ANDROID_SDK_VOLUME "neura-ci\$env:NEURA_ANDROID_RUN_KEY\android-tools"
           $outputRoot = Join-Path $buildRoot 'build'
-          $pubCache = Join-Path $buildRoot 'pub-cache'
-          $gradleHome = Join-Path $buildRoot 'gradle-home'
           $androidUserHome = Join-Path $buildRoot 'android-user'
           $tempRoot = Join-Path $buildRoot 'temp'
-          # Keep verified platform tools across runs on this self-hosted runner.
-          # Per-run archives, build output, and temporary files remain isolated.
+          # Keep verified platform tools and dependency downloads across runs.
+          # The committed lockfile is still resolved on every validation.
           $persistentToolRoot = Join-Path $env:RUNNER_TOOL_CACHE 'neura-android'
+          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.44.7'
+          $gradleHome = Join-Path $persistentToolRoot 'gradle-home'
           $sdkRoot = Join-Path $persistentToolRoot 'sdk-36.0.0-ndk-28.2.13676358'
           $jdkRoot = Join-Path $persistentToolRoot 'jdk-17.0.19+10'
 
