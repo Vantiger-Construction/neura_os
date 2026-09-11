@@ -71,13 +71,14 @@ jobs:
               }
             }
           }
+          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.44.7'
           New-Item -ItemType Directory -Path $workspace -Force | Out-Null
-          New-Item -ItemType Directory -Path (Join-Path $root 'pub-cache') -Force | Out-Null
+          New-Item -ItemType Directory -Path $pubCache -Force | Out-Null
           New-Item -ItemType Directory -Path (Join-Path $root 'temp') -Force | Out-Null
           New-Item -ItemType Junction -Path $sourceLink -Target $workspace | Out-Null
           @(
             "NEURA_SOURCE_ROOT=$sourceLink",
-            "PUB_CACHE=$(Join-Path $root 'pub-cache')",
+            "PUB_CACHE=$pubCache",
             "TEMP=$(Join-Path $root 'temp')",
             "TMP=$(Join-Path $root 'temp')"
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
