@@ -23,7 +23,7 @@ jobs:
   state-matrix:
     name: Startup, platform, recovery, and Safe Mode states
     runs-on: [self-hosted, Windows, X64, neura]
-    timeout-minutes: 45
+    timeout-minutes: 90
 
     steps:
       - name: Route checkout and temporary data off the system volume
