@@ -30,17 +30,22 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
   @override
   void dispose() {
     _sub?.cancel();
-    _service.dispose();
+    unawaited(_service.dispose());
     super.dispose();
   }
 
   Future<void> _toggleRecording() async {
     if (!_recording) {
       final ok = await _service.startRecording();
-      if (!ok) return;
+      if (!mounted) return;
+      if (!ok) {
+        setState(() => _recording = false);
+        return;
+      }
       setState(() => _recording = true);
     } else {
       final text = await _service.stopRecording();
+      if (!mounted) return;
       setState(() {
         _recording = false;
         _transcript = text;
