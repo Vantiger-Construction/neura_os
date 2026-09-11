@@ -1,0 +1,5 @@
+# Supabase CLI configuration committed without project identifiers or secrets.
+# Link a project locally with: supabase link --project-ref <project-ref>
+
+[functions.verify-purchase]
+verify_jwt = false

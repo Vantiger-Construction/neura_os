@@ -33,7 +33,7 @@ jobs:
   validate:
     name: Validate consent and Action Loom safety on retained Flutter
     runs-on: [self-hosted, Windows, X64, neura]
-    timeout-minutes: 60
+    timeout-minutes: 120
 
     steps:
       - name: Select one bounded non-system workspace volume
@@ -130,7 +130,9 @@ jobs:
           $runRoot = Join-Path $volume.RootDirectory.FullName "neura-ci\$runKey\living-intelligence"
           $workspaceTarget = Join-Path $runRoot 'workspace'
           $sourceLink = Join-Path $env:GITHUB_WORKSPACE 'source'
-          $pubCache = Join-Path $runRoot 'pub-cache'
+          # Reuse immutable package downloads across runs; pub still resolves
+          # against the committed lockfile on every validation.
+          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.44.7'
           $tempRoot = Join-Path $runRoot 'temp'
 
           Set-Location -LiteralPath $runnerTemp
