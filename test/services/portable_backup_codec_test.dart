@@ -33,8 +33,8 @@ void main() {
       passphrase: 'correct horse battery staple',
     );
 
-    expect(
-      () => codec.decrypt(
+    await expectLater(
+      codec.decrypt(
         envelope: encrypted,
         passphrase: 'different secure passphrase',
       ),
@@ -52,8 +52,8 @@ void main() {
     final data = cipher['data'] as String;
     cipher['data'] = '${data.substring(0, data.length - 2)}AA';
 
-    expect(
-      () => codec.decrypt(
+    await expectLater(
+      codec.decrypt(
         envelope: jsonEncode(envelope),
         passphrase: 'correct horse battery staple',
       ),
