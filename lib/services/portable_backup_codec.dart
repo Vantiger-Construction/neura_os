@@ -111,10 +111,9 @@ class PortableBackupCodec {
 
   void _validatePassphrase(String passphrase) {
     if (passphrase.length < 12) {
-      throw ArgumentError.value(
-        passphrase,
-        'passphrase',
+      throw ArgumentError(
         'Use at least 12 characters for a portable backup.',
+        'passphrase',
       );
     }
   }
