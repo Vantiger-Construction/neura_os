@@ -74,7 +74,9 @@ class PortableVaultBackupService {
     if (payload['type'] != 'neura-memory-vault' ||
         payload['version'] != _payloadVersion ||
         payload['items'] is! List) {
-      throw const FormatException('This is not a supported Neura vault backup.');
+      throw const FormatException(
+        'This is not a supported Neura vault backup.',
+      );
     }
 
     final items = <VaultItem>[];
