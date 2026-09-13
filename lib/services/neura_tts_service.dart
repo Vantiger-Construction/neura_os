@@ -4,6 +4,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 
 import '../integrations/tts/neura_flutter_tts_viseme_bridge.dart';
 import 'neura_audio_focus.dart';
+import 'neura_companion_presence.dart';
 import '../reliability/safe_boot.dart';
 import '../startup/neura_prefs_cache.dart';
 
@@ -268,15 +269,24 @@ class NeuraTtsService {
     _completeSpeak();
     if (!playbackAllowed) return;
 
+    final presenceLease =
+        NeuraCompanionPresence.instance.acquireSpeaking();
+    if (presenceLease == null) return;
+
     final completer = Completer<void>();
     _speakCompleter = completer;
     final focusLease = NeuraAudioFocus.instance.acquireSpeech();
     try {
+      if (!playbackAllowed) {
+        _completeSpeak();
+        return;
+      }
       final result = await tts.speak(text);
       if (result == 0) _completeSpeak();
       await completer.future;
     } finally {
       focusLease.release();
+      presenceLease.release();
       if (identical(_speakCompleter, completer)) {
         _speakCompleter = null;
       }
