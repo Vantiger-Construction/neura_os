@@ -186,14 +186,6 @@ class NeuraAiService {
         return;
       }
 
-      await _requireCloudApproval(
-        history,
-        purpose: 'chat reply',
-        provider: NeuraModelProvider.anthropic,
-        requestApproval: requestCloudApproval,
-      );
-      cancel.throwIfCancelled();
-
       final systemPrompt = await NeuraPromptBuilder.instance.buildSystemMessage(
         agentId: agentId,
         includePersistentMemory: policy.persistMemory,
@@ -213,6 +205,8 @@ class NeuraAiService {
           messages,
           advertisedTools,
           cancel,
+          requestCloudApproval: requestCloudApproval,
+          includesPrivateContext: policy.persistMemory,
         )) {
           cancel.throwIfCancelled();
           if (event is _TextDelta) {
@@ -268,8 +262,10 @@ class NeuraAiService {
     String systemPrompt,
     List<Map<String, dynamic>> messages,
     List<Map<String, dynamic>> tools,
-    NeuraGenerationCancel cancel,
-  ) async* {
+    NeuraGenerationCancel cancel, {
+    required NeuraCloudApprovalHandler? requestCloudApproval,
+    required bool includesPrivateContext,
+  }) async* {
     Object? lastError;
 
     for (var attempt = 0; attempt <= _maxRetries; attempt++) {
@@ -279,7 +275,16 @@ class NeuraAiService {
       var emittedText = false;
 
       try {
-        _throwIfCloudBlocked();
+        await _requireCloudApprovalForMessages(
+          messages,
+          purpose: attempt == 0
+              ? 'chat reply'
+              : 'chat reply retry ${attempt + 1}',
+          provider: NeuraModelProvider.anthropic,
+          includesPrivateContext: includesPrivateContext,
+          requestApproval: requestCloudApproval,
+        );
+        cancel.throwIfCancelled();
         _diagnostics.recordAttempt();
         final request = _buildStreamRequest(systemPrompt, messages, tools);
         final streamedResponse = await Future.any<http.StreamedResponse>([
@@ -609,22 +614,20 @@ class NeuraAiService {
       return response.text;
     }
 
-    await _requireCloudApproval(
-      syntheticRequest,
+    final response = await _postWithRetry(
+      {
+        'model': _model,
+        'max_tokens': _maxTokens,
+        'stream': false,
+        'thinking': {'type': 'disabled'},
+        'output_config': {'effort': 'low'},
+        'system': _systemBlock(systemPrompt),
+        'messages': syntheticRequest.map((t) => t.toJson()).toList(),
+      },
+      requestCloudApproval: requestCloudApproval,
       purpose: 'generated summary',
-      provider: NeuraModelProvider.anthropic,
-      requestApproval: requestCloudApproval,
+      includesPrivateContext: true,
     );
-
-    final response = await _postWithRetry({
-      'model': _model,
-      'max_tokens': _maxTokens,
-      'stream': false,
-      'thinking': {'type': 'disabled'},
-      'output_config': {'effort': 'low'},
-      'system': _systemBlock(systemPrompt),
-      'messages': syntheticRequest.map((t) => t.toJson()).toList(),
-    });
 
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
     final blocks = decoded['content'] as List<dynamic>? ?? const [];
@@ -643,11 +646,27 @@ class NeuraAiService {
     return rawText;
   }
 
-  Future<http.Response> _postWithRetry(Map<String, dynamic> body) async {
+  Future<http.Response> _postWithRetry(
+    Map<String, dynamic> body, {
+    required NeuraCloudApprovalHandler? requestCloudApproval,
+    required String purpose,
+    required bool includesPrivateContext,
+  }) async {
     Object? lastError;
     for (var attempt = 0; attempt <= _maxRetries; attempt++) {
       try {
-        _throwIfCloudBlocked();
+        final messages =
+            (body['messages'] as List<dynamic>? ?? const <dynamic>[])
+                .whereType<Map<String, dynamic>>()
+                .toList();
+        await _requireCloudApprovalForMessages(
+          messages,
+          purpose:
+              attempt == 0 ? purpose : '$purpose retry ${attempt + 1}',
+          provider: NeuraModelProvider.anthropic,
+          includesPrivateContext: includesPrivateContext,
+          requestApproval: requestCloudApproval,
+        );
         _diagnostics.recordAttempt();
         final response = await http
             .post(
@@ -701,27 +720,24 @@ class NeuraAiService {
     throw const NeuraCloudApprovalDenied();
   }
 
-  Future<void> _requireCloudApproval(
-    List<NeuraChatTurn> history, {
+  Future<void> _requireCloudApprovalForMessages(
+    List<Map<String, dynamic>> messages, {
     required String purpose,
     required NeuraModelProvider provider,
+    required bool includesPrivateContext,
     required NeuraCloudApprovalHandler? requestApproval,
   }) async {
     _throwIfCloudBlocked();
     if (requestApproval == null) {
       throw const NeuraCloudApprovalDenied();
     }
-    final encoded = jsonEncode(history.map((turn) => turn.toJson()).toList());
-    final approved = await requestApproval(
-      NeuraCloudRequestPreview(
-        provider: provider,
-        purpose: purpose,
-        messageCount: history.length,
-        characterCount: encoded.length,
-        includesImage: history.any((turn) => turn.imageBase64 != null),
-        includesPrivateContext: true,
-      ),
-    );
+    final preview = NeuraModelRequest(
+      systemPrompt: '',
+      messages: messages,
+      purpose: purpose,
+      includesPrivateContext: includesPrivateContext,
+    ).previewFor(provider);
+    final approved = await requestApproval(preview);
     _throwIfCloudBlocked();
     if (!approved) throw const NeuraCloudApprovalDenied();
   }
