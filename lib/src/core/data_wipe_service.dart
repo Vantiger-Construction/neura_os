@@ -46,6 +46,7 @@ import '../../services/ambient_listening_service.dart';
 import '../../services/app_lock_prefs.dart';
 import '../../services/auth_service.dart';
 import '../../services/avatar_service.dart';
+import '../../services/neura_model_credentials.dart';
 import '../../services/neura_provider_credentials.dart';
 import '../../services/neura_ai_service.dart';
 import '../../services/neura_llm_diagnostics.dart';
@@ -286,6 +287,11 @@ class NeuraDataWipeService {
       failures,
       'provider credential deletion',
       NeuraProviderCredentials.instance.clearForDataWipe,
+    );
+    await _attempt(
+      failures,
+      'model credential deletion',
+      NeuraModelCredentials.instance.clearForDataWipe,
     );
     await _attempt(
       failures,
