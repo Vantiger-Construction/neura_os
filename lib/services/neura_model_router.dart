@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../reliability/safe_boot.dart';
 import 'neura_model_credentials.dart';
+import 'neura_model_types.dart';
 
 enum NeuraModelProvider { openAi, anthropic }
 
