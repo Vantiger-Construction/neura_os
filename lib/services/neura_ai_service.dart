@@ -21,6 +21,7 @@ import '../src/modules/focus/focus_mode.dart';
 import 'neura_chat_policy.dart';
 import 'neura_generation_cancel.dart';
 import 'neura_llm_diagnostics.dart';
+import 'neura_model_credentials.dart';
 import 'neura_model_router.dart';
 import 'neura_model_types.dart';
 import 'neura_provider_credentials.dart';
@@ -93,6 +94,7 @@ class NeuraAiService {
   static const _retryableStatuses = {429, 500, 502, 503, 529};
 
   final NeuraLlmDiagnostics _diagnostics = NeuraLlmDiagnostics.instance;
+  final NeuraSecureModelRouter _modelRouter = NeuraSecureModelRouter();
   NeuraGenerationCancel? _activeCancel;
   String? _activeGenerationId;
 
@@ -154,6 +156,31 @@ class NeuraAiService {
       cancel.throwIfCancelled();
       if (blocked != null) {
         yield blocked;
+        return;
+      }
+
+      final openAiConfigured = await NeuraModelCredentials.instance
+          .read(NeuraModelProvider.openAi) !=
+          null;
+      if (openAiConfigured) {
+        final systemPrompt =
+            await NeuraPromptBuilder.instance.buildSystemMessage(
+          agentId: agentId,
+          includePersistentMemory: policy.persistMemory,
+        );
+        cancel.throwIfCancelled();
+        final response = await _modelRouter.complete(
+          NeuraModelRequest(
+            systemPrompt: systemPrompt,
+            messages: history.map((turn) => turn.toJson()).toList(),
+            purpose: 'chat reply',
+            includesPrivateContext: policy.persistMemory,
+          ),
+          requestApproval: requestCloudApproval ??
+              (_) async => throw const NeuraCloudApprovalDenied(),
+        );
+        cancel.throwIfCancelled();
+        yield response.text;
         return;
       }
 
@@ -562,15 +589,31 @@ class NeuraAiService {
       throw NeuraGuardrailBlocked(preBlocked);
     }
 
+    final systemPrompt =
+        await NeuraPromptBuilder.instance.buildSystemMessage(agentId: agentId);
+    final openAiConfigured = await NeuraModelCredentials.instance
+        .read(NeuraModelProvider.openAi) !=
+        null;
+    if (openAiConfigured) {
+      final response = await _modelRouter.complete(
+        NeuraModelRequest(
+          systemPrompt: systemPrompt,
+          messages: syntheticRequest.map((turn) => turn.toJson()).toList(),
+          purpose: 'generated summary',
+          includesPrivateContext: true,
+        ),
+        requestApproval: requestCloudApproval ??
+            (_) async => throw const NeuraCloudApprovalDenied(),
+      );
+      return response.text;
+    }
+
     await _requireCloudApproval(
       syntheticRequest,
       purpose: 'generated summary',
       provider: NeuraModelProvider.anthropic,
       requestApproval: requestCloudApproval,
     );
-
-    final systemPrompt =
-        await NeuraPromptBuilder.instance.buildSystemMessage(agentId: agentId);
 
     final response = await _postWithRetry({
       'model': _model,
