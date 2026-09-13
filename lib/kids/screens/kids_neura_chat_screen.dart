@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-
 import '../../persona/agents/agent_persona_catalog.dart';
 import '../../persona/models/neura_audience.dart';
 import '../../persona/services/neura_audience_service.dart';
