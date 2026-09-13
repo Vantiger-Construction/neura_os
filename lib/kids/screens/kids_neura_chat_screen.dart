@@ -114,6 +114,8 @@ class _KidsNeuraChatScreenState extends State<KidsNeuraChatScreen> {
       await for (final delta in NeuraAiService.instance.streamReply(
         history,
         agentId: AgentPersonaCatalog.generalId,
+        requestCloudApproval: (preview) =>
+            showNeuraCloudRequestPreview(context, preview),
       )) {
         setState(() => botLine.text += delta);
         _scrollToEnd();
