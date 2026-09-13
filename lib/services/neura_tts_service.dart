@@ -269,8 +269,7 @@ class NeuraTtsService {
     _completeSpeak();
     if (!playbackAllowed) return;
 
-    final presenceLease =
-        NeuraCompanionPresence.instance.acquireSpeaking();
+    final presenceLease = NeuraCompanionPresence.instance.acquireSpeaking();
     if (presenceLease == null) return;
 
     final completer = Completer<void>();
