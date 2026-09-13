@@ -92,10 +92,7 @@ void main() {
   test('fallback requires a separate approval', () async {
     final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
     await credentials.save(NeuraModelProvider.openAi, openAiKey);
-    await credentials.save(
-      NeuraModelProvider.anthropic,
-      anthropicKey,
-    );
+    await credentials.save(NeuraModelProvider.anthropic, anthropicKey);
     final openAi = _Transport(
       NeuraModelProvider.openAi,
       error: StateError('primary unavailable'),
