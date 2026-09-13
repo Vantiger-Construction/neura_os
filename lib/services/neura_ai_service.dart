@@ -99,7 +99,10 @@ class NeuraAiService {
   String? _activeGenerationId;
 
   String get _apiKey => NeuraProviderCredentials.instance.apiKey;
-  bool get isConfigured => NeuraProviderCredentials.instance.hasKey;
+  bool get isConfigured {
+    if (NeuraProviderCredentials.instance.hasKey) return true;
+    return NeuraModelCredentials.instance.configured.value.isNotEmpty;
+  }
   bool get cloudRequestsAllowed => !SafeBoot.instance.safeMode.value;
   String? get activeGenerationId => _activeGenerationId;
   Map<String, dynamic> get diagnosticsSnapshot => _diagnostics.snapshot();
@@ -159,10 +162,10 @@ class NeuraAiService {
         return;
       }
 
-      final openAiConfigured = await NeuraModelCredentials.instance
-          .read(NeuraModelProvider.openAi) !=
-          null;
-      if (openAiConfigured) {
+      final openAiKey = await NeuraModelCredentials.instance.read(
+        NeuraModelProvider.openAi,
+      );
+      if (openAiKey != null) {
         final systemPrompt =
             await NeuraPromptBuilder.instance.buildSystemMessage(
           agentId: agentId,
@@ -176,8 +179,7 @@ class NeuraAiService {
             purpose: 'chat reply',
             includesPrivateContext: policy.persistMemory,
           ),
-          requestApproval: requestCloudApproval ??
-              (_) async => throw const NeuraCloudApprovalDenied(),
+          requestApproval: requestCloudApproval ?? _denyCloudRequest,
         );
         cancel.throwIfCancelled();
         yield response.text;
@@ -591,10 +593,10 @@ class NeuraAiService {
 
     final systemPrompt =
         await NeuraPromptBuilder.instance.buildSystemMessage(agentId: agentId);
-    final openAiConfigured = await NeuraModelCredentials.instance
-        .read(NeuraModelProvider.openAi) !=
-        null;
-    if (openAiConfigured) {
+    final openAiKey = await NeuraModelCredentials.instance.read(
+      NeuraModelProvider.openAi,
+    );
+    if (openAiKey != null) {
       final response = await _modelRouter.complete(
         NeuraModelRequest(
           systemPrompt: systemPrompt,
@@ -602,8 +604,7 @@ class NeuraAiService {
           purpose: 'generated summary',
           includesPrivateContext: true,
         ),
-        requestApproval: requestCloudApproval ??
-            (_) async => throw const NeuraCloudApprovalDenied(),
+        requestApproval: requestCloudApproval ?? _denyCloudRequest,
       );
       return response.text;
     }
@@ -694,6 +695,10 @@ class NeuraAiService {
     final error = lastError ?? NeuraApiException('LLM request failed.');
     _diagnostics.recordFailure(error);
     throw error;
+  }
+
+  Future<bool> _denyCloudRequest(NeuraCloudRequestPreview _) async {
+    throw const NeuraCloudApprovalDenied();
   }
 
   Future<void> _requireCloudApproval(
