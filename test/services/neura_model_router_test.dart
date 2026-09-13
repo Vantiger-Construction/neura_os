@@ -22,12 +22,13 @@ class _MemoryStorage implements NeuraModelCredentialStorage {
 }
 
 class _Transport implements NeuraModelTransport {
-  _Transport(this.provider, {this.result, this.error});
+  _Transport(this.provider, {this.result, this.error, this.onComplete});
 
   @override
   final NeuraModelProvider provider;
   final String? result;
   final Object? error;
+  final void Function()? onComplete;
   int calls = 0;
 
   @override
@@ -36,12 +37,15 @@ class _Transport implements NeuraModelTransport {
     required NeuraModelRequest request,
   }) async {
     calls++;
+    onComplete?.call();
     if (error != null) throw error!;
     return result!;
   }
 }
 
 void main() {
+  const openAiKey = 'sk-openai-test-key-1234567890';
+  const anthropicKey = 'sk-ant-test-key-1234567890';
   const request = NeuraModelRequest(
     systemPrompt: 'Be kind.',
     messages: [
@@ -64,11 +68,8 @@ void main() {
 
   test('OpenAI is the primary provider', () async {
     final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
-    await credentials.save(NeuraModelProvider.openAi, 'sk-openai-test-key-1234567890');
-    await credentials.save(
-      NeuraModelProvider.anthropic,
-      'sk-ant-test-key-1234567890',
-    );
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    await credentials.save(NeuraModelProvider.anthropic, anthropicKey);
     final openAi = _Transport(NeuraModelProvider.openAi, result: 'primary');
     final anthropic =
         _Transport(NeuraModelProvider.anthropic, result: 'fallback');
@@ -90,10 +91,10 @@ void main() {
 
   test('fallback requires a separate approval', () async {
     final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
-    await credentials.save(NeuraModelProvider.openAi, 'sk-openai-test-key-1234567890');
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
     await credentials.save(
       NeuraModelProvider.anthropic,
-      'sk-ant-test-key-1234567890',
+      anthropicKey,
     );
     final openAi = _Transport(
       NeuraModelProvider.openAi,
@@ -128,7 +129,7 @@ void main() {
 
   test('denial prevents all network transport calls', () async {
     final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
-    await credentials.save(NeuraModelProvider.openAi, 'sk-openai-test-key-1234567890');
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
     final openAi = _Transport(NeuraModelProvider.openAi, result: 'unused');
     final router = NeuraSecureModelRouter(
       credentials: credentials,
@@ -144,7 +145,7 @@ void main() {
 
   test('Safe Mode blocks before approval or transport', () async {
     final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
-    await credentials.save(NeuraModelProvider.openAi, 'sk-openai-test-key-1234567890');
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
     final openAi = _Transport(NeuraModelProvider.openAi, result: 'unused');
     final router = NeuraSecureModelRouter(
       credentials: credentials,
@@ -168,10 +169,45 @@ void main() {
     expect(openAi.calls, 0);
   });
 
+  test('Safe Mode after a response prevents fallback and disclosure', () async {
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    await credentials.save(NeuraModelProvider.anthropic, anthropicKey);
+    final openAi = _Transport(
+      NeuraModelProvider.openAi,
+      result: 'must not be returned',
+      onComplete: () => SafeBoot.instance.safeMode.value = true,
+    );
+    final anthropic = _Transport(
+      NeuraModelProvider.anthropic,
+      result: 'must not be requested',
+    );
+    final approvals = <NeuraModelProvider>[];
+    final router = NeuraSecureModelRouter(
+      credentials: credentials,
+      transports: [openAi, anthropic],
+    );
+
+    await expectLater(
+      router.complete(
+        request,
+        requestApproval: (preview) async {
+          approvals.add(preview.provider);
+          return true;
+        },
+      ),
+      throwsA(isA<StateError>()),
+    );
+
+    expect(approvals, [NeuraModelProvider.openAi]);
+    expect(openAi.calls, 1);
+    expect(anthropic.calls, 0);
+  });
+
   test('credential deletion is verified', () async {
     final storage = _MemoryStorage();
     final credentials = NeuraModelCredentials.forTesting(storage);
-    await credentials.save(NeuraModelProvider.openAi, 'sk-openai-test-key-1234567890');
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
     expect(await credentials.read(NeuraModelProvider.openAi), isNotNull);
 
     await credentials.clear(NeuraModelProvider.openAi);
