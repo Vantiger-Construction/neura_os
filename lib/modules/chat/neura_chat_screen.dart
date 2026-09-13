@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-
-import '../../widgets/neura_cloud_request_preview.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/memory/memory_graph_service.dart';
@@ -23,6 +21,7 @@ import '../../services/neura_swarm_service.dart';
 import '../../services/neura_tone_runtime.dart';
 import '../../services/neura_tts_service.dart';
 import '../../services/wake_word_listener_service.dart';
+import '../../widgets/neura_cloud_request_preview.dart';
 import '../core/ai_engine.dart';
 import '../core/app_log.dart';
 
