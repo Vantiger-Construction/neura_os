@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+
+import '../../widgets/neura_cloud_request_preview.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/memory/memory_graph_service.dart';
@@ -376,6 +378,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         roomId: room.id,
         generationId: generationId,
         onToolCommand: _handleToolCommand,
+        requestCloudApproval: (preview) =>
+            showNeuraCloudRequestPreview(context, preview),
       )) {
         if (!mounted || _activeReplyId != generationId) return;
         setState(() {
