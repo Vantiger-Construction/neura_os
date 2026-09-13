@@ -21,6 +21,8 @@ import '../src/modules/focus/focus_mode.dart';
 import 'neura_chat_policy.dart';
 import 'neura_generation_cancel.dart';
 import 'neura_llm_diagnostics.dart';
+import 'neura_model_router.dart';
+import 'neura_model_types.dart';
 import 'neura_provider_credentials.dart';
 
 typedef NeuraToolCommandHandler = FutureOr<bool> Function(
@@ -129,6 +131,7 @@ class NeuraAiService {
     String roomId = 'penthouse',
     String? generationId,
     NeuraToolCommandHandler? onToolCommand,
+    NeuraCloudApprovalHandler? requestCloudApproval,
   }) async* {
     _throwIfCloudBlocked();
     if (!isConfigured) {
@@ -153,6 +156,14 @@ class NeuraAiService {
         yield blocked;
         return;
       }
+
+      await _requireCloudApproval(
+        history,
+        purpose: 'chat reply',
+        provider: NeuraModelProvider.anthropic,
+        requestApproval: requestCloudApproval,
+      );
+      cancel.throwIfCancelled();
 
       final systemPrompt = await NeuraPromptBuilder.instance.buildSystemMessage(
         agentId: agentId,
@@ -538,6 +549,7 @@ class NeuraAiService {
   Future<String> completeOnce(
     String userPrompt, {
     required String agentId,
+    NeuraCloudApprovalHandler? requestCloudApproval,
   }) async {
     _throwIfCloudBlocked();
     if (!isConfigured) {
@@ -549,6 +561,13 @@ class NeuraAiService {
     if (preBlocked != null) {
       throw NeuraGuardrailBlocked(preBlocked);
     }
+
+    await _requireCloudApproval(
+      syntheticRequest,
+      purpose: 'generated summary',
+      provider: NeuraModelProvider.anthropic,
+      requestApproval: requestCloudApproval,
+    );
 
     final systemPrompt =
         await NeuraPromptBuilder.instance.buildSystemMessage(agentId: agentId);
@@ -632,6 +651,31 @@ class NeuraAiService {
     final error = lastError ?? NeuraApiException('LLM request failed.');
     _diagnostics.recordFailure(error);
     throw error;
+  }
+
+  Future<void> _requireCloudApproval(
+    List<NeuraChatTurn> history, {
+    required String purpose,
+    required NeuraModelProvider provider,
+    required NeuraCloudApprovalHandler? requestApproval,
+  }) async {
+    _throwIfCloudBlocked();
+    if (requestApproval == null) {
+      throw const NeuraCloudApprovalDenied();
+    }
+    final encoded = jsonEncode(history.map((turn) => turn.toJson()).toList());
+    final approved = await requestApproval(
+      NeuraCloudRequestPreview(
+        provider: provider,
+        purpose: purpose,
+        messageCount: history.length,
+        characterCount: encoded.length,
+        includesImage: history.any((turn) => turn.imageBase64 != null),
+        includesPrivateContext: true,
+      ),
+    );
+    _throwIfCloudBlocked();
+    if (!approved) throw const NeuraCloudApprovalDenied();
   }
 
   void _throwIfCloudBlocked() {
