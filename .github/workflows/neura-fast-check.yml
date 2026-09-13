@@ -207,7 +207,7 @@ jobs:
     name: validate
     needs: reclaim-runner-space
     runs-on: [self-hosted, Windows, X64, neura]
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       NEURA_FLUTTER_VOLUME: ${{ needs.reclaim-runner-space.outputs.flutter_volume }}
       NEURA_RUST_VOLUME: ${{ needs.reclaim-runner-space.outputs.rust_volume }}
