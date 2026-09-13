@@ -23,6 +23,7 @@ import '../services/ambient_listening_prefs.dart';
 import '../services/ambient_listening_service.dart';
 import '../services/app_lock_prefs.dart';
 import '../services/neura_ai_service.dart';
+import '../services/neura_model_credentials.dart';
 import '../services/neura_provider_credentials.dart';
 import '../services/neura_swarm_service.dart';
 import '../services/wake_word_listener_service.dart';
@@ -330,7 +331,12 @@ class NeuraStartupCoordinator {
           return;
         }
         final credentialsReady = await _safe(
-          NeuraProviderCredentials.instance.initialize,
+          () async {
+            await Future.wait([
+              NeuraProviderCredentials.instance.initialize(),
+              NeuraModelCredentials.instance.initialize(),
+            ]);
+          },
           'ProviderCredentials',
         );
         if (!credentialsReady) {
