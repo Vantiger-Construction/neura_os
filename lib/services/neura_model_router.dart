@@ -46,15 +46,14 @@ class NeuraModelRequest {
 
   NeuraCloudRequestPreview previewFor(NeuraModelProvider provider) {
     final encoded = jsonEncode(messages);
-    final includesImage =
-        encoded.contains('\"type\":\"image\"') || encoded.contains('\"image_url\"');
+    final hasTypedImage = encoded.contains('"type":"image"');
+    final hasImageUrl = encoded.contains('"image_url"');
     return NeuraCloudRequestPreview(
       provider: provider,
       purpose: purpose,
       messageCount: messages.length,
       characterCount: encoded.length,
-      includesImage: encoded.contains('"type":"image"') ||
-          encoded.contains('"image_url"'),
+      includesImage: hasTypedImage || hasImageUrl,
       includesPrivateContext: includesPrivateContext,
     );
   }
