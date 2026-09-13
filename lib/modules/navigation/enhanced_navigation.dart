@@ -6,6 +6,7 @@ import '../../neura_shell/neura_shell.dart';
 import '../../neura_shell/models/neura_room.dart';
 import '../../services/update_check_service.dart';
 
+import '../../care/screens/neura_care_loop_screen.dart';
 import '../../dreams/screens/dream_show2_screen.dart';
 import '../../insights/screens/weekly_snapshot_screen.dart';
 import '../../modules/humor/joke_screen.dart';
@@ -305,6 +306,16 @@ class _Dashboard extends StatelessWidget {
               title: 'Talk to Neura',
               subtitle: 'Plan, reflect, reset.',
               onTap: openChat,
+            ),
+            _Tile(
+              icon: Icons.spa_outlined,
+              title: 'Neura Care Loop',
+              subtitle: 'Notice, steady, and choose one next step.',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const NeuraCareLoopScreen(),
+                ),
+              ),
             ),
             _Tile(
               icon: Icons.hub_outlined,
