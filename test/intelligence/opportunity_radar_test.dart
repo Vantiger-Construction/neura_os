@@ -130,6 +130,44 @@ void main() {
       expect(result.single.payload['action'], 'draft_quest');
     });
 
+    test('offers care support only for a very severe, sustained low mood', () {
+      final moderatelyLow = radar.scan(
+        snapshot: _snapshot(now, [
+          _signal(
+            NeuraSignalKind.mood,
+            value: 0.15, // severity 0.85 -- below the care-support bar.
+            evidence: [_evidence('mood-moderate', now)],
+          ),
+        ]),
+        now: now,
+      );
+      expect(
+        moderatelyLow.map((item) => item.payload['opportunity_kind']),
+        isNot(contains('care_support')),
+      );
+
+      final severelyLow = radar.scan(
+        snapshot: _snapshot(now, [
+          _signal(
+            NeuraSignalKind.mood,
+            value: 0.05, // severity 0.95.
+            evidence: [_evidence('mood-severe', now)],
+          ),
+        ]),
+        now: now,
+      );
+      expect(
+        severelyLow.map((item) => item.payload['opportunity_kind']),
+        ['care_support', 'mood_reset'],
+      );
+      expect(
+        severelyLow.every(
+          (item) => item.capabilityId == NeuraCapabilityRegistry.openAppModule,
+        ),
+        isTrue,
+      );
+    });
+
     test('protects an active focus state from task nudges', () {
       final result = radar.scan(
         snapshot: _snapshot(now, [

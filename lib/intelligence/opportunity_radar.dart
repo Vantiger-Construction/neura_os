@@ -22,6 +22,7 @@ class NeuraOpportunityRadar {
         assert(maximumCandidates > 0);
 
   static const _futureTolerance = Duration(minutes: 5);
+  static const _careSupportSeverity = 0.9;
   static const _moodEvidenceAge = Duration(days: 3);
   static const _focusEvidenceAge = Duration(hours: 2);
   static const _questEvidenceAge = Duration(days: 14);
@@ -96,6 +97,33 @@ class NeuraOpportunityRadar {
             payload: const {
               'opportunity_kind': 'mood_reset',
               'module': 'mood_den',
+            },
+          ),
+        );
+      }
+      // A deliberately rare, conservative bar: only a very severe mood
+      // check-in surfaces Care Mode, and only as a dismissible, tap-to-open
+      // card through the same attention/consent boundary as every other
+      // suggestion here. It never navigates on its own.
+      if (severity >= _careSupportSeverity) {
+        candidates.add(
+          _candidate(
+            rule: 'care_support',
+            capabilityId: NeuraCapabilityRegistry.openAppModule,
+            title: 'Extra support is here if you want it',
+            body: 'Your recent mood check-in was very low. Care Mode has '
+                'grounding playbooks and your trusted contacts in one place, '
+                'whenever you want them.',
+            createdAt: now,
+            lifetime: const Duration(hours: 6),
+            evidence: mood.evidence,
+            benefit: 0.9,
+            urgency: 0.6 + severity * 0.35,
+            disruption: 0.1,
+            confidence: mood.signal.confidence,
+            payload: const {
+              'opportunity_kind': 'care_support',
+              'module': 'care_mode',
             },
           ),
         );
