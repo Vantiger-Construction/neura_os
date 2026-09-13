@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-import 'neura_model_router.dart' show NeuraModelProvider;
+import 'neura_model_types.dart';
 
 abstract interface class NeuraModelCredentialStorage {
   Future<String?> read({required String key});
