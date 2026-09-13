@@ -37,8 +37,9 @@ class NeuraModelCredentials {
   @visibleForTesting
   factory NeuraModelCredentials.forTesting(
     NeuraModelCredentialStorage storage,
-  ) =>
-      NeuraModelCredentials._(storage: storage);
+  ) {
+    return NeuraModelCredentials._(storage: storage);
+  }
 
   final NeuraModelCredentialStorage _storage;
   final ValueNotifier<Set<NeuraModelProvider>> configured =
@@ -51,45 +52,50 @@ class NeuraModelCredentials {
     NeuraModelProvider.anthropic: 'neura.anthropic_api_key.v1',
   };
 
-  Future<void> initialize() => _enqueue(() async {
-        final available = <NeuraModelProvider>{};
-        for (final provider in NeuraModelProvider.values) {
-          final value = (await _storage.read(key: _keys[provider]!) ?? '').trim();
-          if (value.isNotEmpty) available.add(provider);
-        }
-        configured.value = Set.unmodifiable(available);
-      });
+  Future<void> initialize() {
+    return _enqueue(() async {
+      final available = <NeuraModelProvider>{};
+      for (final provider in NeuraModelProvider.values) {
+        final value = (await _storage.read(key: _keys[provider]!) ?? '').trim();
+        if (value.isNotEmpty) available.add(provider);
+      }
+      configured.value = Set.unmodifiable(available);
+    });
+  }
 
   Future<String?> read(NeuraModelProvider provider) async {
     final value = (await _storage.read(key: _keys[provider]!) ?? '').trim();
     return value.isEmpty ? null : value;
   }
 
-  Future<void> save(NeuraModelProvider provider, String value) =>
-      _enqueue(() async {
-        if (_writesSuspended) {
-          throw StateError('Model credential changes are suspended.');
-        }
-        final candidate = value.trim();
-        final error = validate(provider, candidate);
-        if (error != null) throw FormatException(error);
-        final key = _keys[provider]!;
-        await _storage.write(key: key, value: candidate);
-        if ((await _storage.read(key: key) ?? '').trim() != candidate) {
-          throw StateError('The model credential could not be verified.');
-        }
-        configured.value = Set.unmodifiable({
-          ...configured.value,
-          provider,
-        });
+  Future<void> save(NeuraModelProvider provider, String value) {
+    return _enqueue(() async {
+      if (_writesSuspended) {
+        throw StateError('Model credential changes are suspended.');
+      }
+      final candidate = value.trim();
+      final error = validate(provider, candidate);
+      if (error != null) throw FormatException(error);
+      final key = _keys[provider]!;
+      await _storage.write(key: key, value: candidate);
+      if ((await _storage.read(key: key) ?? '').trim() != candidate) {
+        throw StateError('The model credential could not be verified.');
+      }
+      configured.value = Set.unmodifiable({
+        ...configured.value,
+        provider,
       });
+    });
+  }
 
-  Future<void> clear(NeuraModelProvider provider) => _enqueue(() async {
-        if (_writesSuspended) {
-          throw StateError('Model credential changes are suspended.');
-        }
-        await _deleteAndVerify(provider);
-      });
+  Future<void> clear(NeuraModelProvider provider) {
+    return _enqueue(() async {
+      if (_writesSuspended) {
+        throw StateError('Model credential changes are suspended.');
+      }
+      await _deleteAndVerify(provider);
+    });
+  }
 
   Future<void> clearForDataWipe() {
     _writesSuspended = true;
