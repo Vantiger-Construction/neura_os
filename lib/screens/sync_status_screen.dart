@@ -98,8 +98,7 @@ class _SyncStatusScreenState extends State<SyncStatusScreen> {
               ),
               const SizedBox(height: 20),
               FilledButton.icon(
-                onPressed:
-                    readiness.canSync && !_syncing ? _startSync : null,
+                onPressed: readiness.canSync && !_syncing ? _startSync : null,
                 icon: _syncing
                     ? const SizedBox.square(
                         dimension: 18,
