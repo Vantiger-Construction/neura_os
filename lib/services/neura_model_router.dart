@@ -83,7 +83,7 @@ class NeuraOpenAiTransport implements NeuraModelTransport {
   NeuraOpenAiTransport({http.Client? client}) : _client = client ?? http.Client();
 
   static const _endpoint = 'https://api.openai.com/v1/responses';
-  static const _model = 'gpt-5-mini';
+  static const _model = 'gpt-5.6-luna';
   final http.Client _client;
 
   @override
@@ -109,6 +109,7 @@ class NeuraOpenAiTransport implements NeuraModelTransport {
             'model': _model,
             'input': input,
             'max_output_tokens': request.maxTokens,
+            'reasoning': {'effort': 'low'},
           }),
         )
         .timeout(const Duration(seconds: 30));
