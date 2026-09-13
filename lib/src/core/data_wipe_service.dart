@@ -10,6 +10,7 @@ import '../../core/memory/memory_graph_service.dart';
 import '../../core/neura_error_vault.dart';
 import '../../care/services/care_mode_bridge.dart';
 import '../../care/services/contact_share_service.dart';
+import '../../services/sync_conflict_log.dart';
 import '../../care/services/trusted_contacts_service.dart';
 import '../../dashboard/proactive_banner_service.dart';
 import '../../dreams/services/dream_theme_service.dart';
@@ -250,6 +251,7 @@ class NeuraDataWipeService {
     NeuraNotificationsPrefsController.instance.resetAfterDataWipe();
     TrustedContactsService.instance.resetAfterDataWipe();
     ContactShareService.instance.resetAfterDataWipe();
+    SyncConflictLog.instance.resetAfterDataWipe();
     DreamThemeService.instance.resetAfterDataWipe();
     RelationshipProfileService.instance.resetAfterDataWipe();
     PromiseService.instance.resetAfterDataWipe();
