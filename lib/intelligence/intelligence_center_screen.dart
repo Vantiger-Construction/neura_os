@@ -8,8 +8,18 @@ import 'intelligence_preferences.dart';
 import 'models.dart';
 import 'neura_intelligence_controller.dart';
 
+const String _kAllSpecialists = 'All';
+const String _kAllOutcomes = 'All';
+
+enum _ReceiptRange { all, day, week, month }
+
 class NeuraIntelligenceCenterScreen extends StatefulWidget {
-  const NeuraIntelligenceCenterScreen({super.key});
+  const NeuraIntelligenceCenterScreen({super.key, this.initialReceiptId});
+
+  /// When set (typically reached from a Timeline Vault entry in Diagnostics),
+  /// the receipt list opens filtered to this one receipt instead of the
+  /// default recent list.
+  final String? initialReceiptId;
 
   @override
   State<NeuraIntelligenceCenterScreen> createState() =>
@@ -21,10 +31,59 @@ class _NeuraIntelligenceCenterScreenState
   final _controller = NeuraIntelligenceController.instance;
   final _registry = NeuraCapabilityRegistry();
 
+  String? _pinnedReceiptId;
+  String _specialistFilter = _kAllSpecialists;
+  String _outcomeFilter = _kAllOutcomes;
+  _ReceiptRange _rangeFilter = _ReceiptRange.all;
+
   @override
   void initState() {
     super.initState();
+    _pinnedReceiptId = widget.initialReceiptId;
     unawaited(_controller.initialize().catchError((_) {}));
+  }
+
+  void _clearPinnedReceipt() => setState(() => _pinnedReceiptId = null);
+
+  List<NeuraIntelligenceRecord> _applyFilters(
+    List<NeuraIntelligenceRecord> records,
+    DateTime now,
+  ) {
+    if (_pinnedReceiptId != null) {
+      return records
+          .where((item) => item.receipt.id == _pinnedReceiptId)
+          .toList(growable: false);
+    }
+    final cutoff = switch (_rangeFilter) {
+      _ReceiptRange.all => null,
+      _ReceiptRange.day => now.subtract(const Duration(days: 1)),
+      _ReceiptRange.week => now.subtract(const Duration(days: 7)),
+      _ReceiptRange.month => now.subtract(const Duration(days: 30)),
+    };
+    return records.where((item) {
+      if (_specialistFilter != _kAllSpecialists &&
+          item.receipt.specialistId != _specialistFilter) {
+        return false;
+      }
+      if (_outcomeFilter != _kAllOutcomes &&
+          item.receipt.userOutcome.name != _outcomeFilter) {
+        return false;
+      }
+      if (cutoff != null && item.receipt.evaluatedAt.isBefore(cutoff)) {
+        return false;
+      }
+      return true;
+    }).toList(growable: false);
+  }
+
+  static String _specialistLabel(String specialistId) {
+    final tail = specialistId.contains('.')
+        ? specialistId.substring(specialistId.lastIndexOf('.') + 1)
+        : specialistId;
+    final words = tail.split('_').where((word) => word.isNotEmpty);
+    if (words.isEmpty) return specialistId;
+    final label = words.join(' ');
+    return label[0].toUpperCase() + label.substring(1);
   }
 
   void _save(NeuraIntelligencePreferences preferences) {
@@ -72,8 +131,14 @@ class _NeuraIntelligenceCenterScreenState
         animation: _controller,
         builder: (context, _) {
           final preferences = _controller.preferences;
-          final records = _controller.records.reversed.take(20).toList();
           final now = DateTime.now();
+          final allRecords = _controller.records.reversed.toList();
+          final specialistIds = allRecords
+              .map((item) => item.receipt.specialistId)
+              .toSet()
+              .toList()
+            ..sort();
+          final records = _applyFilters(allRecords, now).take(50).toList();
           final paused = preferences.pausedUntil != null &&
               now.isBefore(preferences.pausedUntil!);
           return ListView(
@@ -258,7 +323,7 @@ class _NeuraIntelligenceCenterScreenState
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ),
-                  if (records.isNotEmpty)
+                  if (allRecords.isNotEmpty && _pinnedReceiptId == null)
                     TextButton(
                       onPressed: _confirmClearHistory,
                       child: const Text('Clear'),
@@ -266,18 +331,114 @@ class _NeuraIntelligenceCenterScreenState
                 ],
               ),
               const SizedBox(height: 6),
+              if (_pinnedReceiptId != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: InputChip(
+                    avatar: const Icon(Icons.link, size: 18),
+                    label: const Text('Opened from Timeline Vault'),
+                    onDeleted: _clearPinnedReceipt,
+                    deleteIcon: const Icon(Icons.close),
+                  ),
+                )
+              else if (allRecords.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      DropdownButton<String>(
+                        value: _specialistFilter,
+                        items: [_kAllSpecialists, ...specialistIds]
+                            .map(
+                              (id) => DropdownMenuItem(
+                                value: id,
+                                child: Text(
+                                  id == _kAllSpecialists
+                                      ? 'All specialists'
+                                      : _specialistLabel(id),
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                        onChanged: (value) => setState(
+                          () => _specialistFilter = value ?? _kAllSpecialists,
+                        ),
+                      ),
+                      DropdownButton<String>(
+                        value: _outcomeFilter,
+                        items: [
+                          _kAllOutcomes,
+                          ...NeuraSuggestionOutcome.values.map((o) => o.name),
+                        ]
+                            .map(
+                              (name) => DropdownMenuItem(
+                                value: name,
+                                child: Text(
+                                  name == _kAllOutcomes ? 'All outcomes' : name,
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                        onChanged: (value) => setState(
+                          () => _outcomeFilter = value ?? _kAllOutcomes,
+                        ),
+                      ),
+                      DropdownButton<_ReceiptRange>(
+                        value: _rangeFilter,
+                        items: const [
+                          DropdownMenuItem(
+                            value: _ReceiptRange.all,
+                            child: Text('All time'),
+                          ),
+                          DropdownMenuItem(
+                            value: _ReceiptRange.day,
+                            child: Text('Last 24 hours'),
+                          ),
+                          DropdownMenuItem(
+                            value: _ReceiptRange.week,
+                            child: Text('Last 7 days'),
+                          ),
+                          DropdownMenuItem(
+                            value: _ReceiptRange.month,
+                            child: Text('Last 30 days'),
+                          ),
+                        ],
+                        onChanged: (value) => setState(
+                          () => _rangeFilter = value ?? _ReceiptRange.all,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               if (records.isEmpty)
-                const Card(
+                Card(
                   child: ListTile(
-                    leading: Icon(Icons.receipt_long_outlined),
-                    title: Text('No decisions yet'),
+                    leading: const Icon(Icons.receipt_long_outlined),
+                    title: Text(
+                      allRecords.isEmpty
+                          ? 'No decisions yet'
+                          : 'No receipts match this filter',
+                    ),
                     subtitle: Text(
-                      'Receipts appear here after the local specialists evaluate an opportunity.',
+                      allRecords.isEmpty
+                          ? 'Receipts appear here after the local specialists evaluate an opportunity.'
+                          : 'Try a wider time range or a different specialist.',
                     ),
                   ),
                 )
               else
-                ...records.map((record) => _ReceiptTile(record: record)),
+                ...records.map(
+                  (record) => _ReceiptTile(
+                    record: record,
+                    highlighted: record.receipt.id == _pinnedReceiptId,
+                    specialistLabel:
+                        _specialistLabel(record.receipt.specialistId),
+                    specialistReputation: _controller
+                        .specialistReputation(record.receipt.specialistId),
+                  ),
+                ),
               const SizedBox(height: 16),
               Text(
                 'Capability boundary',
@@ -330,15 +491,29 @@ class _NeuraIntelligenceCenterScreenState
 }
 
 class _ReceiptTile extends StatelessWidget {
-  const _ReceiptTile({required this.record});
+  const _ReceiptTile({
+    required this.record,
+    this.highlighted = false,
+    required this.specialistLabel,
+    required this.specialistReputation,
+  });
 
   final NeuraIntelligenceRecord record;
+  final bool highlighted;
+  final String specialistLabel;
+  final double specialistReputation;
 
   @override
   Widget build(BuildContext context) {
     final receipt = record.receipt;
     return Card(
+      color: highlighted
+          ? Theme.of(context).colorScheme.primaryContainer.withValues(
+                alpha: 0.35,
+              )
+          : null,
       child: ExpansionTile(
+        initiallyExpanded: highlighted,
         leading: Icon(
           receipt.isVisible
               ? Icons.check_circle_outline
@@ -346,7 +521,8 @@ class _ReceiptTile extends StatelessWidget {
         ),
         title: Text(record.title),
         subtitle: Text(
-          '${receipt.outcome.name} • ${(receipt.score * 100).round()}% • '
+          '$specialistLabel • ${receipt.outcome.name} • '
+          '${(receipt.score * 100).round()}% • '
           '${_formatTime(receipt.evaluatedAt)}',
         ),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -369,7 +545,8 @@ class _ReceiptTile extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: Text(
               'Outcome: ${receipt.userOutcome.name} • '
-              '${receipt.evidenceIds.length} evidence references',
+              '${receipt.evidenceIds.length} evidence references • '
+              'Specialist track record: ${(specialistReputation * 100).round()}%',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),

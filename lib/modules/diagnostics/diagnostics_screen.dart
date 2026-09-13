@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../core/neura_error_vault.dart';
+import '../../intelligence/intelligence_center_screen.dart';
 import '../../reliability/module_health_monitor.dart';
 import '../../reliability/safe_boot.dart';
 import '../../reliability/timeline_vault.dart';
@@ -391,6 +392,9 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                     icon: const Icon(Icons.download_outlined),
                   ),
                   children: _timeline.reversed.map((event) {
+                    final data = event['data'];
+                    final receiptId =
+                        data is Map ? data['receipt_id']?.toString() : null;
                     return ListTile(
                       dense: true,
                       title: Text(event['kind']?.toString() ?? 'unknown'),
@@ -398,6 +402,22 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                         '${event['ts'] ?? ''}\n'
                         '${jsonEncode(event['data'] ?? const {})}',
                       ),
+                      trailing: receiptId == null || receiptId.isEmpty
+                          ? null
+                          : const Tooltip(
+                              message: 'View decision receipt',
+                              child: Icon(Icons.arrow_forward_ios, size: 14),
+                            ),
+                      onTap: receiptId == null || receiptId.isEmpty
+                          ? null
+                          : () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      NeuraIntelligenceCenterScreen(
+                                    initialReceiptId: receiptId,
+                                  ),
+                                ),
+                              ),
                     );
                   }).toList(),
                 ),

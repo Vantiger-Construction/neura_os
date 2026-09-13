@@ -29,12 +29,19 @@ class NeuraIntelligenceController extends ChangeNotifier {
   static const _stateKey = 'neura.intelligence.state.v1';
   static const _maxReceipts = 100;
 
+  /// How far each new outcome pulls a specialist's reputation back toward
+  /// neutral (1.0) before applying the outcome's own nudge. Keeps stale
+  /// history from permanently capping a specialist's score.
+  static const _reputationDecay = 0.12;
+  static const _reputationStep = 0.06;
+
   final NeuraAutonomyKernel _kernel = NeuraAutonomyKernel();
   final Guardrails _guardrails = Guardrails();
 
   NeuraIntelligencePreferences _preferences =
       const NeuraIntelligencePreferences();
   List<NeuraIntelligenceRecord> _records = [];
+  Map<String, double> _specialistReputation = {};
   NeuraCouncilResult _lastCouncil = const NeuraCouncilResult([]);
   Future<void> _writeQueue = Future<void>.value();
   bool _initialized = false;
@@ -45,6 +52,12 @@ class NeuraIntelligenceController extends ChangeNotifier {
   List<NeuraIntelligenceRecord> get records => List.unmodifiable(_records);
   NeuraCouncilResult get lastCouncil => _lastCouncil;
   bool get initialized => _initialized;
+
+  /// The learned confidence multiplier for [specialistId], derived only from
+  /// bounded, non-content outcome history (accepted/dismissed counts) — never
+  /// from suggestion text. Defaults to 1.0 (neutral) when there is no history.
+  double specialistReputation(String specialistId) =>
+      _specialistReputation[specialistId] ?? 1.0;
 
   Future<void> initialize() async {
     if (_initialized || _writesSuspended) return;
@@ -73,10 +86,21 @@ class NeuraIntelligenceController extends ChangeNotifier {
                 .toList(growable: true);
             _trimRecords();
           }
+          final rawReputation = state['specialist_reputation'];
+          if (rawReputation is Map) {
+            _specialistReputation = {
+              for (final entry in rawReputation.entries)
+                entry.key.toString(): _double(entry.value, 1.0).clamp(
+                  NeuraAutonomyKernel.minSpecialistReputation,
+                  NeuraAutonomyKernel.maxSpecialistReputation,
+                ),
+            };
+          }
         }
       } catch (_) {
         _preferences = const NeuraIntelligencePreferences();
         _records = [];
+        _specialistReputation = {};
       }
     }
     _initialized = true;
@@ -125,6 +149,7 @@ class NeuraIntelligenceController extends ChangeNotifier {
       safeMode: SafeBoot.instance.safeMode.value,
       recentlyDeclined: recentlyDeclined,
       quietHours: quiet,
+      specialistReputation: Map.unmodifiable(_specialistReputation),
     );
 
     final decisions = <NeuraCouncilDecision>[];
@@ -261,6 +286,10 @@ class NeuraIntelligenceController extends ChangeNotifier {
     _records[index] = current.copyWith(
       receipt: current.receipt.copyWith(userOutcome: outcome),
     );
+    if (outcome == NeuraSuggestionOutcome.acted ||
+        outcome == NeuraSuggestionOutcome.dismissed) {
+      _nudgeSpecialistReputation(current.receipt.specialistId, outcome);
+    }
     notifyListeners();
     await _persist();
     if (!_isCurrent(generation)) return;
@@ -271,6 +300,27 @@ class NeuraIntelligenceController extends ChangeNotifier {
       ),
     );
     await _appendTimeline('intelligence_outcome', _records[index].receipt);
+  }
+
+  /// Nudges a specialist's learned reputation from a real user outcome. Each
+  /// call first decays the current value toward neutral so stale history
+  /// fades, then applies a small bounded step in the outcome's direction —
+  /// never touching suggestion text or evidence, only this one number.
+  void _nudgeSpecialistReputation(
+    String specialistId,
+    NeuraSuggestionOutcome outcome,
+  ) {
+    final current = _specialistReputation[specialistId] ?? 1.0;
+    final decayed = current + (1.0 - current) * _reputationDecay;
+    final delta = outcome == NeuraSuggestionOutcome.acted
+        ? _reputationStep
+        : -_reputationStep;
+    _specialistReputation[specialistId] = (decayed + delta)
+        .clamp(
+          NeuraAutonomyKernel.minSpecialistReputation,
+          NeuraAutonomyKernel.maxSpecialistReputation,
+        )
+        .toDouble();
   }
 
   bool _wasSurfaced(NeuraIntelligenceRecord item) =>
@@ -301,6 +351,7 @@ class NeuraIntelligenceController extends ChangeNotifier {
       'v': 1,
       'preferences': _preferences.toJson(),
       'records': _records.map((item) => item.toJson()).toList(growable: false),
+      'specialist_reputation': _specialistReputation,
     };
     await NeuraPrefsCache.prefs.setString(_stateKey, jsonEncode(state));
     if (!_isCurrent(generation)) {
@@ -360,6 +411,7 @@ class NeuraIntelligenceController extends ChangeNotifier {
   void _resetInMemory() {
     _preferences = const NeuraIntelligencePreferences();
     _records = [];
+    _specialistReputation = {};
     _lastCouncil = const NeuraCouncilResult([]);
     _writeQueue = Future<void>.value();
     _initialized = false;
@@ -368,3 +420,6 @@ class NeuraIntelligenceController extends ChangeNotifier {
   bool _isCurrent(int generation) =>
       !_writesSuspended && generation == _dataGeneration;
 }
+
+double _double(Object? value, double fallback) =>
+    value is num ? value.toDouble() : fallback;
