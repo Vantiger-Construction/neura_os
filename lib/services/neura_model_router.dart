@@ -6,11 +6,6 @@ import '../reliability/safe_boot.dart';
 import 'neura_model_credentials.dart';
 import 'neura_model_types.dart';
 
-enum NeuraModelProvider { openAi, anthropic }
-
-extension NeuraModelProviderLabel on NeuraModelProvider {
-  String get label => this == NeuraModelProvider.openAi ? 'OpenAI' : 'Anthropic';
-}
 
 class NeuraCloudRequestPreview {
   final NeuraModelProvider provider;
@@ -51,6 +46,8 @@ class NeuraModelRequest {
 
   NeuraCloudRequestPreview previewFor(NeuraModelProvider provider) {
     final encoded = jsonEncode(messages);
+    final includesImage =
+        encoded.contains('\"type\":\"image\"') || encoded.contains('\"image_url\"');
     return NeuraCloudRequestPreview(
       provider: provider,
       purpose: purpose,
@@ -80,7 +77,8 @@ abstract interface class NeuraModelTransport {
 }
 
 class NeuraOpenAiTransport implements NeuraModelTransport {
-  NeuraOpenAiTransport({http.Client? client}) : _client = client ?? http.Client();
+  NeuraOpenAiTransport({http.Client? client})
+      : _client = client ?? http.Client();
 
   static const _endpoint = 'https://api.openai.com/v1/responses';
   static const _model = 'gpt-5.6-luna';
@@ -137,7 +135,11 @@ class NeuraOpenAiTransport implements NeuraModelTransport {
       }
       if (parts.isNotEmpty) return parts.join();
     }
-    throw NeuraModelTransportException(provider, 200, 'OpenAI returned no text.');
+    throw NeuraModelTransportException(
+      provider,
+      200,
+      'OpenAI returned no text.',
+    );
   }
 
   Map<String, dynamic> _normalizeMessage(Map<String, dynamic> message) {
@@ -209,15 +211,17 @@ class NeuraSecureModelRouter {
   NeuraSecureModelRouter({
     NeuraModelCredentials? credentials,
     List<NeuraModelTransport>? transports,
-  })  : _credentials = credentials ?? NeuraModelCredentials.instance,
-        _transports = {
-          for (final transport in transports ??
-              [NeuraOpenAiTransport(), NeuraAnthropicTransport()])
-            transport.provider: transport,
-        };
+  }) : _credentials = credentials ?? NeuraModelCredentials.instance {
+    final availableTransports =
+        transports ?? [NeuraOpenAiTransport(), NeuraAnthropicTransport()];
+    _transports = {
+      for (final transport in availableTransports)
+        transport.provider: transport,
+    };
+  }
 
   final NeuraModelCredentials _credentials;
-  final Map<NeuraModelProvider, NeuraModelTransport> _transports;
+  late final Map<NeuraModelProvider, NeuraModelTransport> _transports;
 
   Future<NeuraModelResponse> complete(
     NeuraModelRequest request, {
@@ -231,7 +235,9 @@ class NeuraSecureModelRouter {
 
     Object? lastError;
     for (final provider in candidates) {
+      _throwIfSafeMode();
       final key = await _credentials.read(provider);
+      _throwIfSafeMode();
       if (key == null) continue;
 
       // Approval is deliberately requested inside the provider loop. A
@@ -245,13 +251,16 @@ class NeuraSecureModelRouter {
 
       final transport = _transports[provider];
       if (transport == null) continue;
+
+      late final String text;
       try {
-        final text = await transport.complete(apiKey: key, request: request);
-        _throwIfSafeMode();
-        return NeuraModelResponse(text: text, provider: provider);
+        text = await transport.complete(apiKey: key, request: request);
       } catch (error) {
         lastError = error;
+        continue;
       }
+      _throwIfSafeMode();
+      return NeuraModelResponse(text: text, provider: provider);
     }
 
     if (lastError != null) throw lastError;
