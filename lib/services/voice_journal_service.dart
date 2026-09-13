@@ -25,8 +25,7 @@ class VoiceJournalService {
   bool get _usesNativeWindows =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
-  NeuraSpeechToTextService get _native =>
-      NeuraSpeechToTextService.instance;
+  NeuraSpeechToTextService get _native => NeuraSpeechToTextService.instance;
 
   String _current = '';
   bool _pluginListening = false;
