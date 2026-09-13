@@ -2,13 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../widgets/neura_cloud_request_preview.dart';
 
 import '../../persona/agents/agent_persona_catalog.dart';
 import '../../persona/models/neura_audience.dart';
 import '../../persona/services/neura_audience_service.dart';
 import '../../services/neura_ai_service.dart';
 import '../../services/neura_tts_service.dart';
+import '../../widgets/neura_cloud_request_preview.dart';
 
 /// Real Neura chat for Kids Mode. Replaces the old stub (which only ever
 /// displayed the system prompt it built, never called an LLM).
