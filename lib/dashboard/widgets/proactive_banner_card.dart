@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../adaptive_intent/neura_adaptive_intent_status_card.dart';
 import '../../care/screens/care_mode_home_screen.dart';
+import '../../dreams/screens/dream_theater_screen.dart';
 import '../../intelligence/action_review_screen.dart';
 import '../../intelligence/neura_intelligence_controller.dart';
 import '../../joy_engine/joy_screen.dart';
@@ -126,6 +127,10 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
       await Navigator.of(
         context,
       ).push(MaterialPageRoute(builder: (_) => const CareModeHomeScreen()));
+    } else if (banner.kind == ProactiveBannerKind.dream) {
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const DreamTheaterScreen()));
     }
   }
 
@@ -214,6 +219,7 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
       ProactiveBannerKind.wellness => Icons.self_improvement_outlined,
       ProactiveBannerKind.focus => Icons.center_focus_strong_outlined,
       ProactiveBannerKind.care => Icons.health_and_safety_outlined,
+      ProactiveBannerKind.dream => Icons.nights_stay_outlined,
     };
     final showWhy =
         NeuraIntelligenceController.instance.preferences.showDecisionReasons;

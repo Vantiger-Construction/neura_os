@@ -168,6 +168,65 @@ void main() {
       );
     });
 
+    test('flags a dream/mood correlation only when both signals point low', () {
+      final lowMoodOnly = radar.scan(
+        snapshot: _snapshot(now, [
+          _signal(
+            NeuraSignalKind.mood,
+            value: 0.15, // severity 0.85.
+            evidence: [_evidence('mood-1', now)],
+          ),
+        ]),
+        now: now,
+      );
+      expect(
+        lowMoodOnly.map((item) => item.payload['opportunity_kind']),
+        isNot(contains('dream_pattern_check')),
+      );
+
+      final lowDreamOnly = radar.scan(
+        snapshot: _snapshot(now, [
+          _signal(
+            NeuraSignalKind.dreamMood,
+            value: 0.15,
+            label: 'sad',
+            evidence: [_evidence('dream-1', now)],
+          ),
+        ]),
+        now: now,
+      );
+      expect(
+        lowDreamOnly.map((item) => item.payload['opportunity_kind']),
+        isNot(contains('dream_pattern_check')),
+      );
+
+      final both = radar.scan(
+        snapshot: _snapshot(now, [
+          _signal(
+            NeuraSignalKind.mood,
+            value: 0.15, // severity 0.85 -- above the 0.55 bar.
+            evidence: [_evidence('mood-2', now)],
+          ),
+          _signal(
+            NeuraSignalKind.dreamMood,
+            value: 0.15, // sad-leaning valence -- at/below the 0.35 bar.
+            label: 'sad',
+            evidence: [_evidence('dream-2', now)],
+          ),
+        ]),
+        now: now,
+      );
+      final dreamCandidate = both.singleWhere(
+        (item) => item.payload['opportunity_kind'] == 'dream_pattern_check',
+      );
+      expect(
+        dreamCandidate.capabilityId,
+        NeuraCapabilityRegistry.openAppModule,
+      );
+      expect(dreamCandidate.body, contains('sad'));
+      expect(dreamCandidate.evidence.map((e) => e.id), ['dream-2', 'mood-2']);
+    });
+
     test('protects an active focus state from task nudges', () {
       final result = radar.scan(
         snapshot: _snapshot(now, [

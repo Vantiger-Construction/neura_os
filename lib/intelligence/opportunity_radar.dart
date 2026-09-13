@@ -24,6 +24,7 @@ class NeuraOpportunityRadar {
   static const _futureTolerance = Duration(minutes: 5);
   static const _careSupportSeverity = 0.9;
   static const _moodEvidenceAge = Duration(days: 3);
+  static const _dreamEvidenceAge = Duration(days: 14);
   static const _focusEvidenceAge = Duration(hours: 2);
   static const _questEvidenceAge = Duration(days: 14);
   static const _goalEvidenceAge = Duration(days: 180);
@@ -71,6 +72,11 @@ class NeuraOpportunityRadar {
       snapshot.signal(NeuraSignalKind.goal),
       now: now,
       maximumEvidenceAge: _goalEvidenceAge,
+    );
+    final dream = _usableSignal(
+      snapshot.signal(NeuraSignalKind.dreamMood),
+      now: now,
+      maximumEvidenceAge: _dreamEvidenceAge,
     );
 
     final candidates = <NeuraIntelligenceCandidate>[];
@@ -124,6 +130,38 @@ class NeuraOpportunityRadar {
             payload: const {
               'opportunity_kind': 'care_support',
               'module': 'care_mode',
+            },
+          ),
+        );
+      }
+    }
+
+    // Only fires when an independent real mood check-in and the (separately
+    // collected, closed-vocabulary) dream mood both point the same low
+    // direction -- a lone low dream-mood reading is never enough on its own.
+    if (mood != null && dream != null) {
+      final severity = _lowMoodSeverity(mood.signal.numericValue);
+      final dreamValence = _normaliseUnitValue(dream.signal.numericValue);
+      if (severity >= 0.55 && dreamValence != null && dreamValence <= 0.35) {
+        final dreamMoodLabel = _label(dream.signal, 'unsettled');
+        candidates.add(
+          _candidate(
+            rule: 'dream_pattern_check',
+            capabilityId: NeuraCapabilityRegistry.openAppModule,
+            title: 'Your dreams and mood might be connected',
+            body: 'Your recent dreams have leaned $dreamMoodLabel, alongside a '
+                'lower mood check-in. Exploring them together in Dream '
+                'Visualizer might help.',
+            createdAt: now,
+            lifetime: const Duration(hours: 12),
+            evidence: _mergeEvidence(mood.evidence, dream.evidence),
+            benefit: 0.68,
+            urgency: 0.4,
+            disruption: 0.18,
+            confidence: _averageConfidence(mood.signal, dream.signal),
+            payload: const {
+              'opportunity_kind': 'dream_pattern_check',
+              'module': 'dream_visualizer',
             },
           ),
         );

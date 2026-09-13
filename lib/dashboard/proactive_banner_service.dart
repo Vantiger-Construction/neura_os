@@ -17,7 +17,15 @@ import '../relationships/services/relationship_profile_service.dart';
 import '../reliability/safe_boot.dart';
 import '../startup/neura_prefs_cache.dart';
 
-enum ProactiveBannerKind { joy, relationship, quest, wellness, focus, care }
+enum ProactiveBannerKind {
+  joy,
+  relationship,
+  quest,
+  wellness,
+  focus,
+  care,
+  dream,
+}
 
 class ProactiveBanner {
   const ProactiveBanner({
@@ -215,6 +223,7 @@ class ProactiveBannerService {
       'mood_reset' => ProactiveBannerKind.wellness,
       'focus_sprint' => ProactiveBannerKind.focus,
       'care_support' => ProactiveBannerKind.care,
+      'dream_pattern_check' => ProactiveBannerKind.dream,
       _ => ProactiveBannerKind.quest,
     };
     return _BannerCandidate(candidate: candidate, kind: kind);
