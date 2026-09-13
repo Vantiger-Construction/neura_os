@@ -404,6 +404,68 @@ class MemoryVaultStore {
     _clearKeyCache();
   }
 
+  /// Atomically merges validated portable-backup items into the local vault.
+  ///
+  /// Identical items are skipped. If an imported item reuses an existing ID
+  /// with different content, both copies are preserved under distinct IDs.
+  Future<int> importItems({
+    required String pin,
+    required List<VaultItem> imported,
+  }) async {
+    final current = await getItems(pin: pin);
+    final byId = <String, VaultItem>{
+      for (final item in current) item.id: item,
+    };
+    var importedCount = 0;
+    var collisionIndex = 0;
+
+    for (final item in imported) {
+      if (item.id.trim().isEmpty) {
+        throw const FormatException('A backup entry has no identifier.');
+      }
+      final existing = byId[item.id];
+      if (existing == null) {
+        byId[item.id] = item;
+        importedCount++;
+        continue;
+      }
+      if (_sameItem(existing, item)) continue;
+
+      String recoveredId;
+      do {
+        collisionIndex++;
+        recoveredId = '${item.id}_recovered_$collisionIndex';
+      } while (byId.containsKey(recoveredId));
+      byId[recoveredId] = VaultItem(
+        id: recoveredId,
+        createdAt: item.createdAt,
+        title: item.title,
+        body: item.body,
+        tags: item.tags,
+      );
+      importedCount++;
+    }
+
+    if (importedCount == 0) return 0;
+    final merged = byId.values.toList()
+      ..sort((left, right) => left.createdAt.compareTo(right.createdAt));
+    await _save(merged, pin: pin);
+    return importedCount;
+  }
+
+  bool _sameItem(VaultItem left, VaultItem right) {
+    if (left.createdAt.toUtc() != right.createdAt.toUtc() ||
+        left.title != right.title ||
+        left.body != right.body ||
+        left.tags.length != right.tags.length) {
+      return false;
+    }
+    for (var i = 0; i < left.tags.length; i++) {
+      if (left.tags[i] != right.tags[i]) return false;
+    }
+    return true;
+  }
+
   Future<void> wipe() async {
     final sp = NeuraPrefsCache.prefs;
     await sp.remove(_keyData);
