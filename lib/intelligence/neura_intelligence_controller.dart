@@ -113,6 +113,8 @@ class NeuraIntelligenceController extends ChangeNotifier {
     required Iterable<NeuraIntelligenceCandidate> candidates,
     DateTime? now,
     double distressScore = 0,
+    double bandwidthStrain = 0,
+    bool outcomeLoopSuppression = false,
   }) async {
     if (_writesSuspended) return const NeuraCouncilResult([]);
     final generation = _dataGeneration;
@@ -153,6 +155,8 @@ class NeuraIntelligenceController extends ChangeNotifier {
       quietHours: quiet,
       specialistReputation: Map.unmodifiable(_specialistReputation),
       constitution: NeuraConstitutionService.instance.current,
+      bandwidthStrain: bandwidthStrain.clamp(0.0, 1.0).toDouble(),
+      outcomeLoopSuppression: outcomeLoopSuppression,
     );
 
     final decisions = <NeuraCouncilDecision>[];

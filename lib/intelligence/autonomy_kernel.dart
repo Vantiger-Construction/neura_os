@@ -23,6 +23,8 @@ class NeuraAutonomyPolicy {
     this.quietHours = false,
     this.specialistReputation = const {},
     this.constitution = const NeuraPersonalConstitution(),
+    this.bandwidthStrain = 0,
+    this.outcomeLoopSuppression = false,
   });
 
   final bool enabled;
@@ -34,6 +36,21 @@ class NeuraAutonomyPolicy {
   final bool safeMode;
   final bool recentlyDeclined;
   final bool quietHours;
+
+  /// 0..1 cognitive-load estimate from `cognitive/neura_bandwidth_engine.dart`
+  /// (the same estimator Adaptive Intent uses). Treated the same way
+  /// `focusMode == deepWork` already is: it raises the urgency bar for
+  /// non-urgent candidates rather than blocking outright, so a genuinely
+  /// urgent suggestion can still get through a high-strain moment.
+  final double bandwidthStrain;
+
+  /// True when `adaptive_intent/neura_adaptive_outcome_loop.dart`'s latest
+  /// evaluation of recent Adaptive Intent session outcomes recommends
+  /// backing off proactive suggestions (abandoned sessions, low completion,
+  /// high effort). Shares the same suppression path as [bandwidthStrain] --
+  /// both are "hold back" signals from the cognitive/adaptive-intent side
+  /// of the app that the Autonomy Kernel previously never saw.
+  final bool outcomeLoopSuppression;
 
   /// Consulted as an additional, tightening-only check for capabilities that
   /// map to a constitution-governed category (see
@@ -60,6 +77,11 @@ class NeuraAutonomyKernel {
   /// ever overriding the attention, privacy, or consent boundaries above.
   static const double minSpecialistReputation = 0.75;
   static const double maxSpecialistReputation = 1.15;
+
+  /// Matches `NeuraBandwidthEngine`'s own recovery-mode threshold, so the
+  /// Autonomy Kernel protects the same high-strain state the Bandwidth
+  /// Engine itself would already switch to recovery mode for.
+  static const double highBandwidthStrain = 0.82;
 
   NeuraAutonomyKernel({
     NeuraCapabilityRegistry? registry,
@@ -150,6 +172,21 @@ class NeuraAutonomyKernel {
       reasons.add(
         'Attention Guardian protected the active ${policy.focusMode} mode.',
       );
+    } else if ((policy.bandwidthStrain >= highBandwidthStrain ||
+            policy.outcomeLoopSuppression) &&
+        candidate.urgency < 0.85) {
+      outcome = NeuraDecisionOutcome.suppressed;
+      if (policy.bandwidthStrain >= highBandwidthStrain) {
+        reasons.add(
+          'Attention Guardian is protecting a high-strain cognitive state.',
+        );
+      }
+      if (policy.outcomeLoopSuppression) {
+        reasons.add(
+          'Recent Adaptive Intent outcomes recommend fewer proactive '
+          'suggestions right now.',
+        );
+      }
     } else if (policy.suggestionsToday >= policy.maxDailySuggestions) {
       outcome = NeuraDecisionOutcome.suppressed;
       reasons.add('The user-controlled daily suggestion limit was reached.');

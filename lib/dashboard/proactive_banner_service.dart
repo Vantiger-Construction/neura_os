@@ -1,6 +1,11 @@
 import 'dart:convert';
 
+import '../adaptive_intent/neura_adaptive_outcome_loop.dart';
+import '../adaptive_intent/neura_live_signal_adapter.dart';
+import '../adaptive_intent/neura_outcome_store.dart';
 import '../after_storm/services/after_storm_service.dart';
+import '../cognitive/neura_bandwidth_engine.dart';
+import '../cognitive/neura_cognitive_state.dart';
 import '../core/memory/memory_graph_service.dart';
 import '../intelligence/capability_registry.dart';
 import '../intelligence/models.dart';
@@ -86,6 +91,11 @@ class ProactiveBannerService {
 
   final NeuraRuntimeSignalAdapter _signals = const NeuraRuntimeSignalAdapter();
   final NeuraOpportunityRadar _radar = const NeuraOpportunityRadar();
+  final NeuraLiveSignalAdapter _liveSignals = NeuraLiveSignalAdapter.instance;
+  final NeuraBandwidthEngine _bandwidthEngine = const NeuraBandwidthEngine();
+  final NeuraOutcomeStore _outcomeStore = NeuraEncryptedOutcomeStore();
+  final NeuraAdaptiveOutcomeLoop _outcomeLoop =
+      const NeuraAdaptiveOutcomeLoop();
   Future<void> _writeQueue = Future<void>.value();
   bool _writesSuspended = false;
   int _dataGeneration = 0;
@@ -168,11 +178,14 @@ class ProactiveBannerService {
     final mood = snapshot.value(NeuraSignalKind.mood);
     final distress =
         mood == null ? 0.0 : ((0.5 - mood) * 1.4).clamp(0.0, 0.7).toDouble();
+    final cognitive = await _cognitiveSuppressionSignals(now);
     final council =
         await NeuraIntelligenceController.instance.evaluateCandidates(
       candidates: eligible.map((item) => item.candidate),
       now: now,
       distressScore: distress,
+      bandwidthStrain: cognitive.bandwidthStrain,
+      outcomeLoopSuppression: cognitive.outcomeLoopSuppression,
     );
     if (council.visible.isEmpty) return null;
 
@@ -216,6 +229,36 @@ class ProactiveBannerService {
         'lastReceiptId': banner.receipt.id,
       }, generation);
     });
+  }
+
+  /// Computes the two "hold back proactive suggestions" signals from the
+  /// cognitive/adaptive-intent side of the app that the Autonomy Kernel
+  /// previously never saw. Best-effort: any failure (missing history, a
+  /// store read error) falls back to "no extra suppression" rather than
+  /// blocking the dashboard.
+  Future<({double bandwidthStrain, bool outcomeLoopSuppression})>
+      _cognitiveSuppressionSignals(DateTime now) async {
+    try {
+      final liveSignals = await _liveSignals.collect(
+        baseline: NeuraCognitiveSignals.defaults(),
+      );
+      final cognitiveState = _bandwidthEngine.estimate(
+        liveSignals.signals,
+        safeMode: SafeBoot.instance.safeMode.value,
+        calculatedAt: now,
+      );
+      final history = await _outcomeStore.load();
+      final adaptation = _outcomeLoop.evaluate(
+        history: history,
+        currentState: cognitiveState,
+      );
+      return (
+        bandwidthStrain: cognitiveState.cognitiveLoad,
+        outcomeLoopSuppression: adaptation.suppressProactiveSuggestions,
+      );
+    } catch (_) {
+      return (bandwidthStrain: 0.0, outcomeLoopSuppression: false);
+    }
   }
 
   _BannerCandidate _radarBanner(NeuraIntelligenceCandidate candidate) {

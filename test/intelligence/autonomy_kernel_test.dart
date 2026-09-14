@@ -298,6 +298,63 @@ void main() {
     });
   });
 
+  group('NeuraAutonomyKernel cognitive/adaptive-intent suppression', () {
+    test('high bandwidth strain suppresses a non-urgent candidate', () {
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now, urgency: 0.5),
+        policy: _policy(bandwidthStrain: 0.9),
+        now: now,
+      );
+
+      expect(receipt.outcome, NeuraDecisionOutcome.suppressed);
+      expect(_hasReason(receipt, 'high-strain cognitive state'), isTrue);
+    });
+
+    test('a genuinely urgent candidate still gets through high strain', () {
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now, urgency: 0.9),
+        policy: _policy(bandwidthStrain: 0.9),
+        now: now,
+      );
+
+      expect(receipt.outcome, isNot(NeuraDecisionOutcome.suppressed));
+    });
+
+    test('moderate strain below the threshold does not suppress', () {
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now, urgency: 0.5),
+        policy: _policy(bandwidthStrain: 0.5),
+        now: now,
+      );
+
+      expect(receipt.outcome, isNot(NeuraDecisionOutcome.suppressed));
+    });
+
+    test('outcome-loop suppression alone suppresses a non-urgent candidate',
+        () {
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now, urgency: 0.5),
+        policy: _policy(outcomeLoopSuppression: true),
+        now: now,
+      );
+
+      expect(receipt.outcome, NeuraDecisionOutcome.suppressed);
+      expect(_hasReason(receipt, 'Adaptive Intent outcomes'), isTrue);
+    });
+
+    test('both signals present cite both reasons', () {
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now, urgency: 0.5),
+        policy: _policy(bandwidthStrain: 0.9, outcomeLoopSuppression: true),
+        now: now,
+      );
+
+      expect(receipt.outcome, NeuraDecisionOutcome.suppressed);
+      expect(_hasReason(receipt, 'high-strain cognitive state'), isTrue);
+      expect(_hasReason(receipt, 'Adaptive Intent outcomes'), isTrue);
+    });
+  });
+
   test('returns a deterministic, explainable score and evidence trail', () {
     final receipt = NeuraAutonomyKernel(
       receiptIdFactory: (candidate, evaluatedAt) =>
@@ -340,6 +397,8 @@ NeuraAutonomyPolicy _policy({
   bool quietHours = false,
   Map<String, double> specialistReputation = const {},
   NeuraPersonalConstitution constitution = const NeuraPersonalConstitution(),
+  double bandwidthStrain = 0,
+  bool outcomeLoopSuppression = false,
 }) =>
     NeuraAutonomyPolicy(
       enabled: enabled,
@@ -353,6 +412,8 @@ NeuraAutonomyPolicy _policy({
       constitution: constitution,
       quietHours: quietHours,
       specialistReputation: specialistReputation,
+      bandwidthStrain: bandwidthStrain,
+      outcomeLoopSuppression: outcomeLoopSuppression,
     );
 
 NeuraIntelligenceCandidate _candidate({
