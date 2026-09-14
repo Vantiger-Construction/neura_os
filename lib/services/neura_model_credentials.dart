@@ -9,8 +9,7 @@ abstract interface class NeuraModelCredentialStorage {
   Future<void> delete({required String key});
 }
 
-class NeuraSecureModelCredentialStorage
-    implements NeuraModelCredentialStorage {
+class NeuraSecureModelCredentialStorage implements NeuraModelCredentialStorage {
   const NeuraSecureModelCredentialStorage();
 
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
@@ -30,7 +29,7 @@ class NeuraSecureModelCredentialStorage
 /// store. Secret values are never exposed through notifiers, logs, or previews.
 class NeuraModelCredentials {
   NeuraModelCredentials._({NeuraModelCredentialStorage? storage})
-      : _storage = storage ?? const NeuraSecureModelCredentialStorage();
+    : _storage = storage ?? const NeuraSecureModelCredentialStorage();
 
   static final NeuraModelCredentials instance = NeuraModelCredentials._();
 
@@ -42,8 +41,9 @@ class NeuraModelCredentials {
   }
 
   final NeuraModelCredentialStorage _storage;
-  final ValueNotifier<Set<NeuraModelProvider>> configured =
-      ValueNotifier(<NeuraModelProvider>{});
+  final ValueNotifier<Set<NeuraModelProvider>> configured = ValueNotifier(
+    <NeuraModelProvider>{},
+  );
   Future<void> _queue = Future<void>.value();
   bool _writesSuspended = false;
 
@@ -81,10 +81,7 @@ class NeuraModelCredentials {
       if ((await _storage.read(key: key) ?? '').trim() != candidate) {
         throw StateError('The model credential could not be verified.');
       }
-      configured.value = Set.unmodifiable({
-        ...configured.value,
-        provider,
-      });
+      configured.value = Set.unmodifiable({...configured.value, provider});
     });
   }
 
