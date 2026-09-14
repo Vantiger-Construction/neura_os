@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  UNVERIFIED: authored without an Android build/emulator available in the
+  drafting environment. Review and test on a device before shipping.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/neura_widget_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="?android:attr/colorBackground">
+
+    <TextView
+        android:id="@+id/neura_widget_mood_line"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        tools:text="Last check-in: 7/10 (2h ago)" />
+
+    <TextView
+        android:id="@+id/neura_widget_nudge_line"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textSize="13sp"
+        android:visibility="gone"
+        tools:text="A gentle reset is available"
+        tools:visibility="visible" />
+
+    <TextView
+        android:id="@+id/neura_widget_safe_mode_line"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textSize="13sp"
+        android:text="Safe Mode is active"
+        android:visibility="gone" />
+</LinearLayout>

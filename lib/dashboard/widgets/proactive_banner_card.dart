@@ -10,6 +10,7 @@ import '../../intelligence/neura_intelligence_controller.dart';
 import '../../joy_engine/joy_screen.dart';
 import '../../modules/quests/quest_mode_screen.dart';
 import '../../modules/support/support_center_screen.dart';
+import '../../os_shell/widgets_bridge/home_widget_bridge.dart';
 import '../../persona/models/neura_kind_explanation.dart';
 import '../../relationships/screens/relationship_detail_screen.dart';
 import '../../relationships/screens/relationship_list_screen.dart';
@@ -53,6 +54,9 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
                 .recordShown(banner)
                 .catchError((_) {}),
           );
+          // Mirror only after Neura's own attention/consent boundary has
+          // already decided to show this card in-app.
+          HomeWidgetBridge.instance.mirrorApprovedNudge(banner.title);
         });
       }
     } catch (_) {
@@ -69,12 +73,14 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
             .catchError((_) {}),
       );
     }
+    HomeWidgetBridge.instance.mirrorApprovedNudge(null);
     setState(() => _dismissed = true);
   }
 
   Future<void> _act() async {
     final banner = _banner;
     if (banner == null || !mounted) return;
+    HomeWidgetBridge.instance.mirrorApprovedNudge(null);
     setState(() => _dismissed = true);
 
     if (!(banner.kind == ProactiveBannerKind.quest &&
