@@ -7,6 +7,7 @@ import '../../persona/models/neura_audience.dart';
 import '../../persona/services/neura_audience_service.dart';
 import '../../services/neura_ai_service.dart';
 import '../../services/neura_tts_service.dart';
+import '../../widgets/neura_cloud_request_preview.dart';
 
 /// Real Neura chat for Kids Mode. Replaces the old stub (which only ever
 /// displayed the system prompt it built, never called an LLM).
@@ -112,6 +113,8 @@ class _KidsNeuraChatScreenState extends State<KidsNeuraChatScreen> {
       await for (final delta in NeuraAiService.instance.streamReply(
         history,
         agentId: AgentPersonaCatalog.generalId,
+        requestCloudApproval: (preview) =>
+            showNeuraCloudRequestPreview(context, preview),
       )) {
         setState(() => botLine.text += delta);
         _scrollToEnd();

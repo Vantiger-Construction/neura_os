@@ -21,11 +21,13 @@ import '../src/modules/focus/focus_mode.dart';
 import 'neura_chat_policy.dart';
 import 'neura_generation_cancel.dart';
 import 'neura_llm_diagnostics.dart';
+import 'neura_model_credentials.dart';
+import 'neura_model_router.dart';
+import 'neura_model_types.dart';
 import 'neura_provider_credentials.dart';
 
 typedef NeuraToolCommandHandler = FutureOr<bool> Function(
-  NeuraToolCommand command,
-);
+    NeuraToolCommand command);
 
 /// One turn in the conversation, in the shape the Messages API expects.
 /// A user turn may optionally carry an image (base64-encoded) for vision.
@@ -44,10 +46,7 @@ class NeuraChatTurn {
 
   Map<String, dynamic> toJson() {
     if (imageBase64 == null) {
-      return {
-        'role': isUser ? 'user' : 'assistant',
-        'content': text,
-      };
+      return {'role': isUser ? 'user' : 'assistant', 'content': text};
     }
     return {
       'role': isUser ? 'user' : 'assistant',
@@ -91,11 +90,16 @@ class NeuraAiService {
   static const _retryableStatuses = {429, 500, 502, 503, 529};
 
   final NeuraLlmDiagnostics _diagnostics = NeuraLlmDiagnostics.instance;
+  final NeuraSecureModelRouter _modelRouter = NeuraSecureModelRouter();
   NeuraGenerationCancel? _activeCancel;
   String? _activeGenerationId;
 
   String get _apiKey => NeuraProviderCredentials.instance.apiKey;
-  bool get isConfigured => NeuraProviderCredentials.instance.hasKey;
+  bool get isConfigured {
+    if (NeuraProviderCredentials.instance.hasKey) return true;
+    return NeuraModelCredentials.instance.configured.value.isNotEmpty;
+  }
+
   bool get cloudRequestsAllowed => !SafeBoot.instance.safeMode.value;
   String? get activeGenerationId => _activeGenerationId;
   Map<String, dynamic> get diagnosticsSnapshot => _diagnostics.snapshot();
@@ -129,6 +133,7 @@ class NeuraAiService {
     String roomId = 'penthouse',
     String? generationId,
     NeuraToolCommandHandler? onToolCommand,
+    NeuraCloudApprovalHandler? requestCloudApproval,
   }) async* {
     _throwIfCloudBlocked();
     if (!isConfigured) {
@@ -154,6 +159,30 @@ class NeuraAiService {
         return;
       }
 
+      final openAiKey = await NeuraModelCredentials.instance.read(
+        NeuraModelProvider.openAi,
+      );
+      if (openAiKey != null) {
+        final systemPrompt =
+            await NeuraPromptBuilder.instance.buildSystemMessage(
+          agentId: agentId,
+          includePersistentMemory: policy.persistMemory,
+        );
+        cancel.throwIfCancelled();
+        final response = await _modelRouter.complete(
+          NeuraModelRequest(
+            systemPrompt: systemPrompt,
+            messages: history.map((turn) => turn.toJson()).toList(),
+            purpose: 'chat reply',
+            includesPrivateContext: policy.persistMemory,
+          ),
+          requestApproval: requestCloudApproval ?? _denyCloudRequest,
+        );
+        cancel.throwIfCancelled();
+        yield response.text;
+        return;
+      }
+
       final systemPrompt = await NeuraPromptBuilder.instance.buildSystemMessage(
         agentId: agentId,
         includePersistentMemory: policy.persistMemory,
@@ -173,6 +202,8 @@ class NeuraAiService {
           messages,
           advertisedTools,
           cancel,
+          requestCloudApproval: requestCloudApproval,
+          includesPrivateContext: policy.persistMemory,
         )) {
           cancel.throwIfCancelled();
           if (event is _TextDelta) {
@@ -228,8 +259,10 @@ class NeuraAiService {
     String systemPrompt,
     List<Map<String, dynamic>> messages,
     List<Map<String, dynamic>> tools,
-    NeuraGenerationCancel cancel,
-  ) async* {
+    NeuraGenerationCancel cancel, {
+    required NeuraCloudApprovalHandler? requestCloudApproval,
+    required bool includesPrivateContext,
+  }) async* {
     Object? lastError;
 
     for (var attempt = 0; attempt <= _maxRetries; attempt++) {
@@ -239,7 +272,15 @@ class NeuraAiService {
       var emittedText = false;
 
       try {
-        _throwIfCloudBlocked();
+        await _requireCloudApprovalForMessages(
+          messages,
+          purpose:
+              attempt == 0 ? 'chat reply' : 'chat reply retry ${attempt + 1}',
+          provider: NeuraModelProvider.anthropic,
+          includesPrivateContext: includesPrivateContext,
+          requestApproval: requestCloudApproval,
+        );
+        cancel.throwIfCancelled();
         _diagnostics.recordAttempt();
         final request = _buildStreamRequest(systemPrompt, messages, tools);
         final streamedResponse = await Future.any<http.StreamedResponse>([
@@ -311,8 +352,9 @@ class NeuraAiService {
                   emittedText = true;
                   yield _TextDelta(text);
                 } else if (delta?['type'] == 'input_json_delta') {
-                  toolInputBuffers[index]
-                      ?.write(delta!['partial_json'] as String? ?? '');
+                  toolInputBuffers[index]?.write(
+                    delta!['partial_json'] as String? ?? '',
+                  );
                 }
                 break;
 
@@ -447,10 +489,7 @@ class NeuraAiService {
             return 'Tool unavailable: user confirmation UI is missing.';
           }
           final approved = await onToolCommand(
-            NeuraToolCommand(
-              NeuraChatPolicy.getMoodHistory,
-              {'limit': limit},
-            ),
+            NeuraToolCommand(NeuraChatPolicy.getMoodHistory, {'limit': limit}),
           );
           if (!approved) {
             return 'The user did not approve sharing mood history.';
@@ -462,8 +501,10 @@ class NeuraAiService {
               : entries;
           if (recent.isEmpty) return 'No mood entries recorded yet.';
           return recent
-              .map((e) =>
-                  '${e.timestamp.toIso8601String()}: mood ${e.mood0to10}/10')
+              .map(
+                (e) =>
+                    '${e.timestamp.toIso8601String()}: mood ${e.mood0to10}/10',
+              )
               .join('\n');
 
         case NeuraChatPolicy.logMoodEntry:
@@ -477,10 +518,10 @@ class NeuraAiService {
             return 'Tool unavailable: user confirmation UI is missing.';
           }
           final approved = await onToolCommand(
-            NeuraToolCommand(
-              NeuraChatPolicy.logMoodEntry,
-              {'mood0to10': mood, 'note': note},
-            ),
+            NeuraToolCommand(NeuraChatPolicy.logMoodEntry, {
+              'mood0to10': mood,
+              'note': note,
+            }),
           );
           cancel.throwIfCancelled();
           return approved
@@ -495,10 +536,9 @@ class NeuraAiService {
           if (onToolCommand == null) {
             return 'Tool error: navigation runtime is unavailable.';
           }
-          final approved = await onToolCommand(NeuraToolCommand(
-            NeuraChatPolicy.dispatchIntent,
-            {'room': room},
-          ));
+          final approved = await onToolCommand(
+            NeuraToolCommand(NeuraChatPolicy.dispatchIntent, {'room': room}),
+          );
           cancel.throwIfCancelled();
           return approved
               ? 'The user approved navigation to "$room".'
@@ -512,10 +552,9 @@ class NeuraAiService {
           if (onToolCommand == null) {
             return 'Tool error: tone runtime is unavailable.';
           }
-          final approved = await onToolCommand(NeuraToolCommand(
-            NeuraChatPolicy.setTone,
-            {'tone': tone},
-          ));
+          final approved = await onToolCommand(
+            NeuraToolCommand(NeuraChatPolicy.setTone, {'tone': tone}),
+          );
           cancel.throwIfCancelled();
           return approved
               ? 'The user approved tone "$tone".'
@@ -538,6 +577,7 @@ class NeuraAiService {
   Future<String> completeOnce(
     String userPrompt, {
     required String agentId,
+    NeuraCloudApprovalHandler? requestCloudApproval,
   }) async {
     _throwIfCloudBlocked();
     if (!isConfigured) {
@@ -550,18 +590,39 @@ class NeuraAiService {
       throw NeuraGuardrailBlocked(preBlocked);
     }
 
-    final systemPrompt =
-        await NeuraPromptBuilder.instance.buildSystemMessage(agentId: agentId);
+    final systemPrompt = await NeuraPromptBuilder.instance.buildSystemMessage(
+      agentId: agentId,
+    );
+    final openAiKey = await NeuraModelCredentials.instance.read(
+      NeuraModelProvider.openAi,
+    );
+    if (openAiKey != null) {
+      final response = await _modelRouter.complete(
+        NeuraModelRequest(
+          systemPrompt: systemPrompt,
+          messages: syntheticRequest.map((turn) => turn.toJson()).toList(),
+          purpose: 'generated summary',
+          includesPrivateContext: true,
+        ),
+        requestApproval: requestCloudApproval ?? _denyCloudRequest,
+      );
+      return response.text;
+    }
 
-    final response = await _postWithRetry({
-      'model': _model,
-      'max_tokens': _maxTokens,
-      'stream': false,
-      'thinking': {'type': 'disabled'},
-      'output_config': {'effort': 'low'},
-      'system': _systemBlock(systemPrompt),
-      'messages': syntheticRequest.map((t) => t.toJson()).toList(),
-    });
+    final response = await _postWithRetry(
+      {
+        'model': _model,
+        'max_tokens': _maxTokens,
+        'stream': false,
+        'thinking': {'type': 'disabled'},
+        'output_config': {'effort': 'low'},
+        'system': _systemBlock(systemPrompt),
+        'messages': syntheticRequest.map((t) => t.toJson()).toList(),
+      },
+      requestCloudApproval: requestCloudApproval,
+      purpose: 'generated summary',
+      includesPrivateContext: true,
+    );
 
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
     final blocks = decoded['content'] as List<dynamic>? ?? const [];
@@ -580,11 +641,26 @@ class NeuraAiService {
     return rawText;
   }
 
-  Future<http.Response> _postWithRetry(Map<String, dynamic> body) async {
+  Future<http.Response> _postWithRetry(
+    Map<String, dynamic> body, {
+    required NeuraCloudApprovalHandler? requestCloudApproval,
+    required String purpose,
+    required bool includesPrivateContext,
+  }) async {
     Object? lastError;
     for (var attempt = 0; attempt <= _maxRetries; attempt++) {
       try {
-        _throwIfCloudBlocked();
+        final messages =
+            (body['messages'] as List<dynamic>? ?? const <dynamic>[])
+                .whereType<Map<String, dynamic>>()
+                .toList();
+        await _requireCloudApprovalForMessages(
+          messages,
+          purpose: attempt == 0 ? purpose : '$purpose retry ${attempt + 1}',
+          provider: NeuraModelProvider.anthropic,
+          includesPrivateContext: includesPrivateContext,
+          requestApproval: requestCloudApproval,
+        );
         _diagnostics.recordAttempt();
         final response = await http
             .post(
@@ -634,6 +710,32 @@ class NeuraAiService {
     throw error;
   }
 
+  Future<bool> _denyCloudRequest(NeuraCloudRequestPreview _) async {
+    throw const NeuraCloudApprovalDenied();
+  }
+
+  Future<void> _requireCloudApprovalForMessages(
+    List<Map<String, dynamic>> messages, {
+    required String purpose,
+    required NeuraModelProvider provider,
+    required bool includesPrivateContext,
+    required NeuraCloudApprovalHandler? requestApproval,
+  }) async {
+    _throwIfCloudBlocked();
+    if (requestApproval == null) {
+      throw const NeuraCloudApprovalDenied();
+    }
+    final preview = NeuraModelRequest(
+      systemPrompt: '',
+      messages: messages,
+      purpose: purpose,
+      includesPrivateContext: includesPrivateContext,
+    ).previewFor(provider);
+    final approved = await requestApproval(preview);
+    _throwIfCloudBlocked();
+    if (!approved) throw const NeuraCloudApprovalDenied();
+  }
+
   void _throwIfCloudBlocked() {
     if (!cloudRequestsAllowed) {
       throw StateError(
@@ -653,9 +755,7 @@ class NeuraAiService {
         ? moodEntries.sublist(moodEntries.length - 10)
         : moodEntries;
     final recentMoods = recentEntries
-        .map(
-          (e) => ((e.mood0to10 - 5) / 2.5).round().clamp(-2, 2).toInt(),
-        )
+        .map((e) => ((e.mood0to10 - 5) / 2.5).round().clamp(-2, 2).toInt())
         .toList(growable: false);
     final signal = DistressDetector().detect(
       recentMoods: recentMoods,
@@ -682,8 +782,10 @@ class NeuraAiService {
       options: const ['send', 'no_thanks'],
     );
 
-    final decision =
-        Guardrails().evaluate(context: snapshot, proposal: proposal);
+    final decision = Guardrails().evaluate(
+      context: snapshot,
+      proposal: proposal,
+    );
     if (decision.allow) return null;
 
     if (signal.active) {

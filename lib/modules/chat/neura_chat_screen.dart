@@ -21,6 +21,7 @@ import '../../services/neura_swarm_service.dart';
 import '../../services/neura_tone_runtime.dart';
 import '../../services/neura_tts_service.dart';
 import '../../services/wake_word_listener_service.dart';
+import '../../widgets/neura_cloud_request_preview.dart';
 import '../core/ai_engine.dart';
 import '../core/app_log.dart';
 
@@ -376,6 +377,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         roomId: room.id,
         generationId: generationId,
         onToolCommand: _handleToolCommand,
+        requestCloudApproval: (preview) =>
+            showNeuraCloudRequestPreview(context, preview),
       )) {
         if (!mounted || _activeReplyId != generationId) return;
         setState(() {

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../services/neura_model_credentials.dart';
+import '../services/neura_model_types.dart';
 import '../services/neura_provider_credentials.dart';
-import '../services/neura_swarm_service.dart';
 
 class AiProviderSettingsScreen extends StatefulWidget {
   const AiProviderSettingsScreen({super.key});
@@ -13,6 +14,7 @@ class AiProviderSettingsScreen extends StatefulWidget {
 
 class _AiProviderSettingsScreenState extends State<AiProviderSettingsScreen> {
   final _keyController = TextEditingController();
+  NeuraModelProvider _provider = NeuraModelProvider.openAi;
   bool _obscure = true;
   bool _saving = false;
 
@@ -23,7 +25,8 @@ class _AiProviderSettingsScreenState extends State<AiProviderSettingsScreen> {
   }
 
   Future<void> _save() async {
-    final error = NeuraProviderCredentials.validate(_keyController.text);
+    final error =
+        NeuraModelCredentials.validate(_provider, _keyController.text);
     if (error != null) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(error)));
@@ -32,19 +35,19 @@ class _AiProviderSettingsScreenState extends State<AiProviderSettingsScreen> {
 
     setState(() => _saving = true);
     try {
-      await NeuraProviderCredentials.instance.save(_keyController.text);
-      try {
-        await NeuraSwarmService.instance.init(
-          NeuraProviderCredentials.instance.apiKey,
-        );
-      } catch (_) {
-        // The key is safely stored. The native swarm will receive it on the
-        // next app start if its library is temporarily unavailable now.
+      await NeuraModelCredentials.instance.save(
+        _provider,
+        _keyController.text,
+      );
+      // Keep the existing Anthropic chat path synchronized until the
+      // provider-neutral router becomes its authoritative transport.
+      if (_provider == NeuraModelProvider.anthropic) {
+        await NeuraProviderCredentials.instance.save(_keyController.text);
       }
       _keyController.clear();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('AI provider key saved securely.')),
+        SnackBar(content: Text('${_provider.label} key saved securely.')),
       );
     } catch (_) {
       if (!mounted) return;
@@ -56,14 +59,14 @@ class _AiProviderSettingsScreenState extends State<AiProviderSettingsScreen> {
     }
   }
 
-  Future<void> _remove() async {
+  Future<void> _remove(NeuraModelProvider provider) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Remove AI provider key?'),
+        title: Text('Remove ${provider.label} key?'),
         content: const Text(
-          'Cloud replies will stop until another key is saved. '
-          'Neura\'s local fallback will remain available.',
+          'Cloud requests to this provider will stop. The secret cannot be '
+          'recovered after verified removal.',
         ),
         actions: [
           TextButton(
@@ -78,17 +81,19 @@ class _AiProviderSettingsScreenState extends State<AiProviderSettingsScreen> {
       ),
     );
     if (confirmed != true) return;
+
     try {
-      // Stop native use first, then remove the authoritative secure copy. A
-      // failure in either layer must not be presented as a completed removal.
-      await NeuraSwarmService.instance.clearCredential();
-      await NeuraProviderCredentials.instance.clear();
+      await NeuraModelCredentials.instance.clear(provider);
+      if (provider == NeuraModelProvider.anthropic &&
+          NeuraProviderCredentials.instance.hasKey) {
+        await NeuraProviderCredentials.instance.clear();
+      }
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Key removal is incomplete. Close Neura and try again before using cloud features.',
+            'Key removal could not be verified. Close Neura and try again.',
           ),
         ),
       );
@@ -96,34 +101,47 @@ class _AiProviderSettingsScreenState extends State<AiProviderSettingsScreen> {
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('AI provider key removed.')),
+      SnackBar(content: Text('${provider.label} key removed.')),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final credentials = NeuraProviderCredentials.instance;
+    final credentials = NeuraModelCredentials.instance;
+    final hint = _provider == NeuraModelProvider.openAi ? 'sk-…' : 'sk-ant-…';
+
     return Scaffold(
-      appBar: AppBar(title: const Text('AI Provider')),
+      appBar: AppBar(title: const Text('AI Providers')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          ValueListenableBuilder<bool>(
-            valueListenable: credentials.configured,
-            builder: (context, configured, _) => Card(
-              child: ListTile(
-                leading: Icon(
-                  configured ? Icons.verified_user_outlined : Icons.cloud_off,
-                ),
-                title:
-                    Text(configured ? 'Connected securely' : 'Not configured'),
-                subtitle: Text(
-                  configured
-                      ? 'The key is stored by your operating system and is never displayed.'
-                      : 'Neura will use its local fallback until a key is saved.',
-                ),
+          const Card(
+            child: ListTile(
+              leading: Icon(Icons.privacy_tip_outlined),
+              title: Text('Approval required every time'),
+              subtitle: Text(
+                'Neura previews each cloud request before sending it. '
+                'Safe Mode blocks all cloud providers.',
               ),
             ),
+          ),
+          const SizedBox(height: 12),
+          SegmentedButton<NeuraModelProvider>(
+            segments: NeuraModelProvider.values
+                .map(
+                  (provider) => ButtonSegment(
+                    value: provider,
+                    label: Text(provider.label),
+                  ),
+                )
+                .toList(),
+            selected: {_provider},
+            onSelectionChanged: _saving
+                ? null
+                : (selection) => setState(() {
+                      _provider = selection.single;
+                      _keyController.clear();
+                    }),
           ),
           const SizedBox(height: 16),
           TextField(
@@ -132,8 +150,8 @@ class _AiProviderSettingsScreenState extends State<AiProviderSettingsScreen> {
             enableSuggestions: false,
             autocorrect: false,
             decoration: InputDecoration(
-              labelText: 'Anthropic API key',
-              hintText: 'sk-ant-…',
+              labelText: '${_provider.label} API key',
+              hintText: hint,
               border: const OutlineInputBorder(),
               suffixIcon: IconButton(
                 tooltip: _obscure ? 'Show' : 'Hide',
@@ -152,22 +170,44 @@ class _AiProviderSettingsScreenState extends State<AiProviderSettingsScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.lock_outline),
-            label: const Text('Save securely'),
-          ),
-          const SizedBox(height: 8),
-          ValueListenableBuilder<bool>(
-            valueListenable: credentials.configured,
-            builder: (context, configured, _) => OutlinedButton.icon(
-              onPressed: configured && !_saving ? _remove : null,
-              icon: const Icon(Icons.delete_outline),
-              label: const Text('Remove saved key'),
-            ),
+            label: Text('Save ${_provider.label} key securely'),
           ),
           const SizedBox(height: 16),
+          ValueListenableBuilder<Set<NeuraModelProvider>>(
+            valueListenable: credentials.configured,
+            builder: (context, configured, _) => Column(
+              children: [
+                for (final provider in NeuraModelProvider.values)
+                  Card(
+                    child: ListTile(
+                      leading: Icon(
+                        configured.contains(provider)
+                            ? Icons.verified_user_outlined
+                            : Icons.cloud_off,
+                      ),
+                      title: Text(provider.label),
+                      subtitle: Text(
+                        configured.contains(provider)
+                            ? 'Stored by the operating system'
+                            : 'Not configured',
+                      ),
+                      trailing: IconButton(
+                        tooltip: 'Remove ${provider.label} key',
+                        onPressed: configured.contains(provider) && !_saving
+                            ? () => _remove(provider)
+                            : null,
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           const Text(
-            'Security note: do not paste this key into chat, source files, '
-            'screenshots, or build scripts. New release builds should omit '
-            'ANTHROPIC_API_KEY from --dart-define.',
+            'OpenAI is tried first. Anthropic is an optional fallback and '
+            'requires a separate approval. Never paste API keys into chat, '
+            'source files, screenshots, or build scripts.',
           ),
         ],
       ),
