@@ -295,6 +295,11 @@ class NeuraDataWipeService {
     );
     await _attempt(
       failures,
+      'model credential deletion',
+      NeuraModelCredentials.instance.clearForDataWipe,
+    );
+    await _attempt(
+      failures,
       'scheduled backup settings deletion',
       ScheduledBackupSettings.instance.clearForDataWipe,
     );

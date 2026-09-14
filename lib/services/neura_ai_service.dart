@@ -26,8 +26,8 @@ import 'neura_model_router.dart';
 import 'neura_model_types.dart';
 import 'neura_provider_credentials.dart';
 
-typedef NeuraToolCommandHandler =
-    FutureOr<bool> Function(NeuraToolCommand command);
+typedef NeuraToolCommandHandler = FutureOr<bool> Function(
+    NeuraToolCommand command);
 
 /// One turn in the conversation, in the shape the Messages API expects.
 /// A user turn may optionally carry an image (base64-encoded) for vision.
@@ -115,12 +115,12 @@ class NeuraAiService {
   }
 
   static List<Map<String, dynamic>> _systemBlock(String systemPrompt) => [
-    {
-      'type': 'text',
-      'text': systemPrompt,
-      'cache_control': {'type': 'ephemeral'},
-    },
-  ];
+        {
+          'type': 'text',
+          'text': systemPrompt,
+          'cache_control': {'type': 'ephemeral'},
+        },
+      ];
 
   /// Streams incremental text deltas for a reply to [history].
   ///
@@ -163,11 +163,11 @@ class NeuraAiService {
         NeuraModelProvider.openAi,
       );
       if (openAiKey != null) {
-        final systemPrompt = await NeuraPromptBuilder.instance
-            .buildSystemMessage(
-              agentId: agentId,
-              includePersistentMemory: policy.persistMemory,
-            );
+        final systemPrompt =
+            await NeuraPromptBuilder.instance.buildSystemMessage(
+          agentId: agentId,
+          includePersistentMemory: policy.persistMemory,
+        );
         cancel.throwIfCancelled();
         final response = await _modelRouter.complete(
           NeuraModelRequest(
@@ -274,9 +274,8 @@ class NeuraAiService {
       try {
         await _requireCloudApprovalForMessages(
           messages,
-          purpose: attempt == 0
-              ? 'chat reply'
-              : 'chat reply retry ${attempt + 1}',
+          purpose:
+              attempt == 0 ? 'chat reply' : 'chat reply retry ${attempt + 1}',
           provider: NeuraModelProvider.anthropic,
           includesPrivateContext: includesPrivateContext,
           requestApproval: requestCloudApproval,
@@ -316,10 +315,9 @@ class NeuraAiService {
         var stopReason = 'end_turn';
         var buffer = '';
 
-        await for (final chunk
-            in streamedResponse.stream
-                .timeout(_requestTimeout)
-                .transform(utf8.decoder)) {
+        await for (final chunk in streamedResponse.stream
+            .timeout(_requestTimeout)
+            .transform(utf8.decoder)) {
           _throwIfCloudBlocked();
           cancel.throwIfCancelled();
           buffer += chunk;
@@ -395,9 +393,8 @@ class NeuraAiService {
 
         cancel.throwIfCancelled();
         final orderedIndices = blocksByIndex.keys.toList()..sort();
-        final contentBlocks = orderedIndices
-            .map((i) => blocksByIndex[i]!)
-            .toList();
+        final contentBlocks =
+            orderedIndices.map((i) => blocksByIndex[i]!).toList();
         _diagnostics.recordSuccess();
         yield _TurnComplete(contentBlocks, stopReason);
         return;
@@ -809,8 +806,7 @@ class NeuraAiService {
     var message = decision.safeAlternative?.message ?? decision.reason;
     final reasonLower = decision.reason.toLowerCase();
     if (reasonLower.contains('distress') || reasonLower.contains('support')) {
-      message +=
-          '\n\nIf you need immediate help: '
+      message += '\n\nIf you need immediate help: '
           '${SupportResources.us['988']}. ${SupportResources.us['911']}.';
     }
     return message;

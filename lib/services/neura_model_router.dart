@@ -24,8 +24,8 @@ class NeuraCloudRequestPreview {
   });
 }
 
-typedef NeuraCloudApprovalHandler =
-    Future<bool> Function(NeuraCloudRequestPreview preview);
+typedef NeuraCloudApprovalHandler = Future<bool> Function(
+    NeuraCloudRequestPreview preview);
 
 class NeuraModelRequest {
   final String systemPrompt;
@@ -75,7 +75,7 @@ abstract interface class NeuraModelTransport {
 
 class NeuraOpenAiTransport implements NeuraModelTransport {
   NeuraOpenAiTransport({http.Client? client})
-    : _client = client ?? http.Client();
+      : _client = client ?? http.Client();
 
   static const _endpoint = 'https://api.openai.com/v1/responses';
   static const _model = 'gpt-5.6-luna';
@@ -149,7 +149,7 @@ class NeuraOpenAiTransport implements NeuraModelTransport {
 
 class NeuraAnthropicTransport implements NeuraModelTransport {
   NeuraAnthropicTransport({http.Client? client})
-    : _client = client ?? http.Client();
+      : _client = client ?? http.Client();
 
   static const _endpoint = 'https://api.anthropic.com/v1/messages';
   static const _model = 'claude-sonnet-5';

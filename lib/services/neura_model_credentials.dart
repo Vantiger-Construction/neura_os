@@ -29,7 +29,7 @@ class NeuraSecureModelCredentialStorage implements NeuraModelCredentialStorage {
 /// store. Secret values are never exposed through notifiers, logs, or previews.
 class NeuraModelCredentials {
   NeuraModelCredentials._({NeuraModelCredentialStorage? storage})
-    : _storage = storage ?? const NeuraSecureModelCredentialStorage();
+      : _storage = storage ?? const NeuraSecureModelCredentialStorage();
 
   static final NeuraModelCredentials instance = NeuraModelCredentials._();
 
