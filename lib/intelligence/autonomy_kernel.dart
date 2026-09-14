@@ -1,3 +1,6 @@
+import '../constitution/neura_personal_constitution.dart';
+import '../intent_compiler/neura_action_graph.dart'
+    show NeuraActionEffect, NeuraApprovalTier;
 import 'capability_registry.dart';
 import 'consent_ledger.dart';
 import 'models.dart';
@@ -19,6 +22,7 @@ class NeuraAutonomyPolicy {
     required this.recentlyDeclined,
     this.quietHours = false,
     this.specialistReputation = const {},
+    this.constitution = const NeuraPersonalConstitution(),
   });
 
   final bool enabled;
@@ -30,6 +34,13 @@ class NeuraAutonomyPolicy {
   final bool safeMode;
   final bool recentlyDeclined;
   final bool quietHours;
+
+  /// Consulted as an additional, tightening-only check for capabilities that
+  /// map to a constitution-governed category (see
+  /// [NeuraAutonomyKernel._constitutionEffectFor]). It can only turn an
+  /// `allow`/`askApproval` outcome stricter, never turn a `suppressed` or
+  /// `blocked` outcome into something more permissive.
+  final NeuraPersonalConstitution constitution;
 
   /// Per-specialist confidence multiplier learned from past user outcomes
   /// (accepted vs. dismissed suggestions), bounded to
@@ -165,6 +176,38 @@ class NeuraAutonomyKernel {
       reasons.add('A recent dismissal reduced the candidate score.');
     }
 
+    // A second, independent authority: the Personal Constitution (also
+    // consulted by Adaptive Intent and the cloud model router). This can
+    // only tighten an outcome the checks above already reached -- it never
+    // turns a suppressed or blocked candidate into an allowed one.
+    final constitutionEffect = _constitutionEffectFor(candidate.capabilityId);
+    if (constitutionEffect != null &&
+        (outcome == NeuraDecisionOutcome.allow ||
+            outcome == NeuraDecisionOutcome.askApproval)) {
+      final constitutionDecision = policy.constitution.evaluateEffect(
+        effect: constitutionEffect,
+        at: now,
+        safeMode: policy.safeMode,
+        containsSensitiveContent: candidate.evidence.any(
+          (evidence) => evidence.sensitivity == NeuraSensitivity.sensitive,
+        ),
+      );
+      if (!constitutionDecision.allowed) {
+        outcome = NeuraDecisionOutcome.blocked;
+        requiresApproval = false;
+        reasons.add('Personal Constitution: ${constitutionDecision.reason}');
+      } else if (constitutionDecision.requiredApproval !=
+              NeuraApprovalTier.none &&
+          outcome == NeuraDecisionOutcome.allow) {
+        outcome = NeuraDecisionOutcome.askApproval;
+        requiresApproval = true;
+        reasons.add(
+          'Personal Constitution requires a fresh confirmation for this '
+          'action.',
+        );
+      }
+    }
+
     return NeuraDecisionReceipt(
       id: _receiptIdFactory(candidate, now),
       candidateId: candidate.id,
@@ -193,4 +236,22 @@ class NeuraAutonomyKernel {
     DateTime now,
   ) =>
       '${candidate.id}:${now.microsecondsSinceEpoch}';
+
+  /// Maps a capability id to the [NeuraActionEffect] category the Personal
+  /// Constitution understands, or null when the capability has no
+  /// constitution-governed equivalent (e.g. it is purely navigational).
+  /// [NeuraCapabilityRegistry.moveMoney] is omitted deliberately: it is
+  /// already hard-blocked above as a critical capability, so a constitution
+  /// check on it would never be reached.
+  static NeuraActionEffect? _constitutionEffectFor(String capabilityId) {
+    return switch (capabilityId) {
+      NeuraCapabilityRegistry.changeLocalPlan => NeuraActionEffect.localWrite,
+      NeuraCapabilityRegistry.exportPrivateData => NeuraActionEffect.localWrite,
+      NeuraCapabilityRegistry.scheduleNotification =>
+        NeuraActionEffect.notification,
+      NeuraCapabilityRegistry.contactPerson =>
+        NeuraActionEffect.externalMessage,
+      _ => null,
+    };
+  }
 }

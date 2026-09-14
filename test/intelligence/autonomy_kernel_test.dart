@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:neuro_companion/constitution/neura_personal_constitution.dart';
 import 'package:neuro_companion/intelligence/autonomy_kernel.dart';
 import 'package:neuro_companion/intelligence/capability_registry.dart';
 import 'package:neuro_companion/intelligence/models.dart';
@@ -181,6 +182,122 @@ void main() {
     });
   });
 
+  group('NeuraAutonomyKernel Personal Constitution boundary', () {
+    test('blocks a capability the default constitution disallows', () {
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(
+          now: now,
+          capabilityId: NeuraCapabilityRegistry.contactPerson,
+        ),
+        policy: _policy(),
+        now: now,
+      );
+
+      // allowExternalMessages defaults to false.
+      expect(receipt.outcome, NeuraDecisionOutcome.blocked);
+      expect(_hasReason(receipt, 'Personal Constitution'), isTrue);
+    });
+
+    test('allows it once the constitution explicitly permits it', () {
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(
+          now: now,
+          capabilityId: NeuraCapabilityRegistry.contactPerson,
+        ),
+        policy: _policy(
+          constitution: const NeuraPersonalConstitution(
+            allowExternalMessages: true,
+          ),
+        ),
+        now: now,
+      );
+
+      expect(receipt.outcome, isNot(NeuraDecisionOutcome.blocked));
+    });
+
+    test(
+        'requiring elevated constitution approval turns an allow into '
+        'askApproval, never the reverse', () {
+      // Every real capability that maps to a constitution effect already
+      // has approvalMode.everyTime (so the kernel's own consent check
+      // already forces askApproval regardless of the constitution). To
+      // isolate the constitution's own allow -> askApproval tightening,
+      // override contactPerson's approval mode to none for this test only.
+      final registry = NeuraCapabilityRegistry(
+        capabilities: [
+          const NeuraCapabilityDefinition(
+            id: NeuraCapabilityRegistry.contactPerson,
+            title: 'Contact another person',
+            description: 'Test override with consent-mode none.',
+            risk: NeuraCapabilityRisk.reversibleLocal,
+            approvalMode: NeuraApprovalMode.none,
+            reversible: true,
+            hasExternalSideEffect: true,
+          ),
+        ],
+      );
+      final receipt = NeuraAutonomyKernel(registry: registry).evaluate(
+        candidate: _candidate(
+          now: now,
+          capabilityId: NeuraCapabilityRegistry.contactPerson,
+          benefit: 1,
+          urgency: 1,
+          disruption: 0,
+          confidence: 1,
+        ),
+        policy: _policy(
+          constitution: const NeuraPersonalConstitution(
+            allowExternalMessages: true,
+          ),
+        ),
+        now: now,
+      );
+
+      // With this override (approvalMode.none) and no evidence/attention
+      // suppression in play, the kernel's own logic alone -- consent
+      // already granted -- resolves to `allow` before the constitution is
+      // consulted. The constitution's own `externalMessage` branch always
+      // requires at least `confirm`/`elevated` approval once allowed, so
+      // observing `askApproval` here (not `allow`) is exactly the
+      // constitution's tightening, not something the kernel would have
+      // produced on its own for this capability.
+      expect(receipt.outcome, NeuraDecisionOutcome.askApproval);
+      expect(receipt.requiresApproval, isTrue);
+      expect(_hasReason(receipt, 'Personal Constitution requires'), isTrue);
+    });
+
+    test('never re-opens a candidate the attention checks already suppressed',
+        () {
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(
+          now: now,
+          capabilityId: NeuraCapabilityRegistry.contactPerson,
+        ),
+        policy: _policy(
+          safeMode: true,
+          constitution: const NeuraPersonalConstitution(
+            allowExternalMessages: true,
+          ),
+        ),
+        now: now,
+      );
+
+      // Safe Mode already suppressed it; an otherwise-permissive
+      // constitution must not loosen that back to allow/askApproval.
+      expect(receipt.outcome, NeuraDecisionOutcome.suppressed);
+    });
+
+    test('a capability with no constitution mapping is unaffected', () {
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now), // default: surfaceSuggestion
+        policy: _policy(),
+        now: now,
+      );
+
+      expect(receipt.outcome, NeuraDecisionOutcome.allow);
+    });
+  });
+
   test('returns a deterministic, explainable score and evidence trail', () {
     final receipt = NeuraAutonomyKernel(
       receiptIdFactory: (candidate, evaluatedAt) =>
@@ -222,6 +339,7 @@ NeuraAutonomyPolicy _policy({
   bool recentlyDeclined = false,
   bool quietHours = false,
   Map<String, double> specialistReputation = const {},
+  NeuraPersonalConstitution constitution = const NeuraPersonalConstitution(),
 }) =>
     NeuraAutonomyPolicy(
       enabled: enabled,
@@ -232,6 +350,7 @@ NeuraAutonomyPolicy _policy({
       focusMode: focusMode,
       safeMode: safeMode,
       recentlyDeclined: recentlyDeclined,
+      constitution: constitution,
       quietHours: quietHours,
       specialistReputation: specialistReputation,
     );

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../constitution/neura_constitution_service.dart';
 import '../core/neura_event_bus.dart';
 import '../core/neura_events.dart';
 import '../guardrails/guardrails.dart';
@@ -61,6 +62,7 @@ class NeuraIntelligenceController extends ChangeNotifier {
 
   Future<void> initialize() async {
     if (_initialized || _writesSuspended) return;
+    await NeuraConstitutionService.instance.load();
     final raw = NeuraPrefsCache.prefs.getString(_stateKey);
     if (raw != null && raw.trim().isNotEmpty) {
       try {
@@ -150,6 +152,7 @@ class NeuraIntelligenceController extends ChangeNotifier {
       recentlyDeclined: recentlyDeclined,
       quietHours: quiet,
       specialistReputation: Map.unmodifiable(_specialistReputation),
+      constitution: NeuraConstitutionService.instance.current,
     );
 
     final decisions = <NeuraCouncilDecision>[];

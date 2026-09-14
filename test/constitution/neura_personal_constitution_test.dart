@@ -24,7 +24,7 @@ void main() {
     );
   }
 
-  test('default constitution blocks purchases, messages, and cloud AI', () {
+  test('default constitution blocks purchases and external messages', () {
     final at = DateTime.utc(2026, 8, 22, 15);
 
     expect(
@@ -39,12 +39,61 @@ void main() {
           .allowed,
       isFalse,
     );
+  });
+
+  test(
+      'default constitution allows cloud AI -- chat is the core feature and '
+      'most users never open this settings screen', () {
+    final decision = defaultConstitution.evaluate(
+      action(NeuraActionEffect.cloudRequest),
+      at: DateTime.utc(2026, 8, 22, 15),
+    );
+
+    expect(decision.allowed, isTrue);
+    expect(decision.requiredApproval, NeuraApprovalTier.elevated);
+  });
+
+  test('an explicitly locked-down constitution can still disable cloud AI', () {
+    final locked = defaultConstitution.copyWith(allowCloudAi: false);
+
     expect(
-      defaultConstitution
-          .evaluate(action(NeuraActionEffect.cloudRequest), at: at)
+      locked
+          .evaluate(
+            action(NeuraActionEffect.cloudRequest),
+            at: DateTime.utc(2026, 8, 22, 15),
+          )
           .allowed,
       isFalse,
     );
+  });
+
+  group('evaluateEffect', () {
+    test('matches evaluate for the same effect and flags', () {
+      final at = DateTime.utc(2026, 8, 22, 15);
+      final viaAction = defaultConstitution.evaluate(
+        action(NeuraActionEffect.externalMessage, sensitive: true),
+        at: at,
+      );
+      final viaEffect = defaultConstitution.evaluateEffect(
+        effect: NeuraActionEffect.externalMessage,
+        at: at,
+        containsSensitiveContent: true,
+      );
+
+      expect(viaEffect.allowed, viaAction.allowed);
+      expect(viaEffect.reason, viaAction.reason);
+      expect(viaEffect.requiredApproval, viaAction.requiredApproval);
+    });
+
+    test('can be called without a NeuraActionStep at all', () {
+      final decision = defaultConstitution.evaluateEffect(
+        effect: NeuraActionEffect.localRead,
+        at: DateTime.utc(2026, 8, 22, 15),
+      );
+
+      expect(decision.allowed, isTrue);
+      expect(decision.requiredApproval, NeuraApprovalTier.none);
+    });
   });
 
   test('allowed external message still requires elevated preview approval', () {

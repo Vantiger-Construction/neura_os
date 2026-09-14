@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:neuro_companion/constitution/neura_personal_constitution.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/services/neura_model_credentials.dart';
 import 'package:neuro_companion/services/neura_model_router.dart';
@@ -199,6 +200,81 @@ void main() {
     expect(approvals, [NeuraModelProvider.openAi]);
     expect(openAi.calls, 1);
     expect(anthropic.calls, 0);
+  });
+
+  test('the default constitution allows cloud requests', () async {
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    final openAi = _Transport(NeuraModelProvider.openAi, result: 'ok');
+    final router = NeuraSecureModelRouter(
+      credentials: credentials,
+      transports: [openAi],
+      constitution: const NeuraPersonalConstitution(),
+    );
+
+    final response = await router.complete(
+      request,
+      requestApproval: (_) async => true,
+    );
+
+    expect(response.text, 'ok');
+  });
+
+  test(
+      'an explicitly locked-down constitution blocks the request before '
+      'approval or transport', () async {
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    final openAi = _Transport(NeuraModelProvider.openAi, result: 'unused');
+    final router = NeuraSecureModelRouter(
+      credentials: credentials,
+      transports: [openAi],
+      constitution: const NeuraPersonalConstitution(allowCloudAi: false),
+    );
+    var approvalCalls = 0;
+
+    await expectLater(
+      router.complete(
+        request,
+        requestApproval: (_) async {
+          approvalCalls++;
+          return true;
+        },
+      ),
+      throwsA(isA<NeuraConstitutionBlocked>()),
+    );
+
+    expect(approvalCalls, 0);
+    expect(openAi.calls, 0);
+  });
+
+  test('sensitive content is blocked from the cloud even with cloud AI on',
+      () async {
+    const sensitiveRequest = NeuraModelRequest(
+      systemPrompt: 'Be kind.',
+      messages: [
+        {'role': 'user', 'content': 'Hello'},
+      ],
+      purpose: 'chat reply',
+      includesPrivateContext: true,
+    );
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    final openAi = _Transport(NeuraModelProvider.openAi, result: 'unused');
+    final router = NeuraSecureModelRouter(
+      credentials: credentials,
+      transports: [openAi],
+      constitution: const NeuraPersonalConstitution(), // keepSensitive: true
+    );
+
+    await expectLater(
+      router.complete(
+        sensitiveRequest,
+        requestApproval: (_) async => true,
+      ),
+      throwsA(isA<NeuraConstitutionBlocked>()),
+    );
+    expect(openAi.calls, 0);
   });
 
   test('credential deletion is verified', () async {
