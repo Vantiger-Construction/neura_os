@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/neura_tts_service.dart';
@@ -19,6 +21,7 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
   double _rate = 0.5;
   double _pitch = 1.05;
   double _volume = 1.0;
+  bool _speakReplies = false;
 
   @override
   void initState() {
@@ -42,6 +45,7 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
       _rate = service.speechRate;
       _pitch = service.pitch;
       _volume = service.volume;
+      _speakReplies = service.speakRepliesEnabled;
       _loading = false;
     });
   }
@@ -94,6 +98,19 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                SwitchListTile(
+                  value: _speakReplies,
+                  onChanged: (value) {
+                    setState(() => _speakReplies = value);
+                    unawaited(service.setSpeakRepliesEnabled(value));
+                  },
+                  title: const Text("Speak Neura's replies aloud"),
+                  subtitle: const Text(
+                    'Off by default. When on, chat replies are spoken as they '
+                    'arrive; talking or typing stops playback immediately.',
+                  ),
+                ),
+                const Divider(height: 1),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                   child: Column(

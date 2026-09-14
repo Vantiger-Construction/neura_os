@@ -365,9 +365,8 @@ class _ActionDetails extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final duration = action.durationMinutes == 0
-        ? 'Now'
-        : '${action.durationMinutes} min';
+    final duration =
+        action.durationMinutes == 0 ? 'Now' : '${action.durationMinutes} min';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

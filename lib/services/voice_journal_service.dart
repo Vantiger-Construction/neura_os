@@ -6,13 +6,15 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../modules/core/app_log.dart';
 import '../reliability/safe_boot.dart';
+import 'neura_companion_presence.dart';
 import 'neura_speech_to_text_service.dart';
 
 /// Local speech-to-text used by Voice Journal.
 ///
 /// Windows is routed through Neura's native WinRT recognizer because the
 /// speech_to_text plugin is not the supported desktop path in this app.
-/// Other supported platforms continue to use speech_to_text.
+/// Other supported platforms continue to use speech_to_text. Transcript text
+/// stays on the local transcript stream and is never copied into presence.
 class VoiceJournalService {
   VoiceJournalService() {
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
@@ -21,6 +23,7 @@ class VoiceJournalService {
   final stt.SpeechToText _stt = stt.SpeechToText();
   final StreamController<String> _pluginTranscriptStream =
       StreamController<String>.broadcast();
+  final ValueNotifier<bool> _recording = ValueNotifier(false);
 
   bool get _usesNativeWindows =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
@@ -30,10 +33,14 @@ class VoiceJournalService {
   String _current = '';
   bool _pluginListening = false;
   bool _disposed = false;
+  int _startGeneration = 0;
+  NeuraPresenceLease? _presenceLease;
 
   Stream<String> get transcriptStream => _usesNativeWindows
       ? _native.transcriptStream
       : _pluginTranscriptStream.stream;
+
+  ValueListenable<bool> get recording => _recording;
 
   bool get isListening =>
       _usesNativeWindows ? _native.isListening : _pluginListening;
@@ -42,15 +49,28 @@ class VoiceJournalService {
 
   Future<bool> startRecording() async {
     if (_disposed || !listeningAllowed) return false;
+    final generation = ++_startGeneration;
+
     if (_usesNativeWindows) {
-      return _native.startRecording();
+      final started = await _native.startRecording();
+      if (!started || !_canCompleteStart(generation)) {
+        if (started) await _native.stopRecording();
+        _markRecordingStopped();
+        return false;
+      }
+      if (!_markRecordingStarted()) {
+        await _native.stopRecording();
+        return false;
+      }
+      return true;
     }
-    if (_pluginListening) return true;
+    if (_pluginListening) return _markRecordingStarted();
 
     if (!kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.android ||
             defaultTargetPlatform == TargetPlatform.iOS)) {
       final permission = await Permission.microphone.request();
+      if (!_canCompleteStart(generation)) return false;
       if (!permission.isGranted) {
         _pluginTranscriptStream.add(
           permission.isPermanentlyDenied
@@ -65,6 +85,7 @@ class VoiceJournalService {
       final available = await _stt.initialize(
         onError: (error) {
           _pluginListening = false;
+          _markRecordingStopped();
           _pluginTranscriptStream.add(
             'Speech-to-text error: ${error.errorMsg}',
           );
@@ -72,9 +93,11 @@ class VoiceJournalService {
         onStatus: (status) {
           if (status == 'done' || status == 'notListening') {
             _pluginListening = false;
+            _markRecordingStopped();
           }
         },
       );
+      if (!_canCompleteStart(generation)) return false;
       if (!available) {
         _pluginTranscriptStream.add(
           'Speech-to-text is not available on this device.',
@@ -86,7 +109,7 @@ class VoiceJournalService {
       _pluginListening = true;
       await _stt.listen(
         onResult: (result) {
-          if (_disposed || !listeningAllowed) return;
+          if (_disposed || !listeningAllowed || !_pluginListening) return;
           _current = result.recognizedWords;
           _pluginTranscriptStream.add(_current);
         },
@@ -96,9 +119,22 @@ class VoiceJournalService {
           cancelOnError: true,
         ),
       );
-      return _pluginListening;
+      if (!_canCompleteStart(generation)) {
+        _pluginListening = false;
+        await _stt.cancel();
+        _markRecordingStopped();
+        return false;
+      }
+      if (!_pluginListening || !_markRecordingStarted()) {
+        _pluginListening = false;
+        await _stt.cancel();
+        _markRecordingStopped();
+        return false;
+      }
+      return true;
     } catch (error, stack) {
       _pluginListening = false;
+      _markRecordingStopped();
       await AppLog.instance.caught(
         'voice_journal_start_failed',
         error,
@@ -113,11 +149,38 @@ class VoiceJournalService {
     }
   }
 
+  bool _canCompleteStart(int generation) =>
+      !_disposed && listeningAllowed && generation == _startGeneration;
+
+  bool _markRecordingStarted() {
+    if (_disposed || !listeningAllowed) return false;
+    _presenceLease ??= NeuraCompanionPresence.instance.acquireListening();
+    if (_presenceLease == null) return false;
+    if (!_recording.value) _recording.value = true;
+    return true;
+  }
+
+  void _markRecordingStopped() {
+    _presenceLease?.release();
+    _presenceLease = null;
+    if (_recording.value) _recording.value = false;
+  }
+
   Future<String> stopRecording() async {
-    if (_usesNativeWindows) return _native.stopRecording();
-    if (!_pluginListening) return _current;
+    if (_usesNativeWindows) {
+      try {
+        return await _native.stopRecording();
+      } finally {
+        _markRecordingStopped();
+      }
+    }
+    if (!_pluginListening) {
+      _markRecordingStopped();
+      return _current;
+    }
 
     _pluginListening = false;
+    _markRecordingStopped();
     try {
       await _stt.stop();
     } catch (error, stack) {
@@ -131,15 +194,19 @@ class VoiceJournalService {
   }
 
   void _onSafeModeChanged() {
-    if (!listeningAllowed && isListening) {
-      unawaited(stopRecording());
+    if (!listeningAllowed) {
+      _startGeneration++;
+      _markRecordingStopped();
+      if (isListening) unawaited(stopRecording());
     }
   }
 
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    _startGeneration++;
     SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
+    _markRecordingStopped();
 
     if (_usesNativeWindows) {
       await _native.stopRecording();

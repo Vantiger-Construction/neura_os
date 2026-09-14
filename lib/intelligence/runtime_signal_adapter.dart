@@ -1,3 +1,4 @@
+import '../dreams/services/dream_theme_service.dart';
 import '../modules/human/human_prefs_controller.dart';
 import '../modules/mood/mood_store.dart';
 import '../modules/quests/quest_models.dart';
@@ -5,6 +6,18 @@ import '../modules/quests/quest_store.dart';
 import '../src/modules/focus/focus_controller.dart';
 import 'models.dart';
 import 'signal_graph.dart';
+
+/// Maps the dream journal's closed mood vocabulary (set by the user from a
+/// fixed dropdown, never inferred from free text) to a 0..1 valence on the
+/// same low-to-high convention as the numeric mood signal. Unknown or
+/// unrecognised categories intentionally produce no observation at all.
+const Map<String, double> _dreamMoodValence = {
+  'sad': 0.15,
+  'scary': 0.25,
+  'weird': 0.5,
+  'calm': 0.7,
+  'exciting': 0.9,
+};
 
 /// Converts Neura's existing local stores into a privacy-labelled snapshot.
 ///
@@ -29,6 +42,7 @@ class NeuraRuntimeSignalAdapter {
     await _addQuestObservations(observations, generatedAt);
     _addGoalObservations(observations, generatedAt);
     _addFocusObservation(observations);
+    await _addDreamMoodObservation(observations, generatedAt);
 
     return signalGraph.fuse(
       observations: observations,
@@ -151,6 +165,41 @@ class NeuraRuntimeSignalAdapter {
           validFor: const Duration(days: 180),
         ),
       );
+    }
+  }
+
+  /// Reads only [DreamThemeSummary.topMood] and [DreamThemeSummary.dreamCount]
+  /// -- never [DreamThemeSummary.topWords] or any dream description text.
+  /// [DreamThemeSummary.topTags] also stays out: even though tags come from a
+  /// closed keyword list, this signal is scoped to mood valence only.
+  Future<void> _addDreamMoodObservation(
+    List<NeuraSignalObservation> observations,
+    DateTime now,
+  ) async {
+    try {
+      final summary = await DreamThemeService.instance.computeSummary(
+        days: 14,
+      );
+      if (summary.dreamCount == 0) return;
+      final valence = _dreamMoodValence[summary.topMood];
+      if (valence == null) return;
+      observations.add(
+        NeuraSignalObservation(
+          id: 'dream_mood:${normalizeDay(now).toIso8601String()}',
+          kind: NeuraSignalKind.dreamMood,
+          source: 'dream_theme_service',
+          summary: 'Most common dream mood over the last two weeks',
+          observedAt: now,
+          numericValue: valence,
+          label: summary.topMood,
+          confidence: (summary.dreamCount / 5).clamp(0.3, 0.85).toDouble(),
+          sensitivity: NeuraSensitivity.personal,
+          validFor: const Duration(days: 7),
+        ),
+      );
+    } catch (_) {
+      // Dream signals are optional; a read failure must not block the rest
+      // of the snapshot.
     }
   }
 

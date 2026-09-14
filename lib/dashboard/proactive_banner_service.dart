@@ -17,7 +17,15 @@ import '../relationships/services/relationship_profile_service.dart';
 import '../reliability/safe_boot.dart';
 import '../startup/neura_prefs_cache.dart';
 
-enum ProactiveBannerKind { joy, relationship, quest, wellness, focus }
+enum ProactiveBannerKind {
+  joy,
+  relationship,
+  quest,
+  wellness,
+  focus,
+  care,
+  dream,
+}
 
 class ProactiveBanner {
   const ProactiveBanner({
@@ -148,7 +156,11 @@ class ProactiveBannerService {
     final inStorm = await _inStormContext(now);
     final eligible = inStorm
         ? candidates
-            .where((item) => item.kind == ProactiveBannerKind.wellness)
+            .where(
+              (item) =>
+                  item.kind == ProactiveBannerKind.wellness ||
+                  item.kind == ProactiveBannerKind.care,
+            )
             .toList(growable: false)
         : candidates;
     if (eligible.isEmpty) return null;
@@ -210,6 +222,8 @@ class ProactiveBannerService {
     final kind = switch (candidate.payload['opportunity_kind']) {
       'mood_reset' => ProactiveBannerKind.wellness,
       'focus_sprint' => ProactiveBannerKind.focus,
+      'care_support' => ProactiveBannerKind.care,
+      'dream_pattern_check' => ProactiveBannerKind.dream,
       _ => ProactiveBannerKind.quest,
     };
     return _BannerCandidate(candidate: candidate, kind: kind);

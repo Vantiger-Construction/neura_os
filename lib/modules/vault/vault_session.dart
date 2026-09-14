@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../services/portable_vault_backup_service.dart';
 import '../core/app_log.dart';
 import 'memory_vault_store.dart';
 
@@ -32,6 +35,7 @@ class VaultSession {
       _pin = created;
       await AppLog.instance.info(
           'vault_event', {'msg': 'Vault PIN configured (verifier stored).'});
+      _maybeRunScheduledBackup(created);
       return true;
     }
 
@@ -42,6 +46,7 @@ class VaultSession {
       final ok = await store.validatePin(entered);
       if (ok) {
         _pin = entered;
+        _maybeRunScheduledBackup(entered);
         return true;
       }
       if (!context.mounted) return false;
@@ -51,6 +56,16 @@ class VaultSession {
     }
 
     return false;
+  }
+
+  /// Opportunistically runs a scheduled backup now that the vault is
+  /// unlocked, piggybacking on this session rather than ever prompting for
+  /// the PIN on its own. A no-op unless the feature is enabled and due.
+  static void _maybeRunScheduledBackup(String pin) {
+    unawaited(
+      PortableVaultBackupService().runScheduledBackupIfDue(pin: pin).catchError(
+          (_) => ScheduledBackupRunResult.failed('unexpected error')),
+    );
   }
 
   static Future<String?> _promptEnterPin(BuildContext context) async {

@@ -73,3 +73,4 @@ class NeuraCarePlan {
   final NeuraCareAction alternativeAction;
   final bool requiresImmediateSupport;
 }
+

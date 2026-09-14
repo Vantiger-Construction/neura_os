@@ -67,8 +67,7 @@ class NeuraCareLoopService {
     id: 'orient_for_one_minute',
     kind: NeuraCareActionKind.grounding,
     title: 'Orient for one minute',
-    guidance:
-        'Put both feet somewhere supported. Name three things you see, '
+    guidance: 'Put both feet somewhere supported. Name three things you see, '
         'three things you feel, and three things you hear. Let each exhale '
         'be comfortable and unforced.',
     durationMinutes: 1,
@@ -78,8 +77,7 @@ class NeuraCareLoopService {
     id: 'lower_one_demand',
     kind: NeuraCareActionKind.rest,
     title: 'Lower one demand',
-    guidance:
-        'Choose one thing that can safely wait. Give yourself ten quiet '
+    guidance: 'Choose one thing that can safely wait. Give yourself ten quiet '
         'minutes without needing to improve, decide, or perform.',
     durationMinutes: 10,
   );
@@ -88,8 +86,7 @@ class NeuraCareLoopService {
     id: 'gentle_movement',
     kind: NeuraCareActionKind.movement,
     title: 'Try two minutes of gentle movement',
-    guidance:
-        'Stand, stretch, or walk at a comfortable pace. Stop if it feels '
+    guidance: 'Stand, stretch, or walk at a comfortable pace. Stop if it feels '
         'wrong for your body; the goal is a small state change, not a workout.',
     durationMinutes: 2,
   );

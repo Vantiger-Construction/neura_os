@@ -18,6 +18,7 @@ class NeuraAutonomyPolicy {
     required this.safeMode,
     required this.recentlyDeclined,
     this.quietHours = false,
+    this.specialistReputation = const {},
   });
 
   final bool enabled;
@@ -29,6 +30,13 @@ class NeuraAutonomyPolicy {
   final bool safeMode;
   final bool recentlyDeclined;
   final bool quietHours;
+
+  /// Per-specialist confidence multiplier learned from past user outcomes
+  /// (accepted vs. dismissed suggestions), bounded to
+  /// [NeuraAutonomyKernel.minSpecialistReputation,
+  /// NeuraAutonomyKernel.maxSpecialistReputation]. Missing entries mean no
+  /// history yet and are treated as neutral (1.0).
+  final Map<String, double> specialistReputation;
 }
 
 /// Consent-first scoring and suppression boundary for proactive intelligence.
@@ -36,6 +44,12 @@ class NeuraAutonomyPolicy {
 /// This kernel never executes a candidate. It produces an explainable receipt
 /// that a separate approval broker or user-interface gesture must honor.
 class NeuraAutonomyKernel {
+  /// Bounds for [NeuraAutonomyPolicy.specialistReputation] multipliers, kept
+  /// narrow so a specialist's learned track record nudges its score without
+  /// ever overriding the attention, privacy, or consent boundaries above.
+  static const double minSpecialistReputation = 0.75;
+  static const double maxSpecialistReputation = 1.15;
+
   NeuraAutonomyKernel({
     NeuraCapabilityRegistry? registry,
     NeuraConsentLedger? consentLedger,
@@ -69,13 +83,29 @@ class NeuraAutonomyKernel {
       NeuraCapabilityRisk.critical => 0.55,
     };
     final declinePenalty = policy.recentlyDeclined ? 0.15 : 0.0;
-    final rawScore = candidate.benefit * 0.36 +
+    final reputation =
+        (policy.specialistReputation[candidate.specialistId] ?? 1.0)
+            .clamp(minSpecialistReputation, maxSpecialistReputation)
+            .toDouble();
+    final baseScore = candidate.benefit * 0.36 +
         candidate.confidence * 0.24 +
-        candidate.urgency * 0.24 -
+        candidate.urgency * 0.24;
+    final rawScore = baseScore * reputation -
         candidate.disruption * 0.28 -
         riskPenalty -
         declinePenalty;
     final score = rawScore.clamp(0.0, 1.0).toDouble();
+    if (reputation > 1.0) {
+      reasons.add(
+        'Past outcomes for ${candidate.specialistId} suggestions increased '
+        'this score.',
+      );
+    } else if (reputation < 1.0) {
+      reasons.add(
+        'Past outcomes for ${candidate.specialistId} suggestions reduced '
+        'this score.',
+      );
+    }
 
     if (!policy.enabled) {
       outcome = NeuraDecisionOutcome.suppressed;

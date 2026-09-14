@@ -64,6 +64,75 @@ void main() {
     expect(stored, contains('surface_local_suggestion'));
   });
 
+  test('acted outcomes raise a specialist\'s reputation over time', () async {
+    final controller = NeuraIntelligenceController.instance;
+    var now = DateTime.utc(2026, 8, 14, 18);
+    expect(controller.specialistReputation('controller_test'), 1.0);
+
+    for (var i = 0; i < 5; i++) {
+      now = now.add(const Duration(days: 1, hours: 1));
+      final result = await controller.evaluateCandidates(
+        candidates: [_candidate(now, id: 'candidate-$i')],
+        now: now,
+      );
+      await controller.recordOutcome(
+        receiptId: result.visible.single.receipt.id,
+        acted: true,
+      );
+    }
+
+    expect(
+      controller.specialistReputation('controller_test'),
+      greaterThan(1.0),
+    );
+  });
+
+  test('dismissed outcomes lower a specialist\'s reputation over time',
+      () async {
+    final controller = NeuraIntelligenceController.instance;
+    var now = DateTime.utc(2026, 8, 14, 18);
+
+    for (var i = 0; i < 5; i++) {
+      now = now.add(const Duration(days: 1, hours: 1));
+      final result = await controller.evaluateCandidates(
+        candidates: [_candidate(now, id: 'candidate-$i')],
+        now: now,
+      );
+      await controller.recordOutcome(
+        receiptId: result.visible.single.receipt.id,
+        acted: false,
+      );
+    }
+
+    expect(controller.specialistReputation('controller_test'), lessThan(1.0));
+  });
+
+  test('a lowered specialist reputation feeds back into future scoring',
+      () async {
+    final controller = NeuraIntelligenceController.instance;
+    var now = DateTime.utc(2026, 8, 14, 18);
+
+    for (var i = 0; i < 5; i++) {
+      now = now.add(const Duration(days: 1, hours: 1));
+      final result = await controller.evaluateCandidates(
+        candidates: [_candidate(now, id: 'candidate-$i')],
+        now: now,
+      );
+      await controller.recordOutcome(
+        receiptId: result.visible.single.receipt.id,
+        acted: false,
+      );
+    }
+
+    now = now.add(const Duration(hours: 1));
+    final next = await controller.evaluateCandidates(
+      candidates: [_candidate(now, id: 'candidate-final')],
+      now: now,
+    );
+    final earlierScore = controller.records.first.receipt.score;
+    expect(next.visible.single.receipt.score, lessThan(earlierScore));
+  });
+
   test('quiet hours suppress a candidate before it reaches the UI', () async {
     final controller = NeuraIntelligenceController.instance;
     await controller.updatePreferences(
@@ -91,9 +160,12 @@ void main() {
   });
 }
 
-NeuraIntelligenceCandidate _candidate(DateTime now) =>
+NeuraIntelligenceCandidate _candidate(
+  DateTime now, {
+  String id = 'controller-candidate',
+}) =>
     NeuraIntelligenceCandidate(
-      id: 'controller-candidate',
+      id: id,
       capabilityId: NeuraCapabilityRegistry.surfaceSuggestion,
       specialistId: 'controller_test',
       title: 'Private title',

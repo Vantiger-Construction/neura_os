@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../services/neura_tts_service.dart';
 import 'brain_link.dart';
 import 'diagnostics.dart';
 import 'envelope.dart';
 import 'neura_tone.dart';
+import 'speech_stream_chunker.dart';
 
 enum ConversationRole { user, neura }
 
@@ -30,7 +32,16 @@ class ConversationMessage {
 }
 
 class ConversationController extends ChangeNotifier {
-  ConversationController({required this.link, this.onDispatchIntent}) {
+  ConversationController({
+    required this.link,
+    this.onDispatchIntent,
+    bool Function()? speechEnabled,
+    Future<void> Function(String text)? speak,
+    Future<void> Function()? stopSpeech,
+  })  : _speechEnabled = speechEnabled ??
+            (() => NeuraTtsService.instance.speakRepliesEnabled),
+        _speak = speak ?? NeuraTtsService.instance.speak,
+        _stopSpeech = stopSpeech ?? NeuraTtsService.instance.stop {
     _subscription = link.events.listen(_onEnvelope);
     _stateSubscription = link.states.listen((_) => notifyListeners());
   }
@@ -38,6 +49,11 @@ class ConversationController extends ChangeNotifier {
   final ValueChanged<Map<String, dynamic>>? onDispatchIntent;
   final ToneController tone = ToneController();
   final List<ConversationMessage> _messages = [];
+  final SpeechStreamChunker _speechChunker = SpeechStreamChunker();
+  final bool Function() _speechEnabled;
+  final Future<void> Function(String text) _speak;
+  final Future<void> Function() _stopSpeech;
+  Future<void> _speechQueue = Future<void>.value();
   StreamSubscription<Envelope>? _subscription;
   StreamSubscription<BrainConnectionState>? _stateSubscription;
   DiagnosticsSnapshot? diagnostics;
@@ -65,13 +81,31 @@ class ConversationController extends ChangeNotifier {
         final id = data['utterance_id'] as String? ?? envelope.id;
         final delta = data['delta'] as String? ?? data['text'] as String? ?? '';
         _upsert(id, delta: delta, streaming: true);
+        if (_speechEnabled()) {
+          final message = _findMessage(id);
+          if (message != null) {
+            final chunk = _speechChunker.extractReadyChunk(id, message.text);
+            if (chunk.isNotEmpty) _enqueueSpeech(chunk);
+          }
+        }
       case 'speak':
         final id = data['utterance_id'] as String? ?? envelope.id;
         final text = data['text'] as String?;
         _upsert(id, replacement: text, streaming: false);
+        if (_speechEnabled()) {
+          final message = _findMessage(id);
+          if (message != null) {
+            final chunk = _speechChunker.finish(id, message.text);
+            if (chunk.isNotEmpty) _enqueueSpeech(chunk);
+          }
+        } else {
+          _speechChunker.discard(id);
+        }
       case 'speak_interrupted':
         final id = data['utterance_id'] as String? ?? envelope.id;
         _upsert(id, streaming: false, interrupted: true);
+        _speechChunker.discard(id);
+        unawaited(_stopSpeech().catchError((_) {}));
       case 'set_tone':
         tone.setFromWire(data['tone'] as String?);
       case 'dispatch_intent':
@@ -80,6 +114,21 @@ class ConversationController extends ChangeNotifier {
         diagnostics = DiagnosticsSnapshot.fromJson(data);
     }
     notifyListeners();
+  }
+
+  ConversationMessage? _findMessage(String id) {
+    for (final message in _messages) {
+      if (message.id == id && message.role == ConversationRole.neura) {
+        return message;
+      }
+    }
+    return null;
+  }
+
+  /// Speaks [chunk] after any already-queued chunk finishes, so streamed
+  /// sentences never overlap. A failed chunk never breaks the conversation.
+  void _enqueueSpeech(String chunk) {
+    _speechQueue = _speechQueue.then((_) => _speak(chunk)).catchError((_) {});
   }
 
   void _upsert(String id,
@@ -109,6 +158,7 @@ class ConversationController extends ChangeNotifier {
   void dispose() {
     _subscription?.cancel();
     _stateSubscription?.cancel();
+    unawaited(_stopSpeech().catchError((_) {}));
     tone.dispose();
     super.dispose();
   }
