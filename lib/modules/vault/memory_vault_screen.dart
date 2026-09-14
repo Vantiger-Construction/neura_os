@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../services/portable_vault_backup_service.dart';
+import '../../services/scheduled_backup_settings.dart';
 import '../../widgets/neura_explain.dart';
 import 'memory_vault_models.dart';
 import 'memory_vault_store.dart';
@@ -252,6 +255,103 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
     }
   }
 
+  Future<void> _openScheduledBackupSettings() async {
+    if (VaultSession.sessionPin == null) {
+      await _load();
+      if (!mounted || VaultSession.sessionPin == null) return;
+    }
+    final settings = ScheduledBackupSettings.instance;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          Future<void> toggle(bool value) async {
+            if (value) {
+              final passphrase = await _requestBackupPassphrase(
+                title: 'Set an automatic-backup passphrase',
+                confirm: true,
+              );
+              if (passphrase == null) return;
+              await settings.enable(passphrase);
+            } else {
+              await settings.disable();
+            }
+            setDialogState(() {});
+          }
+
+          Future<void> backUpNow() async {
+            final pin = VaultSession.sessionPin;
+            if (pin == null) return;
+            final result = await _backup.runScheduledBackupIfDue(
+              pin: pin,
+              interval: Duration.zero,
+            );
+            setDialogState(() {});
+            if (!mounted) return;
+            final message = switch (result.status) {
+              ScheduledBackupStatus.succeeded =>
+                'Backed up ${result.itemCount ?? 0} entries.',
+              ScheduledBackupStatus.failed => 'Backup failed: ${result.reason}',
+              ScheduledBackupStatus.skipped => 'Skipped: ${result.reason}',
+            };
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(message)),
+            );
+          }
+
+          final lastRun = settings.lastRunAt;
+          final lastOutcome = settings.lastOutcome;
+          final lastError = settings.lastError;
+
+          return AlertDialog(
+            title: const Text('Automatic backups'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'When on, Neura backs up your vault locally (not to the '
+                  'cloud) each time you unlock it, at most once a day. The '
+                  'backup is verified before it replaces the previous one.',
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: settings.enabled,
+                  onChanged: (value) => unawaited(toggle(value)),
+                  title: const Text('Enabled'),
+                ),
+                if (settings.enabled) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    lastRun == null
+                        ? 'No automatic backup has run yet.'
+                        : 'Last run: ${lastRun.toLocal()} • '
+                            '${lastOutcome == ScheduledBackupOutcome.success ? 'succeeded' : 'failed'}'
+                            '${lastOutcome == ScheduledBackupOutcome.failed && lastError != null ? ' ($lastError)' : ''}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: () => unawaited(backUpNow()),
+                    child: const Text('Back up now'),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _wipe() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -295,6 +395,11 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
             tooltip: 'Import encrypted backup',
             onPressed: _importBackup,
             icon: const Icon(Icons.file_download_outlined),
+          ),
+          IconButton(
+            tooltip: 'Automatic backups',
+            onPressed: _openScheduledBackupSettings,
+            icon: const Icon(Icons.schedule_outlined),
           ),
           IconButton(
             tooltip: 'Explain',

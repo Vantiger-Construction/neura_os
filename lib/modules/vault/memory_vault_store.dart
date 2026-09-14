@@ -6,9 +6,10 @@ import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../core/app_log.dart';
 import 'memory_vault_models.dart';
+import '../../services/vault_item_source.dart';
 import '../../startup/neura_prefs_cache.dart';
 
-class MemoryVaultStore {
+class MemoryVaultStore implements VaultItemSource {
   MemoryVaultStore._();
   static final MemoryVaultStore instance = MemoryVaultStore._();
 
@@ -304,6 +305,7 @@ class MemoryVaultStore {
     );
   }
 
+  @override
   Future<List<VaultItem>> getItems({required String pin}) async {
     try {
       final sp = NeuraPrefsCache.prefs;
@@ -408,6 +410,7 @@ class MemoryVaultStore {
   ///
   /// Identical items are skipped. If an imported item reuses an existing ID
   /// with different content, both copies are preserved under distinct IDs.
+  @override
   Future<int> importItems({
     required String pin,
     required List<VaultItem> imported,

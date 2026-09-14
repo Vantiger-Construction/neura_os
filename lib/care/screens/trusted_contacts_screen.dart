@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/trusted_contact.dart';
 import '../services/trusted_contacts_service.dart';
+import 'contact_share_screen.dart';
 import 'edit_trusted_contact_screen.dart';
 
 class TrustedContactsScreen extends StatefulWidget {
@@ -51,6 +52,14 @@ class _TrustedContactsScreenState extends State<TrustedContactsScreen> {
     if (result == true) {
       await _load();
     }
+  }
+
+  Future<void> _share(TrustedContact contact) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ContactShareScreen(contact: contact),
+      ),
+    );
   }
 
   Future<void> _delete(TrustedContact contact) async {
@@ -121,9 +130,20 @@ class _TrustedContactsScreenState extends State<TrustedContactsScreen> {
                           ].join(' · '),
                         ),
                         onTap: () => _edit(c),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete),
-                          onPressed: () => _delete(c),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: 'Share mood trend',
+                              icon: const Icon(Icons.ios_share),
+                              onPressed: () => _share(c),
+                            ),
+                            IconButton(
+                              tooltip: 'Remove contact',
+                              icon: const Icon(Icons.delete),
+                              onPressed: () => _delete(c),
+                            ),
+                          ],
                         ),
                       ),
                     );

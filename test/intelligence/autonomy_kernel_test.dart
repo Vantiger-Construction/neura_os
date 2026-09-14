@@ -105,6 +105,82 @@ void main() {
     });
   });
 
+  group('NeuraAutonomyKernel specialist reputation', () {
+    test('a learned positive reputation increases the score', () {
+      final baseline = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now),
+        policy: _policy(),
+        now: now,
+      );
+      final boosted = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now),
+        policy: _policy(
+          specialistReputation: const {'test.specialist': 1.15},
+        ),
+        now: now,
+      );
+
+      expect(boosted.score, greaterThan(baseline.score));
+      expect(_hasReason(boosted, 'increased this score'), isTrue);
+    });
+
+    test('a learned negative reputation decreases the score', () {
+      final baseline = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now),
+        policy: _policy(),
+        now: now,
+      );
+      final reduced = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now),
+        policy: _policy(
+          specialistReputation: const {'test.specialist': 0.75},
+        ),
+        now: now,
+      );
+
+      expect(reduced.score, lessThan(baseline.score));
+      expect(_hasReason(reduced, 'reduced this score'), isTrue);
+    });
+
+    test('an out-of-range reputation is clamped rather than trusted', () {
+      final clamped = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now),
+        policy: _policy(
+          specialistReputation: const {'test.specialist': 5.0},
+        ),
+        now: now,
+      );
+      final atMax = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now),
+        policy: _policy(
+          specialistReputation: const {
+            'test.specialist': NeuraAutonomyKernel.maxSpecialistReputation,
+          },
+        ),
+        now: now,
+      );
+
+      expect(clamped.score, atMax.score);
+    });
+
+    test('a reputation entry for a different specialist has no effect', () {
+      final baseline = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now),
+        policy: _policy(),
+        now: now,
+      );
+      final unaffected = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now),
+        policy: _policy(
+          specialistReputation: const {'other.specialist': 1.15},
+        ),
+        now: now,
+      );
+
+      expect(unaffected.score, baseline.score);
+    });
+  });
+
   test('returns a deterministic, explainable score and evidence trail', () {
     final receipt = NeuraAutonomyKernel(
       receiptIdFactory: (candidate, evaluatedAt) =>
@@ -145,6 +221,7 @@ NeuraAutonomyPolicy _policy({
   bool safeMode = false,
   bool recentlyDeclined = false,
   bool quietHours = false,
+  Map<String, double> specialistReputation = const {},
 }) =>
     NeuraAutonomyPolicy(
       enabled: enabled,
@@ -156,6 +233,7 @@ NeuraAutonomyPolicy _policy({
       safeMode: safeMode,
       recentlyDeclined: recentlyDeclined,
       quietHours: quietHours,
+      specialistReputation: specialistReputation,
     );
 
 NeuraIntelligenceCandidate _candidate({

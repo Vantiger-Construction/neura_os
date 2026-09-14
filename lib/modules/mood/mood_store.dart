@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'mood_models.dart';
 import '../../core/memory/memory_crypto.dart';
+import '../../os_shell/widgets_bridge/home_widget_bridge.dart';
 import '../../startup/neura_prefs_cache.dart';
 
 /// Local mood history, encrypted at rest (reuses the same per-install key
@@ -72,6 +73,7 @@ class MoodStore {
         items.removeRange(0, items.length - 2000);
       }
       await _persist(items, generation);
+      unawaited(HomeWidgetBridge.instance.refresh());
     });
   }
 

@@ -11,6 +11,7 @@ import '../reliability/safe_boot.dart';
 import '../startup/neura_prefs_cache.dart';
 import 'auth_service.dart';
 import 'conflict_resolution_service.dart';
+import 'sync_conflict_log.dart';
 
 @visibleForTesting
 bool shouldAttemptCloudSync({
@@ -89,11 +90,16 @@ class SyncService {
     if (remote.isEmpty) return;
 
     final local = await _loadLocal();
-    final merged = await _mergeEntries(local, remote);
+    final merged = await mergeEntries(local, remote);
     await _saveLocal(merged);
   }
 
-  Future<List<JournalEntry>> _mergeEntries(
+  /// Merges local and remote revisions, resolving conflicts by revision
+  /// time. Every resolution with genuinely divergent content is recorded in
+  /// [SyncConflictLog] (id, timestamps, winner only -- never the content
+  /// itself), so an automatic merge is never silent.
+  @visibleForTesting
+  Future<List<JournalEntry>> mergeEntries(
     List<JournalEntry> local,
     List<JournalEntry> remote,
   ) async {
@@ -105,8 +111,20 @@ class SyncService {
       final existing = map[entry.id];
       if (existing == null) {
         map[entry.id] = entry;
-      } else {
-        map[entry.id] = await _conflict.resolve(existing, entry);
+        continue;
+      }
+      final decision = _conflict.decide(existing, entry);
+      map[entry.id] = decision.entry;
+      if (decision.hadDivergentContent) {
+        await SyncConflictLog.instance.record(
+          SyncConflictRecord(
+            entryId: entry.id,
+            resolvedAt: DateTime.now(),
+            localUpdatedAt: existing.effectiveUpdatedAt,
+            remoteUpdatedAt: entry.effectiveUpdatedAt,
+            winner: decision.winner,
+          ),
+        );
       }
     }
     return map.values.toList()
