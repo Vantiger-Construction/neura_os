@@ -10,6 +10,7 @@ enum NeuraSignalKind {
   relationshipRecency,
   stormRisk,
   preference,
+  dreamMood,
 }
 
 enum NeuraSensitivity { routine, personal, sensitive }

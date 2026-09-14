@@ -4,6 +4,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 
 import '../integrations/tts/neura_flutter_tts_viseme_bridge.dart';
 import 'neura_audio_focus.dart';
+import 'neura_companion_presence.dart';
 import '../reliability/safe_boot.dart';
 import '../startup/neura_prefs_cache.dart';
 
@@ -35,6 +36,7 @@ class NeuraTtsService {
   static const _kSpeechRateKey = 'neura.tts.speech_rate';
   static const _kPitchKey = 'neura.tts.pitch';
   static const _kVolumeKey = 'neura.tts.volume';
+  static const _kSpeakRepliesKey = 'neura.tts.speak_replies';
 
   FlutterTts? _tts;
   Future<bool>? _initialization;
@@ -45,6 +47,7 @@ class NeuraTtsService {
   double _speechRate = 0.5;
   double _pitch = 1.05;
   double _volume = 1.0;
+  bool _speakRepliesEnabled = false;
 
   bool get playbackAllowed => !SafeBoot.instance.safeMode.value;
 
@@ -54,6 +57,22 @@ class NeuraTtsService {
   double get speechRate => _speechRate;
   double get pitch => _pitch;
   double get volume => _volume;
+
+  /// Whether Neura should speak chat replies aloud as they arrive, rather
+  /// than only on manual preview/Voice Lab playback. Off by default; reading
+  /// this never forces the native TTS engine to initialize.
+  bool get speakRepliesEnabled =>
+      NeuraPrefsCache.prefsOrNull?.getBool(_kSpeakRepliesKey) ??
+      _speakRepliesEnabled;
+
+  Future<void> setSpeakRepliesEnabled(bool value) async {
+    _speakRepliesEnabled = value;
+    try {
+      await NeuraPrefsCache.prefs.setBool(_kSpeakRepliesKey, value);
+    } catch (_) {
+      // The in-memory value above still applies for this session.
+    }
+  }
 
   /// Forces the native TTS engine to initialize without speaking anything.
   Future<void> warmUp() async {
@@ -268,15 +287,23 @@ class NeuraTtsService {
     _completeSpeak();
     if (!playbackAllowed) return;
 
+    final presenceLease = NeuraCompanionPresence.instance.acquireSpeaking();
+    if (presenceLease == null) return;
+
     final completer = Completer<void>();
     _speakCompleter = completer;
     final focusLease = NeuraAudioFocus.instance.acquireSpeech();
     try {
+      if (!playbackAllowed) {
+        _completeSpeak();
+        return;
+      }
       final result = await tts.speak(text);
       if (result == 0) _completeSpeak();
       await completer.future;
     } finally {
       focusLease.release();
+      presenceLease.release();
       if (identical(_speakCompleter, completer)) {
         _speakCompleter = null;
       }

@@ -3,11 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../adaptive_intent/neura_adaptive_intent_status_card.dart';
+import '../../care/screens/care_mode_home_screen.dart';
+import '../../dreams/screens/dream_theater_screen.dart';
 import '../../intelligence/action_review_screen.dart';
 import '../../intelligence/neura_intelligence_controller.dart';
 import '../../joy_engine/joy_screen.dart';
 import '../../modules/quests/quest_mode_screen.dart';
 import '../../modules/support/support_center_screen.dart';
+import '../../os_shell/widgets_bridge/home_widget_bridge.dart';
 import '../../persona/models/neura_kind_explanation.dart';
 import '../../relationships/screens/relationship_detail_screen.dart';
 import '../../relationships/screens/relationship_list_screen.dart';
@@ -51,6 +54,9 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
                 .recordShown(banner)
                 .catchError((_) {}),
           );
+          // Mirror only after Neura's own attention/consent boundary has
+          // already decided to show this card in-app.
+          HomeWidgetBridge.instance.mirrorApprovedNudge(banner.title);
         });
       }
     } catch (_) {
@@ -67,12 +73,14 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
             .catchError((_) {}),
       );
     }
+    HomeWidgetBridge.instance.mirrorApprovedNudge(null);
     setState(() => _dismissed = true);
   }
 
   Future<void> _act() async {
     final banner = _banner;
     if (banner == null || !mounted) return;
+    HomeWidgetBridge.instance.mirrorApprovedNudge(null);
     setState(() => _dismissed = true);
 
     if (!(banner.kind == ProactiveBannerKind.quest &&
@@ -121,6 +129,14 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
       await Navigator.of(
         context,
       ).push(MaterialPageRoute(builder: (_) => const FocusOfficeScreen()));
+    } else if (banner.kind == ProactiveBannerKind.care) {
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const CareModeHomeScreen()));
+    } else if (banner.kind == ProactiveBannerKind.dream) {
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const DreamTheaterScreen()));
     }
   }
 
@@ -208,6 +224,8 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
       ProactiveBannerKind.quest => Icons.flag_outlined,
       ProactiveBannerKind.wellness => Icons.self_improvement_outlined,
       ProactiveBannerKind.focus => Icons.center_focus_strong_outlined,
+      ProactiveBannerKind.care => Icons.health_and_safety_outlined,
+      ProactiveBannerKind.dream => Icons.nights_stay_outlined,
     };
     final showWhy =
         NeuraIntelligenceController.instance.preferences.showDecisionReasons;

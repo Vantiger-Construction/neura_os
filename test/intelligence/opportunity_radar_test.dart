@@ -130,6 +130,103 @@ void main() {
       expect(result.single.payload['action'], 'draft_quest');
     });
 
+    test('offers care support only for a very severe, sustained low mood', () {
+      final moderatelyLow = radar.scan(
+        snapshot: _snapshot(now, [
+          _signal(
+            NeuraSignalKind.mood,
+            value: 0.15, // severity 0.85 -- below the care-support bar.
+            evidence: [_evidence('mood-moderate', now)],
+          ),
+        ]),
+        now: now,
+      );
+      expect(
+        moderatelyLow.map((item) => item.payload['opportunity_kind']),
+        isNot(contains('care_support')),
+      );
+
+      final severelyLow = radar.scan(
+        snapshot: _snapshot(now, [
+          _signal(
+            NeuraSignalKind.mood,
+            value: 0.05, // severity 0.95.
+            evidence: [_evidence('mood-severe', now)],
+          ),
+        ]),
+        now: now,
+      );
+      expect(
+        severelyLow.map((item) => item.payload['opportunity_kind']),
+        ['care_support', 'mood_reset'],
+      );
+      expect(
+        severelyLow.every(
+          (item) => item.capabilityId == NeuraCapabilityRegistry.openAppModule,
+        ),
+        isTrue,
+      );
+    });
+
+    test('flags a dream/mood correlation only when both signals point low', () {
+      final lowMoodOnly = radar.scan(
+        snapshot: _snapshot(now, [
+          _signal(
+            NeuraSignalKind.mood,
+            value: 0.15, // severity 0.85.
+            evidence: [_evidence('mood-1', now)],
+          ),
+        ]),
+        now: now,
+      );
+      expect(
+        lowMoodOnly.map((item) => item.payload['opportunity_kind']),
+        isNot(contains('dream_pattern_check')),
+      );
+
+      final lowDreamOnly = radar.scan(
+        snapshot: _snapshot(now, [
+          _signal(
+            NeuraSignalKind.dreamMood,
+            value: 0.15,
+            label: 'sad',
+            evidence: [_evidence('dream-1', now)],
+          ),
+        ]),
+        now: now,
+      );
+      expect(
+        lowDreamOnly.map((item) => item.payload['opportunity_kind']),
+        isNot(contains('dream_pattern_check')),
+      );
+
+      final both = radar.scan(
+        snapshot: _snapshot(now, [
+          _signal(
+            NeuraSignalKind.mood,
+            value: 0.15, // severity 0.85 -- above the 0.55 bar.
+            evidence: [_evidence('mood-2', now)],
+          ),
+          _signal(
+            NeuraSignalKind.dreamMood,
+            value: 0.15, // sad-leaning valence -- at/below the 0.35 bar.
+            label: 'sad',
+            evidence: [_evidence('dream-2', now)],
+          ),
+        ]),
+        now: now,
+      );
+      final dreamCandidate = both.singleWhere(
+        (item) => item.payload['opportunity_kind'] == 'dream_pattern_check',
+      );
+      expect(
+        dreamCandidate.capabilityId,
+        NeuraCapabilityRegistry.openAppModule,
+      );
+      expect(dreamCandidate.body, contains('sad'));
+      expect(dreamCandidate.evidence.map((e) => e.id), ['dream-2', 'mood-2']);
+    });
+
     test('protects an active focus state from task nudges', () {
       final result = radar.scan(
         snapshot: _snapshot(now, [

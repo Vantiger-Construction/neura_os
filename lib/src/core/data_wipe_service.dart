@@ -9,6 +9,9 @@ import '../../core/memory/memory_consolidation_service.dart';
 import '../../core/memory/memory_graph_service.dart';
 import '../../core/neura_error_vault.dart';
 import '../../care/services/care_mode_bridge.dart';
+import '../../care/services/contact_share_service.dart';
+import '../../services/scheduled_backup_settings.dart';
+import '../../services/sync_conflict_log.dart';
 import '../../care/services/trusted_contacts_service.dart';
 import '../../dashboard/proactive_banner_service.dart';
 import '../../dreams/services/dream_theme_service.dart';
@@ -249,6 +252,8 @@ class NeuraDataWipeService {
     JokePrefsController.instance.resetAfterDataWipe();
     NeuraNotificationsPrefsController.instance.resetAfterDataWipe();
     TrustedContactsService.instance.resetAfterDataWipe();
+    ContactShareService.instance.resetAfterDataWipe();
+    SyncConflictLog.instance.resetAfterDataWipe();
     DreamThemeService.instance.resetAfterDataWipe();
     RelationshipProfileService.instance.resetAfterDataWipe();
     PromiseService.instance.resetAfterDataWipe();
@@ -290,8 +295,8 @@ class NeuraDataWipeService {
     );
     await _attempt(
       failures,
-      'model credential deletion',
-      NeuraModelCredentials.instance.clearForDataWipe,
+      'scheduled backup settings deletion',
+      ScheduledBackupSettings.instance.clearForDataWipe,
     );
     await _attempt(
       failures,
