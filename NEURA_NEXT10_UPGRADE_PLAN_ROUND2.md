@@ -18,6 +18,16 @@ silos together, plus a few standalone gaps (notifications, Joy Engine,
 recap) found the same way round 1 found dream/mood: two systems that
 clearly should know about each other and don't.
 
+**Update, post-merge audit (2026-09-14):** three PRs unrelated to either
+round (#76 voice/companion presence, #77 approval-gated model router, #79
+local-first Neura Care Loop) merged into `Neura` alongside round 1 and this
+plan. A follow-up audit of the merged tree confirmed one more instance of
+the throughline above (item 3 now cites it directly) and surfaced two
+concrete, previously-unknown fragmentation issues in the `care/` surface
+(folded into item 8, which grew from "two sources" to "three sources plus a
+navigation split"). Nothing else in this document changed as a result —
+items 1, 2, 4, 5, 6, 7, 9, 10 are unaffected by those three PRs.
+
 ---
 
 ## Phase 1 — Bridge the silos (foundational, no new UI)
@@ -103,39 +113,70 @@ capability_registry.dart` gates the *same categories* (`exportPrivateData`,
 different action representation (`NeuraIntelligenceCandidate` +
 capability id) and its own risk/approval model.
 
-**Missing:** nothing stops the two disagreeing — an action a capability
-definition would allow could be one the Constitution blocks, or vice versa,
-with no single source of truth.
+**Confirmed, not hypothetical — a fourth engine found in the post-merge
+audit:** `services/neura_model_router.dart` (from PR #77, merged after this
+plan was first drafted) defines its own `NeuraCloudApprovalHandler` /
+`NeuraCloudApprovalDenied` to gate every Anthropic request with a
+fresh-confirmation callback. It does not call
+`intelligence/fresh_approval_lease.dart`'s `NeuraFreshApprovalLeaseRegistry`
+(grepped directly — zero references) despite solving the same "bounded,
+short-lived approval evidence" problem the lease registry already solves for
+Action Loom. This is the clearest, most concrete instance of this item's
+premise found so far — the audit step below should treat it as a fourth
+system to reconcile, not just Constitution vs. Capability Registry.
+
+**Missing:** nothing stops any of these three or four systems disagreeing —
+an action a capability definition would allow could be one the Constitution
+blocks, or vice versa, and the model router's cloud-approval callback has no
+relationship to either. No single source of truth exists for "does this
+action need fresh approval, and from what."
 
 **Approach — audit first, this is not a blind merge:**
 - Trace every real caller of `NeuraPersonalConstitution.evaluate()` and
   every real caller of `NeuraActionGraph`/`NeuraActionStep` to establish
   whether the Constitution path is actually reached today or is itself
   unused (the same kind of check that turned up the persona/audience
-  wiring gap in item 9 below — verify before assuming either way).
+  wiring gap in item 7 — verify before assuming either way).
   Two adjacent findings are already useful either way: mark the path in
   `capability_registry.dart` that would need a Constitution check, or
   document that the Constitution *is* Neura's real policy source and
   `capability_registry.dart` needs to defer to it.
-- Only after that audit, pick one direction: either (a) have
+- Trace `neura_model_router.dart`'s `NeuraCloudApprovalHandler` call sites
+  too (`services/neura_ai_service.dart` is the known caller per PR #77).
+  Cloud-request approval is functionally the same "fresh, bounded consent"
+  concept `fresh_approval_lease.dart` already implements — decide whether
+  the model router should be migrated onto `NeuraFreshApprovalLeaseRegistry`
+  instead of keeping its own parallel callback type, or whether there's a
+  real reason (e.g. request-preview UI needs) it must stay separate. Do not
+  silently merge them without confirming the UI contract
+  (`neura_cloud_request_preview.dart`) still gets what it needs either way.
+- Only after both traces, pick one direction: either (a) have
   `NeuraCapabilityRegistry.resolve()` consult
   `NeuraPersonalConstitution` for the categories that overlap
   (cloud/external/purchase/calendar), or (b) if the Constitution is truly
   dead code with no live caller, document that finding plainly rather than
-  wiring dead code into a live path.
+  wiring dead code into a live path — and separately decide the model-router
+  question above on its own merits, since it does not depend on how the
+  Constitution question resolves.
 
 **Files:** `constitution/neura_personal_constitution.dart`,
-`intelligence/capability_registry.dart`, `intent_compiler/
+`intelligence/capability_registry.dart`, `intelligence/
+fresh_approval_lease.dart`, `services/neura_model_router.dart`,
+`widgets/neura_cloud_request_preview.dart` (read), `intent_compiler/
 neura_action_graph.dart` (read to trace callers).
 
 **Acceptance:** either a passing test demonstrating the Constitution and
 the Capability Registry now agree on the same synthetic action, or a
 written finding (in the PR description, not new code) that the
-Constitution has no live caller and is out of scope for this round.
+Constitution has no live caller and is out of scope for this round — plus,
+separately, a written decision on the model-router question (migrate onto
+`NeuraFreshApprovalLeaseRegistry`, or a documented reason it stays apart).
 
-**Size:** M, mostly investigation. **Do this one first in the phase** — its
-audit step may reveal item 7's "dead code" framing was wrong, which is
-cheap to learn early and expensive to learn after other work assumes it.
+**Size:** M, mostly investigation, now covering four systems instead of
+two (Constitution, Capability Registry, `fresh_approval_lease.dart`, model
+router). **Do this one first in the phase** — its audit step may reveal
+item 7's "dead code" framing was wrong, which is cheap to learn early and
+expensive to learn after other work assumes it.
 
 ---
 
@@ -278,26 +319,57 @@ scope the fix only after confirming what's actually missing.
 
 ## Phase 3 — Slower-burn, more design judgment
 
-### 8. Consolidate crisis-resource sources
+### 8. Consolidate the fragmented `care/` surface (text and navigation)
 
-**Exists:** `guardrails/support_resources.dart` is two hardcoded strings
-(988/911 US-only). `care/services/crisis_playbook_service.dart` (round 1)
-is the richer, already-built system with real playbooks and region
-awareness potential.
+**Exists — grew from two sources to three, plus a navigation split, in the
+post-merge audit:**
+- `guardrails/support_resources.dart` is two hardcoded strings (988/911
+  US-only).
+- `care/services/crisis_playbook_service.dart` (round 1) is the richer,
+  already-built system with real playbooks and region awareness potential.
+- `care/services/neura_care_loop_service.dart` (new, from PR #79) defines
+  its *own* `_immediateSupportPlan` with its own 988/emergency copy,
+  triggered by `NeuraCareCheckIn.feelsUnsafe` — a third, independent
+  crisis-text source nobody wrote with the other two in mind.
+- Separately: `os_shell/screens/os_shell_home_screen.dart` links to
+  `CareModeHomeScreen` (crisis playbooks, trusted contacts — round 1);
+  `modules/navigation/enhanced_navigation.dart`'s dashboard tile grid links
+  to `NeuraCareLoopScreen` (check-in → coping action — PR #79) instead. A
+  user relying on one navigation surface has no path to the other feature.
 
-**Approach:** have `guardrails/guardrails_rules.dart` (or wherever
-`support_resources.dart` is actually consulted — trace this first, same
-discipline as item 7) reference `CrisisPlaybookService`/a shared resource
-list instead of its own hardcoded pair, so a future update to crisis
-resources happens in one place.
+**Approach:**
+- Text: have `guardrails/guardrails_rules.dart` (or wherever
+  `support_resources.dart` is actually consulted — trace this first, same
+  discipline as item 7) and `NeuraCareLoopService._immediateSupportPlan`
+  both reference `CrisisPlaybookService`/a shared resource list instead of
+  each hardcoding their own pair, so a future update to crisis resources
+  happens in one place, not three.
+- Navigation: add a cross-link in each direction — a tile/entry point to
+  Care Loop from `CareModeHomeScreen`, and one to Care Mode from
+  `NeuraCareLoopScreen` (or its check-in result screen) — rather than
+  merging the two features, since they serve genuinely different moments
+  (an immediate coping action vs. browsing playbooks/contacts). Confirm
+  with whoever owns product direction here before assuming cross-linking
+  (not merging) is the right call; this plan documents the finding, not a
+  final UX decision.
 
-**Files:** `guardrails/support_resources.dart`, `guardrails/guardrails_rules.dart`,
-`care/services/crisis_playbook_service.dart`.
+**Files:** `guardrails/support_resources.dart`,
+`guardrails/guardrails_rules.dart`, `care/services/crisis_playbook_service.dart`,
+`care/services/neura_care_loop_service.dart`,
+`care/screens/care_mode_home_screen.dart`,
+`care/screens/neura_care_loop_screen.dart`,
+`os_shell/screens/os_shell_home_screen.dart`,
+`modules/navigation/enhanced_navigation.dart`.
 
 **Acceptance:** no behavior change for the guardrail path visible to users,
-but only one source file defines the actual 988/911/emergency text.
+but only one source file defines the actual 988/911/emergency text, and
+`NeuraCareLoopService` consumes it rather than duplicating it; from either
+navigation surface, a user can reach both Care Mode and Care Loop within
+one tap of wherever they currently land.
 
-**Size:** S, once the trace confirms the actual call site.
+**Size:** M — grew from S once the third text source and the navigation
+split were confirmed; the text consolidation and the navigation cross-link
+are independent sub-tasks and can land separately.
 
 ---
 
@@ -356,7 +428,7 @@ showing an empty one.
 |---|---|---|
 | 1 | #1 bandwidth, #2 outcome loop, #3 constitution audit | All three touch the same `NeuraAutonomyPolicy` assembly point in `neura_intelligence_controller.dart` — do them as one focused pass so the suppression plumbing is written once, not three times. Start with #3's audit since it may change how #1/#2 are framed. |
 | 2 | #4 promise reminders, #5 distress detector, #6 streak joy, #7 module-hint audit | Fully independent of each other and of Phase 1; can run in parallel or in any order. #7 starts as investigation — do it early enough that its findings (real gap vs. already-fine) are known before anyone assumes the worst. |
-| 3 | #8 crisis-resource consolidation, #9 constitution work-hours (contingent on #3), #10 recap dream themes | Lowest urgency; #9 is explicitly blocked on #3's outcome and should not be scheduled before it resolves. |
+| 3 | #8 `care/` surface consolidation (text + navigation), #9 constitution work-hours (contingent on #3), #10 recap dream themes | Lowest urgency; #9 is explicitly blocked on #3's outcome and should not be scheduled before it resolves. #8 grew in scope during the post-merge audit but is still independent of #9/#10. |
 
 Every item that traces a "does X actually call Y" question is deliberately
 scoped as investigate-then-fix, not fix-on-assumption — round 1's dream
