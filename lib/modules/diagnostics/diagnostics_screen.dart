@@ -8,6 +8,7 @@ import '../../intelligence/intelligence_center_screen.dart';
 import '../../reliability/module_health_monitor.dart';
 import '../../reliability/safe_boot.dart';
 import '../../reliability/timeline_vault.dart';
+import '../../services/scheduled_backup_settings.dart';
 import '../../startup/neura_bootstrap_log.dart';
 import '../core/app_log.dart';
 
@@ -270,6 +271,38 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                   },
                 ),
                 const SizedBox(height: 12),
+                Builder(
+                  builder: (context) {
+                    final settings = ScheduledBackupSettings.instance;
+                    if (!settings.enabled) return const SizedBox.shrink();
+                    final lastRun = settings.lastRunAt;
+                    final outcome = settings.lastOutcome;
+                    final failed = outcome == ScheduledBackupOutcome.failed;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Card(
+                        child: ListTile(
+                          leading: Icon(
+                            failed
+                                ? Icons.warning_amber
+                                : Icons.backup_outlined,
+                            color: failed ? Colors.orange : null,
+                          ),
+                          title: const Text('Automatic backup'),
+                          subtitle: Text(
+                            lastRun == null
+                                ? 'Enabled, has not run yet.'
+                                : failed
+                                    ? 'Last attempt failed '
+                                        '(${lastRun.toLocal()}): '
+                                        '${settings.lastError ?? 'unknown error'}'
+                                    : 'Last succeeded: ${lastRun.toLocal()}',
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
                 AnimatedBuilder(
                   animation: ModuleHealthMonitor.instance,
                   builder: (context, _) {
