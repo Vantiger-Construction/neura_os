@@ -2,6 +2,9 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../constitution/neura_constitution_service.dart';
+import '../constitution/neura_personal_constitution.dart';
+import '../intent_compiler/neura_action_graph.dart' show NeuraActionEffect;
 import '../reliability/safe_boot.dart';
 import 'neura_model_credentials.dart';
 import 'neura_model_types.dart';
@@ -208,7 +211,9 @@ class NeuraSecureModelRouter {
   NeuraSecureModelRouter({
     NeuraModelCredentials? credentials,
     List<NeuraModelTransport>? transports,
-  }) : _credentials = credentials ?? NeuraModelCredentials.instance {
+    NeuraPersonalConstitution? constitution,
+  })  : _credentials = credentials ?? NeuraModelCredentials.instance,
+        _constitutionOverride = constitution {
     final availableTransports =
         transports ?? [NeuraOpenAiTransport(), NeuraAnthropicTransport()];
     _transports = {
@@ -218,6 +223,7 @@ class NeuraSecureModelRouter {
   }
 
   final NeuraModelCredentials _credentials;
+  final NeuraPersonalConstitution? _constitutionOverride;
   late final Map<NeuraModelProvider, NeuraModelTransport> _transports;
 
   Future<NeuraModelResponse> complete(
@@ -225,6 +231,11 @@ class NeuraSecureModelRouter {
     required NeuraCloudApprovalHandler requestApproval,
   }) async {
     _throwIfSafeMode();
+    if (_constitutionOverride == null) {
+      await NeuraConstitutionService.instance.load();
+    }
+    _throwIfSafeMode();
+    _throwIfConstitutionBlocks(request);
     final candidates = <NeuraModelProvider>[
       NeuraModelProvider.openAi,
       NeuraModelProvider.anthropic,
@@ -233,8 +244,10 @@ class NeuraSecureModelRouter {
     Object? lastError;
     for (final provider in candidates) {
       _throwIfSafeMode();
+      _throwIfConstitutionBlocks(request);
       final key = await _credentials.read(provider);
       _throwIfSafeMode();
+      _throwIfConstitutionBlocks(request);
       if (key == null) continue;
 
       // Approval is deliberately requested inside the provider loop. A
@@ -245,6 +258,7 @@ class NeuraSecureModelRouter {
       if (!approved) {
         throw const NeuraCloudApprovalDenied();
       }
+      _throwIfConstitutionBlocks(request);
 
       final transport = _transports[provider];
       if (transport == null) continue;
@@ -269,6 +283,24 @@ class NeuraSecureModelRouter {
       throw StateError('Cloud AI is unavailable while Neura is in Safe Mode.');
     }
   }
+
+  /// Checked before approval and again immediately before each outbound
+  /// request. A production router reads the service's current value rather
+  /// than freezing a pre-load snapshot; an explicit test override stays
+  /// isolated from global state.
+  void _throwIfConstitutionBlocks(NeuraModelRequest request) {
+    final constitution =
+        _constitutionOverride ?? NeuraConstitutionService.instance.current;
+    final decision = constitution.evaluateEffect(
+      effect: NeuraActionEffect.cloudRequest,
+      at: DateTime.now(),
+      safeMode: SafeBoot.instance.safeMode.value,
+      containsSensitiveContent: request.includesPrivateContext,
+    );
+    if (!decision.allowed) {
+      throw NeuraConstitutionBlocked(decision.reason);
+    }
+  }
 }
 
 class NeuraCloudApprovalDenied implements Exception {
@@ -276,6 +308,19 @@ class NeuraCloudApprovalDenied implements Exception {
 
   @override
   String toString() => 'Cloud request was not approved.';
+}
+
+/// Distinguishes a request the user's own Personal Constitution disallows
+/// (never even reaches [NeuraCloudApprovalHandler]) from one a specific
+/// approval prompt was declined ([NeuraCloudApprovalDenied]).
+class NeuraConstitutionBlocked implements Exception {
+  const NeuraConstitutionBlocked(this.reason);
+
+  final String reason;
+
+  @override
+  String toString() =>
+      'Cloud request blocked by the personal constitution: $reason';
 }
 
 class NeuraModelTransportException implements Exception {

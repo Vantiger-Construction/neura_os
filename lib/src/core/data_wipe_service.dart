@@ -10,6 +10,7 @@ import '../../core/memory/memory_graph_service.dart';
 import '../../core/neura_error_vault.dart';
 import '../../care/services/care_mode_bridge.dart';
 import '../../care/services/contact_share_service.dart';
+import '../../constitution/neura_constitution_service.dart';
 import '../../services/scheduled_backup_settings.dart';
 import '../../services/sync_conflict_log.dart';
 import '../../care/services/trusted_contacts_service.dart';
@@ -261,6 +262,7 @@ class NeuraDataWipeService {
     NeuraAudienceService.instance.resetAfterDataWipe();
     AgentSelectionService.instance.resetAfterDataWipe();
     MoodStateService.instance.resetAfterDataWipe();
+    NeuraConstitutionService.instance.resetAfterDataWipe();
     GoodwillController.instance.resetAfterDataWipe();
     SpaceMemoryEngine.instance.resetAfterDataWipe();
     VaultSession.lock();

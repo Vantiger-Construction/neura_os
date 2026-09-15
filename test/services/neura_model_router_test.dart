@@ -1,8 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:neuro_companion/constitution/neura_constitution_service.dart';
+import 'package:neuro_companion/constitution/neura_personal_constitution.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/services/neura_model_credentials.dart';
 import 'package:neuro_companion/services/neura_model_router.dart';
 import 'package:neuro_companion/services/neura_model_types.dart';
+import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 
 class _MemoryStorage implements NeuraModelCredentialStorage {
   final values = <String, String>{};
@@ -57,13 +64,22 @@ void main() {
 
   late bool originalSafeMode;
 
-  setUp(() {
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    await NeuraPrefsCache.init();
+  });
+
+  setUp(() async {
     originalSafeMode = SafeBoot.instance.safeMode.value;
     SafeBoot.instance.safeMode.value = false;
+    await NeuraPrefsCache.prefs.remove('neura.constitution.v1');
+    await NeuraPrefsCache.prefs.remove('neura.adaptive_intent.state.v1');
+    NeuraConstitutionService.instance.resetAfterDataWipe();
   });
 
   tearDown(() {
     SafeBoot.instance.safeMode.value = originalSafeMode;
+    NeuraConstitutionService.instance.resetAfterDataWipe();
   });
 
   test('OpenAI is the primary provider', () async {
@@ -199,6 +215,150 @@ void main() {
     expect(approvals, [NeuraModelProvider.openAi]);
     expect(openAi.calls, 1);
     expect(anthropic.calls, 0);
+  });
+
+  test('the default constitution allows cloud requests', () async {
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    final openAi = _Transport(NeuraModelProvider.openAi, result: 'ok');
+    final router = NeuraSecureModelRouter(
+      credentials: credentials,
+      transports: [openAi],
+      constitution: const NeuraPersonalConstitution(),
+    );
+
+    final response = await router.complete(
+      request,
+      requestApproval: (_) async => true,
+    );
+
+    expect(response.text, 'ok');
+  });
+
+  test('production router observes a constitution tightened after creation',
+      () async {
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    final openAi = _Transport(NeuraModelProvider.openAi, result: 'unused');
+    final router = NeuraSecureModelRouter(
+      credentials: credentials,
+      transports: [openAi],
+    );
+    await NeuraConstitutionService.instance.save(
+      const NeuraPersonalConstitution(allowCloudAi: false),
+    );
+    var approvalCalls = 0;
+
+    await expectLater(
+      router.complete(
+        request,
+        requestApproval: (_) async {
+          approvalCalls++;
+          return true;
+        },
+      ),
+      throwsA(isA<NeuraConstitutionBlocked>()),
+    );
+
+    expect(approvalCalls, 0);
+    expect(openAi.calls, 0);
+  });
+
+  test('constitution tightening after primary failure prevents fallback',
+      () async {
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    await credentials.save(NeuraModelProvider.anthropic, anthropicKey);
+    final openAi = _Transport(
+      NeuraModelProvider.openAi,
+      error: StateError('primary unavailable'),
+      onComplete: () {
+        unawaited(
+          NeuraConstitutionService.instance.save(
+            const NeuraPersonalConstitution(allowCloudAi: false),
+          ),
+        );
+      },
+    );
+    final anthropic =
+        _Transport(NeuraModelProvider.anthropic, result: 'unused');
+    final approvals = <NeuraModelProvider>[];
+    final router = NeuraSecureModelRouter(
+      credentials: credentials,
+      transports: [openAi, anthropic],
+    );
+
+    await expectLater(
+      router.complete(
+        request,
+        requestApproval: (preview) async {
+          approvals.add(preview.provider);
+          return true;
+        },
+      ),
+      throwsA(isA<NeuraConstitutionBlocked>()),
+    );
+
+    expect(approvals, [NeuraModelProvider.openAi]);
+    expect(openAi.calls, 1);
+    expect(anthropic.calls, 0);
+  });
+
+  test(
+      'an explicitly locked-down constitution blocks the request before '
+      'approval or transport', () async {
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    final openAi = _Transport(NeuraModelProvider.openAi, result: 'unused');
+    final router = NeuraSecureModelRouter(
+      credentials: credentials,
+      transports: [openAi],
+      constitution: const NeuraPersonalConstitution(allowCloudAi: false),
+    );
+    var approvalCalls = 0;
+
+    await expectLater(
+      router.complete(
+        request,
+        requestApproval: (_) async {
+          approvalCalls++;
+          return true;
+        },
+      ),
+      throwsA(isA<NeuraConstitutionBlocked>()),
+    );
+
+    expect(approvalCalls, 0);
+    expect(openAi.calls, 0);
+  });
+
+  test('sensitive content is blocked from the cloud even with cloud AI on',
+      () async {
+    const sensitiveRequest = NeuraModelRequest(
+      systemPrompt: 'Be kind.',
+      messages: [
+        {'role': 'user', 'content': 'Hello'},
+      ],
+      purpose: 'chat reply',
+      includesPrivateContext: true,
+    );
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    final openAi = _Transport(NeuraModelProvider.openAi, result: 'unused');
+    final router = NeuraSecureModelRouter(
+      credentials: credentials,
+      transports: [openAi],
+      constitution: const NeuraPersonalConstitution(), // keepSensitive: true
+    );
+
+    await expectLater(
+      router.complete(
+        sensitiveRequest,
+        requestApproval: (_) async => true,
+      ),
+      throwsA(isA<NeuraConstitutionBlocked>()),
+    );
+    expect(openAi.calls, 0);
   });
 
   test('credential deletion is verified', () async {
