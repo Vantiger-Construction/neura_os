@@ -6,7 +6,12 @@ class DistressSignal {
 }
 
 class DistressDetector {
-  const DistressDetector();
+  const DistressDetector({this.activationThreshold = 3})
+      : assert(activationThreshold > 0);
+
+  /// Minimum weighted evidence required before [detect] reports active
+  /// distress. High-impact consumers retain the conservative default.
+  final int activationThreshold;
 
   DistressSignal detect({
     required List<int> recentMoods,
@@ -31,7 +36,7 @@ class DistressDetector {
     }
 
     return DistressSignal(
-      active: score >= 3,
+      active: score >= activationThreshold,
       reasons: reasons,
     );
   }

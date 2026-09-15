@@ -242,7 +242,11 @@ class ProactiveBannerService {
     final rawMoodDistress = moodValue == null
         ? 0.0
         : ((0.5 - moodValue) * 1.4).clamp(0.0, 0.7).toDouble();
-    final signal = (detector ?? const DistressDetector()).detect(
+    // A local, reversible Care banner may respond to one sustained,
+    // user-recorded low-mood trend. Other DistressDetector consumers keep
+    // the more conservative multi-signal threshold of 3.
+    final signal =
+        (detector ?? const DistressDetector(activationThreshold: 2)).detect(
       recentMoods: recentMoods,
       appOpensLastHour: 0,
       lotsOfNegativeWords: false,

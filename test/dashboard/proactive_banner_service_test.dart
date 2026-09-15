@@ -63,12 +63,20 @@ void main() {
       expect(score, lessThanOrEqualTo(1.0));
     });
 
-    test('using the real DistressDetector reflects several low moods', () {
+    test('uses a lower local-card threshold for several low moods', () {
+      final sharedSignal = const DistressDetector().detect(
+        recentMoods: const [-2, -2, -2],
+        appOpensLastHour: 0,
+        lotsOfNegativeWords: false,
+      );
       final score = ProactiveBannerService.computeDistressScore(
         moodValue: 0.45,
         recentMoods: const [-2, -2, -2],
       );
 
+      // Chat and other high-impact consumers retain the shared detector's
+      // conservative threshold; only this local, reversible card responds.
+      expect(sharedSignal.active, isFalse);
       expect(score, greaterThanOrEqualTo(0.75));
     });
   });
