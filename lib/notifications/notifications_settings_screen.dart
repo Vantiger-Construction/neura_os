@@ -99,8 +99,8 @@ class NotificationsSettingsScreen extends StatelessWidget {
                 },
                 secondary: const Icon(Icons.handshake_outlined),
                 title: const Text('Promise reminders'),
-                subtitle: const Text(
-                    'A reminder when a promise you made is due.'),
+                subtitle:
+                    const Text('A reminder when a promise you made is due.'),
               ),
             ],
           );

@@ -74,8 +74,7 @@ void main() {
 
     test('an adult audience (and no audience) adds no safety-profile block',
         () async {
-      final adultPrompt =
-          await NeuraPromptBuilder.instance.buildSystemMessage(
+      final adultPrompt = await NeuraPromptBuilder.instance.buildSystemMessage(
         audience: NeuraAudience.adult,
         includePersistentMemory: false,
       );

@@ -35,8 +35,7 @@ void main() {
     final service = PromiseService.forTesting(scheduler: scheduler);
     final dueAt = DateTime.now().add(const Duration(days: 1));
 
-    final promise =
-        await service.create(description: 'Call mom', dueAt: dueAt);
+    final promise = await service.create(description: 'Call mom', dueAt: dueAt);
 
     expect(scheduler.scheduled, {promise.id: dueAt});
     expect(scheduler.cancelled, isEmpty);
@@ -92,7 +91,8 @@ void main() {
     expect(scheduler.cancelled, [promise.id]);
   });
 
-  test('disabling reminders globally suppresses scheduling the same way '
+  test(
+      'disabling reminders globally suppresses scheduling the same way '
       'existing reminders are suppressed', () async {
     final scheduler = _RecordingScheduler();
     var remindersEnabled = true;

@@ -19,8 +19,7 @@ class _FakeDistressDetector extends DistressDetector {
 
 void main() {
   group('ProactiveBannerService.computeDistressScore', () {
-    test('falls back to raw mood arithmetic when the detector is inactive',
-        () {
+    test('falls back to raw mood arithmetic when the detector is inactive', () {
       final score = ProactiveBannerService.computeDistressScore(
         moodValue: 0.2,
         recentMoods: const [],
@@ -30,8 +29,7 @@ void main() {
       expect(score, closeTo((0.5 - 0.2) * 1.4, 0.0001));
     });
 
-    test('a mild mood reading is overridden by a corroborated real signal',
-        () {
+    test('a mild mood reading is overridden by a corroborated real signal', () {
       // A single mild mood sample alone would score low, but a synthetic
       // detector result reporting active distress must still dominate.
       final score = ProactiveBannerService.computeDistressScore(
