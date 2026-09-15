@@ -16,7 +16,9 @@ import '../joy_engine/joy_engine.dart';
 import '../joy_engine/joy_types.dart';
 import '../modules/human/human_prefs_controller.dart';
 import '../modules/mood/mood_store.dart';
+import '../modules/quests/quest_store.dart';
 import '../relationships/models/relationship_profile.dart';
+import '../relationships/services/distress_detector.dart';
 import '../relationships/services/relationship_insight_service.dart';
 import '../relationships/services/relationship_profile_service.dart';
 import '../reliability/safe_boot.dart';
@@ -161,6 +163,8 @@ class ProactiveBannerService {
     if (relationship != null) candidates.add(relationship);
     final joy = await _joyCandidate(now, snapshot);
     if (joy != null) candidates.add(joy);
+    final streakJoy = await _streakJoyCandidate(now);
+    if (streakJoy != null) candidates.add(streakJoy);
     if (candidates.isEmpty) return null;
 
     final inStorm = await _inStormContext(now);
@@ -335,6 +339,53 @@ class ProactiveBannerService {
     if (score == -1) return NeuraMood.stressed;
     if (score >= 1) return NeuraMood.energized;
     return NeuraMood.neutral;
+  }
+
+  /// Round-number streak lengths worth celebrating. The candidate id embeds
+  /// the milestone value itself (not just the date), so this only fires the
+  /// day the streak lands exactly on one of these numbers -- naturally once
+  /// per milestone, since every other day's streak count misses the list.
+  static const List<int> _streakMilestones = [7, 14, 30, 60, 90, 180, 365];
+
+  @visibleForTesting
+  static bool isStreakMilestone(int streak) =>
+      _streakMilestones.contains(streak);
+
+  Future<_BannerCandidate?> _streakJoyCandidate(DateTime now) async {
+    try {
+      final streak = await QuestStore.instance.currentStreak();
+      if (!isStreakMilestone(streak)) return null;
+      final moment = JoyEngine().pickMoment(
+        NeuraMood.energized,
+        intent: NeuraIntent.seekingProgress,
+      );
+      final candidate = NeuraIntelligenceCandidate(
+        id: 'joy:streak:$streak:${now.year}-${now.month}-${now.day}',
+        capabilityId: NeuraCapabilityRegistry.openAppModule,
+        specialistId: 'joy_specialist',
+        title: '$streak days in a row',
+        body: moment.description,
+        createdAt: now,
+        expiresAt: now.add(const Duration(hours: 12)),
+        evidence: const [],
+        benefit: 0.72,
+        urgency: 0.3,
+        disruption: 0.12,
+        confidence: 0.9,
+        payload: {
+          'opportunity_kind': 'joy',
+          'module': 'joy_engine',
+          'streak_days': streak,
+        },
+      );
+      return _BannerCandidate(
+        candidate: candidate,
+        kind: ProactiveBannerKind.joy,
+        joyMoment: moment,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<_BannerCandidate?> _relationshipCandidate(DateTime now) async {

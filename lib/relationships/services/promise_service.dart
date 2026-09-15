@@ -1,16 +1,69 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../notifications/neura_notifications_prefs.dart';
+import '../../notifications/neura_notifications_service.dart';
 import '../models/neura_promise.dart';
 
+abstract interface class PromiseReminderScheduler {
+  Future<void> schedulePromiseReminder({
+    required String promiseId,
+    required String description,
+    required DateTime dueAt,
+  });
+  Future<void> cancelPromiseReminder(String promiseId);
+}
+
+class _NeuraNotificationsPromiseReminderScheduler
+    implements PromiseReminderScheduler {
+  const _NeuraNotificationsPromiseReminderScheduler();
+
+  @override
+  Future<void> schedulePromiseReminder({
+    required String promiseId,
+    required String description,
+    required DateTime dueAt,
+  }) =>
+      NeuraNotificationsService.instance.schedulePromiseReminder(
+        promiseId: promiseId,
+        description: description,
+        dueAt: dueAt,
+      );
+
+  @override
+  Future<void> cancelPromiseReminder(String promiseId) =>
+      NeuraNotificationsService.instance.cancelPromiseReminder(promiseId);
+}
+
 class PromiseService {
-  PromiseService._();
+  PromiseService._({
+    PromiseReminderScheduler? scheduler,
+    bool Function()? remindersEnabled,
+  })  : _scheduler =
+            scheduler ?? const _NeuraNotificationsPromiseReminderScheduler(),
+        _remindersEnabled = remindersEnabled ??
+            (() => NeuraNotificationsPrefsController
+                .instance.prefs.value.promiseReminderEnabled);
 
   static final PromiseService instance = PromiseService._();
 
+  @visibleForTesting
+  factory PromiseService.forTesting({
+    required PromiseReminderScheduler scheduler,
+    bool Function()? remindersEnabled,
+  }) {
+    return PromiseService._(
+      scheduler: scheduler,
+      remindersEnabled: remindersEnabled ?? () => true,
+    );
+  }
+
   static const _storageKey = 'neura_promises';
   final _uuid = const Uuid();
+  final PromiseReminderScheduler _scheduler;
+  final bool Function() _remindersEnabled;
 
   List<NeuraPromise> _cache = [];
 
@@ -69,15 +122,73 @@ class PromiseService {
     );
     _cache.add(promise);
     await _save();
+    await _syncReminder(promise);
     return promise;
+  }
+
+  /// Edits an existing promise's description and/or due date. Pass
+  /// [clearDueAt] to remove a due date entirely (a null [dueAt] otherwise
+  /// leaves the existing due date untouched, matching [NeuraPromise.copyWith]
+  /// semantics elsewhere in this service).
+  Future<NeuraPromise?> update(
+    String id, {
+    String? description,
+    DateTime? dueAt,
+    bool clearDueAt = false,
+  }) async {
+    await _loadIfNeeded();
+    final idx = _cache.indexWhere((p) => p.id == id);
+    if (idx == -1) return null;
+    final current = _cache[idx];
+    final updated = NeuraPromise(
+      id: current.id,
+      profileId: current.profileId,
+      description: description ?? current.description,
+      createdAt: current.createdAt,
+      dueAt: clearDueAt ? null : (dueAt ?? current.dueAt),
+      status: current.status,
+    );
+    _cache[idx] = updated;
+    await _save();
+    await _syncReminder(updated);
+    return updated;
   }
 
   Future<void> updateStatus(String id, PromiseStatus status) async {
     await _loadIfNeeded();
     final idx = _cache.indexWhere((p) => p.id == id);
     if (idx == -1) return;
-    _cache[idx] = _cache[idx].copyWith(status: status);
+    final updated = _cache[idx].copyWith(status: status);
+    _cache[idx] = updated;
     await _save();
+    await _syncReminder(updated);
+  }
+
+  /// Re-applies the current reminders-enabled preference to every promise.
+  /// Call this after the promise-reminders toggle changes, so existing
+  /// scheduled reminders are cancelled (or (re)scheduled) to match.
+  Future<void> syncAllReminders() async {
+    await _loadIfNeeded();
+    for (final promise in _cache) {
+      if (promise.dueAt != null) {
+        await _syncReminder(promise);
+      }
+    }
+  }
+
+  Future<void> _syncReminder(NeuraPromise promise) async {
+    final active = promise.status == PromiseStatus.pending &&
+        promise.dueAt != null &&
+        _remindersEnabled();
+    if (!active) {
+      await _scheduler.cancelPromiseReminder(promise.id);
+      return;
+    }
+    await _scheduler.schedulePromiseReminder(
+      promiseId: promise.id,
+      description: promise.description,
+      dueAt: promise.dueAt!,
+    );
   }
 
   Future<int> openCount() async {

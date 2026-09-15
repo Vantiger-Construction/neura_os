@@ -158,6 +158,7 @@ class NeuraAiService {
         yield blocked;
         return;
       }
+      final audience = NeuraAudienceService.instance.currentAudience;
 
       final openAiKey = await NeuraModelCredentials.instance.read(
         NeuraModelProvider.openAi,
@@ -166,6 +167,8 @@ class NeuraAiService {
         final systemPrompt =
             await NeuraPromptBuilder.instance.buildSystemMessage(
           agentId: agentId,
+          audience: audience,
+          module: roomId,
           includePersistentMemory: policy.persistMemory,
         );
         cancel.throwIfCancelled();
@@ -185,6 +188,8 @@ class NeuraAiService {
 
       final systemPrompt = await NeuraPromptBuilder.instance.buildSystemMessage(
         agentId: agentId,
+        audience: audience,
+        module: roomId,
         includePersistentMemory: policy.persistMemory,
       );
       cancel.throwIfCancelled();
