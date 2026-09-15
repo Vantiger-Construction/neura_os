@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../after_storm/services/after_storm_service.dart';
 import '../core/memory/memory_graph_service.dart';
 import '../intelligence/capability_registry.dart';
@@ -11,7 +13,9 @@ import '../joy_engine/joy_engine.dart';
 import '../joy_engine/joy_types.dart';
 import '../modules/human/human_prefs_controller.dart';
 import '../modules/mood/mood_store.dart';
+import '../modules/quests/quest_store.dart';
 import '../relationships/models/relationship_profile.dart';
+import '../relationships/services/distress_detector.dart';
 import '../relationships/services/relationship_insight_service.dart';
 import '../relationships/services/relationship_profile_service.dart';
 import '../reliability/safe_boot.dart';
@@ -151,6 +155,8 @@ class ProactiveBannerService {
     if (relationship != null) candidates.add(relationship);
     final joy = await _joyCandidate(now, snapshot);
     if (joy != null) candidates.add(joy);
+    final streakJoy = await _streakJoyCandidate(now);
+    if (streakJoy != null) candidates.add(streakJoy);
     if (candidates.isEmpty) return null;
 
     final inStorm = await _inStormContext(now);
@@ -166,8 +172,11 @@ class ProactiveBannerService {
     if (eligible.isEmpty) return null;
 
     final mood = snapshot.value(NeuraSignalKind.mood);
-    final distress =
-        mood == null ? 0.0 : ((0.5 - mood) * 1.4).clamp(0.0, 0.7).toDouble();
+    final recentMoods = await _recentMoodsNeg2to2();
+    final distress = computeDistressScore(
+      moodValue: mood,
+      recentMoods: recentMoods,
+    );
     final council =
         await NeuraIntelligenceController.instance.evaluateCandidates(
       candidates: eligible.map((item) => item.candidate),
@@ -216,6 +225,31 @@ class ProactiveBannerService {
         'lastReceiptId': banner.receipt.id,
       }, generation);
     });
+  }
+
+  /// The guardrail-facing distress score, bounded to 0..1. Blends the
+  /// existing raw-mood-arithmetic estimate with [DistressDetector]'s real
+  /// multi-signal detection: when the detector judges the user actively
+  /// distressed, the score is floored at a high value even if the single
+  /// mood sample alone looked mild, so a corroborated signal can never be
+  /// diluted by a single noisy reading.
+  @visibleForTesting
+  static double computeDistressScore({
+    required double? moodValue,
+    required List<int> recentMoods,
+    DistressDetector? detector,
+  }) {
+    final rawMoodDistress = moodValue == null
+        ? 0.0
+        : ((0.5 - moodValue) * 1.4).clamp(0.0, 0.7).toDouble();
+    final signal = (detector ?? const DistressDetector()).detect(
+      recentMoods: recentMoods,
+      appOpensLastHour: 0,
+      lotsOfNegativeWords: false,
+    );
+    return signal.active
+        ? rawMoodDistress.clamp(0.75, 1.0).toDouble()
+        : rawMoodDistress;
   }
 
   _BannerCandidate _radarBanner(NeuraIntelligenceCandidate candidate) {
@@ -292,6 +326,53 @@ class ProactiveBannerService {
     if (score == -1) return NeuraMood.stressed;
     if (score >= 1) return NeuraMood.energized;
     return NeuraMood.neutral;
+  }
+
+  /// Round-number streak lengths worth celebrating. The candidate id embeds
+  /// the milestone value itself (not just the date), so this only fires the
+  /// day the streak lands exactly on one of these numbers -- naturally once
+  /// per milestone, since every other day's streak count misses the list.
+  static const List<int> _streakMilestones = [7, 14, 30, 60, 90, 180, 365];
+
+  @visibleForTesting
+  static bool isStreakMilestone(int streak) =>
+      _streakMilestones.contains(streak);
+
+  Future<_BannerCandidate?> _streakJoyCandidate(DateTime now) async {
+    try {
+      final streak = await QuestStore.instance.currentStreak();
+      if (!isStreakMilestone(streak)) return null;
+      final moment = JoyEngine().pickMoment(
+        NeuraMood.energized,
+        intent: NeuraIntent.seekingProgress,
+      );
+      final candidate = NeuraIntelligenceCandidate(
+        id: 'joy:streak:$streak:${now.year}-${now.month}-${now.day}',
+        capabilityId: NeuraCapabilityRegistry.openAppModule,
+        specialistId: 'joy_specialist',
+        title: '$streak days in a row',
+        body: moment.description,
+        createdAt: now,
+        expiresAt: now.add(const Duration(hours: 12)),
+        evidence: const [],
+        benefit: 0.72,
+        urgency: 0.3,
+        disruption: 0.12,
+        confidence: 0.9,
+        payload: {
+          'opportunity_kind': 'joy',
+          'module': 'joy_engine',
+          'streak_days': streak,
+        },
+      );
+      return _BannerCandidate(
+        candidate: candidate,
+        kind: ProactiveBannerKind.joy,
+        joyMoment: moment,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<_BannerCandidate?> _relationshipCandidate(DateTime now) async {

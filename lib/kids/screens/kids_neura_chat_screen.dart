@@ -12,15 +12,15 @@ import '../../widgets/neura_cloud_request_preview.dart';
 /// Real Neura chat for Kids Mode. Replaces the old stub (which only ever
 /// displayed the system prompt it built, never called an LLM).
 ///
-/// Safety note: [NeuraPromptBuilder.buildSystemMessage]'s `audience`
-/// parameter is currently unused internally -- the actual kid-safety gate is
-/// [Guardrails], which reads the *global, persisted* [NeuraAudienceService]
-/// setting (see NeuraAiService._checkGuardrails). Kids Mode itself never set
-/// that global toggle, so without this, a child using this screen would run
-/// under whatever audience the adult had last chosen in Settings. This
-/// screen now force-sets it to `child` for as long as it's open and restores
-/// the previous value on exit, so guardrails are actually correct while a
-/// child could plausibly be typing.
+/// Safety note: both [Guardrails] (see NeuraAiService._checkGuardrails) and
+/// the outgoing system prompt (via
+/// [NeuraPromptBuilder.buildSystemMessage]'s `audience` parameter) key off
+/// the *global, persisted* [NeuraAudienceService] setting. Kids Mode itself
+/// never set that global toggle, so without this, a child using this screen
+/// would run under whatever audience the adult had last chosen in Settings.
+/// This screen now force-sets it to `child` for as long as it's open and
+/// restores the previous value on exit, so both guardrails and the model's
+/// own system prompt are correct while a child could plausibly be typing.
 ///
 /// Privacy note: unlike the adult chat screen, turns here are deliberately
 /// NOT written to [MemoryGraphService] -- a child's conversation shouldn't

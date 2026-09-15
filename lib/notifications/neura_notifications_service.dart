@@ -38,6 +38,22 @@ class NeuraNotificationsService {
   static const _legacyOverdueId = 1002;
   static const _dailyMoodNudgeId = 1003;
 
+  /// Deterministic per-promise notification id derived from the promise's
+  /// uuid, so the same promise always maps to the same id across app
+  /// restarts (required to cancel a specific reminder later) without
+  /// persisting a separate id table. A plain FNV-1a hash is used instead of
+  /// [String.hashCode] because Dart does not guarantee the latter is stable
+  /// across SDK versions.
+  static int _promiseReminderId(String promiseId) {
+    var hash = 0x811c9dc5;
+    for (final unit in promiseId.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    final id = hash & 0x7FFFFFFF;
+    return id < 10000 ? id + 10000 : id;
+  }
+
   FlutterLocalNotificationsPlugin? _plugin;
   bool _initialized = false;
   bool _available = false;
@@ -134,6 +150,44 @@ class NeuraNotificationsService {
     if (!_available || plugin == null) return;
     try {
       await plugin.cancel(id: _dailyMoodNudgeId);
+    } catch (e, st) {
+      await AppLog.instance.caught('notifications_cancel_failed', e, st);
+    }
+  }
+
+  /// Schedules a one-time reminder for a promise's due date. Scheduling
+  /// again for the same [promiseId] (e.g. after the due date changes)
+  /// replaces the previous schedule, matching the existing
+  /// [scheduleDailyMoodNudge] re-scheduling behavior. A [dueAt] that has
+  /// already passed is silently skipped rather than firing immediately.
+  Future<void> schedulePromiseReminder({
+    required String promiseId,
+    required String description,
+    required DateTime dueAt,
+  }) async {
+    if (!await _ready()) return;
+    if (!dueAt.isAfter(DateTime.now())) return;
+    try {
+      final scheduled = tz.TZDateTime.from(dueAt.toUtc(), tz.UTC);
+      if (!deliveryAllowed) return;
+      await _plugin!.zonedSchedule(
+        id: _promiseReminderId(promiseId),
+        title: 'A promise is due',
+        body: description,
+        scheduledDate: scheduled,
+        notificationDetails: const NotificationDetails(),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
+    } catch (e, st) {
+      await AppLog.instance.caught('notifications_schedule_failed', e, st);
+    }
+  }
+
+  Future<void> cancelPromiseReminder(String promiseId) async {
+    final plugin = _plugin;
+    if (!_available || plugin == null) return;
+    try {
+      await plugin.cancel(id: _promiseReminderId(promiseId));
     } catch (e, st) {
       await AppLog.instance.caught('notifications_cancel_failed', e, st);
     }

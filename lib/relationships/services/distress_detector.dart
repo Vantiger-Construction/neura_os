@@ -6,6 +6,8 @@ class DistressSignal {
 }
 
 class DistressDetector {
+  const DistressDetector();
+
   DistressSignal detect({
     required List<int> recentMoods,
     required int appOpensLastHour,

@@ -11,6 +11,7 @@ class NeuraNotificationsPrefs {
   final bool dailyMoodNudgeEnabled;
   final int dailyMoodNudgeHour;
   final int dailyMoodNudgeMinute;
+  final bool promiseReminderEnabled;
 
   const NeuraNotificationsPrefs({
     this.weeklyReviewReadyEnabled = false,
@@ -18,6 +19,7 @@ class NeuraNotificationsPrefs {
     this.dailyMoodNudgeEnabled = false,
     this.dailyMoodNudgeHour = 19,
     this.dailyMoodNudgeMinute = 0,
+    this.promiseReminderEnabled = false,
   });
 
   NeuraNotificationsPrefs copyWith({
@@ -26,6 +28,7 @@ class NeuraNotificationsPrefs {
     bool? dailyMoodNudgeEnabled,
     int? dailyMoodNudgeHour,
     int? dailyMoodNudgeMinute,
+    bool? promiseReminderEnabled,
   }) {
     return NeuraNotificationsPrefs(
       weeklyReviewReadyEnabled:
@@ -35,6 +38,8 @@ class NeuraNotificationsPrefs {
           dailyMoodNudgeEnabled ?? this.dailyMoodNudgeEnabled,
       dailyMoodNudgeHour: dailyMoodNudgeHour ?? this.dailyMoodNudgeHour,
       dailyMoodNudgeMinute: dailyMoodNudgeMinute ?? this.dailyMoodNudgeMinute,
+      promiseReminderEnabled:
+          promiseReminderEnabled ?? this.promiseReminderEnabled,
     );
   }
 
@@ -44,6 +49,7 @@ class NeuraNotificationsPrefs {
         'dailyMoodNudgeEnabled': dailyMoodNudgeEnabled,
         'dailyMoodNudgeHour': dailyMoodNudgeHour,
         'dailyMoodNudgeMinute': dailyMoodNudgeMinute,
+        'promiseReminderEnabled': promiseReminderEnabled,
       };
 
   static NeuraNotificationsPrefs fromMap(Map<String, dynamic> map) {
@@ -54,6 +60,7 @@ class NeuraNotificationsPrefs {
       dailyMoodNudgeEnabled: map['dailyMoodNudgeEnabled'] as bool? ?? false,
       dailyMoodNudgeHour: (map['dailyMoodNudgeHour'] as num?)?.toInt() ?? 19,
       dailyMoodNudgeMinute: (map['dailyMoodNudgeMinute'] as num?)?.toInt() ?? 0,
+      promiseReminderEnabled: map['promiseReminderEnabled'] as bool? ?? false,
     );
   }
 }

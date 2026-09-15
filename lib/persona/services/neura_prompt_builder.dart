@@ -43,9 +43,17 @@ class NeuraPromptBuilder {
   /// not read either the consolidated profile or encrypted memory graph from
   /// disk. The caller can still provide the current in-memory conversation,
   /// giving private rooms working memory without long-term recall.
+  ///
+  /// [module] should be the room id from [NeuraChatPolicy.knownRoomIds] (or
+  /// another caller-defined module identifier) when the call site has one --
+  /// it differentiates the model's framing per room. [audience] gates a
+  /// dedicated safety profile onto the prompt itself: passing it is the only
+  /// way [NeuraAudience.child]/[NeuraAudience.teen] framing actually reaches
+  /// the model, since [resolveStyle]'s persona/mood pipeline does not use it.
   Future<String> buildSystemMessage({
     String agentId = AgentPersonaCatalog.generalId,
     NeuraAudience? audience,
+    String? module,
     bool includePersistentMemory = true,
   }) async {
     final style = await resolveStyle(agentId: agentId, audience: audience);
@@ -57,10 +65,54 @@ class NeuraPromptBuilder {
     final parts = [
       NeuraCharacterCharter.systemPrompt,
       style.systemPromptSnippet,
+      _moduleContextFor(module),
+      _audienceSafetyProfileFor(audience),
       profileSnippet,
       memorySnippet,
     ].where((s) => s.isNotEmpty);
     return parts.join('\n\n');
+  }
+
+  static const Map<String, String> _moduleContext = {
+    'penthouse': "This is Neura's main, general conversation space.",
+    'reflection_bay': 'This is Reflection Bay: a quiet, ephemeral space for '
+        'processing feelings in the moment. Keep replies reflective rather '
+        'than task-focused.',
+    'mood_den': 'This is the Mood Den: a focused space for a quick mood '
+        'check-in. Keep replies brief and centered on how the user feels '
+        'right now.',
+    'dream_atrium': 'This is the Dream Atrium: a space for exploring dreams '
+        'and what they might mean. Keep replies curious and exploratory, '
+        'never clinical.',
+    'joy_lounge': 'This is the Joy Lounge: a lighter, playful space for fun '
+        'and connection.',
+    'legacy_vault': 'This is the Legacy Vault: a space for recording things '
+        'meant to be kept and remembered long-term. Treat entries as '
+        'significant and worth preserving carefully.',
+  };
+
+  String _moduleContextFor(String? module) {
+    if (module == null) return '';
+    return _moduleContext[module] ?? '';
+  }
+
+  String _audienceSafetyProfileFor(NeuraAudience? audience) {
+    switch (audience) {
+      case NeuraAudience.child:
+        return 'The person you are talking with is a CHILD. Use simple, '
+            'warm, age-appropriate language. Never discuss romance, '
+            'violence, self-harm, or other mature themes. If they mention '
+            'being unsafe or hurt, gently tell them to tell a trusted grown-up '
+            'right away instead of handling it yourself.';
+      case NeuraAudience.teen:
+        return 'The person you are talking with is a TEENAGER. Keep '
+            'language age-appropriate and avoid explicit or mature content. '
+            'Take any mention of self-harm or crisis seriously and '
+            'encourage reaching out to a trusted adult or a crisis line.';
+      case NeuraAudience.adult:
+      case null:
+        return '';
+    }
   }
 
   Future<String> _buildProfileSnippet() async {

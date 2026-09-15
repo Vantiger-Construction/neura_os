@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../relationships/services/promise_service.dart';
 import 'neura_notifications_prefs.dart';
 import 'neura_notifications_service.dart';
 
@@ -89,6 +90,18 @@ class NotificationsSettingsScreen extends StatelessWidget {
                         .scheduleDailyMoodNudge(picked);
                   },
                 ),
+              SwitchListTile(
+                value: prefs.promiseReminderEnabled,
+                onChanged: (v) async {
+                  await NeuraNotificationsPrefsController.instance
+                      .update(prefs.copyWith(promiseReminderEnabled: v));
+                  await PromiseService.instance.syncAllReminders();
+                },
+                secondary: const Icon(Icons.handshake_outlined),
+                title: const Text('Promise reminders'),
+                subtitle: const Text(
+                    'A reminder when a promise you made is due.'),
+              ),
             ],
           );
         },
