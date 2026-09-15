@@ -1,3 +1,6 @@
+import '../constitution/neura_personal_constitution.dart';
+import '../intent_compiler/neura_action_graph.dart'
+    show NeuraActionEffect, NeuraApprovalTier;
 import 'capability_registry.dart';
 import 'consent_ledger.dart';
 import 'models.dart';
@@ -19,6 +22,9 @@ class NeuraAutonomyPolicy {
     required this.recentlyDeclined,
     this.quietHours = false,
     this.specialistReputation = const {},
+    this.constitution = const NeuraPersonalConstitution(),
+    this.bandwidthStrain = 0,
+    this.outcomeLoopSuppression = false,
   });
 
   final bool enabled;
@@ -30,6 +36,28 @@ class NeuraAutonomyPolicy {
   final bool safeMode;
   final bool recentlyDeclined;
   final bool quietHours;
+
+  /// 0..1 cognitive-load estimate from `cognitive/neura_bandwidth_engine.dart`
+  /// (the same estimator Adaptive Intent uses). Treated the same way
+  /// `focusMode == deepWork` already is: it raises the urgency bar for
+  /// non-urgent candidates rather than blocking outright, so a genuinely
+  /// urgent suggestion can still get through a high-strain moment.
+  final double bandwidthStrain;
+
+  /// True when `adaptive_intent/neura_adaptive_outcome_loop.dart`'s latest
+  /// evaluation of recent Adaptive Intent session outcomes recommends
+  /// backing off proactive suggestions (abandoned sessions, low completion,
+  /// high effort). Shares the same suppression path as [bandwidthStrain] --
+  /// both are "hold back" signals from the cognitive/adaptive-intent side
+  /// of the app that the Autonomy Kernel previously never saw.
+  final bool outcomeLoopSuppression;
+
+  /// Consulted as an additional, tightening-only check for capabilities that
+  /// map to a constitution-governed category (see
+  /// [NeuraAutonomyKernel._constitutionEffectFor]). It can only turn an
+  /// `allow`/`askApproval` outcome stricter, never turn a `suppressed` or
+  /// `blocked` outcome into something more permissive.
+  final NeuraPersonalConstitution constitution;
 
   /// Per-specialist confidence multiplier learned from past user outcomes
   /// (accepted vs. dismissed suggestions), bounded to
@@ -49,6 +77,11 @@ class NeuraAutonomyKernel {
   /// ever overriding the attention, privacy, or consent boundaries above.
   static const double minSpecialistReputation = 0.75;
   static const double maxSpecialistReputation = 1.15;
+
+  /// Matches `NeuraBandwidthEngine`'s own recovery-mode threshold, so the
+  /// Autonomy Kernel protects the same high-strain state the Bandwidth
+  /// Engine itself would already switch to recovery mode for.
+  static const double highBandwidthStrain = 0.82;
 
   NeuraAutonomyKernel({
     NeuraCapabilityRegistry? registry,
@@ -139,6 +172,21 @@ class NeuraAutonomyKernel {
       reasons.add(
         'Attention Guardian protected the active ${policy.focusMode} mode.',
       );
+    } else if ((policy.bandwidthStrain >= highBandwidthStrain ||
+            policy.outcomeLoopSuppression) &&
+        candidate.urgency < 0.85) {
+      outcome = NeuraDecisionOutcome.suppressed;
+      if (policy.bandwidthStrain >= highBandwidthStrain) {
+        reasons.add(
+          'Attention Guardian is protecting a high-strain cognitive state.',
+        );
+      }
+      if (policy.outcomeLoopSuppression) {
+        reasons.add(
+          'Recent Adaptive Intent outcomes recommend fewer proactive '
+          'suggestions right now.',
+        );
+      }
     } else if (policy.suggestionsToday >= policy.maxDailySuggestions) {
       outcome = NeuraDecisionOutcome.suppressed;
       reasons.add('The user-controlled daily suggestion limit was reached.');
@@ -163,6 +211,38 @@ class NeuraAutonomyKernel {
 
     if (policy.recentlyDeclined) {
       reasons.add('A recent dismissal reduced the candidate score.');
+    }
+
+    // A second, independent authority: the Personal Constitution (also
+    // consulted by Adaptive Intent and the cloud model router). This can
+    // only tighten an outcome the checks above already reached -- it never
+    // turns a suppressed or blocked candidate into an allowed one.
+    final constitutionEffect = _constitutionEffectFor(candidate.capabilityId);
+    if (constitutionEffect != null &&
+        (outcome == NeuraDecisionOutcome.allow ||
+            outcome == NeuraDecisionOutcome.askApproval)) {
+      final constitutionDecision = policy.constitution.evaluateEffect(
+        effect: constitutionEffect,
+        at: now,
+        safeMode: policy.safeMode,
+        containsSensitiveContent: candidate.evidence.any(
+          (evidence) => evidence.sensitivity == NeuraSensitivity.sensitive,
+        ),
+      );
+      if (!constitutionDecision.allowed) {
+        outcome = NeuraDecisionOutcome.blocked;
+        requiresApproval = false;
+        reasons.add('Personal Constitution: ${constitutionDecision.reason}');
+      } else if (constitutionDecision.requiredApproval !=
+              NeuraApprovalTier.none &&
+          outcome == NeuraDecisionOutcome.allow) {
+        outcome = NeuraDecisionOutcome.askApproval;
+        requiresApproval = true;
+        reasons.add(
+          'Personal Constitution requires a fresh confirmation for this '
+          'action.',
+        );
+      }
     }
 
     return NeuraDecisionReceipt(
@@ -193,4 +273,22 @@ class NeuraAutonomyKernel {
     DateTime now,
   ) =>
       '${candidate.id}:${now.microsecondsSinceEpoch}';
+
+  /// Maps a capability id to the [NeuraActionEffect] category the Personal
+  /// Constitution understands, or null when the capability has no
+  /// constitution-governed equivalent (e.g. it is purely navigational).
+  /// [NeuraCapabilityRegistry.moveMoney] is omitted deliberately: it is
+  /// already hard-blocked above as a critical capability, so a constitution
+  /// check on it would never be reached.
+  static NeuraActionEffect? _constitutionEffectFor(String capabilityId) {
+    return switch (capabilityId) {
+      NeuraCapabilityRegistry.changeLocalPlan => NeuraActionEffect.localWrite,
+      NeuraCapabilityRegistry.exportPrivateData => NeuraActionEffect.localWrite,
+      NeuraCapabilityRegistry.scheduleNotification =>
+        NeuraActionEffect.notification,
+      NeuraCapabilityRegistry.contactPerson =>
+        NeuraActionEffect.externalMessage,
+      _ => null,
+    };
+  }
 }

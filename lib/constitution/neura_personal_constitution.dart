@@ -13,6 +13,12 @@ class NeuraConstitutionDecision {
 }
 
 class NeuraPersonalConstitution {
+  /// [allowCloudAi] defaults to true, unlike every other flag here, because
+  /// cloud AI is Neura's core chat feature -- most users never open the
+  /// screen that edits this constitution. Defaulting it to false would
+  /// silently block chat for everyone who hasn't explicitly configured a
+  /// stricter constitution. Every other category defaults closed because
+  /// they gate optional, occasional actions instead.
   final bool allowCloudAi;
   final bool allowExternalMessages;
   final bool allowPurchases;
@@ -23,7 +29,7 @@ class NeuraPersonalConstitution {
   final int workHoursEnd;
 
   const NeuraPersonalConstitution({
-    this.allowCloudAi = false,
+    this.allowCloudAi = true,
     this.allowExternalMessages = false,
     this.allowPurchases = false,
     this.allowCalendarWrites = true,
@@ -76,7 +82,27 @@ class NeuraPersonalConstitution {
     required DateTime at,
     bool safeMode = false,
   }) {
-    if (safeMode && action.effect.isExternal) {
+    return evaluateEffect(
+      effect: action.effect,
+      at: at,
+      safeMode: safeMode,
+      isWorkRelated: action.isWorkRelated,
+      containsSensitiveContent: action.containsSensitiveContent,
+    );
+  }
+
+  /// The same evaluation [evaluate] performs, without requiring a full
+  /// [NeuraActionStep]. Lets callers outside the Adaptive Intent / Intent
+  /// Compiler pipeline (the Autonomy Kernel, the cloud model router) consult
+  /// this same policy for the one effect they care about.
+  NeuraConstitutionDecision evaluateEffect({
+    required NeuraActionEffect effect,
+    required DateTime at,
+    bool safeMode = false,
+    bool isWorkRelated = false,
+    bool containsSensitiveContent = false,
+  }) {
+    if (safeMode && effect.isExternal) {
       return const NeuraConstitutionDecision(
         allowed: false,
         reason: 'Safe Mode blocks every external effect.',
@@ -84,9 +110,9 @@ class NeuraPersonalConstitution {
       );
     }
 
-    if (action.containsSensitiveContent &&
+    if (containsSensitiveContent &&
         keepSensitiveContentLocal &&
-        action.effect == NeuraActionEffect.cloudRequest) {
+        effect == NeuraActionEffect.cloudRequest) {
       return const NeuraConstitutionDecision(
         allowed: false,
         reason:
@@ -95,7 +121,7 @@ class NeuraPersonalConstitution {
       );
     }
 
-    if (action.effect == NeuraActionEffect.cloudRequest && !allowCloudAi) {
+    if (effect == NeuraActionEffect.cloudRequest && !allowCloudAi) {
       return const NeuraConstitutionDecision(
         allowed: false,
         reason: 'Cloud AI is disabled by the personal constitution.',
@@ -103,8 +129,7 @@ class NeuraPersonalConstitution {
       );
     }
 
-    if (action.effect == NeuraActionEffect.externalMessage &&
-        !allowExternalMessages) {
+    if (effect == NeuraActionEffect.externalMessage && !allowExternalMessages) {
       return const NeuraConstitutionDecision(
         allowed: false,
         reason: 'External messages are disabled by the personal constitution.',
@@ -112,7 +137,7 @@ class NeuraPersonalConstitution {
       );
     }
 
-    if (action.effect == NeuraActionEffect.purchase && !allowPurchases) {
+    if (effect == NeuraActionEffect.purchase && !allowPurchases) {
       return const NeuraConstitutionDecision(
         allowed: false,
         reason: 'Purchases are disabled by the personal constitution.',
@@ -120,7 +145,7 @@ class NeuraPersonalConstitution {
       );
     }
 
-    if (action.effect == NeuraActionEffect.calendar && !allowCalendarWrites) {
+    if (effect == NeuraActionEffect.calendar && !allowCalendarWrites) {
       return const NeuraConstitutionDecision(
         allowed: false,
         reason: 'Calendar changes are disabled by the personal constitution.',
@@ -128,9 +153,7 @@ class NeuraPersonalConstitution {
       );
     }
 
-    if (action.isWorkRelated &&
-        action.effect.isExternal &&
-        !_insideWorkHours(at.hour)) {
+    if (isWorkRelated && effect.isExternal && !_insideWorkHours(at.hour)) {
       return const NeuraConstitutionDecision(
         allowed: false,
         reason:
@@ -139,7 +162,7 @@ class NeuraPersonalConstitution {
       );
     }
 
-    final approval = switch (action.effect) {
+    final approval = switch (effect) {
       NeuraActionEffect.localRead => NeuraApprovalTier.none,
       NeuraActionEffect.localWrite ||
       NeuraActionEffect.notification ||

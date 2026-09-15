@@ -6,6 +6,19 @@ import 'fresh_approval_lease.dart';
 /// Production persistence may wrap this registry with platform secure storage,
 /// but raw action arguments must never be persisted. Only precomputed action
 /// fingerprints and bounded scope identifiers belong in a lease.
+///
+/// FLAGGED (2026-09-14, round-2 audit, item 3): `living_intelligence/` is
+/// not instantiated from `main.dart` or `startup/` -- this whole subsystem
+/// currently appears unreachable from the running app. This class shares
+/// its name with the unrelated, live `NeuraFreshApprovalLeaseRegistry` in
+/// `intelligence/fresh_approval_lease.dart` (used by `action_loom.dart`
+/// for Quest execution), which is a source of confusion even though Dart's
+/// per-library scoping keeps them from actually colliding. This file was
+/// deliberately left in place rather than deleted -- removing a subsystem
+/// someone built is a separate decision from reconciling the systems that
+/// are live. Before building on this file further, confirm whether
+/// `living_intelligence/` is meant to be wired in, superseded by
+/// `intelligence/`, or removed.
 class NeuraFreshApprovalLeaseRegistry {
   NeuraFreshApprovalLeaseRegistry({
     this.policy = const NeuraFreshApprovalLeasePolicy(),
