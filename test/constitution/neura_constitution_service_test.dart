@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -10,7 +12,9 @@ void main() {
     await NeuraPrefsCache.init();
   });
 
-  setUp(() {
+  setUp(() async {
+    await NeuraPrefsCache.prefs.remove('neura.constitution.v1');
+    await NeuraPrefsCache.prefs.remove('neura.adaptive_intent.state.v1');
     NeuraConstitutionService.instance.resetAfterDataWipe();
   });
 
@@ -42,6 +46,43 @@ void main() {
     await service.load();
     expect(service.current.allowPurchases, isTrue);
     expect(service.current.workHoursStart, 9);
+  });
+
+  test('load migrates an explicit Adaptive Intent cloud boundary', () async {
+    await NeuraPrefsCache.prefs.setString(
+      'neura.adaptive_intent.state.v1',
+      jsonEncode({
+        'v': 1,
+        'saved_at': '2026-01-01T00:00:00.000Z',
+        'signals': <String, Object?>{},
+        'constitution': {
+          'allow_cloud_ai': false,
+          'allow_external_messages': false,
+          'keep_sensitive_content_local': true,
+        },
+      }),
+    );
+
+    final service = NeuraConstitutionService.instance;
+    await service.load();
+
+    expect(service.current.allowCloudAi, isFalse);
+    expect(
+      NeuraPrefsCache.prefs.getString('neura.constitution.v1'),
+      isNotNull,
+    );
+  });
+
+  test('corrupt persisted policy fails closed for cloud AI', () async {
+    await NeuraPrefsCache.prefs.setString(
+      'neura.constitution.v1',
+      '{not-valid-json',
+    );
+
+    final service = NeuraConstitutionService.instance;
+    await service.load();
+
+    expect(service.current.allowCloudAi, isFalse);
   });
 
   test('resetAfterDataWipe forgets the in-memory constitution', () async {

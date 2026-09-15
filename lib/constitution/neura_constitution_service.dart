@@ -6,19 +6,17 @@ import 'neura_personal_constitution.dart';
 /// Shared, standalone persistence for [NeuraPersonalConstitution], read by
 /// the Autonomy Kernel and the cloud model router.
 ///
-/// This is deliberately separate from Adaptive Intent's own embedded copy
-/// (`NeuraAdaptiveIntentSnapshot.constitution`), which remains untouched by
-/// this service. The two are not synced yet -- a constitution edited from
-/// the Adaptive Intent screen does not currently reach this service, and
-/// vice versa. Pointing one at the other is a follow-up, not done here,
-/// since Adaptive Intent's snapshot has its own freshness/versioning
-/// contract this service should not disturb blind.
+/// Adaptive Intent historically embedded the same settings in its own
+/// snapshot. [load] imports that value once when this store has no value yet,
+/// preserving an existing explicit boundary without adopting the snapshot's
+/// separate signal-freshness contract.
 class NeuraConstitutionService {
   NeuraConstitutionService._();
 
   static final NeuraConstitutionService instance = NeuraConstitutionService._();
 
   static const _key = 'neura.constitution.v1';
+  static const _legacyAdaptiveIntentKey = 'neura.adaptive_intent.state.v1';
 
   NeuraPersonalConstitution _current = const NeuraPersonalConstitution();
   bool _loaded = false;
@@ -30,7 +28,14 @@ class NeuraConstitutionService {
 
   Future<void> load() async {
     if (_loaded) return;
-    final raw = NeuraPrefsCache.prefsOrNull?.getString(_key);
+    final prefs = NeuraPrefsCache.prefsOrNull;
+    if (prefs == null) {
+      throw StateError(
+        'Personal constitution is unavailable before preferences initialize.',
+      );
+    }
+
+    final raw = prefs.getString(_key);
     if (raw != null && raw.trim().isNotEmpty) {
       try {
         final decoded = jsonDecode(raw);
@@ -38,8 +43,19 @@ class NeuraConstitutionService {
           _current = _fromJson(Map<String, dynamic>.from(decoded));
         }
       } catch (_) {
-        // Self-heal: corrupted JSON -> keep the default constitution.
-        _current = const NeuraPersonalConstitution();
+        // A damaged persisted boundary must not silently turn cloud AI on.
+        _current = const NeuraPersonalConstitution(allowCloudAi: false);
+      }
+    } else {
+      final legacyRaw = prefs.getString(_legacyAdaptiveIntentKey);
+      final migrated = _fromLegacyAdaptiveIntent(legacyRaw);
+      if (migrated != null) {
+        _current = migrated;
+        try {
+          await prefs.setString(_key, jsonEncode(_toJson(migrated)));
+        } catch (_) {
+          // The migrated in-memory boundary still applies for this session.
+        }
       }
     }
     _loaded = true;
@@ -96,5 +112,20 @@ class NeuraConstitutionService {
       workHoursStart: boundedInt('work_hours_start', defaults.workHoursStart),
       workHoursEnd: boundedInt('work_hours_end', defaults.workHoursEnd),
     ).normalized();
+  }
+
+  static NeuraPersonalConstitution? _fromLegacyAdaptiveIntent(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final constitution = decoded['constitution'];
+      if (constitution is! Map || constitution['allow_cloud_ai'] is! bool) {
+        return null;
+      }
+      return _fromJson(Map<String, dynamic>.from(constitution));
+    } catch (_) {
+      return null;
+    }
   }
 }

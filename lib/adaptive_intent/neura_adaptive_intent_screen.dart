@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../cognitive/neura_cognitive_state.dart';
+import '../constitution/neura_constitution_service.dart';
+import '../constitution/neura_personal_constitution.dart';
 import '../intent_compiler/neura_action_graph.dart';
 import 'neura_adaptive_intent_controller.dart';
 
@@ -100,6 +102,7 @@ class _NeuraAdaptiveIntentScreenState extends State<NeuraAdaptiveIntentScreen> {
     if (confirmed != true) return;
     try {
       await _controller.resetPersistedState();
+      await NeuraConstitutionService.instance.save(_controller.constitution);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -346,6 +349,11 @@ class _ConstitutionCard extends StatelessWidget {
 
   final NeuraAdaptiveIntentController controller;
 
+  void _update(NeuraPersonalConstitution value) {
+    controller.updateConstitution(value);
+    unawaited(NeuraConstitutionService.instance.save(value));
+  }
+
   @override
   Widget build(BuildContext context) {
     final constitution = controller.constitution;
@@ -362,7 +370,7 @@ class _ConstitutionCard extends StatelessWidget {
             value: constitution.allowCloudAi,
             onChanged: controller.safeMode
                 ? null
-                : (value) => controller.updateConstitution(
+                : (value) => _update(
                       constitution.copyWith(allowCloudAi: value),
                     ),
           ),
@@ -372,14 +380,14 @@ class _ConstitutionCard extends StatelessWidget {
             value: constitution.allowExternalMessages,
             onChanged: controller.safeMode
                 ? null
-                : (value) => controller.updateConstitution(
+                : (value) => _update(
                       constitution.copyWith(allowExternalMessages: value),
                     ),
           ),
           SwitchListTile(
             title: const Text('Require external preview'),
             value: constitution.requireExternalPreview,
-            onChanged: (value) => controller.updateConstitution(
+            onChanged: (value) => _update(
               constitution.copyWith(requireExternalPreview: value),
             ),
           ),
@@ -389,14 +397,14 @@ class _ConstitutionCard extends StatelessWidget {
             value: constitution.allowPurchases,
             onChanged: controller.safeMode
                 ? null
-                : (value) => controller.updateConstitution(
+                : (value) => _update(
                       constitution.copyWith(allowPurchases: value),
                     ),
           ),
           SwitchListTile(
             title: const Text('Keep sensitive content local'),
             value: constitution.keepSensitiveContentLocal,
-            onChanged: (value) => controller.updateConstitution(
+            onChanged: (value) => _update(
               constitution.copyWith(keepSensitiveContentLocal: value),
             ),
           ),
@@ -405,7 +413,7 @@ class _ConstitutionCard extends StatelessWidget {
             value: constitution.allowCalendarWrites,
             onChanged: controller.safeMode
                 ? null
-                : (value) => controller.updateConstitution(
+                : (value) => _update(
                       constitution.copyWith(allowCalendarWrites: value),
                     ),
           ),
@@ -417,7 +425,7 @@ class _ConstitutionCard extends StatelessWidget {
                   child: _HourPicker(
                     label: 'Work starts',
                     value: constitution.workHoursStart,
-                    onChanged: (value) => controller.updateConstitution(
+                    onChanged: (value) => _update(
                       constitution.copyWith(workHoursStart: value),
                     ),
                   ),
@@ -427,7 +435,7 @@ class _ConstitutionCard extends StatelessWidget {
                   child: _HourPicker(
                     label: 'Work ends',
                     value: constitution.workHoursEnd,
-                    onChanged: (value) => controller.updateConstitution(
+                    onChanged: (value) => _update(
                       constitution.copyWith(workHoursEnd: value),
                     ),
                   ),

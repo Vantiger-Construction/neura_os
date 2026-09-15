@@ -213,8 +213,7 @@ class NeuraSecureModelRouter {
     List<NeuraModelTransport>? transports,
     NeuraPersonalConstitution? constitution,
   })  : _credentials = credentials ?? NeuraModelCredentials.instance,
-        _constitution =
-            constitution ?? NeuraConstitutionService.instance.current {
+        _constitutionOverride = constitution {
     final availableTransports =
         transports ?? [NeuraOpenAiTransport(), NeuraAnthropicTransport()];
     _transports = {
@@ -224,13 +223,17 @@ class NeuraSecureModelRouter {
   }
 
   final NeuraModelCredentials _credentials;
-  final NeuraPersonalConstitution _constitution;
+  final NeuraPersonalConstitution? _constitutionOverride;
   late final Map<NeuraModelProvider, NeuraModelTransport> _transports;
 
   Future<NeuraModelResponse> complete(
     NeuraModelRequest request, {
     required NeuraCloudApprovalHandler requestApproval,
   }) async {
+    _throwIfSafeMode();
+    if (_constitutionOverride == null) {
+      await NeuraConstitutionService.instance.load();
+    }
     _throwIfSafeMode();
     _throwIfConstitutionBlocks(request);
     final candidates = <NeuraModelProvider>[
@@ -241,8 +244,10 @@ class NeuraSecureModelRouter {
     Object? lastError;
     for (final provider in candidates) {
       _throwIfSafeMode();
+      _throwIfConstitutionBlocks(request);
       final key = await _credentials.read(provider);
       _throwIfSafeMode();
+      _throwIfConstitutionBlocks(request);
       if (key == null) continue;
 
       // Approval is deliberately requested inside the provider loop. A
@@ -253,6 +258,7 @@ class NeuraSecureModelRouter {
       if (!approved) {
         throw const NeuraCloudApprovalDenied();
       }
+      _throwIfConstitutionBlocks(request);
 
       final transport = _transports[provider];
       if (transport == null) continue;
@@ -278,14 +284,14 @@ class NeuraSecureModelRouter {
     }
   }
 
-  /// Checked once per [complete] call, before any provider-specific approval
-  /// or network call -- the decision does not depend on which provider ends
-  /// up serving the request. This is the same [NeuraPersonalConstitution]
-  /// Adaptive Intent and the Autonomy Kernel consult; a request a user's
-  /// constitution disallows is refused before they are ever asked to
-  /// approve it, not after.
+  /// Checked before approval and again immediately before each outbound
+  /// request. A production router reads the service's current value rather
+  /// than freezing a pre-load snapshot; an explicit test override stays
+  /// isolated from global state.
   void _throwIfConstitutionBlocks(NeuraModelRequest request) {
-    final decision = _constitution.evaluateEffect(
+    final constitution =
+        _constitutionOverride ?? NeuraConstitutionService.instance.current;
+    final decision = constitution.evaluateEffect(
       effect: NeuraActionEffect.cloudRequest,
       at: DateTime.now(),
       safeMode: SafeBoot.instance.safeMode.value,
