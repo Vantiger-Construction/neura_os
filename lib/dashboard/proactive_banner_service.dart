@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../adaptive_intent/neura_adaptive_outcome_loop.dart';
 import '../adaptive_intent/neura_live_signal_adapter.dart';
 import '../adaptive_intent/neura_outcome_store.dart';
@@ -156,12 +158,16 @@ class ProactiveBannerService {
       );
     }
 
+    // Read local mood history once for every candidate that needs it. This
+    // keeps dashboard evaluation consistent and avoids repeated local-store
+    // reads during a single app-open pass.
+    final recentMoods = await _recentMoodsOrEmpty();
     final candidates = <_BannerCandidate>[
       ..._radar.scan(snapshot: snapshot, now: now).map(_radarBanner),
     ];
-    final relationship = await _relationshipCandidate(now);
+    final relationship = await _relationshipCandidate(now, recentMoods);
     if (relationship != null) candidates.add(relationship);
-    final joy = await _joyCandidate(now, snapshot);
+    final joy = await _joyCandidate(now, snapshot, recentMoods);
     if (joy != null) candidates.add(joy);
     final streakJoy = await _streakJoyCandidate(now);
     if (streakJoy != null) candidates.add(streakJoy);
@@ -180,8 +186,10 @@ class ProactiveBannerService {
     if (eligible.isEmpty) return null;
 
     final mood = snapshot.value(NeuraSignalKind.mood);
-    final distress =
-        mood == null ? 0.0 : ((0.5 - mood) * 1.4).clamp(0.0, 0.7).toDouble();
+    final distress = computeDistressScore(
+      moodValue: mood,
+      recentMoods: recentMoods,
+    );
     final cognitive = await _cognitiveSuppressionSignals(now);
     final council =
         await NeuraIntelligenceController.instance.evaluateCandidates(
@@ -265,6 +273,32 @@ class ProactiveBannerService {
     }
   }
 
+  /// Computes the guardrail-facing distress score, bounded to 0..1. The
+  /// existing mood estimate remains the baseline, while a corroborated local
+  /// detector signal can only raise the score and make Neura more cautious.
+  @visibleForTesting
+  static double computeDistressScore({
+    required double? moodValue,
+    required List<int> recentMoods,
+    DistressDetector? detector,
+  }) {
+    final rawMoodDistress = moodValue == null
+        ? 0.0
+        : ((0.5 - moodValue) * 1.4).clamp(0.0, 0.7).toDouble();
+    // A local, reversible Care banner may respond to one sustained,
+    // user-recorded low-mood trend. Other DistressDetector consumers keep
+    // the more conservative multi-signal threshold of 3.
+    final signal =
+        (detector ?? const DistressDetector(activationThreshold: 2)).detect(
+      recentMoods: recentMoods,
+      appOpensLastHour: 0,
+      lotsOfNegativeWords: false,
+    );
+    return signal.active
+        ? rawMoodDistress.clamp(0.75, 1.0).toDouble()
+        : rawMoodDistress;
+  }
+
   _BannerCandidate _radarBanner(NeuraIntelligenceCandidate candidate) {
     final kind = switch (candidate.payload['opportunity_kind']) {
       'mood_reset' => ProactiveBannerKind.wellness,
@@ -297,14 +331,22 @@ class ProactiveBannerService {
         .toList(growable: false);
   }
 
+  Future<List<int>> _recentMoodsOrEmpty() async {
+    try {
+      return await _recentMoodsNeg2to2();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<_BannerCandidate?> _joyCandidate(
     DateTime now,
     NeuraIntelligenceSnapshot snapshot,
+    List<int> recentMoods,
   ) async {
     try {
-      final moods = await _recentMoodsNeg2to2();
-      if (moods.isEmpty) return null;
-      final moment = JoyEngine().pickMoment(_mapMood(moods.last));
+      if (recentMoods.isEmpty) return null;
+      final moment = JoyEngine().pickMoment(_mapMood(recentMoods.last));
       final moodSignal = snapshot.signal(NeuraSignalKind.mood);
       final candidate = NeuraIntelligenceCandidate(
         id: 'joy:${moment.id}:${now.year}-${now.month}-${now.day}',
@@ -388,7 +430,10 @@ class ProactiveBannerService {
     }
   }
 
-  Future<_BannerCandidate?> _relationshipCandidate(DateTime now) async {
+  Future<_BannerCandidate?> _relationshipCandidate(
+    DateTime now,
+    List<int> recentMoods,
+  ) async {
     try {
       final profiles = await RelationshipProfileService.instance.all();
       if (profiles.isEmpty) return null;
@@ -404,10 +449,9 @@ class ProactiveBannerService {
         }
       }
 
-      final moods = await _recentMoodsNeg2to2();
       const insight = RelationshipInsightService();
       final suggestion = insight.computeOneGoodMove(
-        recentMoods: moods,
+        recentMoods: recentMoods,
         promisesOutstanding:
             profiles.any((profile) => profile.openPromiseCount > 0),
         daysSinceLastContact: maxDays,
