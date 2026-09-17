@@ -72,21 +72,23 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: PresenceNavigationShell(
-            currentIndex: 0,
-            onDestinationSelected: (_) {},
-            destinationPages: const <Widget>[
-              SizedBox.shrink(),
-              Center(child: Text('Spaces surface')),
-              Center(child: Text('Care surface')),
-              Center(child: Text('Memory surface')),
-              Center(child: Text('Controls surface')),
-            ],
-            commands: commands,
-            status: status,
-            now: const Text('A quiet local moment'),
-            onOpenNeura: () {},
-            onOpenDiagnostics: () {},
+          home: Scaffold(
+            body: PresenceNavigationShell(
+              currentIndex: 0,
+              onDestinationSelected: (_) {},
+              destinationPages: const <Widget>[
+                SizedBox.shrink(),
+                Center(child: Text('Spaces surface')),
+                Center(child: Text('Care surface')),
+                Center(child: Text('Memory surface')),
+                Center(child: Text('Controls surface')),
+              ],
+              commands: commands,
+              status: status,
+              now: const Text('A quiet local moment'),
+              onOpenNeura: () {},
+              onOpenDiagnostics: () {},
+            ),
           ),
         ),
       );
