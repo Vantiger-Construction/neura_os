@@ -60,15 +60,26 @@ class EnhancedNavigation extends StatefulWidget {
 }
 
 class _EnhancedNavigationState extends State<EnhancedNavigation> {
+  static const List<Widget> _destinationPages = <Widget>[
+    SizedBox.shrink(),
+    OsShellHomeScreen(),
+    NeuraCareLoopScreen(),
+    _MemoryHub(),
+    SettingsScreen(),
+  ];
+
   int _index = 0;
   NeuraShellState? _shellState;
   bool _avatarDocked = false;
+  Stream<dynamic>? _authStateChanges;
+  late final List<PresenceCommand> _commandCatalog;
 
   bool get _optionalHooksAllowed => !SafeBoot.instance.safeMode.value;
 
   @override
   void initState() {
     super.initState();
+    _commandCatalog = _buildCommandCatalog();
     // Legacy Guard (dead-man's-switch) can be enabled from Legacy Vault ->
     // Legacy Guard; this is the startup check that actually detects an
     // overdue check-in and offers to release capsules. No-ops if disabled.
@@ -301,7 +312,7 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     );
   }
 
-  List<PresenceCommand> _commands() => <PresenceCommand>[
+  List<PresenceCommand> _buildCommandCatalog() => <PresenceCommand>[
         PresenceCommand(
           id: 'talk',
           title: 'Talk to Neura',
@@ -562,14 +573,6 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = <Widget>[
-      const SizedBox.shrink(),
-      const OsShellHomeScreen(),
-      const NeuraCareLoopScreen(),
-      const _MemoryHub(),
-      const SettingsScreen(),
-    ];
-
     return AnimatedBuilder(
       animation: Listenable.merge(<Listenable>[
         SafeBoot.instance.safeMode,
@@ -582,16 +585,16 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
         // local shell and its status remain fully usable without touching a
         // cloud-backed singleton.
         stream: SafeBoot.instance.safeMode.value
-            ? const Stream<dynamic>.empty()
-            : AuthService.onAuthStateChanged,
+            ? null
+            : (_authStateChanges ??= AuthService.onAuthStateChanged),
         builder: (context, _) => Scaffold(
           body: Stack(
             children: <Widget>[
               PresenceNavigationShell(
                 currentIndex: _index,
                 onDestinationSelected: _onTab,
-                destinationPages: pages,
-                commands: _commands(),
+                destinationPages: _destinationPages,
+                commands: _commandCatalog,
                 status: _presenceStatus(),
                 now: const ProactiveBannerCard(),
                 onOpenNeura: _openChat,

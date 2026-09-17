@@ -92,15 +92,33 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
   static const _recentLimit = 5;
 
   final List<String> _recentCommandIds = <String>[];
+  late Map<String, PresenceCommand> _commandsById;
+  late List<PresenceCommand> _pinnedCommands;
   bool _stageCollapsed = false;
 
-  List<PresenceCommand> get _recentCommands {
-    final byId = <String, PresenceCommand>{
+  List<PresenceCommand> get _recentCommands => _recentCommandIds
+      .map((id) => _commandsById[id])
+      .whereType<PresenceCommand>()
+      .toList(growable: false);
+
+  @override
+  void initState() {
+    super.initState();
+    _indexCommands();
+  }
+
+  @override
+  void didUpdateWidget(PresenceNavigationShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.commands, widget.commands)) _indexCommands();
+  }
+
+  void _indexCommands() {
+    _commandsById = <String, PresenceCommand>{
       for (final command in widget.commands) command.id: command,
     };
-    return _recentCommandIds
-        .map((id) => byId[id])
-        .whereType<PresenceCommand>()
+    _pinnedCommands = widget.commands
+        .where((command) => command.pinned)
         .toList(growable: false);
   }
 
@@ -225,8 +243,7 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
       children: <Widget>[
         _PresenceHomeSurface(
           now: widget.now,
-          pinnedCommands:
-              widget.commands.where((command) => command.pinned).toList(),
+          pinnedCommands: _pinnedCommands,
           recentCommands: _recentCommands,
           onRunCommand: _runCommand,
           onOpenNeura: widget.onOpenNeura,
