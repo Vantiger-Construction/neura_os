@@ -64,7 +64,12 @@ void main() {
       presenceLabel: 'Safe Mode · audio is off',
     );
 
-    Future<void> pumpShell(WidgetTester tester, Size size) async {
+    Future<void> pumpShell(
+      WidgetTester tester,
+      Size size, {
+      int currentIndex = 0,
+      List<Widget>? destinationPages,
+    }) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = size;
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -74,15 +79,16 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: PresenceNavigationShell(
-              currentIndex: 0,
+              currentIndex: currentIndex,
               onDestinationSelected: (_) {},
-              destinationPages: const <Widget>[
-                SizedBox.shrink(),
-                Center(child: Text('Spaces surface')),
-                Center(child: Text('Care surface')),
-                Center(child: Text('Memory surface')),
-                Center(child: Text('Controls surface')),
-              ],
+              destinationPages: destinationPages ??
+                  const <Widget>[
+                    SizedBox.shrink(),
+                    Center(child: Text('Spaces surface')),
+                    Center(child: Text('Care surface')),
+                    Center(child: Text('Memory surface')),
+                    Center(child: Text('Controls surface')),
+                  ],
               commands: commands,
               status: status,
               now: const Text('A quiet local moment'),
@@ -127,5 +133,80 @@ void main() {
       await tester.pump();
       expect(find.text('No matching Neura spaces.'), findsOneWidget);
     });
+
+    testWidgets('mounts destinations lazily and retains visited state',
+        (tester) async {
+      var spacesMounts = 0;
+      var careMounts = 0;
+      var careDisposals = 0;
+      final destinationPages = <Widget>[
+        const SizedBox.shrink(),
+        _LifecycleProbe(onMount: () => spacesMounts++),
+        _LifecycleProbe(
+          onMount: () => careMounts++,
+          onDispose: () => careDisposals++,
+        ),
+        const SizedBox.shrink(),
+        const SizedBox.shrink(),
+      ];
+
+      await pumpShell(
+        tester,
+        const Size(1280, 800),
+        destinationPages: destinationPages,
+      );
+      expect(spacesMounts, 0);
+      expect(careMounts, 0);
+
+      await pumpShell(
+        tester,
+        const Size(1280, 800),
+        currentIndex: 2,
+        destinationPages: destinationPages,
+      );
+      expect(spacesMounts, 0);
+      expect(careMounts, 1);
+
+      await pumpShell(
+        tester,
+        const Size(1280, 800),
+        destinationPages: destinationPages,
+      );
+      await pumpShell(
+        tester,
+        const Size(1280, 800),
+        currentIndex: 2,
+        destinationPages: destinationPages,
+      );
+      expect(careMounts, 1);
+      expect(careDisposals, 0);
+    });
   });
+}
+
+class _LifecycleProbe extends StatefulWidget {
+  const _LifecycleProbe({required this.onMount, this.onDispose});
+
+  final VoidCallback onMount;
+  final VoidCallback? onDispose;
+
+  @override
+  State<_LifecycleProbe> createState() => _LifecycleProbeState();
+}
+
+class _LifecycleProbeState extends State<_LifecycleProbe> {
+  @override
+  void initState() {
+    super.initState();
+    widget.onMount();
+  }
+
+  @override
+  void dispose() {
+    widget.onDispose?.call();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }

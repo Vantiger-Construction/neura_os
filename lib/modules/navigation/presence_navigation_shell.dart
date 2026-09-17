@@ -92,6 +92,9 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
   static const _recentLimit = 5;
 
   final List<String> _recentCommandIds = <String>[];
+  // Hidden destinations can own streams and services. Mount each one only
+  // after a direct visit, then keep it in the stack so its local state lives.
+  final Set<int> _mountedDestinationIndexes = <int>{0};
   late Map<String, PresenceCommand> _commandsById;
   late List<PresenceCommand> _pinnedCommands;
   bool _stageCollapsed = false;
@@ -104,12 +107,14 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
   @override
   void initState() {
     super.initState();
+    _mountedDestinationIndexes.add(widget.currentIndex);
     _indexCommands();
   }
 
   @override
   void didUpdateWidget(PresenceNavigationShell oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _mountedDestinationIndexes.add(widget.currentIndex);
     if (!identical(oldWidget.commands, widget.commands)) _indexCommands();
   }
 
@@ -240,17 +245,20 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
   Widget _buildWorkspace(BuildContext context, {bool compact = false}) {
     final content = IndexedStack(
       index: widget.currentIndex,
-      children: <Widget>[
-        _PresenceHomeSurface(
+      children: List<Widget>.generate(widget.destinationPages.length, (index) {
+        if (!_mountedDestinationIndexes.contains(index)) {
+          return const SizedBox.shrink();
+        }
+        if (index != 0) return widget.destinationPages[index];
+        return _PresenceHomeSurface(
           now: widget.now,
           pinnedCommands: _pinnedCommands,
           recentCommands: _recentCommands,
           onRunCommand: _runCommand,
           onOpenNeura: widget.onOpenNeura,
           onOpenDiagnostics: widget.onOpenDiagnostics,
-        ),
-        ...widget.destinationPages.skip(1),
-      ],
+        );
+      }, growable: false),
     );
 
     return Padding(
