@@ -9,6 +9,8 @@ import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/services/neura_model_credentials.dart';
 import 'package:neuro_companion/services/neura_model_router.dart';
 import 'package:neuro_companion/services/neura_model_types.dart';
+import 'package:neuro_companion/services/neura_model_stream.dart';
+import 'package:neuro_companion/services/neura_generation_cancel.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 
 class _MemoryStorage implements NeuraModelCredentialStorage {
@@ -50,6 +52,24 @@ class _Transport implements NeuraModelTransport {
   }
 }
 
+class _StreamTransport extends NeuraModelStreamTransport {
+  _StreamTransport(super.provider, this.events);
+  final Stream<NeuraStreamEvent> Function() events;
+  int calls = 0;
+  @override
+  Stream<NeuraStreamEvent> stream({
+    required String apiKey,
+    required String systemPrompt,
+    required List<Map<String, dynamic>> messages,
+    required List<Map<String, dynamic>> tools,
+    required NeuraGenerationCancel cancel,
+    int maxTokens = 2048,
+  }) {
+    calls++;
+    return events();
+  }
+}
+
 void main() {
   const openAiKey = 'sk-openai-test-key-1234567890';
   const anthropicKey = 'sk-ant-test-key-1234567890';
@@ -80,6 +100,89 @@ void main() {
   tearDown(() {
     SafeBoot.instance.safeMode.value = originalSafeMode;
     NeuraConstitutionService.instance.resetAfterDataWipe();
+  });
+
+  test('stream fallback needs fresh approval and denial sends nothing',
+      () async {
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    await credentials.save(NeuraModelProvider.anthropic, anthropicKey);
+    final primary = _StreamTransport(NeuraModelProvider.openAi,
+        () => Stream.error(const NeuraStreamFailure('unavailable')));
+    final fallback = _StreamTransport(
+        NeuraModelProvider.anthropic,
+        () => Stream.value(
+            const NeuraTextDelta(NeuraModelProvider.anthropic, 'hello')));
+    final approvals = <NeuraModelProvider>[];
+    final router = NeuraSecureModelRouter(
+        credentials: credentials, streamTransports: [primary, fallback]);
+    await expectLater(
+        router.stream(request, tools: [], cancel: NeuraGenerationCancel('test'),
+            requestApproval: (preview) async {
+          approvals.add(preview.provider);
+          return preview.provider == NeuraModelProvider.openAi;
+        }).toList(),
+        throwsA(isA<NeuraCloudApprovalDenied>()));
+    expect(approvals, NeuraModelProvider.values);
+    expect(fallback.calls, 0);
+  });
+
+  test('stream never switches providers after visible output', () async {
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    await credentials.save(NeuraModelProvider.anthropic, anthropicKey);
+    final primary = _StreamTransport(NeuraModelProvider.openAi, () async* {
+      yield const NeuraTextDelta(NeuraModelProvider.openAi, 'partial');
+      throw const NeuraStreamFailure('disconnected');
+    });
+    final fallback = _StreamTransport(
+        NeuraModelProvider.anthropic, () => const Stream.empty());
+    final router = NeuraSecureModelRouter(
+        credentials: credentials, streamTransports: [primary, fallback]);
+    await expectLater(
+        router
+            .stream(request,
+                tools: [],
+                cancel: NeuraGenerationCancel('test'),
+                requestApproval: (_) async => true)
+            .toList(),
+        throwsA(isA<NeuraStreamFailure>()));
+    expect(fallback.calls, 0);
+  });
+
+  test('cancellation while approval is open prevents transport call', () async {
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    final transport =
+        _StreamTransport(NeuraModelProvider.openAi, () => const Stream.empty());
+    final cancel = NeuraGenerationCancel('test');
+    final router = NeuraSecureModelRouter(
+        credentials: credentials, streamTransports: [transport]);
+    await expectLater(
+        router.stream(request, tools: [], cancel: cancel,
+            requestApproval: (_) async {
+          cancel.cancel();
+          return true;
+        }).toList(),
+        throwsA(isA<NeuraGenerationCancelled>()));
+    expect(transport.calls, 0);
+  });
+
+  test('Safe Mode during stream approval prevents transport call', () async {
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    final transport =
+        _StreamTransport(NeuraModelProvider.openAi, () => const Stream.empty());
+    final router = NeuraSecureModelRouter(
+        credentials: credentials, streamTransports: [transport]);
+    await expectLater(
+        router.stream(request, tools: [], cancel: NeuraGenerationCancel('test'),
+            requestApproval: (_) async {
+          SafeBoot.instance.safeMode.value = true;
+          return true;
+        }).toList(),
+        throwsA(isA<NeuraGenerationCancelled>()));
+    expect(transport.calls, 0);
   });
 
   test('OpenAI is the primary provider', () async {

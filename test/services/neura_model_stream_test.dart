@@ -1,0 +1,206 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:neuro_companion/services/neura_generation_cancel.dart';
+import 'package:neuro_companion/services/neura_model_stream.dart';
+import 'package:neuro_companion/services/neura_model_types.dart';
+
+class StreamClient extends http.BaseClient {
+  StreamClient(this.events, {this.status = 200});
+  final Stream<List<int>> events;
+  final int status;
+  http.BaseRequest? sent;
+  bool closed = false;
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    sent = request;
+    return http.StreamedResponse(events, status);
+  }
+
+  @override
+  void close() {
+    closed = true;
+  }
+}
+
+List<int> frame(Map<String, dynamic> event) =>
+    utf8.encode('data: ${jsonEncode(event)}\r\n\r\n');
+Stream<NeuraStreamEvent> run(NeuraModelStreamTransport transport,
+        {NeuraGenerationCancel? cancel}) =>
+    transport.stream(
+      apiKey: 'test-key',
+      systemPrompt: 'Be kind.',
+      messages: [
+        {'role': 'user', 'content': 'Hello'}
+      ],
+      tools: [],
+      cancel: cancel ?? NeuraGenerationCancel('test'),
+    );
+
+void main() {
+  test('SSE decodes fragmented UTF-8 and multiline fields', () async {
+    final bytes =
+        utf8.encode('event: x\r\ndata: {"type":\r\ndata: "é"}\r\n\r\n');
+    final events = await NeuraModelStreamTransport.decodeEvents(
+        Stream.fromIterable(bytes.map((v) => [v]))).toList();
+    expect(events.single['type'], 'é');
+  });
+  test('OpenAI emits text before completion and preserves function call replay',
+      () async {
+    final controller = StreamController<List<int>>();
+    final client = StreamClient(controller.stream);
+    final transport = NeuraModelStreamTransport(NeuraModelProvider.openAi,
+        clientFactory: () => client);
+    final first = Completer<void>();
+    final events = <NeuraStreamEvent>[];
+    final subscription = run(transport).listen((event) {
+      events.add(event);
+      if (event is NeuraTextDelta && !first.isCompleted) first.complete();
+    });
+    controller
+        .add(frame({'type': 'response.output_text.delta', 'delta': 'Hello.'}));
+    await first.future;
+    expect(events.single, isA<NeuraTextDelta>());
+    final output = [
+      {
+        'type': 'reasoning',
+        'id': 'r1',
+        'summary': [],
+        'encrypted_content': 'opaque'
+      },
+      {
+        'type': 'function_call',
+        'call_id': 'c1',
+        'name': 'set_tone',
+        'arguments': '{"tone":"warm_companion"}'
+      },
+    ];
+    controller.add(frame({
+      'type': 'response.completed',
+      'response': {'status': 'completed', 'output': output}
+    }));
+    await subscription.asFuture<void>();
+    await controller.close();
+    final complete = events.last as NeuraTurnComplete;
+    expect(complete.blocks.single['input'], {'tone': 'warm_companion'});
+    expect(complete.openAiOutput, output);
+    final body = jsonDecode((client.sent! as http.Request).body) as Map;
+    expect(body['store'], false);
+    expect(body['parallel_tool_calls'], false);
+    expect(client.sent!.followRedirects, false);
+    expect(client.closed, true);
+  });
+  test('truncated tool stream never grants execution authority', () async {
+    final client = StreamClient(Stream.value(frame({
+      'type': 'response.output_item.done',
+      'item': {'type': 'function_call'}
+    })));
+    await expectLater(
+        run(NeuraModelStreamTransport(NeuraModelProvider.openAi,
+            clientFactory: () => client)).toList(),
+        throwsA(isA<NeuraStreamFailure>()));
+  });
+  test('malformed completed tool arguments fail closed', () async {
+    final client = StreamClient(Stream.value(frame({
+      'type': 'response.completed',
+      'response': {
+        'status': 'completed',
+        'output': [
+          {
+            'type': 'function_call',
+            'call_id': 'c1',
+            'name': 'set_tone',
+            'arguments': '[]'
+          },
+        ]
+      }
+    })));
+    await expectLater(
+        run(NeuraModelStreamTransport(NeuraModelProvider.openAi,
+            clientFactory: () => client)).toList(),
+        throwsA(isA<NeuraStreamFailure>()));
+  });
+  test('Anthropic requires message_stop after bounded tool input', () async {
+    final client = StreamClient(Stream.fromIterable([
+      frame({
+        'type': 'content_block_start',
+        'index': 0,
+        'content_block': {
+          'type': 'tool_use',
+          'id': 'c1',
+          'name': 'set_tone',
+          'input': {}
+        }
+      }),
+      frame({
+        'type': 'content_block_delta',
+        'index': 0,
+        'delta': {
+          'type': 'input_json_delta',
+          'partial_json': '{"tone":"warm_companion"}'
+        }
+      }),
+      frame({'type': 'content_block_stop', 'index': 0}),
+      frame({
+        'type': 'message_delta',
+        'delta': {'stop_reason': 'tool_use'}
+      }),
+      frame({'type': 'message_stop'}),
+    ]));
+    final result = await run(NeuraModelStreamTransport(
+        NeuraModelProvider.anthropic,
+        clientFactory: () => client)).toList();
+    expect((result.single as NeuraTurnComplete).blocks.single['input'],
+        {'tone': 'warm_companion'});
+  });
+  test('image and tool results use Responses input shapes', () {
+    final input = NeuraModelStreamTransport.openAiInput([
+      {
+        'role': 'user',
+        'content': [
+          {
+            'type': 'image',
+            'source': {
+              'type': 'base64',
+              'media_type': 'image/png',
+              'data': 'aGVsbG8='
+            }
+          },
+          {'type': 'text', 'text': 'Explain'}
+        ]
+      },
+      {
+        'role': 'user',
+        'content': [
+          {'type': 'tool_result', 'tool_use_id': 'c1', 'content': 'Denied'}
+        ]
+      },
+    ]);
+    expect((input.first['content'] as List).first['type'], 'input_image');
+    expect(input.last,
+        {'type': 'function_call_output', 'call_id': 'c1', 'output': 'Denied'});
+  });
+  test('HTTP errors never reveal provider body', () async {
+    final client = StreamClient(
+        Stream.value(utf8.encode('secret journal text')),
+        status: 429);
+    await expectLater(
+        run(NeuraModelStreamTransport(NeuraModelProvider.openAi,
+            clientFactory: () => client)).toList(),
+        throwsA(isA<NeuraStreamFailure>().having(
+            (e) => e.toString(), 'message', isNot(contains('secret')))));
+  });
+  test('pre-cancelled generation sends nothing', () async {
+    final cancel = NeuraGenerationCancel('cancelled')..cancel();
+    var clients = 0;
+    final transport =
+        NeuraModelStreamTransport(NeuraModelProvider.openAi, clientFactory: () {
+      clients++;
+      return StreamClient(const Stream.empty());
+    });
+    await expectLater(run(transport, cancel: cancel).toList(),
+        throwsA(isA<NeuraGenerationCancelled>()));
+    expect(clients, 0);
+  });
+}
