@@ -154,6 +154,90 @@ void main() {
     expect((result.single as NeuraTurnComplete).blocks.single['input'],
         {'tone': 'warm_companion'});
   });
+  test('Anthropic accumulates fragmented text and independent blocks exactly',
+      () async {
+    final deltas = List.generate(1000, (i) => '$i é 🌱 ');
+    final client = StreamClient(Stream.fromIterable([
+      frame({
+        'type': 'content_block_start',
+        'index': 0,
+        'content_block': {'type': 'text', 'text': 'Prefix '}
+      }),
+      for (final delta in deltas)
+        frame({
+          'type': 'content_block_delta',
+          'index': 0,
+          'delta': {'type': 'text_delta', 'text': delta}
+        }),
+      frame({'type': 'content_block_stop', 'index': 0}),
+      frame({
+        'type': 'content_block_start',
+        'index': 1,
+        'content_block': {'type': 'text', 'text': ''}
+      }),
+      frame({
+        'type': 'content_block_delta',
+        'index': 1,
+        'delta': {'type': 'text_delta', 'text': 'The end.'}
+      }),
+      frame({'type': 'content_block_stop', 'index': 1}),
+      frame({
+        'type': 'message_delta',
+        'delta': {'stop_reason': 'end_turn'}
+      }),
+      frame({'type': 'message_stop'}),
+    ]));
+    final result = await run(NeuraModelStreamTransport(
+        NeuraModelProvider.anthropic,
+        clientFactory: () => client)).toList();
+    expect(result.whereType<NeuraTextDelta>().map((e) => e.text).join(),
+        '${deltas.join()}The end.');
+    final completed = result.last as NeuraTurnComplete;
+    expect(completed.blocks, [
+      {'type': 'text', 'text': 'Prefix ${deltas.join()}'},
+      {'type': 'text', 'text': 'The end.'},
+    ]);
+    expect(client.closed, isTrue);
+  });
+
+  test('buffered Anthropic text cannot complete a truncated tool stream',
+      () async {
+    final client = StreamClient(Stream.fromIterable([
+      frame({
+        'type': 'content_block_start',
+        'index': 0,
+        'content_block': {'type': 'text', 'text': ''}
+      }),
+      frame({
+        'type': 'content_block_delta',
+        'index': 0,
+        'delta': {'type': 'text_delta', 'text': 'Let me check.'}
+      }),
+      frame({'type': 'content_block_stop', 'index': 0}),
+      frame({
+        'type': 'content_block_start',
+        'index': 1,
+        'content_block': {
+          'type': 'tool_use',
+          'id': 'unfinished',
+          'name': 'set_tone',
+          'input': {}
+        }
+      }),
+    ]));
+    final seen = <NeuraStreamEvent>[];
+    await expectLater(
+      run(NeuraModelStreamTransport(NeuraModelProvider.anthropic,
+          clientFactory: () => client)).map((event) {
+        seen.add(event);
+        return event;
+      }).toList(),
+      throwsA(isA<NeuraStreamFailure>()),
+    );
+    expect((seen.single as NeuraTextDelta).text, 'Let me check.');
+    expect(seen.whereType<NeuraTurnComplete>(), isEmpty);
+  });
+
   test('image and tool results use Responses input shapes', () {
     final input = NeuraModelStreamTransport.openAiInput([
       {

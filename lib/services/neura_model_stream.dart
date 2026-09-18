@@ -197,6 +197,7 @@ class NeuraModelStreamTransport {
       });
       final blocks = <int, Map<String, dynamic>>{};
       final inputs = <int, StringBuffer>{};
+      final textBlocks = <int, StringBuffer>{};
       var stopReason = '';
       var sawDelta = false;
       await for (final event in _cancellableEvents(
@@ -248,6 +249,9 @@ class NeuraModelStreamTransport {
                 Map<String, dynamic>.from(event['content_block'] as Map);
             if (blocks[index]!['type'] == 'tool_use') {
               inputs[index] = StringBuffer();
+            } else if (blocks[index]!['type'] == 'text') {
+              textBlocks[index] =
+                  StringBuffer(blocks[index]!['text'] as String? ?? '');
             }
             break;
           case 'content_block_delta':
@@ -255,8 +259,7 @@ class NeuraModelStreamTransport {
             final delta = event['delta'] as Map;
             if (delta['type'] == 'text_delta') {
               final text = delta['text'] as String;
-              blocks[index]?['text'] =
-                  (blocks[index]?['text'] as String? ?? '') + text;
+              textBlocks[index]?.write(text);
               yield NeuraTextDelta(provider, text);
             } else if (delta['type'] == 'input_json_delta') {
               inputs[index]?.write(delta['partial_json'] as String);
@@ -281,6 +284,9 @@ class NeuraModelStreamTransport {
             if (!{'end_turn', 'tool_use', 'stop_sequence'}
                 .contains(stopReason)) {
               throw const NeuraStreamFailure('Reply did not complete.');
+            }
+            for (final entry in textBlocks.entries) {
+              blocks[entry.key]!['text'] = entry.value.toString();
             }
             final indices = blocks.keys.toList()..sort();
             yield NeuraTurnComplete(

@@ -20,6 +20,7 @@ import '../../services/neura_ai_service.dart';
 import '../../services/neura_chat_policy.dart';
 import '../../services/neura_generation_cancel.dart';
 import '../../services/neura_llm_diagnostics.dart';
+import '../../services/neura_reply_batch.dart';
 import '../../services/neura_speech_to_text_service.dart';
 import '../../services/neura_swarm_service.dart';
 import '../../services/neura_tone_runtime.dart';
@@ -50,6 +51,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   bool _includeMemory = false;
   bool _privateContextUsed = false;
   ReplySpeechQueue? _replySpeech;
+  NeuraReplyBatch? _replyUpdates;
+  bool _scrollPending = false;
   String? _activeReplyId;
   _ChatLine? _activeBotLine;
   int _generationSerial = 0;
@@ -100,6 +103,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
 
   void _stopForSafeMode() {
     if (!SafeBoot.instance.safeMode.value) return;
+    _replyUpdates?.dispose();
+    _replyUpdates = null;
     _replySpeech?.cancel();
     NeuraAiService.instance.cancelActiveGeneration();
     _continuousMode = false;
@@ -120,6 +125,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     SafeBoot.instance.safeMode.removeListener(_stopForSafeMode);
     _voiceSub?.cancel();
     _finalPhraseSub?.cancel();
+    _replyUpdates?.dispose();
     _replySpeech?.cancel();
     NeuraAiService.instance.cancelActiveGeneration();
     unawaited(NeuraTtsService.instance.stop());
@@ -267,6 +273,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   Future<void> _interruptActiveReply() async {
     final interruptedId = _activeReplyId;
     final interruptedLine = _activeBotLine;
+    _replyUpdates?.flush();
+    _replyUpdates?.dispose();
+    _replyUpdates = null;
     _replySpeech?.cancel();
     NeuraAiService.instance.cancelActiveGeneration();
     await NeuraTtsService.instance.stop();
@@ -288,8 +297,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   }
 
   void _scrollToEnd() {
+    if (_scrollPending) return;
+    _scrollPending = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
+      _scrollPending = false;
+      if (!mounted || !_scrollController.hasClients) return;
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
         duration: const Duration(milliseconds: 200),
@@ -461,6 +473,21 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
           !SafeBoot.instance.safeMode.value,
     );
     _replySpeech = speech;
+    final updates = NeuraReplyBatch(
+      schedule: (callback) {
+        WidgetsBinding.instance.scheduleFrameCallback((_) => callback());
+      },
+      onFlush: (delta, count) {
+        if (!mounted || _activeReplyId != generationId) return;
+        setState(() {
+          botLine.text += delta;
+          botLine.seq += count;
+        });
+        _scrollToEnd();
+        if (useStreamSpeech) speech.add(botLine.text);
+      },
+    );
+    _replyUpdates = updates;
     try {
       await for (final delta in NeuraAiService.instance.streamReply(
         history,
@@ -479,14 +506,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
                 : Future.value(false),
       )) {
         if (!mounted || _activeReplyId != generationId) return;
-        setState(() {
-          botLine.text += delta;
-          botLine.seq += 1;
-        });
-        _scrollToEnd();
-        if (useStreamSpeech) speech.add(botLine.text);
+        updates.add(delta);
       }
 
+      updates.flush();
       if (!mounted || _activeReplyId != generationId) return;
       await AppLog.instance.info('chat_reply_complete', {
         'utterance_id': generationId,
@@ -511,6 +534,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         await NeuraTtsService.instance.speak(botLine.text);
       }
     } on NeuraGenerationCancelled catch (e) {
+      updates.flush();
       speech.cancel();
       await NeuraTtsService.instance.stop();
       await AppLog.instance.info('chat_generation_cancelled', {
@@ -522,6 +546,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       }
       return;
     } catch (error, stack) {
+      updates.flush();
       speech.cancel();
       await NeuraTtsService.instance.stop();
       await AppLog.instance.caught(
@@ -544,6 +569,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       }
       return;
     } finally {
+      updates.dispose();
+      if (identical(_replyUpdates, updates)) _replyUpdates = null;
       speech.cancel();
       if (identical(_replySpeech, speech)) _replySpeech = null;
       if (mounted && _activeReplyId == generationId) {

@@ -14,6 +14,14 @@ This change starts from Neura commit `6917dcf3` and implements three reviewable 
 
 Provider wire formats follow [Responses streaming](https://developers.openai.com/api/docs/guides/streaming-responses), [function calling](https://developers.openai.com/api/docs/guides/function-calling), and [stateless reasoning continuity](https://developers.openai.com/api/docs/guides/reasoning). Models are unchanged. Actual model access and live provider behavior still require account/device QA.
 
+### Streaming performance
+
+- Group arriving chat deltas into one update per scheduled display frame and coalesce scroll callbacks. Flush remaining text before completion or user interruption; discard pending callbacks on disposal or Safe Mode. Reply order, delta counts, fresh approval and generation checks remain intact.
+- Scan only newly appended characters for speech boundaries, clearing both scan and playback cursors on completion or interruption. This removes repeated scans and copies of long unfinished sentences.
+- Accumulate Anthropic text blocks with `StringBuffer` and materialize their final content only at the terminal event. Tool execution still requires a completed response.
+
+In an isolated Dart 3.12.0 JIT benchmark, a 32,768-character unpunctuated reply delivered as 4,096 growing snapshots took a median 110.293 ms with the previous speech scanner and 0.590 ms after this change (five measured runs after two warmups, identical output). A synthetic burst of 1,000 deltas scheduled one UI update and retained all text. These measure the algorithms, not end-to-end device or provider latency. Thirty focused streaming, speech and batching tests passed in the pure Dart harness; full Flutter/device validation remains required.
+
 ## 2. Journal sync and recovery
 
 - Fetch remote revisions before uploads, with pagination and a bounded maximum.
