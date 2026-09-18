@@ -93,8 +93,17 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   @override
   void initState() {
     super.initState();
+    SafeBoot.instance.safeMode.addListener(_stopForSafeMode);
     unawaited(_initAgent());
     WakeWordListenerService.instance.pause();
+  }
+
+  void _stopForSafeMode() {
+    if (!SafeBoot.instance.safeMode.value) return;
+    _replySpeech?.cancel();
+    NeuraAiService.instance.cancelActiveGeneration();
+    _continuousMode = false;
+    unawaited(NeuraTtsService.instance.stop().catchError((_) {}));
   }
 
   Future<void> _initAgent() async {
@@ -108,6 +117,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
 
   @override
   void dispose() {
+    SafeBoot.instance.safeMode.removeListener(_stopForSafeMode);
     _voiceSub?.cancel();
     _finalPhraseSub?.cancel();
     _replySpeech?.cancel();
