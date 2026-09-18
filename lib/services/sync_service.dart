@@ -152,8 +152,9 @@ class SyncService {
                 cloud?.effectiveUpdatedAt.toUtc().toIso8601String(),
           });
           final rows = response as List;
-          if (rows.length != 1)
+          if (rows.length != 1) {
             throw StateError('Invalid sync acknowledgement.');
+          }
           ack = JournalEntry.fromMap(
               Map<String, dynamic>.from(rows.single as Map));
         }
