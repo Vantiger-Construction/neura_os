@@ -464,6 +464,80 @@ void main() {
     expect(openAi.calls, 0);
   });
 
+  test('private streamed history is blocked before approval or transport',
+      () async {
+    const privateHistory = NeuraModelRequest(
+      systemPrompt: 'Be kind.',
+      messages: [
+        {'role': 'assistant', 'content': 'A reply based on a selected file.'},
+        {'role': 'user', 'content': 'Explain the last answer.'},
+      ],
+      purpose: 'chat reply',
+      includesPrivateContext: true,
+    );
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    final transport =
+        _StreamTransport(NeuraModelProvider.openAi, () => const Stream.empty());
+    final router = NeuraSecureModelRouter(
+      credentials: credentials,
+      streamTransports: [transport],
+      constitution: const NeuraPersonalConstitution(),
+    );
+    var approvals = 0;
+    await expectLater(
+      router.stream(privateHistory,
+          tools: [], cancel: NeuraGenerationCancel('private-history'),
+          requestApproval: (_) async {
+        approvals++;
+        return true;
+      }).toList(),
+      throwsA(isA<NeuraConstitutionBlocked>()),
+    );
+    expect(approvals, 0);
+    expect(transport.calls, 0);
+  });
+
+  test('private stream rechecks local-only policy after approval', () async {
+    await NeuraConstitutionService.instance.save(
+      const NeuraPersonalConstitution(keepSensitiveContentLocal: false),
+    );
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    final transport =
+        _StreamTransport(NeuraModelProvider.openAi, () => const Stream.empty());
+    final router = NeuraSecureModelRouter(
+      credentials: credentials,
+      streamTransports: [transport],
+    );
+    const privateRequest = NeuraModelRequest(
+      systemPrompt: 'Be kind.',
+      messages: [
+        {'role': 'assistant', 'content': 'A reply based on permitted memory.'},
+        {'role': 'user', 'content': 'Tell me more.'},
+      ],
+      purpose: 'chat reply',
+      includesPrivateContext: true,
+    );
+    var approvals = 0;
+    await expectLater(
+      router.stream(privateRequest,
+          tools: [], cancel: NeuraGenerationCancel('private-revocation'),
+          requestApproval: (preview) async {
+        approvals++;
+        expect(preview.includesPrivateContext, isTrue);
+        expect(preview.textPreview, contains('permitted memory'));
+        await NeuraConstitutionService.instance.save(
+          const NeuraPersonalConstitution(keepSensitiveContentLocal: true),
+        );
+        return true;
+      }).toList(),
+      throwsA(isA<NeuraConstitutionBlocked>()),
+    );
+    expect(approvals, 1);
+    expect(transport.calls, 0);
+  });
+
   test('credential deletion is verified', () async {
     final storage = _MemoryStorage();
     final credentials = NeuraModelCredentials.forTesting(storage);

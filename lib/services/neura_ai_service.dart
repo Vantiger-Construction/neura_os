@@ -109,6 +109,8 @@ class NeuraAiService {
   /// Starting a new generation automatically cancels the previous one. Tool
   /// definitions are selected from [roomId], and every model-requested tool
   /// is checked against the same policy again immediately before execution.
+  /// [historyIncludesPrivateContext] retains the privacy restriction on
+  /// answers derived from files, memory or private actions in earlier turns.
   Stream<String> streamReply(
     List<NeuraChatTurn> history, {
     String agentId = AgentPersonaCatalog.generalId,
@@ -118,6 +120,7 @@ class NeuraAiService {
     NeuraCloudApprovalHandler? requestCloudApproval,
     NeuraSelectedContext? selectedContext,
     bool includePermittedMemory = false,
+    bool historyIncludesPrivateContext = false,
   }) async* {
     _throwIfCloudBlocked();
     if (!isConfigured) {
@@ -172,8 +175,10 @@ class NeuraAiService {
             purpose: toolRounds == 0
                 ? 'chat reply'
                 : 'continue after approved actions',
-            includesPrivateContext:
-                useMemory || selectedContext != null || toolResultsArePrivate,
+            includesPrivateContext: historyIncludesPrivateContext ||
+                useMemory ||
+                selectedContext != null ||
+                toolResultsArePrivate,
           ),
           tools: advertisedTools,
           cancel: cancel,

@@ -378,7 +378,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     final policy = NeuraChatPolicy.forRoom(room.id);
     final selectedContext = _selectedContext;
     final includeMemory = _includeMemory && policy.persistMemory;
-    _privateContextUsed = _privateContextUsed || selectedContext != null;
+    // Derived replies remain in the visible history after next-reply controls
+    // reset. Keep their privacy restrictions for the lifetime of this chat.
+    _privateContextUsed =
+        _privateContextUsed || selectedContext != null || includeMemory;
     final persistMemory = policy.persistMemory && !_privateContextUsed;
     final displayText =
         text.isEmpty && hasImage ? 'What do you see in this photo?' : text;
@@ -466,6 +469,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         generationId: generationId,
         selectedContext: selectedContext,
         includePermittedMemory: includeMemory,
+        historyIncludesPrivateContext: _privateContextUsed,
         onToolCommand: (command) => _activeReplyId == generationId
             ? _handleToolCommand(command)
             : Future.value(false),
@@ -492,13 +496,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       unawaited(_remember(
         isUser: false,
         text: botLine.text,
-        persistMemory: persistMemory,
+        persistMemory: persistMemory && !_privateContextUsed,
       ));
       unawaited(_runSwarm(
         userMessage: displayText,
         draftReply: botLine.text,
         history: history,
-        persistMemory: persistMemory,
+        persistMemory: persistMemory && !_privateContextUsed,
       ));
 
       if (useStreamSpeech) {
@@ -666,13 +670,17 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     if (!currentPolicy.allowsTool(command.name)) return false;
     switch (command.name) {
       case NeuraChatPolicy.getMoodHistory:
-        return _confirmToolAction(
+        final approved = await _confirmToolAction(
           title: 'Share mood scores once?',
           message: 'Neura wants to send recent mood dates and 0–10 scores to '
               'the configured AI provider for this reply. Your mood notes '
               'will not be shared.',
           approveLabel: 'Share once',
         );
+        if (approved) {
+          _privateContextUsed = true;
+        }
+        return approved;
       case NeuraChatPolicy.logMoodEntry:
         final mood = (command.arguments['mood0to10'] as num?)
             ?.round()
@@ -689,6 +697,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
           approveLabel: 'Save locally',
         );
         if (!approved) return false;
+        _privateContextUsed = true;
         await MoodStore.instance.add(
           MoodEntry(
             timestamp: DateTime.now(),

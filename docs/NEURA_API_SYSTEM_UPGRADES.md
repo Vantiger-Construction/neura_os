@@ -10,6 +10,7 @@ This change starts from Neura commit `6917dcf3` and implements three reviewable 
 - The main chat screen now uses the existing opt-in **Speak chat replies** setting for streaming sentence playback. Playback is serialized and queued chunks are discarded on interruption, mute or a mode change. Speech uses the existing device TTS service; this adds no cloud audio or background microphone access.
 - The attachment button accepts one UTF-8 TXT, MD, CSV or JSON file, at most 32 KiB, for the next reply. It reads only the selected file and treats its contents as untrusted reference material. It does not index folders or save the attachment. File-derived conversation is not written to long-term memory by this chat screen.
 - The next-reply memory checkbox starts off. Recall also requires the room's persistence policy and the constitution to permit it. A constitution that keeps sensitive content local continues to block cloud use of attachments, memory and private action results.
+- Once a chat uses a selected file, permitted memory or an approved mood action, later replies retain the private-context flag even after the next-reply controls reset. Derived replies and subsequent turns are excluded from automatic memory storage for the rest of that chat session. Each cloud continuation and follow-up still requires its own preview and approval.
 
 Provider wire formats follow [Responses streaming](https://developers.openai.com/api/docs/guides/streaming-responses), [function calling](https://developers.openai.com/api/docs/guides/function-calling), and [stateless reasoning continuity](https://developers.openai.com/api/docs/guides/reasoning). Models are unchanged. Actual model access and live provider behavior still require account/device QA.
 
@@ -52,7 +53,7 @@ This first API serves trusted applications on the same device. Windows–Android
 Re-run the isolated database test with `npm ci --prefix tools/sync_tests` followed by `npm test --prefix tools/sync_tests`. It creates an in-memory database and uses synthetic identities only.
 
 - Focused protocol, context, speech-queue, local-API and recovery tests run without provider credentials or cloud requests.
-- Router tests cover fresh fallback approval, partial-stream failure, cancellation while approval is open, and Safe Mode during approval.
+- Router tests cover fresh fallback approval, partial-stream failure, cancellation while approval is open, Safe Mode during approval, private history, and restoration of the local-only rule during approval.
 - Sync session tests cover remote-before-local ordering, edits during upload, account changes and offline behavior.
 - The migration was exercised in an isolated PostgreSQL-compatible PGlite instance: insert/update, stale-revision rejection, idempotent payloads, ownership isolation and anonymous access denial passed.
 - Local Flutter startup was blocked by automatic approval review because it attempted instance-metadata access. Full Flutter analysis/tests and Windows/Android packaging must pass the existing CI before merge. No CI gate is removed or relaxed.
