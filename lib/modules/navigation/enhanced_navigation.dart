@@ -2,9 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../config/supabase_config.dart';
 import '../../neura_shell/neura_shell.dart';
+import '../../neura_shell/neura_shell_state.dart';
 import '../../neura_shell/models/neura_room.dart';
+import '../../services/ambient_listening_prefs.dart';
+import '../../services/auth_service.dart';
+import '../../services/neura_companion_presence.dart';
 import '../../services/update_check_service.dart';
+import '../../services/wake_word_prefs.dart';
 
 import '../../care/screens/neura_care_loop_screen.dart';
 import '../../dreams/screens/dream_show2_screen.dart';
@@ -44,6 +50,7 @@ import '../../src/modules/legacy/legacy_home_screen.dart';
 import '../../src/modules/settings/settings.dart';
 import '../chat/neura_chat_screen.dart';
 import '../diagnostics/diagnostics_screen.dart';
+import 'presence_navigation_shell.dart';
 
 class EnhancedNavigation extends StatefulWidget {
   const EnhancedNavigation({super.key});
@@ -53,13 +60,26 @@ class EnhancedNavigation extends StatefulWidget {
 }
 
 class _EnhancedNavigationState extends State<EnhancedNavigation> {
+  static const List<Widget> _destinationPages = <Widget>[
+    SizedBox.shrink(),
+    OsShellHomeScreen(),
+    NeuraCareLoopScreen(),
+    _MemoryHub(),
+    SettingsScreen(),
+  ];
+
   int _index = 0;
+  NeuraShellState? _shellState;
+  bool _avatarDocked = false;
+  Stream<dynamic>? _authStateChanges;
+  late final List<PresenceCommand> _commandCatalog;
 
   bool get _optionalHooksAllowed => !SafeBoot.instance.safeMode.value;
 
   @override
   void initState() {
     super.initState();
+    _commandCatalog = _buildCommandCatalog();
     // Legacy Guard (dead-man's-switch) can be enabled from Legacy Vault ->
     // Legacy Guard; this is the startup check that actually detects an
     // overdue check-in and offers to release capsules. No-ops if disabled.
@@ -109,6 +129,29 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     unawaited(_maybeNotifyLegacyOverdue());
     unawaited(_reconfirmDailyMoodNudgeSchedule());
     unawaited(_checkForUpdate());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final shell = NeuraShell.of(context);
+    if (identical(_shellState, shell)) return;
+    final previous = _shellState;
+    if (_avatarDocked && previous != null) {
+      unawaited(previous.setAvatarDockedInApp(false));
+    }
+    _shellState = shell;
+    _avatarDocked = true;
+    unawaited(shell.setAvatarDockedInApp(true));
+  }
+
+  @override
+  void dispose() {
+    final shell = _shellState;
+    if (_avatarDocked && shell != null) {
+      unawaited(shell.setAvatarDockedInApp(false));
+    }
+    super.dispose();
   }
 
   /// Wraps WeeklySummaristService's own app-open hook so a notification can
@@ -184,26 +227,41 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
   }
 
   void _openChat() {
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const NeuraChatScreen()));
+    _openRoute('/chat', (_) => const NeuraChatScreen());
   }
 
   void _openDiagnostics() {
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const DiagnosticsScreen()));
+    _openRoute('/diagnostics', (_) => const DiagnosticsScreen());
+  }
+
+  void _openRoute(
+    String routeName,
+    WidgetBuilder builder, {
+    NeuraRoom? room,
+  }) {
+    final shell = _shellState;
+    if (room != null && shell != null && shell.isLoaded) {
+      unawaited(shell.setRoom(room));
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: builder,
+        settings: RouteSettings(name: routeName),
+      ),
+    );
   }
 
   void _onTab(int i) {
     NeuraAdaptiveActivityTracker.instance.recordSurfaceVisit(
       'primary_tab_$i',
     );
-    setState(() => _index = i);
+    if (_index != i) setState(() => _index = i);
 
     // Optional magic: sync rooms to tabs, so the OS "moves" with you.
-    final shell = NeuraShell.of(context);
+    final shell = _shellState ?? NeuraShell.of(context);
     if (!shell.isLoaded) return;
     if (shell.autoRoomSync) {
-      shell.setRoom(_roomForIndex(i));
+      unawaited(shell.setRoom(_roomForIndex(i)));
     }
   }
 
@@ -212,11 +270,11 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
       case 0:
         return NeuraRoom.penthouse;
       case 1:
-        return NeuraRoom.reflectionBay;
+        return NeuraRoom.penthouse;
       case 2:
-        return NeuraRoom.dreamAtrium;
+        return NeuraRoom.moodDen;
       case 3:
-        return NeuraRoom.legacyVault;
+        return NeuraRoom.reflectionBay;
       case 4:
         return NeuraRoom.moodDen;
       default:
@@ -224,325 +282,326 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final pages = <Widget>[
-      _Dashboard(openChat: _openChat, openDiagnostics: _openDiagnostics),
-      const _JournalHub(),
-      const _DreamHub(),
-      const LegacyHomeScreen(),
-      const SettingsScreen(),
-    ];
+  PresenceShellStatus _presenceStatus() {
+    final safeMode = SafeBoot.instance.safeMode.value;
+    final presence = NeuraCompanionPresence.instance.state.value;
+    final voiceOptedIn =
+        AmbientListeningPrefsController.instance.enabled.value ||
+            WakeWordPrefsController.instance.enabled.value;
+    final voiceLabel = switch (presence.phase) {
+      NeuraPresencePhase.listening when !safeMode => 'Listening locally',
+      NeuraPresencePhase.speaking when !safeMode => 'Speaking locally',
+      _ when safeMode => 'Voice off',
+      _ when voiceOptedIn => 'Voice ready',
+      _ => 'Voice off',
+    };
+    final cloudReady = !safeMode &&
+        SupabaseConfig.isConfigured &&
+        AuthService.isAvailable &&
+        AuthService.currentUser != null;
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          SafeArea(child: IndexedStack(index: _index, children: pages)),
-          const AmbientRecordingBadge(),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openChat,
-        icon: const Icon(Icons.chat_bubble_outline),
-        label: const Text('Neura'),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _index,
-        onTap: _onTab,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard_outlined), label: 'Home'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.edit_note), label: 'Journal'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.nights_stay_outlined), label: 'Dreams'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.auto_stories), label: 'Legacy'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.settings_outlined), label: 'Settings'),
-        ],
-      ),
+    return PresenceShellStatus(
+      safeMode: safeMode,
+      cloudLabel: safeMode
+          ? 'Cloud blocked'
+          : cloudReady
+              ? 'Cloud gated'
+              : 'Local only',
+      voiceLabel: voiceLabel,
+      presenceLabel: presence.label,
     );
   }
-}
 
-class _Dashboard extends StatelessWidget {
-  final VoidCallback openChat;
-  final VoidCallback openDiagnostics;
-
-  const _Dashboard({required this.openChat, required this.openDiagnostics});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text('Neura OS',
-                  style: Theme.of(context).textTheme.headlineMedium),
-            ),
-            IconButton(
-                onPressed: openDiagnostics,
-                icon: const Icon(Icons.bug_report_outlined)),
-          ],
+  List<PresenceCommand> _buildCommandCatalog() => <PresenceCommand>[
+        PresenceCommand(
+          id: 'talk',
+          title: 'Talk to Neura',
+          subtitle: 'Plan, reflect, or reset with Neura.',
+          icon: Icons.chat_bubble_outline,
+          keywords: const <String>['chat', 'companion', 'assistant'],
+          onSelected: _openChat,
         ),
-        const SizedBox(height: 8),
-        Text(
-          'An OS for becoming a better human. No capes required.',
-          style: Theme.of(context).textTheme.bodyMedium,
+        PresenceCommand(
+          id: 'care-loop',
+          title: 'Neura Care Loop',
+          subtitle: 'Notice, steady, and choose one next step.',
+          icon: Icons.spa_outlined,
+          keywords: const <String>['care', 'grounding', 'wellbeing'],
+          pinned: true,
+          onSelected: () => _onTab(2),
         ),
-        const SizedBox(height: 12),
-        const ProactiveBannerCard(),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            _Tile(
-              icon: Icons.chat_bubble_outline,
-              title: 'Talk to Neura',
-              subtitle: 'Plan, reflect, reset.',
-              onTap: openChat,
-            ),
-            _Tile(
-              icon: Icons.spa_outlined,
-              title: 'Neura Care Loop',
-              subtitle: 'Notice, steady, and choose one next step.',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const NeuraCareLoopScreen(),
-                ),
-              ),
-            ),
-            _Tile(
-              icon: Icons.hub_outlined,
-              title: 'Neura Intelligence',
-              subtitle: 'Signals, decision receipts, and consent controls.',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const NeuraIntelligenceCenterScreen(),
-                ),
-              ),
-            ),
-            _Tile(
-              icon: Icons.favorite_border,
-              title: 'Mood Check‑In',
-              subtitle: 'Track how you feel.',
-              onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const MoodCheckInScreen())),
-            ),
-            _Tile(
-              icon: Icons.timeline,
-              title: 'Mood History',
-              subtitle: 'Your emotional weather.',
-              onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const MoodHistoryScreen())),
-            ),
-            _Tile(
-              icon: Icons.insights,
-              title: 'Weekly Snapshot',
-              subtitle: "This week's mood trend, rituals, and export.",
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const WeeklySnapshotScreen())),
-            ),
-            _Tile(
-              icon: Icons.auto_awesome_outlined,
-              title: 'Weekly Review',
-              subtitle: 'Past weeks, your notes, and coach commentary.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const WeeklyReviewScreen())),
-            ),
-            _Tile(
-              icon: Icons.edit_note,
-              title: 'Journal Prompt',
-              subtitle: 'Time-aware prompt.',
-              onTap: () {
-                final shell = NeuraShell.of(context);
-                if (shell.isLoaded) shell.setRoom(NeuraRoom.reflectionBay);
-                Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => JournalPromptScreen()));
-              },
-            ),
-            _Tile(
-              icon: Icons.mic_none,
-              title: 'Voice Journal',
-              subtitle: 'Speak it. Save it.',
-              onTap: () {
-                final shell = NeuraShell.of(context);
-                if (shell.isLoaded) shell.setRoom(NeuraRoom.reflectionBay);
-                Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const VoiceJournalScreen()));
-              },
-            ),
-            _Tile(
-              icon: Icons.auto_awesome,
-              title: 'Dream Visualizer',
-              subtitle: 'Dream timeline.',
-              onTap: () {
-                final shell = NeuraShell.of(context);
-                if (shell.isLoaded) shell.setRoom(NeuraRoom.dreamAtrium);
-                Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => DreamVisualizerScreen()));
-              },
-            ),
-            _Tile(
-              icon: Icons.auto_stories,
-              title: 'Legacy Vault',
-              subtitle: 'Messages for future-you.',
-              onTap: () {
-                final shell = NeuraShell.of(context);
-                if (shell.isLoaded) shell.setRoom(NeuraRoom.legacyVault);
-                Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const LegacyHomeScreen()));
-              },
-            ),
-            _Tile(
-              icon: Icons.settings_outlined,
-              title: 'Settings',
-              subtitle: 'Privacy, safety, controls.',
-              onTap: () {
-                final shell = NeuraShell.of(context);
-                if (shell.isLoaded) shell.setRoom(NeuraRoom.moodDen);
-                Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const SettingsScreen()));
-              },
-            ),
-            _Tile(
-              icon: Icons.bug_report_outlined,
-              title: 'Diagnostics',
-              subtitle: 'Logs + Dimensional Sync.',
-              onTap: openDiagnostics,
-            ),
-            _Tile(
-              icon: Icons.lock_outline,
-              title: 'Memory Vault',
-              subtitle: 'Encrypted notes for the stuff that matters.',
-              onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const MemoryVaultScreen())),
-            ),
-            _Tile(
-              icon: Icons.history_edu_outlined,
-              title: 'Life Timeline',
-              subtitle: 'Your life, one event at a time.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const LifeTimelineScreen())),
-            ),
-            _Tile(
-              icon: Icons.health_and_safety_outlined,
-              title: 'Support Center',
-              subtitle: 'Grounding tools and people to reach out to.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const SupportCenterScreen())),
-            ),
-            _Tile(
-              icon: Icons.volunteer_activism_outlined,
-              title: 'Pay It Forward',
-              subtitle: 'Track kind acts. Build a streak.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const PayItForwardScreen())),
-            ),
-            _Tile(
-              icon: Icons.flag_outlined,
-              title: 'Quest Mode',
-              subtitle: 'Tiny missions to build momentum.',
-              onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const QuestModeScreen())),
-            ),
-            _Tile(
-              icon: Icons.mood_outlined,
-              title: 'Neura Jokes',
-              subtitle: 'Need a laugh? Tap in for a joke, told out loud.',
-              onTap: () => Navigator.of(context)
-                  .push(MaterialPageRoute(builder: (_) => const JokeScreen())),
-            ),
-            _Tile(
-              icon: Icons.self_improvement_outlined,
-              title: 'Therapy Journal',
-              subtitle: 'Guided CBT / DBT / ACT reflection prompts.',
-              onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const TherapyPathScreen())),
-            ),
-            _Tile(
-              icon: Icons.account_balance_wallet_outlined,
-              title: 'Money Manager',
-              subtitle: 'Track income and expenses, on-device.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const MoneyManagerScreen())),
-            ),
-            _Tile(
-              icon: Icons.holiday_village_outlined,
-              title: 'Rooms',
-              subtitle: 'Reflection, Care, Dreams, Mirror, Persona, Kids.',
-              onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const OsShellHomeScreen())),
-            ),
-            _Tile(
-              icon: Icons.route_outlined,
-              title: 'Decision Path Helper',
-              subtitle: 'List a plan, compare fastest vs. safest vs. cheapest.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const DecisionPathScreen())),
-            ),
-            _Tile(
-              icon: Icons.verified_user_outlined,
-              title: 'Trusted Devices',
-              subtitle: 'Pair devices Neura should trust.',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const TrustedDevicesScreen())),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.lightbulb_outline),
-            title: const Text('Daily tiny quest'),
-            subtitle: const Text(
-                'Pick one: drink water • 10-min walk • write one honest paragraph'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: openChat,
+        PresenceCommand(
+          id: 'journal-prompt',
+          title: 'Journal Prompt',
+          subtitle: 'Write privately with a time-aware prompt.',
+          icon: Icons.edit_note,
+          keywords: const <String>['journal', 'write', 'reflection'],
+          pinned: true,
+          onSelected: () => _openRoute(
+            '/memory/journal-prompt',
+            (_) => JournalPromptScreen(),
+            room: NeuraRoom.reflectionBay,
           ),
         ),
-      ],
-    );
-  }
-}
-
-class _Tile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _Tile(
-      {required this.icon,
-      required this.title,
-      required this.subtitle,
-      required this.onTap});
+        PresenceCommand(
+          id: 'mood-check-in',
+          title: 'Mood Check-In',
+          subtitle: 'Save a private emotional snapshot.',
+          icon: Icons.favorite_border,
+          keywords: const <String>['mood', 'feeling', 'check in'],
+          pinned: true,
+          onSelected: () => _openRoute(
+            '/care/mood-check-in',
+            (_) => const MoodCheckInScreen(),
+            room: NeuraRoom.moodDen,
+          ),
+        ),
+        PresenceCommand(
+          id: 'rooms',
+          title: 'Explore Spaces',
+          subtitle: 'Reflection, Care, Dreams, Mirror, Persona, and Kids.',
+          icon: Icons.holiday_village_outlined,
+          keywords: const <String>['rooms', 'spaces', 'world'],
+          pinned: true,
+          onSelected: () => _onTab(1),
+        ),
+        PresenceCommand(
+          id: 'intelligence',
+          title: 'Neura Intelligence',
+          subtitle: 'Signals, decision receipts, and consent controls.',
+          icon: Icons.hub_outlined,
+          keywords: const <String>['signals', 'consent', 'receipts'],
+          onSelected: () => _openRoute(
+            '/intelligence',
+            (_) => const NeuraIntelligenceCenterScreen(),
+          ),
+        ),
+        PresenceCommand(
+          id: 'mood-history',
+          title: 'Mood History',
+          subtitle: 'Review your on-device emotional weather.',
+          icon: Icons.timeline,
+          keywords: const <String>['mood', 'history', 'trend'],
+          onSelected: () => _openRoute(
+            '/care/mood-history',
+            (_) => const MoodHistoryScreen(),
+          ),
+        ),
+        PresenceCommand(
+          id: 'weekly-snapshot',
+          title: 'Weekly Snapshot',
+          subtitle: 'Mood trends, rituals, and export.',
+          icon: Icons.insights,
+          keywords: const <String>['week', 'trend', 'export'],
+          onSelected: () => _openRoute(
+            '/memory/weekly-snapshot',
+            (_) => const WeeklySnapshotScreen(),
+          ),
+        ),
+        PresenceCommand(
+          id: 'weekly-review',
+          title: 'Weekly Review',
+          subtitle: 'Past weeks, notes, and coach commentary.',
+          icon: Icons.auto_awesome_outlined,
+          keywords: const <String>['week', 'review', 'coach'],
+          onSelected: () => _openRoute(
+            '/memory/weekly-review',
+            (_) => const WeeklyReviewScreen(),
+          ),
+        ),
+        PresenceCommand(
+          id: 'voice-journal',
+          title: 'Voice Journal',
+          subtitle: 'Speak only after opening its visible recording UI.',
+          icon: Icons.mic_none,
+          keywords: const <String>['voice', 'journal', 'record'],
+          onSelected: () => _openRoute(
+            '/memory/voice-journal',
+            (_) => const VoiceJournalScreen(),
+            room: NeuraRoom.reflectionBay,
+          ),
+        ),
+        PresenceCommand(
+          id: 'dreams',
+          title: 'Dreams',
+          subtitle: 'Visualizer, calendar, monthly show, and themes.',
+          icon: Icons.auto_awesome,
+          keywords: const <String>['dream', 'sleep', 'calendar'],
+          onSelected: () => _openRoute(
+            '/spaces/dreams',
+            (_) => const _DreamHub(),
+            room: NeuraRoom.dreamAtrium,
+          ),
+        ),
+        PresenceCommand(
+          id: 'legacy',
+          title: 'Legacy Vault',
+          subtitle: 'Messages for future-you.',
+          icon: Icons.auto_stories,
+          keywords: const <String>['legacy', 'future', 'vault'],
+          onSelected: () => _openRoute(
+            '/memory/legacy',
+            (_) => const LegacyHomeScreen(),
+            room: NeuraRoom.legacyVault,
+          ),
+        ),
+        PresenceCommand(
+          id: 'memory-vault',
+          title: 'Memory Vault',
+          subtitle: 'Encrypted notes for what matters.',
+          icon: Icons.lock_outline,
+          keywords: const <String>['memory', 'encrypted', 'vault'],
+          onSelected: () => _openRoute(
+            '/memory/vault',
+            (_) => const MemoryVaultScreen(),
+          ),
+        ),
+        PresenceCommand(
+          id: 'timeline',
+          title: 'Life Timeline',
+          subtitle: 'Your life, one event at a time.',
+          icon: Icons.history_edu_outlined,
+          keywords: const <String>['life', 'timeline', 'memory'],
+          onSelected: () => _openRoute(
+            '/memory/timeline',
+            (_) => const LifeTimelineScreen(),
+          ),
+        ),
+        PresenceCommand(
+          id: 'support',
+          title: 'Support Center',
+          subtitle: 'Grounding tools and people to reach out to.',
+          icon: Icons.health_and_safety_outlined,
+          keywords: const <String>['support', 'grounding', 'safety'],
+          onSelected: () => _openRoute(
+            '/care/support',
+            (_) => const SupportCenterScreen(),
+          ),
+        ),
+        PresenceCommand(
+          id: 'pay-it-forward',
+          title: 'Pay It Forward',
+          subtitle: 'Track kind acts and build a streak.',
+          icon: Icons.volunteer_activism_outlined,
+          keywords: const <String>['kindness', 'social', 'streak'],
+          onSelected: () => _openRoute(
+            '/spaces/pay-it-forward',
+            (_) => const PayItForwardScreen(),
+          ),
+        ),
+        PresenceCommand(
+          id: 'quests',
+          title: 'Quest Mode',
+          subtitle: 'Tiny missions to build momentum.',
+          icon: Icons.flag_outlined,
+          keywords: const <String>['quest', 'goal', 'momentum'],
+          onSelected: () => _openRoute(
+            '/spaces/quests',
+            (_) => const QuestModeScreen(),
+          ),
+        ),
+        PresenceCommand(
+          id: 'jokes',
+          title: 'Neura Jokes',
+          subtitle: 'Open an optional moment of humor.',
+          icon: Icons.mood_outlined,
+          keywords: const <String>['joke', 'humor', 'laugh'],
+          onSelected: () =>
+              _openRoute('/spaces/jokes', (_) => const JokeScreen()),
+        ),
+        PresenceCommand(
+          id: 'therapy-journal',
+          title: 'Therapy Journal',
+          subtitle: 'Guided CBT, DBT, and ACT reflection prompts.',
+          icon: Icons.self_improvement_outlined,
+          keywords: const <String>['therapy', 'cbt', 'dbt', 'act'],
+          onSelected: () => _openRoute(
+            '/care/therapy-journal',
+            (_) => const TherapyPathScreen(),
+          ),
+        ),
+        PresenceCommand(
+          id: 'money',
+          title: 'Money Manager',
+          subtitle: 'Track income and expenses on-device.',
+          icon: Icons.account_balance_wallet_outlined,
+          keywords: const <String>['money', 'budget', 'finance'],
+          onSelected: () => _openRoute(
+            '/spaces/money',
+            (_) => const MoneyManagerScreen(),
+          ),
+        ),
+        PresenceCommand(
+          id: 'decision-path',
+          title: 'Decision Path Helper',
+          subtitle: 'Compare the fastest, safest, and cheapest paths.',
+          icon: Icons.route_outlined,
+          keywords: const <String>['decision', 'plan', 'compare'],
+          onSelected: () => _openRoute(
+            '/intelligence/decision-path',
+            (_) => const DecisionPathScreen(),
+          ),
+        ),
+        PresenceCommand(
+          id: 'trusted-devices',
+          title: 'Trusted Devices',
+          subtitle: 'Review devices Neura is allowed to trust.',
+          icon: Icons.verified_user_outlined,
+          keywords: const <String>['device', 'trust', 'security'],
+          onSelected: () => _openRoute(
+            '/controls/trusted-devices',
+            (_) => const TrustedDevicesScreen(),
+          ),
+        ),
+        PresenceCommand(
+          id: 'diagnostics',
+          title: 'Diagnostics',
+          subtitle: 'Health, logs, recovery, and support evidence.',
+          icon: Icons.monitor_heart_outlined,
+          keywords: const <String>['logs', 'recovery', 'health'],
+          onSelected: _openDiagnostics,
+        ),
+        PresenceCommand(
+          id: 'controls',
+          title: 'Controls',
+          subtitle: 'Privacy, safety, appearance, export, and wipe.',
+          icon: Icons.tune_outlined,
+          keywords: const <String>['settings', 'privacy', 'export', 'wipe'],
+          onSelected: () => _onTab(4),
+        ),
+      ];
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 240,
-      child: Card(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(icon),
-                const SizedBox(height: 10),
-                Text(title, style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 6),
-                Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
-              ],
-            ),
+    return AnimatedBuilder(
+      animation: Listenable.merge(<Listenable>[
+        SafeBoot.instance.safeMode,
+        AmbientListeningPrefsController.instance.enabled,
+        WakeWordPrefsController.instance.enabled,
+        NeuraCompanionPresence.instance.state,
+      ]),
+      builder: (context, _) => StreamBuilder<dynamic>(
+        // Safe Mode never subscribes to the optional cloud auth stream. The
+        // local shell and its status remain fully usable without touching a
+        // cloud-backed singleton.
+        stream: SafeBoot.instance.safeMode.value
+            ? null
+            : (_authStateChanges ??= AuthService.onAuthStateChanged),
+        builder: (context, _) => Scaffold(
+          body: Stack(
+            children: <Widget>[
+              PresenceNavigationShell(
+                currentIndex: _index,
+                onDestinationSelected: _onTab,
+                destinationPages: _destinationPages,
+                commands: _commandCatalog,
+                status: _presenceStatus(),
+                now: const ProactiveBannerCard(),
+                onOpenNeura: _openChat,
+                onOpenDiagnostics: _openDiagnostics,
+              ),
+              const AmbientRecordingBadge(),
+            ],
           ),
         ),
       ),
@@ -550,24 +609,26 @@ class _Tile extends StatelessWidget {
   }
 }
 
-class _JournalHub extends StatelessWidget {
-  const _JournalHub();
+class _MemoryHub extends StatelessWidget {
+  const _MemoryHub();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Journal')),
+      appBar: AppBar(title: const Text('Memory')),
       body: ListView(
         padding: const EdgeInsets.all(16),
-        children: [
+        children: <Widget>[
           const Text(
-              'Journal hub: prompts + voice journaling. Mood-aware prompts are next.'),
+            'Your journal and encrypted memories stay local-first. Choose what '
+            'to record, review, export, or preserve.',
+          ),
           const SizedBox(height: 12),
           Card(
             child: ListTile(
               leading: const Icon(Icons.edit_note),
               title: const Text('Get a prompt'),
-              subtitle: const Text('Time-aware prompt (mood-aware next).'),
+              subtitle: const Text('Write privately with a time-aware prompt.'),
               onTap: () {
                 final shell = NeuraShell.of(context);
                 if (shell.isLoaded) shell.setRoom(NeuraRoom.reflectionBay);
@@ -580,7 +641,9 @@ class _JournalHub extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.mic_none),
               title: const Text('Voice journal'),
-              subtitle: const Text('Speech-to-text (device permitting).'),
+              subtitle: const Text(
+                'Record only after opening the visible microphone screen.',
+              ),
               onTap: () {
                 final shell = NeuraShell.of(context);
                 if (shell.isLoaded) shell.setRoom(NeuraRoom.reflectionBay);
@@ -596,6 +659,45 @@ class _JournalHub extends StatelessWidget {
               subtitle: const Text('Quick emotional snapshot.'),
               onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const MoodCheckInScreen())),
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.lock_outline),
+              title: const Text('Memory Vault'),
+              subtitle: const Text('Encrypted notes for what matters.'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const MemoryVaultScreen(),
+                  settings: const RouteSettings(name: '/memory/vault'),
+                ),
+              ),
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.history_edu_outlined),
+              title: const Text('Life Timeline'),
+              subtitle: const Text('Your life, one event at a time.'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const LifeTimelineScreen(),
+                  settings: const RouteSettings(name: '/memory/timeline'),
+                ),
+              ),
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.auto_stories_outlined),
+              title: const Text('Legacy Vault'),
+              subtitle: const Text('Messages and memories for future-you.'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const LegacyHomeScreen(),
+                  settings: const RouteSettings(name: '/memory/legacy'),
+                ),
+              ),
             ),
           ),
         ],

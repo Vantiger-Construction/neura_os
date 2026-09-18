@@ -1,10 +1,11 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../avatar/avatar_route_observer.dart';
 import '../core/neura_event_bus.dart';
 import '../modules/core/error_handler.dart';
 import '../modules/human/human_prefs.dart';
 import '../modules/human/human_prefs_controller.dart';
+import '../modules/human/human_media_query.dart';
 import '../startup/neura_boot_screen.dart';
 import '../theme/app_theme.dart';
 import 'shell/neura_shell.dart';
@@ -45,8 +46,17 @@ class NeuroCompanionApp extends StatelessWidget {
           darkTheme: AppTheme.dark(highContrast: prefs.highContrast),
           scaffoldMessengerKey: ErrorHandler.scaffoldMessengerKey,
           builder: (context, child) {
+            final mediaQuery = applyHumanAccessibilityPreferences(
+              MediaQuery.of(context),
+              prefs,
+            );
             return NeuraShellRoot(
-              child: NeuraAmbientShell(child: child ?? const SizedBox.shrink()),
+              child: MediaQuery(
+                data: mediaQuery,
+                child: NeuraAmbientShell(
+                  child: child ?? const SizedBox.shrink(),
+                ),
+              ),
             );
           },
           // NeuraBootScreen owns startup sequencing and fades into EnhancedNavigation.

@@ -45,6 +45,7 @@ class NeuraShellState extends ChangeNotifier {
 
   NeuraRoom _room = NeuraRoom.penthouse;
   bool _showAvatar = true;
+  bool _avatarDockedInApp = false;
   bool _ambientEnabled = false;
   double _ambientVolume = 0.35;
   bool _autoRoomSync = true;
@@ -64,6 +65,7 @@ class NeuraShellState extends ChangeNotifier {
   bool get isLoaded => _loaded;
   NeuraRoom get room => _room;
   bool get showAvatar => _showAvatar;
+  bool get avatarDockedInApp => _avatarDockedInApp;
   bool get ambientEnabled => _ambientEnabled;
   double get ambientVolume => _ambientVolume;
   bool get autoRoomSync => _autoRoomSync;
@@ -168,7 +170,9 @@ class NeuraShellState extends ChangeNotifier {
     }
 
     try {
-      await MascotWindowService.I.init(visible: _showAvatar);
+      await MascotWindowService.I.init(
+        visible: _showAvatar && !_avatarDockedInApp,
+      );
       _mascotStarted = true;
       if (_disposed || SafeBoot.instance.safeMode.value) {
         await MascotWindowService.I.setVisible(false);
@@ -261,11 +265,33 @@ class NeuraShellState extends ChangeNotifier {
     await prefs.setBool(_kShowAvatar, value);
     if (_mascotStarted) {
       await MascotWindowService.I.setVisible(
-        value && !SafeBoot.instance.safeMode.value,
+        value && !_avatarDockedInApp && !SafeBoot.instance.safeMode.value,
       );
     } else if (value &&
         !SafeBoot.instance.safeMode.value &&
         NeuraStartupCoordinator.instance.ready.value) {
+      await _activateOptionalShellServicesWhenReady();
+    }
+  }
+
+  /// Temporarily hands avatar presentation to the in-app Neura Stage.
+  ///
+  /// This does not change the user's persisted floating-avatar preference.
+  /// It only prevents the always-on-top Windows mascot from covering the
+  /// primary shell while the same full-body presence is docked there.
+  Future<void> setAvatarDockedInApp(bool value) async {
+    if (_disposed || _avatarDockedInApp == value) return;
+    _avatarDockedInApp = value;
+    notifyListeners();
+
+    if (SafeBoot.instance.safeMode.value) return;
+    if (_mascotStarted) {
+      try {
+        await MascotWindowService.I.setVisible(_showAvatar && !value);
+      } catch (_) {}
+      return;
+    }
+    if (!value && _showAvatar && NeuraStartupCoordinator.instance.ready.value) {
       await _activateOptionalShellServicesWhenReady();
     }
   }
