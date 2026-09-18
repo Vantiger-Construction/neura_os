@@ -13,7 +13,7 @@ grant execute on function auth.uid() to authenticated, anon;
 insert into auth.users values ('00000000-0000-0000-0000-000000000001'),('00000000-0000-0000-0000-000000000002');
 `);
 const root=fileURLToPath(new URL('../../', import.meta.url));
-for (const path of ['supabase/migrations/20260909000000_create_journal_entries.sql','supabase/migrations/20260911000000_track_journal_revision_time.sql','supabase/migrations/20260918000000_compare_journal_revisions.sql']) await db.exec(readFileSync(root+path,'utf8'));
+for (const path of ['supabase/migrations/20260918181707_create_journal_entries.sql','supabase/migrations/20260918181725_track_journal_revision_time.sql','supabase/migrations/20260918181743_compare_journal_revisions.sql','supabase/migrations/20260918181858_restrict_rls_auto_enable_execution.sql']) await db.exec(readFileSync(root+path,'utf8'));
 await db.exec(`set role authenticated; set request.jwt.claim.sub = '00000000-0000-0000-0000-000000000001';`);
 const original={id:'entry1',timestamp:'2026-01-01T00:00:00Z',updated_at:'2026-01-01T00:00:00Z',content:'original',moodTag:'',isVoice:false};
 const rpc=async (entry, expected=null)=>(await db.query('select * from public.neura_sync_journal_revision($1::jsonb,$2::timestamptz)',[JSON.stringify(entry),expected])).rows[0];

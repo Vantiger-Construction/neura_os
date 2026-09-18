@@ -12,9 +12,11 @@ Safe Mode must continue to skip every cloud initialization and sync attempt.
 - Edge Function: stateless Stripe Checkout verification. Stripe remains the
   payment source of truth; no payment secret belongs in the app or repository.
 
-## Create and link a free continuity project
+## Link the selected continuity project
 
-1. Create a new Free project in a separate continuity organization.
+The user selected the existing project for deployment on September 18, 2026. See [deployment evidence](SUPABASE_DEPLOYMENT_20260918.md). Keep public build values outside the repository.
+
+1. Select the existing Free project in the user's organization.
 2. Link it from an authenticated Supabase CLI session:
    `supabase link --project-ref <project-ref>`
 3. Apply the committed schema:

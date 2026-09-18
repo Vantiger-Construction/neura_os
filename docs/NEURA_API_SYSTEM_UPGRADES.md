@@ -31,7 +31,7 @@ In an isolated Dart 3.12.0 JIT benchmark, a 32,768-character unpunctuated reply 
 - Coalesce simultaneous sync requests. Recheck the account and Safe Mode across asynchronous boundaries. Report offline, interrupted, retry-needed and setup-required outcomes explicitly; never claim success for a swallowed error.
 - Local journal entries remain the durable source for a manual retry after a failure or restart. No background sync scheduler or separate copy of journal content is introduced.
 
-**Deployment order:** apply `supabase/migrations/20260918000000_compare_journal_revisions.sql` to the intended continuity project before releasing the new client. Missing RPC support produces a setup-required result with no legacy upsert fallback. This PR does not deploy the migration or change account configuration. Existing full-vault encrypted backup and restore remain unchanged; this stage improves recovery from interrupted synchronization.
+**Deployment order:** apply `supabase/migrations/20260918181743_compare_journal_revisions.sql` to the intended continuity project before releasing the new client. Missing RPC support produces a setup-required result with no legacy upsert fallback. This PR does not deploy the migration or change account configuration. Existing full-vault encrypted backup and restore remain unchanged; this stage improves recovery from interrupted synchronization.
 
 ## 3. Local app API v1
 
@@ -68,3 +68,7 @@ Re-run the isolated database test with `npm ci --prefix tools/sync_tests` follow
 - Device QA remains: provider streaming and fallback, TTS barge-in, attachment preview, local-client approval flow, and two-device sync after migration deployment.
 
 No merge, migration deployment, paid service activation or provider request is performed by creating this PR.
+
+## Deployment update — September 18, 2026
+
+The existing Supabase project was restored and the journal migrations were deployed and verified. See [deployment evidence](SUPABASE_DEPLOYMENT_20260918.md). Full Flutter CI and platform builds passed for PR #87; configured physical-device QA remains pending. Historical preparation notes above describe the PR before deployment.
