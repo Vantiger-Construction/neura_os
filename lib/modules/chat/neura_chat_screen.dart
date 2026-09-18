@@ -3,8 +3,12 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../../core/memory/memory_graph_service.dart';
+import '../../neura_link/reply_speech_queue.dart';
+import '../../reliability/safe_boot.dart';
+import '../../services/neura_selected_context.dart';
 import '../../modules/mood/mood_models.dart';
 import '../../modules/mood/mood_store.dart';
 import '../../neura_shell/models/neura_room.dart';
@@ -16,6 +20,7 @@ import '../../services/neura_ai_service.dart';
 import '../../services/neura_chat_policy.dart';
 import '../../services/neura_generation_cancel.dart';
 import '../../services/neura_llm_diagnostics.dart';
+import '../../services/neura_reply_batch.dart';
 import '../../services/neura_speech_to_text_service.dart';
 import '../../services/neura_swarm_service.dart';
 import '../../services/neura_tone_runtime.dart';
@@ -42,6 +47,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
 
   bool _speechEnabled = true;
   bool _busy = false;
+  NeuraSelectedContext? _selectedContext;
+  bool _includeMemory = false;
+  bool _privateContextUsed = false;
+  ReplySpeechQueue? _replySpeech;
+  NeuraReplyBatch? _replyUpdates;
+  bool _scrollPending = false;
   String? _activeReplyId;
   _ChatLine? _activeBotLine;
   int _generationSerial = 0;
@@ -85,8 +96,19 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   @override
   void initState() {
     super.initState();
+    SafeBoot.instance.safeMode.addListener(_stopForSafeMode);
     unawaited(_initAgent());
     WakeWordListenerService.instance.pause();
+  }
+
+  void _stopForSafeMode() {
+    if (!SafeBoot.instance.safeMode.value) return;
+    _replyUpdates?.dispose();
+    _replyUpdates = null;
+    _replySpeech?.cancel();
+    NeuraAiService.instance.cancelActiveGeneration();
+    _continuousMode = false;
+    unawaited(NeuraTtsService.instance.stop().catchError((_) {}));
   }
 
   Future<void> _initAgent() async {
@@ -100,8 +122,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
 
   @override
   void dispose() {
+    SafeBoot.instance.safeMode.removeListener(_stopForSafeMode);
     _voiceSub?.cancel();
     _finalPhraseSub?.cancel();
+    _replyUpdates?.dispose();
+    _replySpeech?.cancel();
     NeuraAiService.instance.cancelActiveGeneration();
     unawaited(NeuraTtsService.instance.stop());
     if (_listening) {
@@ -248,6 +273,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   Future<void> _interruptActiveReply() async {
     final interruptedId = _activeReplyId;
     final interruptedLine = _activeBotLine;
+    _replyUpdates?.flush();
+    _replyUpdates?.dispose();
+    _replyUpdates = null;
+    _replySpeech?.cancel();
     NeuraAiService.instance.cancelActiveGeneration();
     await NeuraTtsService.instance.stop();
 
@@ -268,8 +297,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   }
 
   void _scrollToEnd() {
+    if (_scrollPending) return;
+    _scrollPending = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
+      _scrollPending = false;
+      if (!mounted || !_scrollController.hasClients) return;
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
         duration: const Duration(milliseconds: 200),
@@ -297,10 +329,57 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     await _send(imageBase64: base64Encode(bytes), imageMediaType: mediaType);
   }
 
+  Future<void> _pickTextContext() async {
+    try {
+      final selection = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: NeuraSelectedContext.extensions,
+        withReadStream: true,
+        withData: false,
+      );
+      if (selection == null || !mounted) return;
+      final file = selection.files.single;
+      if (file.size > NeuraSelectedContext.maxBytes) {
+        throw const FormatException('Choose a text file up to 32 KB.');
+      }
+      final stream = file.readStream;
+      if (stream == null) {
+        throw const FormatException('This file could not be read.');
+      }
+      final bytes = <int>[];
+      await for (final chunk in stream) {
+        if (bytes.length + chunk.length > NeuraSelectedContext.maxBytes) {
+          throw const FormatException('Choose a text file up to 32 KB.');
+        }
+        bytes.addAll(chunk);
+      }
+      final selected = NeuraSelectedContext.fromBytes(file.name, bytes);
+      if (!mounted || _busy) return;
+      setState(() => _selectedContext = selected);
+    } on FormatException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('The file could not be selected.')));
+      }
+    }
+  }
+
   Future<void> _send({String? imageBase64, String? imageMediaType}) async {
     final text = _controller.text.trim();
     final hasImage = imageBase64 != null;
     if (text.isEmpty && !hasImage) return;
+    if ((_selectedContext != null || _includeMemory) &&
+        !NeuraAiService.instance.isConfigured) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Configure a model provider before using selected context.')));
+      return;
+    }
 
     if (_busy) {
       await _interruptActiveReply();
@@ -309,6 +388,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
 
     final room = NeuraShell.of(context).room;
     final policy = NeuraChatPolicy.forRoom(room.id);
+    final selectedContext = _selectedContext;
+    final includeMemory = _includeMemory && policy.persistMemory;
+    // Derived replies remain in the visible history after next-reply controls
+    // reset. Keep their privacy restrictions for the lifetime of this chat.
+    _privateContextUsed =
+        _privateContextUsed || selectedContext != null || includeMemory;
+    final persistMemory = policy.persistMemory && !_privateContextUsed;
     final displayText =
         text.isEmpty && hasImage ? 'What do you see in this photo?' : text;
     final generationId =
@@ -322,6 +408,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         imageMediaType: imageMediaType,
       ));
       _controller.clear();
+      _selectedContext = null;
+      _includeMemory = false;
       _busy = true;
       _activeReplyId = generationId;
     });
@@ -336,7 +424,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     unawaited(_remember(
       isUser: true,
       text: displayText,
-      persistMemory: policy.persistMemory,
+      persistMemory: persistMemory,
     ));
 
     final history = _lines
@@ -354,7 +442,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       await _fallbackToLocalReply(
         displayText,
         generationId: generationId,
-        persistMemory: policy.persistMemory,
+        persistMemory: persistMemory,
       );
       return;
     }
@@ -370,24 +458,58 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     });
     _scrollToEnd();
 
+    final useStreamSpeech =
+        _speechEnabled && NeuraTtsService.instance.speakRepliesEnabled;
+    final speech = ReplySpeechQueue(
+      speak: (text) => NeuraTtsService.instance.speak(text).timeout(
+            const Duration(seconds: 45),
+            onTimeout: () => NeuraTtsService.instance.stop(),
+          ),
+      allowed: () =>
+          mounted &&
+          _activeReplyId == generationId &&
+          _speechEnabled &&
+          NeuraTtsService.instance.speakRepliesEnabled &&
+          !SafeBoot.instance.safeMode.value,
+    );
+    _replySpeech = speech;
+    final updates = NeuraReplyBatch(
+      schedule: (callback) {
+        WidgetsBinding.instance.scheduleFrameCallback((_) => callback());
+      },
+      onFlush: (delta, count) {
+        if (!mounted || _activeReplyId != generationId) return;
+        setState(() {
+          botLine.text += delta;
+          botLine.seq += count;
+        });
+        _scrollToEnd();
+        if (useStreamSpeech) speech.add(botLine.text);
+      },
+    );
+    _replyUpdates = updates;
     try {
       await for (final delta in NeuraAiService.instance.streamReply(
         history,
         agentId: _activeAgent.id,
         roomId: room.id,
         generationId: generationId,
-        onToolCommand: _handleToolCommand,
+        selectedContext: selectedContext,
+        includePermittedMemory: includeMemory,
+        historyIncludesPrivateContext: _privateContextUsed,
+        onToolCommand: (command) => _activeReplyId == generationId
+            ? _handleToolCommand(command)
+            : Future.value(false),
         requestCloudApproval: (preview) =>
-            showNeuraCloudRequestPreview(context, preview),
+            mounted && _activeReplyId == generationId
+                ? showNeuraCloudRequestPreview(context, preview)
+                : Future.value(false),
       )) {
         if (!mounted || _activeReplyId != generationId) return;
-        setState(() {
-          botLine.text += delta;
-          botLine.seq += 1;
-        });
-        _scrollToEnd();
+        updates.add(delta);
       }
 
+      updates.flush();
       if (!mounted || _activeReplyId != generationId) return;
       await AppLog.instance.info('chat_reply_complete', {
         'utterance_id': generationId,
@@ -397,19 +519,24 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       unawaited(_remember(
         isUser: false,
         text: botLine.text,
-        persistMemory: policy.persistMemory,
+        persistMemory: persistMemory && !_privateContextUsed,
       ));
       unawaited(_runSwarm(
         userMessage: displayText,
         draftReply: botLine.text,
         history: history,
-        persistMemory: policy.persistMemory,
+        persistMemory: persistMemory && !_privateContextUsed,
       ));
 
-      if (_speechEnabled && botLine.text.trim().isNotEmpty) {
+      if (useStreamSpeech) {
+        await speech.finish(botLine.text);
+      } else if (_speechEnabled && botLine.text.trim().isNotEmpty) {
         await NeuraTtsService.instance.speak(botLine.text);
       }
     } on NeuraGenerationCancelled catch (e) {
+      updates.flush();
+      speech.cancel();
+      await NeuraTtsService.instance.stop();
       await AppLog.instance.info('chat_generation_cancelled', {
         'utterance_id': e.generationId,
         'seq': botLine.seq,
@@ -419,6 +546,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       }
       return;
     } catch (error, stack) {
+      updates.flush();
+      speech.cancel();
+      await NeuraTtsService.instance.stop();
       await AppLog.instance.caught(
         'chat_generation_failed',
         error,
@@ -432,13 +562,17 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         await _fallbackToLocalReply(
           displayText,
           generationId: generationId,
-          persistMemory: policy.persistMemory,
+          persistMemory: persistMemory,
         );
       } else {
         setState(() => botLine.interrupted = true);
       }
       return;
     } finally {
+      updates.dispose();
+      if (identical(_replyUpdates, updates)) _replyUpdates = null;
+      speech.cancel();
+      if (identical(_replySpeech, speech)) _replySpeech = null;
       if (mounted && _activeReplyId == generationId) {
         setState(() {
           _busy = false;
@@ -553,16 +687,27 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   }
 
   Future<bool> _handleToolCommand(NeuraToolCommand command) async {
-    if (!mounted) return false;
+    if (!mounted ||
+        _activeReplyId == null ||
+        SafeBoot.instance.safeMode.value) {
+      return false;
+    }
+    final currentPolicy =
+        NeuraChatPolicy.forRoom(NeuraShell.of(context).room.id);
+    if (!currentPolicy.allowsTool(command.name)) return false;
     switch (command.name) {
       case NeuraChatPolicy.getMoodHistory:
-        return _confirmToolAction(
+        final approved = await _confirmToolAction(
           title: 'Share mood scores once?',
           message: 'Neura wants to send recent mood dates and 0–10 scores to '
               'the configured AI provider for this reply. Your mood notes '
               'will not be shared.',
           approveLabel: 'Share once',
         );
+        if (approved) {
+          _privateContextUsed = true;
+        }
+        return approved;
       case NeuraChatPolicy.logMoodEntry:
         final mood = (command.arguments['mood0to10'] as num?)
             ?.round()
@@ -579,6 +724,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
           approveLabel: 'Save locally',
         );
         if (!approved) return false;
+        _privateContextUsed = true;
         await MoodStore.instance.add(
           MoodEntry(
             timestamp: DateTime.now(),
@@ -604,6 +750,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         setState(() {
           _activeAgent = AgentSelectionService.instance.resolveAgent(target);
         });
+        NeuraAiService.instance.cancelActiveGeneration();
         await AppLog.instance.info('dispatch_intent', {'room': roomId});
         return true;
       case NeuraChatPolicy.setTone:
@@ -630,7 +777,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     required String approveLabel,
   }) async {
     if (!mounted) return false;
-    return await showDialog<bool>(
+    final generation = _activeReplyId;
+    final room = NeuraShell.of(context).room.id;
+    final approved = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: Text(title),
@@ -648,6 +797,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
           ),
         ) ??
         false;
+    return approved &&
+        mounted &&
+        generation != null &&
+        _activeReplyId == generation &&
+        !SafeBoot.instance.safeMode.value &&
+        NeuraShell.of(context).room.id == room;
   }
 
   String _transcriptSnippet(List<NeuraChatTurn> history) {
@@ -663,6 +818,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   void _toggleSpeech() {
     setState(() => _speechEnabled = !_speechEnabled);
     if (!_speechEnabled) {
+      _replySpeech?.cancel();
       unawaited(NeuraTtsService.instance.stop());
     }
   }
@@ -830,6 +986,24 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
               },
             ),
           ),
+          if (_selectedContext != null)
+            InputChip(
+              label: Text('Next reply: ${_selectedContext!.name}'),
+              onDeleted:
+                  _busy ? null : () => setState(() => _selectedContext = null),
+            ),
+          CheckboxListTile(
+            dense: true,
+            title: const Text('Use permitted memories for the next reply'),
+            subtitle: const Text(
+                'Private rooms stay private. Review the cloud preview before sending.'),
+            value: _includeMemory,
+            onChanged: _busy ||
+                    !NeuraChatPolicy.forRoom(NeuraShell.of(context).room.id)
+                        .persistMemory
+                ? null
+                : (value) => setState(() => _includeMemory = value ?? false),
+          ),
           SafeArea(
             top: false,
             child: Padding(
@@ -854,6 +1028,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'Select text for the next reply',
+                    onPressed: _busy ? null : _pickTextContext,
+                    icon: const Icon(Icons.attach_file),
+                  ),
                   IconButton(
                     tooltip: 'Attach a photo',
                     onPressed: _busy ? null : _pickAndSendImage,

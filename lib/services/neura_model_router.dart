@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -7,6 +8,8 @@ import '../constitution/neura_personal_constitution.dart';
 import '../intent_compiler/neura_action_graph.dart' show NeuraActionEffect;
 import '../reliability/safe_boot.dart';
 import 'neura_model_credentials.dart';
+import 'neura_generation_cancel.dart';
+import 'neura_model_stream.dart';
 import 'neura_model_types.dart';
 
 class NeuraCloudRequestPreview {
@@ -16,6 +19,7 @@ class NeuraCloudRequestPreview {
   final int characterCount;
   final bool includesImage;
   final bool includesPrivateContext;
+  final String textPreview;
 
   const NeuraCloudRequestPreview({
     required this.provider,
@@ -24,6 +28,7 @@ class NeuraCloudRequestPreview {
     required this.characterCount,
     required this.includesImage,
     required this.includesPrivateContext,
+    this.textPreview = '',
   });
 }
 
@@ -53,11 +58,31 @@ class NeuraModelRequest {
       provider: provider,
       purpose: purpose,
       messageCount: messages.length,
-      characterCount: encoded.length,
+      characterCount: encoded.length + systemPrompt.length,
       includesImage: hasTypedImage || hasImageUrl,
       includesPrivateContext: includesPrivateContext,
+      textPreview: _previewText(systemPrompt, messages),
     );
   }
+}
+
+String _previewText(String systemPrompt, List<Map<String, dynamic>> messages) {
+  final lines = <String>['Instructions and permitted context:', systemPrompt];
+  for (final message in messages) {
+    lines.add('${message['role']}:');
+    final content = message['content'];
+    if (content is String) {
+      lines.add(content);
+    } else if (content is List) {
+      for (final block in content.whereType<Map>()) {
+        lines.add(block['type'] == 'image'
+            ? '[Attached image]'
+            : (block['text'] ?? block['content'] ?? '[Action request]')
+                .toString());
+      }
+    }
+  }
+  return lines.join('\n');
 }
 
 class NeuraModelResponse {
@@ -105,6 +130,7 @@ class NeuraOpenAiTransport implements NeuraModelTransport {
           },
           body: jsonEncode({
             'model': _model,
+            'store': false,
             'input': input,
             'max_output_tokens': request.maxTokens,
             'reasoning': {'effort': 'low'},
@@ -212,10 +238,16 @@ class NeuraSecureModelRouter {
     NeuraModelCredentials? credentials,
     List<NeuraModelTransport>? transports,
     NeuraPersonalConstitution? constitution,
+    List<NeuraModelStreamTransport>? streamTransports,
   })  : _credentials = credentials ?? NeuraModelCredentials.instance,
         _constitutionOverride = constitution {
     final availableTransports =
         transports ?? [NeuraOpenAiTransport(), NeuraAnthropicTransport()];
+    _streamTransports = {
+      for (final transport in streamTransports ??
+          NeuraModelProvider.values.map(NeuraModelStreamTransport.new))
+        transport.provider: transport,
+    };
     _transports = {
       for (final transport in availableTransports)
         transport.provider: transport,
@@ -226,10 +258,109 @@ class NeuraSecureModelRouter {
   final NeuraPersonalConstitution? _constitutionOverride;
   late final Map<NeuraModelProvider, NeuraModelTransport> _transports;
 
+  late final Map<NeuraModelProvider, NeuraModelStreamTransport>
+      _streamTransports;
+
+  Stream<NeuraStreamEvent> stream(
+    NeuraModelRequest request, {
+    required List<Map<String, dynamic>> tools,
+    required NeuraGenerationCancel cancel,
+    required NeuraCloudApprovalHandler requestApproval,
+    NeuraModelProvider? provider,
+  }) async* {
+    // Freeze the request before preview: callers cannot change the approved body.
+    request = NeuraModelRequest(
+      systemPrompt: request.systemPrompt,
+      messages: (jsonDecode(jsonEncode(request.messages)) as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList(),
+      purpose: request.purpose,
+      includesPrivateContext: request.includesPrivateContext,
+      maxTokens: request.maxTokens,
+    );
+    final frozenTools = (jsonDecode(jsonEncode(tools)) as List)
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+    void check() {
+      cancel.throwIfCancelled();
+      _throwIfSafeMode();
+      _throwIfConstitutionBlocks(request);
+    }
+
+    void onSafeMode() {
+      if (SafeBoot.instance.safeMode.value) cancel.cancel();
+    }
+
+    SafeBoot.instance.safeMode.addListener(onSafeMode);
+    try {
+      _throwIfSafeMode();
+      if (_constitutionOverride == null) {
+        await NeuraConstitutionService.instance.load();
+      }
+      check();
+      Object? lastError;
+      for (final candidate
+          in provider == null ? NeuraModelProvider.values : [provider]) {
+        check();
+        final transport = _streamTransports[candidate];
+        if (transport == null) continue;
+        final key = await _credentials.read(candidate);
+        check();
+        if (key == null) continue;
+        final approved = await Future.any<bool>([
+          requestApproval(request.previewFor(candidate)),
+          cancel.whenCancelled.then((_) => false),
+        ]);
+        check();
+        if (!approved) throw const NeuraCloudApprovalDenied();
+        var emitted = false;
+        try {
+          await for (final event in transport.stream(
+            apiKey: key,
+            systemPrompt: request.systemPrompt,
+            messages: request.messages,
+            tools: frozenTools,
+            cancel: cancel,
+            maxTokens: request.maxTokens,
+          )) {
+            check();
+            emitted = true;
+            yield event;
+          }
+          return;
+        } catch (error) {
+          check();
+          // Never replay a partial answer or a tool round through another provider.
+          if (emitted ||
+              provider != null ||
+              !(error is NeuraStreamFailure ||
+                  error is http.ClientException ||
+                  error is TimeoutException)) {
+            rethrow;
+          }
+          lastError = error;
+        }
+      }
+      throw lastError ??
+          StateError('No securely configured model provider is available.');
+    } finally {
+      SafeBoot.instance.safeMode.removeListener(onSafeMode);
+    }
+  }
+
   Future<NeuraModelResponse> complete(
     NeuraModelRequest request, {
     required NeuraCloudApprovalHandler requestApproval,
   }) async {
+    request = NeuraModelRequest(
+      systemPrompt: request.systemPrompt,
+      messages: (jsonDecode(jsonEncode(request.messages)) as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList(),
+      purpose: request.purpose,
+      includesPrivateContext: request.includesPrivateContext,
+      maxTokens: request.maxTokens,
+    );
     _throwIfSafeMode();
     if (_constitutionOverride == null) {
       await NeuraConstitutionService.instance.load();

@@ -49,6 +49,38 @@ void main() {
         'More one.',
       );
     });
+
+    test('fragmented growing text matches a full-scan reference', () {
+      final sentences =
+          List.filled(100, 'A long clause with é and 🌱. Next?\n').join();
+      final text = '${sentences}Final unfinished clause';
+      for (final step in [1, 2, 7, 61]) {
+        final chunker = SpeechStreamChunker();
+        var spoken = 0;
+        for (var end = step; end < text.length; end += step) {
+          final prefix = text.substring(0, end);
+          var boundary = spoken;
+          for (var i = spoken; i < prefix.length; i++) {
+            if ('.!?\n'.contains(prefix[i])) boundary = i + 1;
+          }
+          final expected = prefix.substring(spoken, boundary).trim();
+          expect(chunker.extractReadyChunk('reply', prefix), expected);
+          spoken = boundary;
+        }
+        expect(chunker.finish('reply', text), text.substring(spoken).trim());
+      }
+    });
+
+    test('finish and discard clear the cursor for an unfinished sentence', () {
+      final chunker = SpeechStreamChunker();
+      final long = List.filled(1000, 'word ').join();
+      expect(chunker.extractReadyChunk('first', long), isEmpty);
+      expect(chunker.finish('first', long), long.trim());
+      expect(chunker.extractReadyChunk('first', 'Short!'), 'Short!');
+      expect(chunker.extractReadyChunk('second', long), isEmpty);
+      chunker.discard('second');
+      expect(chunker.extractReadyChunk('second', 'Short?'), 'Short?');
+    });
   });
 
   group('SpeechStreamChunker.finish', () {

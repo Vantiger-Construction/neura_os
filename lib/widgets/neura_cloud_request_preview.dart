@@ -13,7 +13,8 @@ Future<bool> showNeuraCloudRequestPreview(
     barrierDismissible: false,
     builder: (dialogContext) => AlertDialog(
       title: Text('Send to ${preview.provider.label}?'),
-      content: Column(
+      content: SingleChildScrollView(
+          child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -29,13 +30,18 @@ Future<bool> showNeuraCloudRequestPreview(
             'Includes private context: '
             '${preview.includesPrivateContext ? "Yes" : "No"}',
           ),
+          if (preview.textPreview.isNotEmpty)
+            ExpansionTile(
+              title: const Text('Review text and context'),
+              children: [SelectableText(preview.textPreview)],
+            ),
           const SizedBox(height: 12),
           const Text(
             'Approval applies once. A fallback provider requires another '
             'preview and approval.',
           ),
         ],
-      ),
+      )),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(false),

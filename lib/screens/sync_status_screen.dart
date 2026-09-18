@@ -19,11 +19,13 @@ class _SyncStatusScreenState extends State<SyncStatusScreen> {
   final _sync = SyncService();
   bool _syncing = false;
   DateTime? _lastAttempt;
+  String? _resultMessage;
   List<SyncConflictRecord> _conflicts = const [];
 
   @override
   void initState() {
     super.initState();
+    _resultMessage = SyncService.lastResultMessage;
     _loadConflicts();
   }
 
@@ -38,11 +40,12 @@ class _SyncStatusScreenState extends State<SyncStatusScreen> {
     if (!readiness.canSync || _syncing) return;
 
     setState(() => _syncing = true);
-    await _sync.syncAll();
+    final result = await _sync.syncAll();
     if (!mounted) return;
     setState(() {
       _syncing = false;
       _lastAttempt = DateTime.now();
+      _resultMessage = result.message;
     });
     await _loadConflicts();
   }
@@ -163,6 +166,10 @@ class _SyncStatusScreenState extends State<SyncStatusScreen> {
                     : const Icon(Icons.sync),
                 label: Text(_syncing ? 'Syncing…' : 'Sync now'),
               ),
+              if (_resultMessage != null)
+                Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(_resultMessage!)),
               if (_lastAttempt != null) ...[
                 const SizedBox(height: 12),
                 Text(

@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
 
-import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
 import '../after_storm/models/storm_event.dart';
@@ -23,6 +21,8 @@ import 'neura_generation_cancel.dart';
 import 'neura_llm_diagnostics.dart';
 import 'neura_model_credentials.dart';
 import 'neura_model_router.dart';
+import 'neura_model_stream.dart';
+import 'neura_selected_context.dart';
 import 'neura_model_types.dart';
 import 'neura_provider_credentials.dart';
 
@@ -65,36 +65,26 @@ class NeuraChatTurn {
   }
 }
 
-/// Raw HTTP client for the Anthropic Messages API.
+/// Provider-neutral chat orchestration through the secure model router.
 ///
 /// Features deliberately kept in one place:
 /// - SSE text streaming
 /// - cooperative barge-in/cancellation
 /// - room-scoped model tools with execution-time re-validation
 /// - persistent-memory privacy gating via [NeuraPromptBuilder]
-/// - bounded retry/backoff before any text is emitted
+/// - fallback only before any streamed output, with separate approval
 /// - process-local health diagnostics
 class NeuraAiService {
   NeuraAiService._();
   static final NeuraAiService instance = NeuraAiService._();
 
-  static const _model = 'claude-sonnet-5';
-  static const _maxTokens = 2048;
-  static const _endpoint = 'https://api.anthropic.com/v1/messages';
-
   static const _maxToolRounds = 4;
-  static const _maxRetries = 3;
-  static const _initialBackoffMs = 350;
-  static const _maxBackoffMs = 4000;
-  static const _requestTimeout = Duration(seconds: 30);
-  static const _retryableStatuses = {429, 500, 502, 503, 529};
 
   final NeuraLlmDiagnostics _diagnostics = NeuraLlmDiagnostics.instance;
   final NeuraSecureModelRouter _modelRouter = NeuraSecureModelRouter();
   NeuraGenerationCancel? _activeCancel;
   String? _activeGenerationId;
 
-  String get _apiKey => NeuraProviderCredentials.instance.apiKey;
   bool get isConfigured {
     if (NeuraProviderCredentials.instance.hasKey) return true;
     return NeuraModelCredentials.instance.configured.value.isNotEmpty;
@@ -114,19 +104,13 @@ class NeuraAiService {
     _diagnostics.recordCancellation();
   }
 
-  static List<Map<String, dynamic>> _systemBlock(String systemPrompt) => [
-        {
-          'type': 'text',
-          'text': systemPrompt,
-          'cache_control': {'type': 'ephemeral'},
-        },
-      ];
-
   /// Streams incremental text deltas for a reply to [history].
   ///
   /// Starting a new generation automatically cancels the previous one. Tool
   /// definitions are selected from [roomId], and every model-requested tool
   /// is checked against the same policy again immediately before execution.
+  /// [historyIncludesPrivateContext] retains the privacy restriction on
+  /// answers derived from files, memory or private actions in earlier turns.
   Stream<String> streamReply(
     List<NeuraChatTurn> history, {
     String agentId = AgentPersonaCatalog.generalId,
@@ -134,6 +118,9 @@ class NeuraAiService {
     String? generationId,
     NeuraToolCommandHandler? onToolCommand,
     NeuraCloudApprovalHandler? requestCloudApproval,
+    NeuraSelectedContext? selectedContext,
+    bool includePermittedMemory = false,
+    bool historyIncludesPrivateContext = false,
   }) async* {
     _throwIfCloudBlocked();
     if (!isConfigured) {
@@ -160,79 +147,82 @@ class NeuraAiService {
       }
       final audience = NeuraAudienceService.instance.currentAudience;
 
-      final openAiKey = await NeuraModelCredentials.instance.read(
-        NeuraModelProvider.openAi,
-      );
-      if (openAiKey != null) {
-        final systemPrompt =
-            await NeuraPromptBuilder.instance.buildSystemMessage(
-          agentId: agentId,
-          audience: audience,
-          module: roomId,
-          includePersistentMemory: policy.persistMemory,
-        );
-        cancel.throwIfCancelled();
-        final response = await _modelRouter.complete(
-          NeuraModelRequest(
-            systemPrompt: systemPrompt,
-            messages: history.map((turn) => turn.toJson()).toList(),
-            purpose: 'chat reply',
-            includesPrivateContext: policy.persistMemory,
-          ),
-          requestApproval: requestCloudApproval ?? _denyCloudRequest,
-        );
-        cancel.throwIfCancelled();
-        yield response.text;
-        return;
-      }
-
+      final useMemory = policy.persistMemory && includePermittedMemory;
       final systemPrompt = await NeuraPromptBuilder.instance.buildSystemMessage(
         agentId: agentId,
         audience: audience,
         module: roomId,
-        includePersistentMemory: policy.persistMemory,
+        includePersistentMemory: useMemory,
       );
       cancel.throwIfCancelled();
-
       final messages = history.map((t) => t.toJson()).toList();
-
+      if (selectedContext != null) {
+        messages.add({'role': 'user', 'content': selectedContext.toMessage()});
+      }
+      NeuraModelProvider? activeProvider;
+      var toolResultsArePrivate = false;
       var toolRounds = 0;
+      var actionCount = 0;
+      final seenCallIds = <String>{};
       while (true) {
         cancel.throwIfCancelled();
-        List<Map<String, dynamic>>? finishedBlocks;
-        var stopReason = 'end_turn';
-
-        await for (final event in _streamOneTurn(
-          systemPrompt,
-          messages,
-          advertisedTools,
-          cancel,
-          requestCloudApproval: requestCloudApproval,
-          includesPrivateContext: policy.persistMemory,
+        _diagnostics.recordAttempt();
+        NeuraTurnComplete? completed;
+        await for (final event in _modelRouter.stream(
+          NeuraModelRequest(
+            systemPrompt: systemPrompt,
+            messages: messages,
+            purpose: toolRounds == 0
+                ? 'chat reply'
+                : 'continue after approved actions',
+            includesPrivateContext: historyIncludesPrivateContext ||
+                useMemory ||
+                selectedContext != null ||
+                toolResultsArePrivate,
+          ),
+          tools: advertisedTools,
+          cancel: cancel,
+          provider: activeProvider,
+          requestApproval: requestCloudApproval ?? _denyCloudRequest,
         )) {
           cancel.throwIfCancelled();
-          if (event is _TextDelta) {
-            yield event.text;
-          } else if (event is _TurnComplete) {
-            finishedBlocks = event.contentBlocks;
-            stopReason = event.stopReason;
-          }
+          if (event is NeuraTextDelta) yield event.text;
+          if (event is NeuraTurnComplete) completed = event;
         }
-
-        final blocks = finishedBlocks;
-        if (stopReason != 'tool_use' || blocks == null || blocks.isEmpty) {
+        if (completed == null) {
+          throw const NeuraStreamFailure('Reply did not complete.');
+        }
+        _diagnostics.recordSuccess();
+        activeProvider = completed.provider;
+        final blocks = completed.blocks;
+        if (!blocks.any((block) => block['type'] == 'tool_use')) break;
+        if (++toolRounds > _maxToolRounds) {
+          yield '\nI reached the action limit for this turn. Please review the result before continuing.';
           break;
         }
-        if (++toolRounds > _maxToolRounds) break;
-
-        messages.add({'role': 'assistant', 'content': blocks});
-
+        messages.add({
+          'role': 'assistant',
+          'content': blocks,
+          if (completed.openAiOutput.isNotEmpty)
+            'openai_output': completed.openAiOutput,
+        });
         final toolResults = <Map<String, dynamic>>[];
         for (final block in blocks) {
           _throwIfCloudBlocked();
           cancel.throwIfCancelled();
           if (block['type'] != 'tool_use') continue;
+          final callId = block['id'];
+          if (callId is! String ||
+              callId.isEmpty ||
+              !seenCallIds.add(callId) ||
+              ++actionCount > 8) {
+            throw const NeuraStreamFailure(
+                'The action limit or a duplicate action was reached.');
+          }
           final name = block['name']?.toString() ?? '';
+          toolResultsArePrivate = toolResultsArePrivate ||
+              name == NeuraChatPolicy.getMoodHistory ||
+              name == NeuraChatPolicy.logMoodEntry;
           final resultText = await _executeTool(
             name,
             (block['input'] as Map<String, dynamic>?) ?? const {},
@@ -249,223 +239,17 @@ class NeuraAiService {
         if (toolResults.isEmpty) break;
         messages.add({'role': 'user', 'content': toolResults});
       }
+    } on NeuraGenerationCancelled {
+      rethrow;
+    } catch (error) {
+      _diagnostics.recordFailure(error);
+      rethrow;
     } finally {
       if (identical(_activeCancel, cancel)) {
         _activeCancel = null;
         _activeGenerationId = null;
       }
     }
-  }
-
-  /// Runs one streamed turn against the Messages API and yields text deltas.
-  /// Retries are allowed only before text is emitted, preventing duplicate
-  /// visible output after a mid-stream network failure.
-  Stream<_StreamEvent> _streamOneTurn(
-    String systemPrompt,
-    List<Map<String, dynamic>> messages,
-    List<Map<String, dynamic>> tools,
-    NeuraGenerationCancel cancel, {
-    required NeuraCloudApprovalHandler? requestCloudApproval,
-    required bool includesPrivateContext,
-  }) async* {
-    Object? lastError;
-
-    for (var attempt = 0; attempt <= _maxRetries; attempt++) {
-      _throwIfCloudBlocked();
-      cancel.throwIfCancelled();
-      final client = http.Client();
-      var emittedText = false;
-
-      try {
-        await _requireCloudApprovalForMessages(
-          messages,
-          purpose:
-              attempt == 0 ? 'chat reply' : 'chat reply retry ${attempt + 1}',
-          provider: NeuraModelProvider.anthropic,
-          includesPrivateContext: includesPrivateContext,
-          requestApproval: requestCloudApproval,
-        );
-        cancel.throwIfCancelled();
-        _diagnostics.recordAttempt();
-        final request = _buildStreamRequest(systemPrompt, messages, tools);
-        final streamedResponse = await Future.any<http.StreamedResponse>([
-          client.send(request).timeout(_requestTimeout),
-          cancel.whenCancelled.then<http.StreamedResponse>((_) {
-            client.close();
-            throw NeuraGenerationCancelled(cancel.generationId);
-          }),
-        ]);
-        cancel.throwIfCancelled();
-
-        if (streamedResponse.statusCode != 200) {
-          final body = await streamedResponse.stream
-              .timeout(_requestTimeout)
-              .transform(utf8.decoder)
-              .join();
-          final error = NeuraApiException(
-            '${streamedResponse.statusCode}: $body',
-            statusCode: streamedResponse.statusCode,
-          );
-          lastError = error;
-          if (_canRetry(error) && attempt < _maxRetries) {
-            _diagnostics.recordRetry();
-            await cancel.delay(_retryDelay(attempt, streamedResponse.headers));
-            continue;
-          }
-          throw error;
-        }
-
-        final blocksByIndex = <int, Map<String, dynamic>>{};
-        final toolInputBuffers = <int, StringBuffer>{};
-        var stopReason = 'end_turn';
-        var buffer = '';
-
-        await for (final chunk in streamedResponse.stream
-            .timeout(_requestTimeout)
-            .transform(utf8.decoder)) {
-          _throwIfCloudBlocked();
-          cancel.throwIfCancelled();
-          buffer += chunk;
-          final lines = buffer.split('\n');
-          buffer = lines.removeLast();
-
-          for (final line in lines) {
-            if (!line.startsWith('data: ')) continue;
-            final data = line.substring(6).trim();
-            if (data.isEmpty) continue;
-
-            final event = jsonDecode(data) as Map<String, dynamic>;
-            switch (event['type']) {
-              case 'content_block_start':
-                final index = event['index'] as int;
-                final block = event['content_block'] as Map<String, dynamic>;
-                blocksByIndex[index] = Map<String, dynamic>.from(block);
-                if (block['type'] == 'tool_use') {
-                  toolInputBuffers[index] = StringBuffer();
-                }
-                break;
-
-              case 'content_block_delta':
-                final index = event['index'] as int;
-                final delta = event['delta'] as Map<String, dynamic>?;
-                if (delta?['type'] == 'text_delta') {
-                  final text = delta!['text'] as String;
-                  final block = blocksByIndex[index];
-                  if (block != null && block['type'] == 'text') {
-                    block['text'] = (block['text'] as String? ?? '') + text;
-                  }
-                  emittedText = true;
-                  yield _TextDelta(text);
-                } else if (delta?['type'] == 'input_json_delta') {
-                  toolInputBuffers[index]?.write(
-                    delta!['partial_json'] as String? ?? '',
-                  );
-                }
-                break;
-
-              case 'content_block_stop':
-                final index = event['index'] as int;
-                final inputBuffer = toolInputBuffers[index];
-                if (inputBuffer != null) {
-                  var input = <String, dynamic>{};
-                  final raw = inputBuffer.toString();
-                  if (raw.trim().isNotEmpty) {
-                    try {
-                      input = jsonDecode(raw) as Map<String, dynamic>;
-                    } catch (_) {
-                      // Leave malformed model input empty. The executor will
-                      // validate required arguments and return a tool error.
-                    }
-                  }
-                  blocksByIndex[index]?['input'] = input;
-                }
-                break;
-
-              case 'message_delta':
-                final delta = event['delta'] as Map<String, dynamic>?;
-                final reason = delta?['stop_reason'];
-                if (reason != null) stopReason = reason as String;
-                break;
-
-              case 'error':
-                final error = event['error'] as Map<String, dynamic>?;
-                throw NeuraApiException(
-                  error?['message']?.toString() ?? 'Unknown API error',
-                );
-            }
-          }
-        }
-
-        cancel.throwIfCancelled();
-        final orderedIndices = blocksByIndex.keys.toList()..sort();
-        final contentBlocks =
-            orderedIndices.map((i) => blocksByIndex[i]!).toList();
-        _diagnostics.recordSuccess();
-        yield _TurnComplete(contentBlocks, stopReason);
-        return;
-      } on NeuraGenerationCancelled {
-        rethrow;
-      } catch (error) {
-        lastError = error;
-        if (!emittedText && _canRetry(error) && attempt < _maxRetries) {
-          _diagnostics.recordRetry();
-          await cancel.delay(_retryDelay(attempt, const {}));
-          continue;
-        }
-        _diagnostics.recordFailure(error);
-        rethrow;
-      } finally {
-        client.close();
-      }
-    }
-
-    final error = lastError ?? NeuraApiException('LLM request failed.');
-    _diagnostics.recordFailure(error);
-    throw error;
-  }
-
-  http.Request _buildStreamRequest(
-    String systemPrompt,
-    List<Map<String, dynamic>> messages,
-    List<Map<String, dynamic>> tools,
-  ) {
-    final body = <String, dynamic>{
-      'model': _model,
-      'max_tokens': _maxTokens,
-      'stream': true,
-      'thinking': {'type': 'disabled'},
-      'output_config': {'effort': 'low'},
-      'system': _systemBlock(systemPrompt),
-      if (tools.isNotEmpty) 'tools': tools,
-      'messages': messages,
-    };
-
-    return http.Request('POST', Uri.parse(_endpoint))
-      ..headers.addAll({
-        'content-type': 'application/json',
-        'x-api-key': _apiKey,
-        'anthropic-version': '2023-06-01',
-      })
-      ..body = jsonEncode(body);
-  }
-
-  bool _canRetry(Object error) {
-    if (error is NeuraApiException) {
-      final status = error.statusCode;
-      return status != null && _retryableStatuses.contains(status);
-    }
-    return error is http.ClientException || error is TimeoutException;
-  }
-
-  Duration _retryDelay(int attempt, Map<String, String> headers) {
-    final retryAfter = int.tryParse(headers['retry-after'] ?? '');
-    if (retryAfter != null && retryAfter >= 0) {
-      final ms = retryAfter * 1000;
-      return Duration(milliseconds: ms > _maxBackoffMs ? _maxBackoffMs : ms);
-    }
-    final rawMs = _initialBackoffMs * (1 << attempt);
-    final ms = rawMs > _maxBackoffMs ? _maxBackoffMs : rawMs;
-    return Duration(milliseconds: ms);
   }
 
   /// Executes a tool call after re-validating it against the room policy.
@@ -499,6 +283,8 @@ class NeuraAiService {
           if (!approved) {
             return 'The user did not approve sharing mood history.';
           }
+          cancel.throwIfCancelled();
+          _throwIfCloudBlocked();
           final entries = await MoodStore.instance.getAll();
           cancel.throwIfCancelled();
           final recent = entries.length > limit
@@ -576,169 +362,40 @@ class NeuraAiService {
     }
   }
 
-  /// One-shot, non-streaming completion for internally generated content.
-  /// Uses the same bounded retry/backoff policy as chat, though it does not
-  /// participate in user barge-in because there is no visible streamed reply.
+  /// Generated summaries use the same constitution and per-request approval.
+  /// A background caller without a visible approval handler remains blocked.
   Future<String> completeOnce(
     String userPrompt, {
     required String agentId,
     NeuraCloudApprovalHandler? requestCloudApproval,
   }) async {
     _throwIfCloudBlocked();
-    if (!isConfigured) {
-      throw StateError('Configure the AI provider key in Settings.');
-    }
-
-    final syntheticRequest = [NeuraChatTurn(isUser: true, text: userPrompt)];
-    final preBlocked = await _checkGuardrails(syntheticRequest);
-    if (preBlocked != null) {
-      throw NeuraGuardrailBlocked(preBlocked);
-    }
-
-    final systemPrompt = await NeuraPromptBuilder.instance.buildSystemMessage(
+    final history = [NeuraChatTurn(isUser: true, text: userPrompt)];
+    final blocked = await _checkGuardrails(history);
+    if (blocked != null) throw NeuraGuardrailBlocked(blocked);
+    final prompt = await NeuraPromptBuilder.instance.buildSystemMessage(
       agentId: agentId,
+      audience: NeuraAudienceService.instance.currentAudience,
+      includePersistentMemory: false,
     );
-    final openAiKey = await NeuraModelCredentials.instance.read(
-      NeuraModelProvider.openAi,
+    final response = await _modelRouter.complete(
+      NeuraModelRequest(
+        systemPrompt: prompt,
+        messages: history.map((turn) => turn.toJson()).toList(),
+        purpose: 'generated summary',
+        includesPrivateContext: true,
+      ),
+      requestApproval: requestCloudApproval ?? _denyCloudRequest,
     );
-    if (openAiKey != null) {
-      final response = await _modelRouter.complete(
-        NeuraModelRequest(
-          systemPrompt: systemPrompt,
-          messages: syntheticRequest.map((turn) => turn.toJson()).toList(),
-          purpose: 'generated summary',
-          includesPrivateContext: true,
-        ),
-        requestApproval: requestCloudApproval ?? _denyCloudRequest,
-      );
-      return response.text;
-    }
-
-    final response = await _postWithRetry(
-      {
-        'model': _model,
-        'max_tokens': _maxTokens,
-        'stream': false,
-        'thinking': {'type': 'disabled'},
-        'output_config': {'effort': 'low'},
-        'system': _systemBlock(systemPrompt),
-        'messages': syntheticRequest.map((t) => t.toJson()).toList(),
-      },
-      requestCloudApproval: requestCloudApproval,
-      purpose: 'generated summary',
-      includesPrivateContext: true,
-    );
-
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final blocks = decoded['content'] as List<dynamic>? ?? const [];
-    final rawText = blocks
-        .whereType<Map<String, dynamic>>()
-        .where((b) => b['type'] == 'text')
-        .map((b) => b['text']?.toString() ?? '')
-        .join();
-
-    final syntheticReply = [NeuraChatTurn(isUser: true, text: rawText)];
-    final postBlocked = await _checkGuardrails(syntheticReply);
-    if (postBlocked != null) {
-      throw NeuraGuardrailBlocked(postBlocked);
-    }
-
-    return rawText;
-  }
-
-  Future<http.Response> _postWithRetry(
-    Map<String, dynamic> body, {
-    required NeuraCloudApprovalHandler? requestCloudApproval,
-    required String purpose,
-    required bool includesPrivateContext,
-  }) async {
-    Object? lastError;
-    for (var attempt = 0; attempt <= _maxRetries; attempt++) {
-      try {
-        final messages =
-            (body['messages'] as List<dynamic>? ?? const <dynamic>[])
-                .whereType<Map<String, dynamic>>()
-                .toList();
-        await _requireCloudApprovalForMessages(
-          messages,
-          purpose: attempt == 0 ? purpose : '$purpose retry ${attempt + 1}',
-          provider: NeuraModelProvider.anthropic,
-          includesPrivateContext: includesPrivateContext,
-          requestApproval: requestCloudApproval,
-        );
-        _diagnostics.recordAttempt();
-        final response = await http
-            .post(
-              Uri.parse(_endpoint),
-              headers: {
-                'content-type': 'application/json',
-                'x-api-key': _apiKey,
-                'anthropic-version': '2023-06-01',
-              },
-              body: jsonEncode(body),
-            )
-            .timeout(_requestTimeout);
-        _throwIfCloudBlocked();
-        if (response.statusCode == 200) {
-          _diagnostics.recordSuccess();
-          return response;
-        }
-
-        final error = NeuraApiException(
-          '${response.statusCode}: ${response.body}',
-          statusCode: response.statusCode,
-        );
-        lastError = error;
-        if (_canRetry(error) && attempt < _maxRetries) {
-          _diagnostics.recordRetry();
-          await Future<void>.delayed(_retryDelay(attempt, response.headers));
-          continue;
-        }
-        _diagnostics.recordFailure(error);
-        throw error;
-      } catch (error) {
-        lastError = error;
-        if (_canRetry(error) && attempt < _maxRetries) {
-          _diagnostics.recordRetry();
-          await Future<void>.delayed(_retryDelay(attempt, const {}));
-          continue;
-        }
-        if (error is! NeuraApiException) {
-          _diagnostics.recordFailure(error);
-        }
-        rethrow;
-      }
-    }
-
-    final error = lastError ?? NeuraApiException('LLM request failed.');
-    _diagnostics.recordFailure(error);
-    throw error;
+    final postBlocked = await _checkGuardrails([
+      NeuraChatTurn(isUser: true, text: response.text),
+    ]);
+    if (postBlocked != null) throw NeuraGuardrailBlocked(postBlocked);
+    return response.text;
   }
 
   Future<bool> _denyCloudRequest(NeuraCloudRequestPreview _) async {
     throw const NeuraCloudApprovalDenied();
-  }
-
-  Future<void> _requireCloudApprovalForMessages(
-    List<Map<String, dynamic>> messages, {
-    required String purpose,
-    required NeuraModelProvider provider,
-    required bool includesPrivateContext,
-    required NeuraCloudApprovalHandler? requestApproval,
-  }) async {
-    _throwIfCloudBlocked();
-    if (requestApproval == null) {
-      throw const NeuraCloudApprovalDenied();
-    }
-    final preview = NeuraModelRequest(
-      systemPrompt: '',
-      messages: messages,
-      purpose: purpose,
-      includesPrivateContext: includesPrivateContext,
-    ).previewFor(provider);
-    final approved = await requestApproval(preview);
-    _throwIfCloudBlocked();
-    if (!approved) throw const NeuraCloudApprovalDenied();
   }
 
   void _throwIfCloudBlocked() {
@@ -816,19 +473,6 @@ class NeuraAiService {
     }
     return message;
   }
-}
-
-abstract class _StreamEvent {}
-
-class _TextDelta extends _StreamEvent {
-  final String text;
-  _TextDelta(this.text);
-}
-
-class _TurnComplete extends _StreamEvent {
-  final List<Map<String, dynamic>> contentBlocks;
-  final String stopReason;
-  _TurnComplete(this.contentBlocks, this.stopReason);
 }
 
 class NeuraApiException implements Exception {
