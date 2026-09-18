@@ -8,6 +8,8 @@ on:
       - 'test/**'
       - 'rust/**'
       - 'windows/**'
+      - 'tools/New-NeuraClientBuildConfig.ps1'
+      - 'tools/Save-NeuraConfiguredPackage.ps1'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - 'analysis_options.yaml'
@@ -15,6 +17,12 @@ on:
       - 'tools/Neura-ReclaimCiDisk.ps1'
       - '.github/workflows/neura-fast-check.yml'
   workflow_dispatch:
+    inputs:
+      require_sync_configuration:
+        description: 'Fail if the public Supabase build variables are missing'
+        type: boolean
+        default: true
+
 
 concurrency:
   group: neura-local-runner-${{ github.ref }}
@@ -493,9 +501,37 @@ jobs:
 
           Write-Host "Visual C++ compiler available at $($compiler.FullName)"
 
+      - name: Prepare public client build configuration
+        id: client_config
+        env:
+          NEURA_SUPABASE_URL: ${{ vars.NEURA_SUPABASE_URL }}
+          NEURA_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEURA_SUPABASE_PUBLISHABLE_KEY }}
+          NEURA_REQUIRE_CONFIG: ${{ inputs.require_sync_configuration }}
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $requireConfig = $env:NEURA_REQUIRE_CONFIG -eq 'true'
+          $configPath = Join-Path $env:RUNNER_TEMP "neura-client-$env:GITHUB_RUN_ID-$env:GITHUB_JOB.json"
+          & "$env:NEURA_SOURCE_ROOT\tools\New-NeuraClientBuildConfig.ps1" -OutputPath $configPath -RequireConfiguration:$requireConfig
+
       - name: Run optimized validation
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: '& "$env:NEURA_SOURCE_ROOT\tools\Neura-FastCheck.ps1" -Root $env:NEURA_SOURCE_ROOT -BuildWindows'
+
+      - name: Preserve configured Windows package
+        if: steps.client_config.outputs.configured == 'true'
+        id: configured_package
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: '& "$env:NEURA_SOURCE_ROOT\tools\Save-NeuraConfiguredPackage.ps1" -SourceRoot $env:NEURA_SOURCE_ROOT -Platform windows -BuildVolume $env:NEURA_FLUTTER_VOLUME'
+
+      - name: Upload configured Windows package
+        if: steps.client_config.outputs.configured == 'true'
+        id: configured_upload
+        uses: actions/upload-artifact@v6
+        with:
+          name: NeuraCompanion-Windows-configured-${{ github.run_id }}
+          path: ${{ steps.configured_package.outputs.package_path }}
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Release generated build space
         if: always()
@@ -521,4 +557,12 @@ jobs:
             if (-not [string]::IsNullOrWhiteSpace($path)) {
               Remove-LinkOrDirectory -Path $path
             }
+          }
+
+      - name: Remove temporary public client settings
+        if: always()
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          if (-not [string]::IsNullOrWhiteSpace($env:NEURA_DART_DEFINE_FILE)) {
+            Remove-Item -LiteralPath $env:NEURA_DART_DEFINE_FILE -Force -ErrorAction SilentlyContinue
           }

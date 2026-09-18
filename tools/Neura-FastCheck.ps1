@@ -5,6 +5,7 @@ param(
     [switch]$ForcePubGet,
     [switch]$SkipTests,
     [switch]$BuildWindows,
+    [string]$DartDefineFile = $env:NEURA_DART_DEFINE_FILE,
     [ValidateRange(1, 32)]
     [int]$TestConcurrency = [Math]::Min([Environment]::ProcessorCount, 8)
 )
@@ -273,8 +274,15 @@ try {
     }
 
     if ($BuildWindows) {
+        $buildArguments = @('build', 'windows', '--release', '--no-pub')
+        if (-not [string]::IsNullOrWhiteSpace($DartDefineFile)) {
+            if (-not (Test-Path -LiteralPath $DartDefineFile -PathType Leaf)) {
+                throw 'The requested public Dart define file is missing.'
+            }
+            $buildArguments += "--dart-define-from-file=$DartDefineFile"
+        }
         Invoke-Checked 'flutter build windows --release' {
-            flutter build windows --release --no-pub
+            flutter @buildArguments
         }
 
         Write-Host "`n=== packaged Windows launch self-test ===" -ForegroundColor Cyan

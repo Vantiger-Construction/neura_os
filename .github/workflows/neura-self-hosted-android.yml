@@ -7,10 +7,18 @@ on:
       - 'android/**'
       - 'lib/**'
       - 'test/**'
+      - 'tools/New-NeuraClientBuildConfig.ps1'
+      - 'tools/Save-NeuraConfiguredPackage.ps1'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/neura-self-hosted-android.yml'
   workflow_dispatch:
+    inputs:
+      require_sync_configuration:
+        description: 'Fail if the public Supabase build variables are missing'
+        type: boolean
+        default: true
+
 
 permissions:
   contents: read
@@ -494,6 +502,18 @@ jobs:
             throw "flutter pub get failed with exit code $pubExitCode. See $pubLog."
           }
 
+      - name: Prepare public client build configuration
+        id: client_config
+        env:
+          NEURA_SUPABASE_URL: ${{ vars.NEURA_SUPABASE_URL }}
+          NEURA_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEURA_SUPABASE_PUBLISHABLE_KEY }}
+          NEURA_REQUIRE_CONFIG: ${{ inputs.require_sync_configuration }}
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $requireConfig = $env:NEURA_REQUIRE_CONFIG -eq 'true'
+          $configPath = Join-Path $env:RUNNER_TEMP "neura-client-$env:GITHUB_RUN_ID-$env:GITHUB_JOB.json"
+          & "$env:NEURA_ANDROID_SOURCE_ROOT\tools\New-NeuraClientBuildConfig.ps1" -OutputPath $configPath -RequireConfiguration:$requireConfig
+
       - name: Build APK
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
@@ -511,7 +531,12 @@ jobs:
           $previousErrorActionPreference = $ErrorActionPreference
           $ErrorActionPreference = 'Continue'
           try {
-            flutter build apk --debug --no-pub --verbose --build-name $buildName --build-number $env:GITHUB_RUN_NUMBER *> $buildLog
+            $buildArguments = @('build', 'apk', '--debug', '--no-pub', '--verbose', '--build-name', $buildName, '--build-number', $env:GITHUB_RUN_NUMBER)
+            if (-not [string]::IsNullOrWhiteSpace($env:NEURA_DART_DEFINE_FILE)) {
+              if (-not (Test-Path -LiteralPath $env:NEURA_DART_DEFINE_FILE -PathType Leaf)) { throw 'Public Dart define file is missing.' }
+              $buildArguments += "--dart-define-from-file=$env:NEURA_DART_DEFINE_FILE"
+            }
+            flutter @buildArguments *> $buildLog
             $buildExitCode = $LASTEXITCODE
           } finally {
             $ErrorActionPreference = $previousErrorActionPreference
@@ -556,16 +581,22 @@ jobs:
           Write-Host "APK size: $((Get-Item -LiteralPath $destination).Length) bytes"
           Write-Host "SHA256: $hash"
 
+      - name: Preserve configured Android package
+        if: steps.client_config.outputs.configured == 'true'
+        id: configured_package
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: '& "$env:NEURA_ANDROID_SOURCE_ROOT\tools\Save-NeuraConfiguredPackage.ps1" -SourceRoot $env:NEURA_ANDROID_SOURCE_ROOT -Platform android -BuildVolume $env:NEURA_ANDROID_BUILD_VOLUME'
+
       - name: Upload Android APK
-        # APK delivery is useful but must not mask a successful build when
-        # repository-level artifact storage quota is exhausted.
-        continue-on-error: true
+        # A requested configured package must report a delivery failure.
+        # Its recovery copy remains on the runner if artifact quota is exhausted.
+        continue-on-error: ${{ steps.client_config.outputs.configured != 'true' }}
         uses: actions/upload-artifact@v6
         with:
           name: NeuraCompanion-SelfHosted-Android-APK
-          path: ${{ github.workspace }}\source\recovery_downloads\android\
+          path: ${{ steps.configured_package.outputs.package_path || format('{0}/source/recovery_downloads/android', github.workspace) }}
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
 
       - name: Release generated Android space
         if: always()
@@ -585,3 +616,11 @@ jobs:
             }
           }
 
+
+      - name: Remove temporary public client settings
+        if: always()
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          if (-not [string]::IsNullOrWhiteSpace($env:NEURA_DART_DEFINE_FILE)) {
+            Remove-Item -LiteralPath $env:NEURA_DART_DEFINE_FILE -Force -ErrorAction SilentlyContinue
+          }
