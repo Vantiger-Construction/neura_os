@@ -1,0 +1,11 @@
+{
+  "name": "neura-sync-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node journal_revision.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8"
+  }
+}
