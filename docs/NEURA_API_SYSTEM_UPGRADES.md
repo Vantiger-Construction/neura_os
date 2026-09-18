@@ -1,0 +1,61 @@
+# API and system upgrades
+
+This change starts from Neura commit `6917dcf3` and implements three reviewable stages.
+
+## 1. AI, speech, actions and selected context
+
+- OpenAI Responses and Anthropic Messages stream through the same secure router and room-action loop. OpenAI remains primary. A fallback is possible only before any output; it requires its own approval. A tool continuation stays on the selected provider.
+- Every cloud request and continuation rechecks Safe Mode and the current constitution, and receives a new preview. The preview includes outgoing text and permitted context. Bodies are frozen before approval. OpenAI requests use `store: false`.
+- Function calls are accepted only after a terminal response. Malformed or truncated responses cannot execute tools. The runtime checks the room allowlist again, requires visible approval for each action, limits a turn to four action rounds/eight calls, and rejects duplicate call IDs. Supported actions remain mood-score sharing, local mood logging, room navigation and tone changes.
+- The main chat screen now uses the existing opt-in **Speak chat replies** setting for streaming sentence playback. Playback is serialized and queued chunks are discarded on interruption, mute or a mode change. Speech uses the existing device TTS service; this adds no cloud audio or background microphone access.
+- The attachment button accepts one UTF-8 TXT, MD, CSV or JSON file, at most 32 KiB, for the next reply. It reads only the selected file and treats its contents as untrusted reference material. It does not index folders or save the attachment. File-derived conversation is not written to long-term memory by this chat screen.
+- The next-reply memory checkbox starts off. Recall also requires the room's persistence policy and the constitution to permit it. A constitution that keeps sensitive content local continues to block cloud use of attachments, memory and private action results.
+
+Provider wire formats follow [Responses streaming](https://developers.openai.com/api/docs/guides/streaming-responses), [function calling](https://developers.openai.com/api/docs/guides/function-calling), and [stateless reasoning continuity](https://developers.openai.com/api/docs/guides/reasoning). Models are unchanged. Actual model access and live provider behavior still require account/device QA.
+
+## 2. Journal sync and recovery
+
+- Fetch remote revisions before uploads, with pagination and a bounded maximum.
+- Keep the existing `updated_at` conflict rule and local preference for equal-time divergent content.
+- Upload through `neura_sync_journal_revision`, which checks the exact previously read remote revision under a row lock. RLS and the existing server timestamp trigger remain active.
+- Re-read local state before merging. A server acknowledgement cannot replace a different local revision created during upload or resurrect a local deletion made during that request.
+- Coalesce simultaneous sync requests. Recheck the account and Safe Mode across asynchronous boundaries. Report offline, interrupted, retry-needed and setup-required outcomes explicitly; never claim success for a swallowed error.
+- Local journal entries remain the durable source for a manual retry after a failure or restart. No background sync scheduler or separate copy of journal content is introduced.
+
+**Deployment order:** apply `supabase/migrations/20260918000000_compare_journal_revisions.sql` to the intended continuity project before releasing the new client. Missing RPC support produces a setup-required result with no legacy upsert fallback. This PR does not deploy the migration or change account configuration. Existing full-vault encrypted backup and restore remain unchanged; this stage improves recovery from interrupted synchronization.
+
+## 3. Local app API v1
+
+Open **Settings → Local app API** and enable it for the current visible session. It binds only to `127.0.0.1` on a random port. The screen provides the address and a newly generated bearer token. Closing the screen, backgrounding the app, or entering Safe Mode revokes the token and stops the listener. There is no automatic startup or network-wide listener.
+
+All endpoints require `Authorization: Bearer <session-token>` and reject browser Origin headers. No endpoint exposes journal text, files, memories, provider credentials, microphone control, or direct cloud inference.
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/v1/health` | Content-free readiness and API version |
+| GET | `/v1/capabilities` | Allowed proposal types and approval requirement |
+| POST | `/v1/proposals` | Queue a request for native user review; never execute it |
+| GET | `/v1/proposals/{id}` | Read a content-free status receipt |
+
+Example body:
+
+```json
+{"request_id":"my-app-001","action":"open_room","arguments":{"room":"reflection_bay"}}
+```
+
+Other allowed proposals: `set_tone` with a known `tone`, and `sync_journal` with empty arguments. The latter requires a confirmation explaining that journal entries go to the configured cloud account. Request IDs are idempotent within a session; reusing one for different arguments is rejected. Proposals expire after two minutes. Limits: 4 KiB bodies, 60 authenticated requests/minute, eight simultaneous handlers, 64 receipts/session. There is no HTTP approval endpoint.
+
+This first API serves trusted applications on the same device. Windows–Android continuity uses the configured sync backend; cross-device LAN control is not enabled.
+
+## Validation and release checks
+
+Re-run the isolated database test with `npm ci --prefix tools/sync_tests` followed by `npm test --prefix tools/sync_tests`. It creates an in-memory database and uses synthetic identities only.
+
+- Focused protocol, context, speech-queue, local-API and recovery tests run without provider credentials or cloud requests.
+- Router tests cover fresh fallback approval, partial-stream failure, cancellation while approval is open, and Safe Mode during approval.
+- Sync session tests cover remote-before-local ordering, edits during upload, account changes and offline behavior.
+- The migration was exercised in an isolated PostgreSQL-compatible PGlite instance: insert/update, stale-revision rejection, idempotent payloads, ownership isolation and anonymous access denial passed.
+- Local Flutter startup was blocked by automatic approval review because it attempted instance-metadata access. Full Flutter analysis/tests and Windows/Android packaging must pass the existing CI before merge. No CI gate is removed or relaxed.
+- Device QA remains: provider streaming and fallback, TTS barge-in, attachment preview, local-client approval flow, and two-device sync after migration deployment.
+
+No merge, migration deployment, paid service activation or provider request is performed by creating this PR.

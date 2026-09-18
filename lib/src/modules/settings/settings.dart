@@ -16,6 +16,7 @@ import '../../../screens/neura_voice_settings_screen.dart';
 import '../../../screens/profile_screen.dart';
 import '../../../screens/subscription_screen.dart';
 import '../../../screens/sync_status_screen.dart';
+import '../../../screens/local_api_screen.dart';
 import '../../shell/shell_prefs.dart';
 import '../focus/focus_office_screen.dart';
 import '../legacy/legacy_home_screen.dart';
@@ -44,6 +45,15 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
+          ListTile(
+            leading: const Icon(Icons.api),
+            title: const Text('Local app API'),
+            subtitle: const Text(
+                'Connect trusted apps with approval for each action'),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => const LocalApiScreen(),
+            )),
+          ),
           if (SupabaseConfig.isConfigured)
             AnimatedBuilder(
               animation: Listenable.merge([
