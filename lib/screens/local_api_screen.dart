@@ -148,6 +148,8 @@ class _LocalApiScreenState extends State<LocalApiScreen>
             const Text(
                 'Use Authorization: Bearer <token>. Keep this token private.'),
           ],
+          const SizedBox(height: 12),
+          const _CurrentRoomStatus(),
           const SizedBox(height: 20),
           const Text('Requests awaiting review (expire after two minutes)'),
           for (final proposal in _api.pending)
@@ -160,4 +162,25 @@ class _LocalApiScreenState extends State<LocalApiScreen>
                         child: const Text('Review')))),
         ]),
       );
+}
+
+class _CurrentRoomStatus extends StatelessWidget {
+  const _CurrentRoomStatus();
+
+  @override
+  Widget build(BuildContext context) {
+    final room = NeuraShell.of(context).room;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          leading: const Icon(Icons.meeting_room_outlined),
+          title: const Text('Current room'),
+          subtitle: Text('${room.title} (${room.id})'),
+        ),
+        const Text(
+            'This read-only native state is shown for live verification and is not exposed over HTTP.'),
+      ],
+    );
+  }
 }
