@@ -81,6 +81,38 @@ function Assert-NoMergeMarkers {
     }
 }
 
+function Assert-LocalApiClientScripts {
+    param([Parameter(Mandatory)][string]$ProjectRoot)
+
+    $clientRoot = Join-Path $ProjectRoot 'tools\local_api_client'
+    $requiredScripts = @(
+        'powershell\NeuraLocalApi.psm1',
+        'powershell\Neura-LocalApi.ps1',
+        'powershell\Verify-NeuraLocalApi.ps1'
+    )
+
+    foreach ($relativePath in $requiredScripts) {
+        $scriptPath = Join-Path $clientRoot $relativePath
+        if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+            throw "Local API client script is missing: $scriptPath"
+        }
+
+        $tokens = $null
+        $parseErrors = $null
+        [System.Management.Automation.Language.Parser]::ParseFile(
+            $scriptPath,
+            [ref]$tokens,
+            [ref]$parseErrors
+        ) | Out-Null
+        if (@($parseErrors).Count -gt 0) {
+            $parseErrors | ForEach-Object {
+                Write-Host $_.Message -ForegroundColor Red
+            }
+            throw "PowerShell parsing failed for $scriptPath."
+        }
+    }
+}
+
 function Assert-AuthoredWindowsRunner {
     param([Parameter(Mandatory)][string]$ProjectRoot)
 
@@ -242,8 +274,14 @@ try {
         Write-Host 'Skipped: dependency inputs are unchanged.' -ForegroundColor DarkGray
     }
 
+    Write-Host "`n=== local API PowerShell syntax ===" -ForegroundColor Cyan
+    Assert-LocalApiClientScripts -ProjectRoot $Root
+
     Invoke-Checked 'dart format check' {
-        dart format --output=none --set-exit-if-changed lib test
+        dart format --output=none --set-exit-if-changed `
+            lib `
+            test `
+            tools/local_api_client/dart
     }
 
     Invoke-Checked 'flutter analyze --fatal-infos' {
