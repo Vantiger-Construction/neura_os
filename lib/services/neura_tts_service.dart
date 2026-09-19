@@ -21,6 +21,25 @@ class NeuraVoiceOption {
   });
 }
 
+enum NeuraReplySpeechMode { off, afterComplete, streamed }
+
+extension NeuraReplySpeechModeLabel on NeuraReplySpeechMode {
+  String get label => switch (this) {
+        NeuraReplySpeechMode.off => 'Off',
+        NeuraReplySpeechMode.afterComplete => 'After reply',
+        NeuraReplySpeechMode.streamed => 'As it arrives',
+      };
+
+  String get description => switch (this) {
+        NeuraReplySpeechMode.off =>
+          'Never speak chat replies automatically.',
+        NeuraReplySpeechMode.afterComplete =>
+          'Wait for the complete reply, then speak it.',
+        NeuraReplySpeechMode.streamed =>
+          'Start speaking completed phrases while the reply streams.',
+      };
+}
+
 /// Speaks Neura's chat replies aloud. Wires the existing
 /// [NeuraFlutterTtsVisemeBridge] so avatar mouth/viseme events fire on the
 /// Neura event bus alongside actual speech.
@@ -36,7 +55,8 @@ class NeuraTtsService {
   static const _kSpeechRateKey = 'neura.tts.speech_rate';
   static const _kPitchKey = 'neura.tts.pitch';
   static const _kVolumeKey = 'neura.tts.volume';
-  static const _kSpeakRepliesKey = 'neura.tts.speak_replies';
+  static const _kReplySpeechModeKey = 'neura.tts.reply_speech_mode.v1';
+  static const _kLegacySpeakRepliesKey = 'neura.tts.speak_replies';
 
   FlutterTts? _tts;
   Future<bool>? _initialization;
@@ -47,7 +67,7 @@ class NeuraTtsService {
   double _speechRate = 0.5;
   double _pitch = 1.05;
   double _volume = 1.0;
-  bool _speakRepliesEnabled = false;
+  NeuraReplySpeechMode _replySpeechMode = NeuraReplySpeechMode.off;
 
   bool get playbackAllowed => !SafeBoot.instance.safeMode.value;
 
@@ -58,21 +78,51 @@ class NeuraTtsService {
   double get pitch => _pitch;
   double get volume => _volume;
 
-  /// Whether Neura should speak chat replies aloud as they arrive, rather
-  /// than only on manual preview/Voice Lab playback. Off by default; reading
-  /// this never forces the native TTS engine to initialize.
-  bool get speakRepliesEnabled =>
-      NeuraPrefsCache.prefsOrNull?.getBool(_kSpeakRepliesKey) ??
-      _speakRepliesEnabled;
+  /// The explicit automatic speech policy for chat replies. Reading this
+  /// value never forces the native TTS engine to initialize.
+  NeuraReplySpeechMode get replySpeechMode {
+    final prefs = NeuraPrefsCache.prefsOrNull;
+    final saved = prefs?.getString(_kReplySpeechModeKey);
+    if (saved != null) {
+      return NeuraReplySpeechMode.values.firstWhere(
+        (mode) => mode.name == saved,
+        orElse: () => NeuraReplySpeechMode.off,
+      );
+    }
 
-  Future<void> setSpeakRepliesEnabled(bool value) async {
-    _speakRepliesEnabled = value;
+    // Preserve existing opt-ins from the former boolean setting. A missing or
+    // false legacy value remains off, which is the privacy-safe default.
+    if (prefs?.getBool(_kLegacySpeakRepliesKey) == true) {
+      return NeuraReplySpeechMode.streamed;
+    }
+    return _replySpeechMode;
+  }
+
+  /// Compatibility surface for existing callers. New UI should use
+  /// [replySpeechMode] and [setReplySpeechMode].
+  bool get speakRepliesEnabled =>
+      replySpeechMode != NeuraReplySpeechMode.off;
+
+  Future<void> setReplySpeechMode(NeuraReplySpeechMode mode) async {
+    _replySpeechMode = mode;
     try {
-      await NeuraPrefsCache.prefs.setBool(_kSpeakRepliesKey, value);
+      final prefs = NeuraPrefsCache.prefs;
+      await prefs.setString(_kReplySpeechModeKey, mode.name);
+      await prefs.setBool(
+        _kLegacySpeakRepliesKey,
+        mode != NeuraReplySpeechMode.off,
+      );
     } catch (_) {
       // The in-memory value above still applies for this session.
     }
   }
+
+  Future<void> setSpeakRepliesEnabled(bool value) =>
+      setReplySpeechMode(
+        value
+            ? NeuraReplySpeechMode.streamed
+            : NeuraReplySpeechMode.off,
+      );
 
   /// Forces the native TTS engine to initialize without speaking anything.
   Future<void> warmUp() async {

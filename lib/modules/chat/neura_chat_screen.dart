@@ -22,7 +22,6 @@ import '../../services/neura_generation_cancel.dart';
 import '../../services/neura_llm_diagnostics.dart';
 import '../../services/neura_reply_batch.dart';
 import '../../services/neura_speech_to_text_service.dart';
-import '../../services/neura_swarm_service.dart';
 import '../../services/neura_tone_runtime.dart';
 import '../../services/neura_tts_service.dart';
 import '../../services/wake_word_listener_service.dart';
@@ -458,8 +457,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     });
     _scrollToEnd();
 
-    final useStreamSpeech =
-        _speechEnabled && NeuraTtsService.instance.speakRepliesEnabled;
+    final useStreamSpeech = _speechEnabled &&
+        NeuraTtsService.instance.replySpeechMode ==
+            NeuraReplySpeechMode.streamed;
     final speech = ReplySpeechQueue(
       speak: (text) => NeuraTtsService.instance.speak(text).timeout(
             const Duration(seconds: 45),
@@ -469,7 +469,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
           mounted &&
           _activeReplyId == generationId &&
           _speechEnabled &&
-          NeuraTtsService.instance.speakRepliesEnabled &&
+          NeuraTtsService.instance.replySpeechMode ==
+              NeuraReplySpeechMode.streamed &&
           !SafeBoot.instance.safeMode.value,
     );
     _replySpeech = speech;
@@ -521,16 +522,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         text: botLine.text,
         persistMemory: persistMemory && !_privateContextUsed,
       ));
-      unawaited(_runSwarm(
-        userMessage: displayText,
-        draftReply: botLine.text,
-        history: history,
-        persistMemory: persistMemory && !_privateContextUsed,
-      ));
-
       if (useStreamSpeech) {
         await speech.finish(botLine.text);
-      } else if (_speechEnabled && botLine.text.trim().isNotEmpty) {
+      } else if (_speechEnabled &&
+          NeuraTtsService.instance.replySpeechMode ==
+              NeuraReplySpeechMode.afterComplete &&
+          botLine.text.trim().isNotEmpty) {
         await NeuraTtsService.instance.speak(botLine.text);
       }
     } on NeuraGenerationCancelled catch (e) {
@@ -611,7 +608,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       text: reply,
       persistMemory: persistMemory,
     ));
-    if (_speechEnabled) {
+    if (_speechEnabled &&
+        NeuraTtsService.instance.replySpeechMode !=
+            NeuraReplySpeechMode.off) {
       await NeuraTtsService.instance.speak(reply);
     }
 
@@ -648,41 +647,6 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       }
     } catch (e, st) {
       await AppLog.instance.caught('chat_memory_log_failed', e, st);
-    }
-  }
-
-  Future<void> _runSwarm({
-    required String userMessage,
-    required String draftReply,
-    required List<NeuraChatTurn> history,
-    required bool persistMemory,
-  }) async {
-    try {
-      final outcome = await NeuraSwarmService.instance.reviewAndExtract(
-        transcript: _transcriptSnippet(history),
-        draftReply: draftReply,
-        userMessage: userMessage,
-      );
-
-      if (outcome.concernNote != null && mounted) {
-        final concernLine =
-            _ChatLine.bot(outcome.concernNote!, agentId: _activeAgent.id)
-              ..agentCaption = _computeAgentCaption(_activeAgent.id);
-        setState(() => _lines.add(concernLine));
-        _scrollToEnd();
-      }
-
-      // The critic may still run in an ephemeral room, but extracted facts
-      // never cross the persistence gate.
-      if (!persistMemory) return;
-      for (final fact in outcome.facts) {
-        await MemoryGraphService.I.logUserAction(
-          kind: 'SWARM_MEMORY_FACT',
-          payload: {'summary': fact.summary, 'factKind': fact.kind},
-        );
-      }
-    } catch (e, st) {
-      await AppLog.instance.caught('chat_swarm_failed', e, st);
     }
   }
 
@@ -805,17 +769,17 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         NeuraShell.of(context).room.id == room;
   }
 
-  String _transcriptSnippet(List<NeuraChatTurn> history) {
-    const maxTurns = 6;
-    final recent = history.length > maxTurns
-        ? history.sublist(history.length - maxTurns)
-        : history;
-    return recent
-        .map((t) => '${t.isUser ? 'User' : 'Neura'}: ${t.text}')
-        .join('\n');
-  }
-
   void _toggleSpeech() {
+    if (NeuraTtsService.instance.replySpeechMode ==
+        NeuraReplySpeechMode.off) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enable automatic reply speech in Voice settings.'),
+        ),
+      );
+      return;
+    }
+
     setState(() => _speechEnabled = !_speechEnabled);
     if (!_speechEnabled) {
       _replySpeech?.cancel();
@@ -862,6 +826,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final replySpeechAvailable =
+        NeuraTtsService.instance.replySpeechMode != NeuraReplySpeechMode.off;
+    final replySpeechActive = _speechEnabled && replySpeechAvailable;
     return Scaffold(
       appBar: AppBar(
         title: InkWell(
@@ -890,9 +857,15 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
               icon: const Icon(Icons.stop_circle_outlined),
             ),
           IconButton(
-            tooltip: _speechEnabled ? 'Mute Neura' : 'Unmute Neura',
+            tooltip: !replySpeechAvailable
+                ? 'Reply speech is off in Voice settings'
+                : replySpeechActive
+                    ? 'Mute Neura'
+                    : 'Unmute Neura',
             onPressed: _toggleSpeech,
-            icon: Icon(_speechEnabled ? Icons.volume_up : Icons.volume_off),
+            icon: Icon(
+              replySpeechActive ? Icons.volume_up : Icons.volume_off,
+            ),
           ),
         ],
       ),
