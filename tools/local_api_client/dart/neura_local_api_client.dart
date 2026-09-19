@@ -83,9 +83,8 @@ final class NeuraLocalApiClient {
       throw const FormatException('Request escaped the loopback API origin.');
     }
 
-    final request = method == 'GET'
-        ? await _http.getUrl(uri)
-        : await _http.postUrl(uri);
+    final request =
+        method == 'GET' ? await _http.getUrl(uri) : await _http.postUrl(uri);
     request
       ..followRedirects = false
       ..headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
