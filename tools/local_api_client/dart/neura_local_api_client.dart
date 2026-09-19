@@ -51,8 +51,10 @@ final class ApiResponse {
 
 final class NeuraLocalApiClient {
   NeuraLocalApiClient(this.baseUri, this.token) {
+    // Keep the callback assignment separate so its expression body cannot
+    // absorb the following cascade sections.
+    _http.findProxy = (_) => 'DIRECT';
     _http
-      ..findProxy = (_) => 'DIRECT'
       ..connectionTimeout = const Duration(seconds: 5)
       ..idleTimeout = const Duration(seconds: 5);
   }
