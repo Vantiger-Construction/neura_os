@@ -25,19 +25,18 @@ enum NeuraReplySpeechMode { off, afterComplete, streamed }
 
 extension NeuraReplySpeechModeLabel on NeuraReplySpeechMode {
   String get label => switch (this) {
-        NeuraReplySpeechMode.off => 'Off',
-        NeuraReplySpeechMode.afterComplete => 'After reply',
-        NeuraReplySpeechMode.streamed => 'As it arrives',
-      };
+    NeuraReplySpeechMode.off => 'Off',
+    NeuraReplySpeechMode.afterComplete => 'After reply',
+    NeuraReplySpeechMode.streamed => 'As it arrives',
+  };
 
   String get description => switch (this) {
-        NeuraReplySpeechMode.off =>
-          'Never speak chat replies automatically.',
-        NeuraReplySpeechMode.afterComplete =>
-          'Wait for the complete reply, then speak it.',
-        NeuraReplySpeechMode.streamed =>
-          'Start speaking completed phrases while the reply streams.',
-      };
+    NeuraReplySpeechMode.off => 'Never speak chat replies automatically.',
+    NeuraReplySpeechMode.afterComplete =>
+      'Wait for the complete reply, then speak it.',
+    NeuraReplySpeechMode.streamed =>
+      'Start speaking completed phrases while the reply streams.',
+  };
 }
 
 /// Speaks Neura's chat replies aloud. Wires the existing
@@ -100,8 +99,7 @@ class NeuraTtsService {
 
   /// Compatibility surface for existing callers. New UI should use
   /// [replySpeechMode] and [setReplySpeechMode].
-  bool get speakRepliesEnabled =>
-      replySpeechMode != NeuraReplySpeechMode.off;
+  bool get speakRepliesEnabled => replySpeechMode != NeuraReplySpeechMode.off;
 
   Future<void> setReplySpeechMode(NeuraReplySpeechMode mode) async {
     _replySpeechMode = mode;
@@ -117,12 +115,9 @@ class NeuraTtsService {
     }
   }
 
-  Future<void> setSpeakRepliesEnabled(bool value) =>
-      setReplySpeechMode(
-        value
-            ? NeuraReplySpeechMode.streamed
-            : NeuraReplySpeechMode.off,
-      );
+  Future<void> setSpeakRepliesEnabled(bool value) => setReplySpeechMode(
+    value ? NeuraReplySpeechMode.streamed : NeuraReplySpeechMode.off,
+  );
 
   /// Forces the native TTS engine to initialize without speaking anything.
   Future<void> warmUp() async {
