@@ -134,10 +134,13 @@ Future<void> main(List<String> arguments) async {
     };
     final unknown = options.keys.where((key) => !allowedOptions.contains(key));
     if (unknown.isNotEmpty) {
-      throw FormatException('Unsupported option --${unknown.first} for $command.');
+      throw FormatException(
+        'Unsupported option --${unknown.first} for $command.',
+      );
     }
 
-    final rawUrl = options['url'] ?? Platform.environment['NEURA_LOCAL_API_URL'];
+    final rawUrl =
+        options['url'] ?? Platform.environment['NEURA_LOCAL_API_URL'];
     if (rawUrl == null || rawUrl.trim().isEmpty) {
       throw const FormatException(
         'Pass --url or set NEURA_LOCAL_API_URL.',
@@ -266,8 +269,9 @@ Map<String, Object?> _proposal(Map<String, String> options) {
       '--action must be open_room, set_tone, or sync_journal.',
     );
   }
-  final requestId = options['request-id'] ??
+  final generatedId =
       'dart-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 31)}';
+  final requestId = options['request-id'] ?? generatedId;
   if (!RegExp(r'^[A-Za-z0-9_-]{1,64}$').hasMatch(requestId)) {
     throw const FormatException(
       '--request-id must contain 1-64 letters, numbers, underscores, or hyphens.',
