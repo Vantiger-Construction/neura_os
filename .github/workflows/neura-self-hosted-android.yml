@@ -548,18 +548,6 @@ jobs:
             throw "flutter build apk failed with exit code $buildExitCode. See $buildLog."
           }
 
-      - name: Upload Android restore and build logs
-        if: always()
-        # Diagnostic only; exhausted artifact quota must not fail Android validation.
-        continue-on-error: true
-        uses: actions/upload-artifact@v6
-        with:
-          name: Neura-SelfHosted-Android-restore-build-logs
-          path: |
-            ${{ github.workspace }}\source\pub-get.log
-            ${{ github.workspace }}\source\android-build.log
-          if-no-files-found: warn
-          retention-days: 3
       - name: Verify Android APK
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
@@ -588,14 +576,26 @@ jobs:
         run: '& "$env:NEURA_ANDROID_SOURCE_ROOT\tools\Save-NeuraConfiguredPackage.ps1" -SourceRoot $env:NEURA_ANDROID_SOURCE_ROOT -Platform android -BuildVolume $env:NEURA_ANDROID_BUILD_VOLUME'
 
       - name: Upload Android APK
-        # A requested configured package must report a delivery failure.
-        # Its recovery copy remains on the runner if artifact quota is exhausted.
-        continue-on-error: ${{ steps.client_config.outputs.configured != 'true' }}
+        # Every package run requires a downloadable APK and checksum.
+        # Do not report success when GitHub rejects the artifact upload.
         uses: actions/upload-artifact@v6
         with:
           name: NeuraCompanion-SelfHosted-Android-APK
           path: ${{ steps.configured_package.outputs.package_path || format('{0}/source/recovery_downloads/android', github.workspace) }}
           if-no-files-found: error
+          retention-days: 3
+
+      - name: Upload Android restore and build logs
+        if: always()
+        # Diagnostic only; exhausted artifact quota must not fail Android validation.
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: Neura-SelfHosted-Android-restore-build-logs
+          path: |
+            ${{ github.workspace }}\source\pub-get.log
+            ${{ github.workspace }}\source\android-build.log
+          if-no-files-found: warn
           retention-days: 3
 
       - name: Release generated Android space
