@@ -107,28 +107,13 @@ jobs:
           flutter pub get
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Capture project-aware formatting patch
+      - name: Verify committed formatting
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
-          dart format lib/modules/chat/neura_chat_screen.dart lib/services/neura_tts_service.dart
+          dart format --output=none --set-exit-if-changed lib test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          $diff = & git diff --no-ext-diff --unified=3 --
-            'lib/modules/chat/neura_chat_screen.dart'
-            'lib/services/neura_tts_service.dart'
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $payload = (($diff -join "`n") + "`n")
-          $encoded = [Convert]::ToBase64String(
-            [System.Text.Encoding]::UTF8.GetBytes($payload)
-          )
-          Write-Host 'NEURA_FORMAT_PATCH_BEGIN'
-          for ($offset = 0; $offset -lt $encoded.Length; $offset += 500) {
-            $length = [Math]::Min(500, $encoded.Length - $offset)
-            Write-Host $encoded.Substring($offset, $length)
-          }
-          Write-Host 'NEURA_FORMAT_PATCH_END'
-          throw 'Project-aware formatting patch captured for repair.'
       - name: Analyze startup state code
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |

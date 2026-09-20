@@ -403,9 +403,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     _privateContextUsed =
         _privateContextUsed || selectedContext != null || includeMemory;
     final persistMemory = policy.persistMemory && !_privateContextUsed;
-    final displayText = text.isEmpty && hasImage
-        ? 'What do you see in this photo?'
-        : text;
+    final displayText =
+        text.isEmpty && hasImage ? 'What do you see in this photo?' : text;
     final generationId =
         '${DateTime.now().microsecondsSinceEpoch}-${_generationSerial++}';
 
@@ -469,14 +468,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     });
     _scrollToEnd();
 
-    final useStreamSpeech =
-        _speechEnabled &&
+    final useStreamSpeech = _speechEnabled &&
         NeuraTtsService.instance.replySpeechMode ==
             NeuraReplySpeechMode.streamed;
     final speech = ReplySpeechQueue(
-      speak: (text) => NeuraTtsService.instance
-          .speak(text)
-          .timeout(
+      speak: (text) => NeuraTtsService.instance.speak(text).timeout(
             const Duration(seconds: 45),
             onTimeout: () => NeuraTtsService.instance.stop(),
           ),
@@ -518,8 +514,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
             : Future.value(false),
         requestCloudApproval: (preview) =>
             mounted && _activeReplyId == generationId
-            ? showNeuraCloudRequestPreview(context, preview)
-            : Future.value(false),
+                ? showNeuraCloudRequestPreview(context, preview)
+                : Future.value(false),
       )) {
         if (!mounted || _activeReplyId != generationId) return;
         updates.add(delta);
@@ -678,8 +674,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       case NeuraChatPolicy.getMoodHistory:
         final approved = await _confirmToolAction(
           title: 'Share mood scores once?',
-          message:
-              'Neura wants to send recent mood dates and 0–10 scores to '
+          message: 'Neura wants to send recent mood dates and 0–10 scores to '
               'the configured AI provider for this reply. Your mood notes '
               'will not be shared.',
           approveLabel: 'Share once',
@@ -700,7 +695,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
           message: note.trim().isEmpty
               ? 'Save mood $mood/10 to your encrypted local history?'
               : 'Save mood $mood/10 with the note “$note” to your encrypted '
-                    'local history?',
+                  'local history?',
           approveLabel: 'Save locally',
         );
         if (!approved) return false;
@@ -716,8 +711,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         if (target.id != roomId) return false;
         final approved = await _confirmToolAction(
           title: 'Open ${target.title}?',
-          message:
-              'Neura suggested changing rooms. The app will navigate '
+          message: 'Neura suggested changing rooms. The app will navigate '
               'only if you approve this request.',
           approveLabel: 'Open room',
         );
@@ -758,8 +752,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     if (!mounted) return false;
     final generation = _activeReplyId;
     final room = NeuraShell.of(context).room.id;
-    final approved =
-        await showDialog<bool>(
+    final approved = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: Text(title),
@@ -875,8 +868,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
             tooltip: !replySpeechAvailable
                 ? 'Reply speech is off in Voice settings'
                 : replySpeechActive
-                ? 'Mute Neura'
-                : 'Unmute Neura',
+                    ? 'Mute Neura'
+                    : 'Unmute Neura',
             onPressed: _toggleSpeech,
             icon: Icon(replySpeechActive ? Icons.volume_up : Icons.volume_off),
           ),
@@ -891,9 +884,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
               itemCount: _lines.length,
               itemBuilder: (context, i) {
                 final line = _lines[i];
-                final align = line.isUser
-                    ? Alignment.centerRight
-                    : Alignment.centerLeft;
+                final align =
+                    line.isUser ? Alignment.centerRight : Alignment.centerLeft;
                 final color = line.isUser
                     ? Colors.blueGrey.shade700
                     : Colors.grey.shade900;
@@ -912,7 +904,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
                           padding: const EdgeInsets.only(left: 4, bottom: 2),
                           child: Text(
                             agentCaption,
-                            style: Theme.of(context).textTheme.labelSmall
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
                                 ?.copyWith(color: Colors.white70),
                           ),
                         ),
@@ -981,9 +975,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
           if (_selectedContext != null)
             InputChip(
               label: Text('Next reply: ${_selectedContext!.name}'),
-              onDeleted: _busy
-                  ? null
-                  : () => setState(() => _selectedContext = null),
+              onDeleted:
+                  _busy ? null : () => setState(() => _selectedContext = null),
             ),
           CheckboxListTile(
             dense: true,
@@ -992,8 +985,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
               'Private rooms stay private. Review the cloud preview before sending.',
             ),
             value: _includeMemory,
-            onChanged:
-                _busy ||
+            onChanged: _busy ||
                     !NeuraChatPolicy.forRoom(
                       NeuraShell.of(context).room.id,
                     ).persistMemory
@@ -1015,10 +1007,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
                         hintText: _listening
                             ? 'Listening…'
                             : (_busy
-                                  ? 'Type to interrupt Neura…'
-                                  : (_continuousMode
-                                        ? 'Getting ready to listen…'
-                                        : 'Talk to Neura…')),
+                                ? 'Type to interrupt Neura…'
+                                : (_continuousMode
+                                    ? 'Getting ready to listen…'
+                                    : 'Talk to Neura…')),
                         border: const OutlineInputBorder(),
                       ),
                     ),
@@ -1038,8 +1030,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
                     tooltip: _listening
                         ? 'Done — send it'
                         : (_busy
-                              ? 'Interrupt and talk'
-                              : 'Talk freely (hands-free)'),
+                            ? 'Interrupt and talk'
+                            : 'Talk freely (hands-free)'),
                     onPressed: _beginVoiceBargeIn,
                     icon: Icon(
                       _listening ? Icons.mic : Icons.mic_none,
@@ -1092,13 +1084,14 @@ class _ChatLine {
     String? utteranceId,
     String? imageBase64,
     String? imageMediaType,
-  }) => _ChatLine(
-    true,
-    t,
-    utteranceId: utteranceId,
-    imageBase64: imageBase64,
-    imageMediaType: imageMediaType,
-  );
+  }) =>
+      _ChatLine(
+        true,
+        t,
+        utteranceId: utteranceId,
+        imageBase64: imageBase64,
+        imageMediaType: imageMediaType,
+      );
 
   factory _ChatLine.bot(String t, {String? agentId, String? utteranceId}) =>
       _ChatLine(false, t, agentId: agentId, utteranceId: utteranceId);
