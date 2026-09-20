@@ -107,33 +107,28 @@ jobs:
           flutter pub get
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Capture project-aware formatting
+      - name: Capture project-aware formatting patch
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
           dart format lib/modules/chat/neura_chat_screen.dart lib/services/neura_tts_service.dart
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          function Write-NeuraFormattedFile {
-            param(
-              [Parameter(Mandatory)][string]$Label,
-              [Parameter(Mandatory)][string]$Path
-            )
-            $encoded = [Convert]::ToBase64String(
-              [System.IO.File]::ReadAllBytes($Path)
-            )
-            Write-Host "NEURA_FORMAT_${Label}_BEGIN"
-            for ($offset = 0; $offset -lt $encoded.Length; $offset += 1000) {
-              $length = [Math]::Min(1000, $encoded.Length - $offset)
-              Write-Host $encoded.Substring($offset, $length)
-            }
-            Write-Host "NEURA_FORMAT_${Label}_END"
+          $diff = & git diff --no-ext-diff --unified=3 --
+            'lib/modules/chat/neura_chat_screen.dart'
+            'lib/services/neura_tts_service.dart'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $payload = (($diff -join "`n") + "`n")
+          $encoded = [Convert]::ToBase64String(
+            [System.Text.Encoding]::UTF8.GetBytes($payload)
+          )
+          Write-Host 'NEURA_FORMAT_PATCH_BEGIN'
+          for ($offset = 0; $offset -lt $encoded.Length; $offset += 500) {
+            $length = [Math]::Min(500, $encoded.Length - $offset)
+            Write-Host $encoded.Substring($offset, $length)
           }
-
-          Write-NeuraFormattedFile -Label 'CHAT' -Path 'lib/modules/chat/neura_chat_screen.dart'
-          Write-NeuraFormattedFile -Label 'TTS' -Path 'lib/services/neura_tts_service.dart'
-          throw 'Project-aware formatting captured for repair.'
-
+          Write-Host 'NEURA_FORMAT_PATCH_END'
+          throw 'Project-aware formatting patch captured for repair.'
       - name: Analyze startup state code
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
