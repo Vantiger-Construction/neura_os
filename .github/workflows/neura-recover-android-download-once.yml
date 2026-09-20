@@ -1,0 +1,74 @@
+name: Neura recover configured Android download once
+on:
+  push:
+    branches: ['ops/approved-artifact-cleanup-20260920']
+    paths: ['.github/workflows/neura-recover-android-download-once.yml']
+permissions: {}
+jobs:
+  recover:
+    if: github.repository == 'Vantiger-Construction/neura_os'
+    runs-on: [self-hosted, Windows, X64, neura]
+    timeout-minutes: 15
+    steps:
+      - name: Verify preserved APK against original build evidence
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $root = 'C:\neura-packages\android\35464750251-1'
+          $apkName = 'NeuraCompanion_Android_1.5.0_recovery.217.apk'
+          $expectedFiles = @($apkName, 'build-manifest.json', 'SHA256SUMS.txt')
+          $entries = @(Get-ChildItem -LiteralPath $root -Force)
+          if ($entries.Count -ne 3) { throw 'Recovery directory must contain only APK, manifest and checksum file.' }
+          if (((Get-Item -LiteralPath $root).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Recovery directory is a reparse point.' }
+          foreach ($entry in $entries) {
+            if ($entry.PSIsContainer -or $entry.Name -cnotin $expectedFiles -or
+                ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+              throw 'Unexpected recovery package member.'
+            }
+          }
+          $apkPath = Join-Path $root $apkName
+          if ((Get-Item -LiteralPath $apkPath).Length -ne 250010602) { throw 'APK length differs from original build evidence.' }
+          $apkHash = (Get-FileHash -LiteralPath $apkPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($apkHash -cne '4829c6701cf8a4b9dacf4a73ea3c1211f334e8f585c0b5da6bff3436b7362d61') { throw 'APK checksum differs from original build evidence.' }
+          $manifest = Get-Content -LiteralPath (Join-Path $root 'build-manifest.json') -Raw | ConvertFrom-Json
+          if ($manifest.source_commit -cne 'fe1bf3e4d13bd794df2e08ffbe648858299ab987' -or
+              $manifest.platform -cne 'android' -or $manifest.run_id -ne '35464750251' -or
+              $manifest.run_attempt -ne '1' -or $manifest.device_qa -cne 'pending' -or
+              $manifest.config_sha256 -cne '479e78657ee5923f9122012f485bb18e42790dc341a943db16d4883e83537fda') {
+            throw 'Recovery build manifest does not match the original configured build.'
+          }
+          $lines = @(Get-Content -LiteralPath (Join-Path $root 'SHA256SUMS.txt') | Where-Object { $_.Trim() })
+          if ($lines.Count -ne 2) { throw 'Expected checksums for exactly APK and manifest.' }
+          $seen = @()
+          foreach ($line in $lines) {
+            if ($line -cnotmatch '^([a-f0-9]{64})  ([^\\/]+)$') { throw 'Malformed checksum entry.' }
+            $expectedHash = $Matches[1]
+            $name = $Matches[2]
+            if ($name -cnotin @($apkName, 'build-manifest.json') -or $name -cin $seen) { throw 'Unexpected or duplicate checksum member.' }
+            $seen += $name
+            $actual = (Get-FileHash -LiteralPath (Join-Path $root $name) -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -cne $expectedHash) { throw "Checksum mismatch for $name." }
+          }
+          "Verified configured Android APK from source fe1bf3e4d13bd794df2e08ffbe648858299ab987; original run 35464750251. Device QA remains pending." |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          Write-Host "Verified APK, manifest and checksums. Uploading the preserved package."
+          
+      - name: Deliver verified configured APK and checksums
+        id: upload
+        uses: actions/upload-artifact@v6
+        with:
+          name: NeuraCompanion-SelfHosted-Android-APK
+          path: 'C:\neura-packages\android\35464750251-1'
+          if-no-files-found: error
+          retention-days: 3
+      - name: Record download link
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        env:
+          NEURA_ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          NEURA_ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:NEURA_ARTIFACT_ID) -or [string]::IsNullOrWhiteSpace($env:NEURA_ARTIFACT_URL)) {
+            throw 'Upload did not produce an artifact ID and download URL.'
+          }
+          "[Download configured Android package]($env:NEURA_ARTIFACT_URL)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
