@@ -1,0 +1,73 @@
+name: Neura approved artifact cleanup once
+on:
+  push:
+    branches: ['ops/approved-artifact-cleanup-20260920']
+    paths: ['.github/workflows/neura-approved-artifact-cleanup-once.yml']
+permissions: {}
+concurrency:
+  group: neura-approved-artifact-cleanup-20260920
+  cancel-in-progress: false
+jobs:
+  cleanup:
+    if: github.repository == 'Vantiger-Construction/neura_os'
+    runs-on: [self-hosted, Windows, X64, neura]
+    timeout-minutes: 10
+    permissions:
+      actions: write
+    steps:
+      - name: Delete only the ten explicitly approved old package artifacts
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        env:
+          NEURA_CLEANUP_TOKEN: ${{ github.token }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REPOSITORY -ne 'Vantiger-Construction/neura_os') {
+            throw 'Unexpected repository; refusing cleanup.'
+          }
+          $headers = @{
+            Authorization = "Bearer $env:NEURA_CLEANUP_TOKEN"
+            Accept = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $apiRoot = 'https://api.github.com/repos/Vantiger-Construction/neura_os/actions/artifacts'
+          $approved = '[{"id":9552204139,"name":"NeuraCompanion-Windows-x64","run":32816008188,"sha":"8ba00f4aea6ac264a599e82e7e309e35a6ad7fc2","bytes":80987578},{"id":9552175566,"name":"NeuraCompanion-Android-APK","run":32816008188,"sha":"8ba00f4aea6ac264a599e82e7e309e35a6ad7fc2","bytes":155631911},{"id":9551822546,"name":"NeuraCompanion-Windows-x64","run":32815968831,"sha":"8ce511976b8edb28310bc37fac443fe7181833c6","bytes":80987539},{"id":9551769741,"name":"NeuraCompanion-Android-APK","run":32815968831,"sha":"8ce511976b8edb28310bc37fac443fe7181833c6","bytes":155631908},{"id":9541525699,"name":"NeuraCompanion-Windows-x64","run":32784726632,"sha":"f588ca79c1d2e0f174b4da3833fd74ef946325f2","bytes":80987218},{"id":9541488605,"name":"NeuraCompanion-Android-APK","run":32784726632,"sha":"f588ca79c1d2e0f174b4da3833fd74ef946325f2","bytes":155631751},{"id":9541586439,"name":"NeuraCompanion-Windows-x64","run":32784723192,"sha":"f588ca79c1d2e0f174b4da3833fd74ef946325f2","bytes":80987216},{"id":9541495413,"name":"NeuraCompanion-Android-APK","run":32784723192,"sha":"f588ca79c1d2e0f174b4da3833fd74ef946325f2","bytes":155631761},{"id":9539644467,"name":"NeuraCompanion-Windows-x64","run":32779173657,"sha":"f6690edfc86fe0c9edfecd30c0a4250f9e29a9ad","bytes":80986912},{"id":9539627898,"name":"NeuraCompanion-Android-APK","run":32779173657,"sha":"f6690edfc86fe0c9edfecd30c0a4250f9e29a9ad","bytes":155631757}]' | ConvertFrom-Json
+          function Get-ArtifactOrNull([long]$ArtifactId) {
+            try {
+              return Invoke-RestMethod -Uri "$apiRoot/$ArtifactId" -Headers $headers -Method Get -TimeoutSec 60
+            } catch {
+              if ($null -ne $_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) { return $null }
+              throw
+            }
+          }
+          # Validate the entire fixed allowlist before the first deletion.
+          $pending = @()
+          foreach ($item in $approved) {
+            $artifact = Get-ArtifactOrNull $item.id
+            if ($null -eq $artifact) {
+              Write-Host "Already absent: $($item.id)"
+              continue
+            }
+            if ($artifact.id -ne $item.id -or $artifact.name -cne $item.name -or
+                $artifact.workflow_run.id -ne $item.run -or
+                $artifact.workflow_run.head_sha -cne $item.sha -or
+                $artifact.size_in_bytes -ne $item.bytes -or
+                [DateTimeOffset]::Parse($artifact.created_at) -ge [DateTimeOffset]::Parse('2026-08-26T00:00:00Z')) {
+              throw "Artifact $($item.id) does not match the user-approved cleanup manifest."
+            }
+            $pending += $item
+          }
+          [long]$deletedBytes = 0
+          foreach ($item in $pending) {
+            $response = Invoke-WebRequest -UseBasicParsing -Uri "$apiRoot/$($item.id)" -Headers $headers -Method Delete -TimeoutSec 60
+            if ([int]$response.StatusCode -ne 204) { throw "Deletion did not return HTTP 204 for $($item.id)." }
+            if ($null -ne (Get-ArtifactOrNull $item.id)) { throw "Artifact $($item.id) still exists after deletion." }
+            $deletedBytes += $item.bytes
+            $message = "Deleted $($item.id): $($item.name), run $($item.run), $($item.bytes) bytes"
+            Write-Host $message
+            $message | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          }
+          "Confirmed deleted bytes: $deletedBytes. GitHub storage accounting may update later." |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          Write-Host "Cleanup complete. Confirmed deleted bytes: $deletedBytes"
+          
