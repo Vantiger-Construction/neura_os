@@ -1,5 +1,8 @@
 use axum::{
-    extract::ws::{Message, WebSocket, WebSocketUpgrade},
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        State,
+    },
     http::{header::ORIGIN, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
@@ -10,11 +13,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     net::SocketAddr,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::{net::TcpListener, sync::mpsc, task::JoinHandle};
 use tracing::{info, warn};
 use uuid::Uuid;
+
+mod model;
+use model::{ChatTurn, ModelConfig};
 
 const PROTOCOL_VERSION: u32 = 1;
 const SERVICE_VERSION: &str = "0.3.0";
@@ -166,19 +173,24 @@ async fn health() -> Json<Value> {
     }))
 }
 
-async fn ws_handler(headers: HeaderMap, ws: WebSocketUpgrade) -> Response {
+async fn ws_handler(
+    State(config): State<Arc<ModelConfig>>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> Response {
     if !origin_allowed(&headers) {
         return (StatusCode::FORBIDDEN, "browser origins are not allowed").into_response();
     }
     ws.max_message_size(MAX_FRAME_BYTES)
         .max_frame_size(MAX_FRAME_BYTES)
-        .on_upgrade(client)
+        .on_upgrade(move |socket| client(socket, config))
 }
 
-fn app() -> Router {
+fn app(config: Arc<ModelConfig>) -> Router {
     Router::new()
         .route("/", get(ws_handler))
         .route("/health", get(health))
+        .with_state(config)
 }
 
 /// Queues a frame; `false` means the client is gone and the caller should stop.
@@ -195,7 +207,53 @@ async fn interrupt(generation: &mut Option<(JoinHandle<()>, String)>, tx: &mpsc:
     }
 }
 
-async fn client(socket: WebSocket) {
+type History = Arc<Mutex<Vec<ChatTurn>>>;
+
+/// Streams one model reply to the client and records it in the history.
+async fn run_reply(
+    config: Arc<ModelConfig>,
+    history: History,
+    snapshot: Vec<ChatTurn>,
+    id: String,
+    tx: mpsc::Sender<String>,
+) {
+    let (delta_tx, mut delta_rx) = mpsc::channel::<String>(32);
+    let forward = async {
+        while let Some(delta) = delta_rx.recv().await {
+            let delta = frame("speak_delta", json!({"utterance_id": id, "delta": delta}));
+            if !emit(&tx, delta).await {
+                return false;
+            }
+        }
+        true
+    };
+    let (generation, connected) =
+        tokio::join!(model::generate(&config, &snapshot, delta_tx), forward);
+    if !connected {
+        return;
+    }
+    if let Some((code, message)) = &generation.error {
+        if !emit(&tx, error_frame(code, message)).await {
+            return;
+        }
+    }
+    let text = if generation.text.is_empty() && generation.error.is_some() {
+        "I couldn't reach my local model just now.".to_string()
+    } else {
+        generation.text
+    };
+    if generation.error.is_none() && !text.is_empty() {
+        let mut turns = history.lock().unwrap_or_else(|e| e.into_inner());
+        model::push_turn(&mut turns, ChatTurn::assistant(text.clone()));
+    }
+    let _ = emit(
+        &tx,
+        frame("speak", json!({"utterance_id": id, "text": text})),
+    )
+    .await;
+}
+
+async fn client(socket: WebSocket, config: Arc<ModelConfig>) {
     let (mut socket_tx, mut socket_rx) = socket.split();
     let (out_tx, mut out_rx) = mpsc::channel::<String>(OUTBOUND_QUEUE);
 
@@ -208,6 +266,7 @@ async fn client(socket: WebSocket) {
     });
 
     let mut generation: Option<(JoinHandle<()>, String)> = None;
+    let history: History = Arc::default();
 
     while let Some(Ok(message)) = socket_rx.next().await {
         let text = match message {
@@ -262,21 +321,28 @@ async fn client(socket: WebSocket) {
             }
             "diagnostics_request" => {
                 let streaming = generation.as_ref().is_some_and(|(t, _)| !t.is_finished());
-                emit(
-                    &out_tx,
-                    frame(
-                        "diagnostics",
-                        json!({
-                            "generated_at": now_iso8601(),
-                            "checks": [
-                                {"name":"WebSocket","status":"ok","remedy":"None","detail":"Local control channel connected."},
-                                {"name":"Streaming","status":"ok","remedy":"None","detail": if streaming {"A reply is currently streaming."} else {"Delta and interruption events enabled."}},
-                                {"name":"Model adapter","status":"degraded","remedy":"Use Neura's primary chat or install a reviewed sidecar model adapter.","detail":"Safe local echo provider is active."}
-                            ]
-                        }),
-                    ),
-                )
-                .await
+                let tx = out_tx.clone();
+                let config = Arc::clone(&config);
+                // Probing the model server can take a moment; keep reading frames.
+                tokio::spawn(async move {
+                    let (status, detail, remedy) = model::diagnostics(&config).await;
+                    let _ = emit(
+                        &tx,
+                        frame(
+                            "diagnostics",
+                            json!({
+                                "generated_at": now_iso8601(),
+                                "checks": [
+                                    {"name":"WebSocket","status":"ok","remedy":"None","detail":"Local control channel connected."},
+                                    {"name":"Streaming","status":"ok","remedy":"None","detail": if streaming {"A reply is currently streaming."} else {"Delta and interruption events enabled."}},
+                                    {"name":"Model adapter","status":status,"remedy":remedy,"detail":detail}
+                                ]
+                            }),
+                        ),
+                    )
+                    .await;
+                });
+                true
             }
             "interrupt" => {
                 interrupt(&mut generation, &out_tx).await;
@@ -289,33 +355,32 @@ async fn client(socket: WebSocket) {
                     prompt,
                 }) => {
                     interrupt(&mut generation, &out_tx).await;
-
-                    let stream_tx = out_tx.clone();
-                    let id = utterance_id.clone();
-                    let task = tokio::spawn(async move {
-                        let response = if prompt.is_empty() {
-                            "I didn't receive any text.".to_string()
-                        } else {
-                            format!("Local brain link is working. You said: {prompt}")
-                        };
-                        for word in response.split_whitespace() {
-                            let delta = frame(
-                                "speak_delta",
-                                json!({"utterance_id": id, "delta": format!("{word} ")}),
-                            );
-                            if !emit(&stream_tx, delta).await {
-                                return;
-                            }
-                            tokio::time::sleep(Duration::from_millis(55)).await;
-                        }
-                        let _ = emit(
-                            &stream_tx,
-                            frame("speak", json!({"utterance_id": id, "text": response})),
+                    if prompt.is_empty() {
+                        let reply = "I didn't receive any text.";
+                        emit(
+                            &out_tx,
+                            frame(
+                                "speak",
+                                json!({"utterance_id": utterance_id, "text": reply}),
+                            ),
                         )
-                        .await;
-                    });
-                    generation = Some((task, utterance_id));
-                    true
+                        .await
+                    } else {
+                        let snapshot = {
+                            let mut turns = history.lock().unwrap_or_else(|e| e.into_inner());
+                            model::push_turn(&mut turns, ChatTurn::user(prompt));
+                            turns.clone()
+                        };
+                        let task = tokio::spawn(run_reply(
+                            Arc::clone(&config),
+                            Arc::clone(&history),
+                            snapshot,
+                            utterance_id.clone(),
+                            out_tx.clone(),
+                        ));
+                        generation = Some((task, utterance_id));
+                        true
+                    }
                 }
             },
             other => {
@@ -352,11 +417,19 @@ async fn main() {
         eprintln!("{message}");
         std::process::exit(2);
     }
+    let config = match ModelConfig::from_env(allow_non_loopback) {
+        Ok(config) => Arc::new(config),
+        Err(message) => {
+            eprintln!("{message}");
+            std::process::exit(2);
+        }
+    };
+    info!(mode = ?config.mode, url = %config.ollama_url, "model adapter configured");
     let listener = TcpListener::bind(address)
         .await
         .expect("bind Neura local brain");
     info!(%address, "Neura local brain listening");
-    axum::serve(listener, app())
+    axum::serve(listener, app(config))
         .await
         .expect("serve Neura local brain");
 }
@@ -364,7 +437,12 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    fn echo_config() -> Arc<ModelConfig> {
+        Arc::new(ModelConfig::from_values(Some("echo"), None, None, false).unwrap())
+    }
 
     #[test]
     fn envelope_has_frozen_contract() {
@@ -453,7 +531,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
-            axum::serve(listener, app()).await.unwrap();
+            axum::serve(listener, app(echo_config())).await.unwrap();
         });
         let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
         stream.write_all(request.as_bytes()).await.unwrap();
@@ -491,5 +569,121 @@ mod tests {
         )
         .await;
         assert!(response.starts_with("HTTP/1.1 101"), "{response}");
+    }
+
+    async fn connect(
+    ) -> tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>
+    {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app(echo_config())).await.unwrap();
+        });
+        let (socket, _) = tokio_tungstenite::connect_async(format!("ws://{addr}/"))
+            .await
+            .unwrap();
+        socket
+    }
+
+    async fn send_kind(
+        socket: &mut tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+        kind: &str,
+        data: Value,
+    ) {
+        let text = json!({"v":1,"kind":kind,"id":"t","data":data}).to_string();
+        socket
+            .send(tokio_tungstenite::tungstenite::Message::Text(text))
+            .await
+            .unwrap();
+    }
+
+    /// Reads frames until one of `kind` arrives, returning every frame seen.
+    async fn read_until(
+        socket: &mut tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+        kind: &str,
+    ) -> Vec<Value> {
+        let mut frames = Vec::new();
+        loop {
+            let next = tokio::time::timeout(Duration::from_secs(10), socket.next())
+                .await
+                .expect("timed out waiting for a frame")
+                .expect("socket closed")
+                .unwrap();
+            if let tokio_tungstenite::tungstenite::Message::Text(text) = next {
+                let value: Value = serde_json::from_str(&text).unwrap();
+                let done = value["kind"] == kind;
+                frames.push(value);
+                if done {
+                    return frames;
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn streams_a_reply_over_websocket() {
+        let mut socket = connect().await;
+        send_kind(&mut socket, "hello", json!({})).await;
+        let hello = read_until(&mut socket, "hello").await;
+        assert_eq!(hello[0]["data"]["limits"]["max_text_chars"], MAX_TEXT_CHARS);
+
+        send_kind(
+            &mut socket,
+            "user_text",
+            json!({"utterance_id":"u1","text":"hi there"}),
+        )
+        .await;
+        let frames = read_until(&mut socket, "speak").await;
+        let last = frames.last().unwrap();
+        assert_eq!(last["data"]["utterance_id"], "u1");
+        assert_eq!(
+            last["data"]["text"],
+            "Local brain link is working. You said: hi there"
+        );
+        let streamed: String = frames
+            .iter()
+            .filter(|f| f["kind"] == "speak_delta")
+            .map(|f| f["data"]["delta"].as_str().unwrap())
+            .collect();
+        assert_eq!(streamed.trim_end(), last["data"]["text"]);
+    }
+
+    #[tokio::test]
+    async fn interrupt_and_bad_input_are_reported() {
+        let mut socket = connect().await;
+        send_kind(
+            &mut socket,
+            "user_text",
+            json!({"utterance_id":"first","text":"a long enough message to stream"}),
+        )
+        .await;
+        read_until(&mut socket, "speak_delta").await;
+        send_kind(&mut socket, "interrupt", json!({})).await;
+        let frames = read_until(&mut socket, "speak_interrupted").await;
+        assert_eq!(frames.last().unwrap()["data"]["utterance_id"], "first");
+
+        send_kind(
+            &mut socket,
+            "user_text",
+            json!({"text": "x".repeat(MAX_TEXT_CHARS + 1)}),
+        )
+        .await;
+        let frames = read_until(&mut socket, "error").await;
+        assert_eq!(frames.last().unwrap()["data"]["code"], "text_too_long");
+
+        send_kind(&mut socket, "nonsense", json!({})).await;
+        let frames = read_until(&mut socket, "error").await;
+        assert_eq!(frames.last().unwrap()["data"]["code"], "unsupported_kind");
+
+        send_kind(&mut socket, "diagnostics_request", json!({})).await;
+        let frames = read_until(&mut socket, "diagnostics").await;
+        let data = &frames.last().unwrap()["data"];
+        assert!(data["generated_at"].as_str().unwrap().ends_with('Z'));
+        assert_eq!(data["checks"][2]["name"], "Model adapter");
+        assert_eq!(data["checks"][2]["status"], "degraded");
     }
 }
