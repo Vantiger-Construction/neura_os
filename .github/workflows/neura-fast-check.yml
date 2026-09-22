@@ -9,6 +9,7 @@ on:
       - 'rust/**'
       - 'windows/**'
       - 'tools/New-NeuraClientBuildConfig.ps1'
+      - 'tools/Publish-NeuraReleaseAssets.ps1'
       - 'tools/Save-NeuraConfiguredPackage.ps1'
       - 'pubspec.yaml'
       - 'pubspec.lock'
@@ -23,6 +24,9 @@ on:
         type: boolean
         default: true
 
+permissions:
+  # Configured package delivery publishes download-verified prerelease assets.
+  contents: write
 
 concurrency:
   group: neura-local-runner-${{ github.ref }}
@@ -272,6 +276,22 @@ jobs:
         uses: actions/checkout@v5
         with:
           path: source
+
+      - name: Validate release publisher syntax
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $scriptPath = Join-Path $env:NEURA_SOURCE_ROOT 'tools\Publish-NeuraReleaseAssets.ps1'
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $scriptPath,
+            [ref]$tokens,
+            [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.Message }
+            throw 'Release publisher contains PowerShell syntax errors.'
+          }
 
       - name: Confirm bounded system-volume headroom
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
@@ -523,15 +543,15 @@ jobs:
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: '& "$env:NEURA_SOURCE_ROOT\tools\Save-NeuraConfiguredPackage.ps1" -SourceRoot $env:NEURA_SOURCE_ROOT -Platform windows -BuildVolume $env:NEURA_FLUTTER_VOLUME'
 
-      - name: Upload configured Windows package
+      - name: Publish required Windows release assets
         if: steps.client_config.outputs.configured == 'true'
-        id: configured_upload
-        uses: actions/upload-artifact@v6
-        with:
-          name: NeuraCompanion-Windows-configured-${{ github.run_id }}
-          path: ${{ steps.configured_package.outputs.package_path }}
-          if-no-files-found: error
-          retention-days: 3
+        id: release_delivery
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NEURA_RELEASE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          NEURA_RELEASE_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: '& "$env:NEURA_SOURCE_ROOT\tools\Publish-NeuraReleaseAssets.ps1" -Platform windows -PackagePath "${{ steps.configured_package.outputs.package_path }}" -BuildVolume $env:NEURA_FLUTTER_VOLUME'
 
       - name: Release generated build space
         if: always()
