@@ -8,6 +8,7 @@ on:
       - 'lib/**'
       - 'test/**'
       - 'tools/New-NeuraClientBuildConfig.ps1'
+      - 'tools/Publish-NeuraReleaseAssets.ps1'
       - 'tools/Save-NeuraConfiguredPackage.ps1'
       - 'pubspec.yaml'
       - 'pubspec.lock'
@@ -21,7 +22,8 @@ on:
 
 
 permissions:
-  contents: read
+  # Package delivery publishes download-verified prerelease assets.
+  contents: write
 
 concurrency:
   group: neura-self-hosted-android-${{ github.ref }}
@@ -575,15 +577,26 @@ jobs:
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: '& "$env:NEURA_ANDROID_SOURCE_ROOT\tools\Save-NeuraConfiguredPackage.ps1" -SourceRoot $env:NEURA_ANDROID_SOURCE_ROOT -Platform android -BuildVolume $env:NEURA_ANDROID_BUILD_VOLUME'
 
-      - name: Upload Android APK
+      - name: Publish required Android release assets
         # Every package run requires a downloadable APK and checksum.
-        # Do not report success when GitHub rejects the artifact upload.
-        uses: actions/upload-artifact@v6
-        with:
-          name: NeuraCompanion-SelfHosted-Android-APK
-          path: ${{ steps.configured_package.outputs.package_path || format('{0}/source/recovery_downloads/android', github.workspace) }}
-          if-no-files-found: error
-          retention-days: 3
+        # Do not report success until each release asset has been downloaded
+        # again and matched to its local SHA-256 digest.
+        id: release_delivery
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NEURA_CONFIGURED_PACKAGE_PATH: ${{ steps.configured_package.outputs.package_path }}
+          NEURA_RELEASE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          NEURA_RELEASE_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $packagePath = $env:NEURA_CONFIGURED_PACKAGE_PATH
+          if ([string]::IsNullOrWhiteSpace($packagePath)) {
+            $packagePath = Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'recovery_downloads\android'
+          }
+          & "$env:NEURA_ANDROID_SOURCE_ROOT\tools\Publish-NeuraReleaseAssets.ps1" `
+            -Platform android `
+            -PackagePath $packagePath `
+            -BuildVolume $env:NEURA_ANDROID_BUILD_VOLUME
 
       - name: Upload Android restore and build logs
         if: always()
