@@ -277,6 +277,22 @@ jobs:
         with:
           path: source
 
+      - name: Validate release publisher syntax
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $scriptPath = Join-Path $env:NEURA_SOURCE_ROOT 'tools\Publish-NeuraReleaseAssets.ps1'
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $scriptPath,
+            [ref]$tokens,
+            [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.Message }
+            throw 'Release publisher contains PowerShell syntax errors.'
+          }
+
       - name: Confirm bounded system-volume headroom
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
