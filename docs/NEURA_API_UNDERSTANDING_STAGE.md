@@ -23,6 +23,7 @@ Run from the repository root:
 ```bash
 cargo fmt --manifest-path rust/Cargo.toml -- --check
 cargo test --manifest-path rust/Cargo.toml
+cargo test --manifest-path rust/Cargo.toml --features reqwest-transport
 cargo build --manifest-path rust/Cargo.toml --bin neura_api
 ```
 
