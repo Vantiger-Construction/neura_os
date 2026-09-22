@@ -53,6 +53,41 @@ function Invoke-GitHubJson {
     return Invoke-RestMethod @parameters
 }
 
+function Find-GitHubReleaseAsset {
+    param(
+        [AllowNull()]$Assets,
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    # Windows PowerShell 5.1 can preserve an empty top-level JSON array as a
+    # nested System.Object[] when command output is captured. Walk arrays
+    # explicitly so an empty GitHub assets response stays empty under strict
+    # mode instead of being treated as an object without a name property.
+    $pending = New-Object System.Collections.Stack
+    $pending.Push($Assets)
+    while ($pending.Count -gt 0) {
+        $candidate = $pending.Pop()
+        if ($null -eq $candidate) {
+            continue
+        }
+        if ($candidate -is [System.Array]) {
+            foreach ($item in $candidate) {
+                $pending.Push($item)
+            }
+            continue
+        }
+
+        $nameProperty = $candidate.PSObject.Properties['name']
+        if ($null -eq $nameProperty) {
+            throw 'GitHub returned an invalid release assets response.'
+        }
+        if ([string]$nameProperty.Value -ceq $Name) {
+            return $candidate
+        }
+    }
+    return $null
+}
+
 function Get-ContentType {
     param([Parameter(Mandatory)][string]$Path)
 
@@ -221,13 +256,11 @@ function Publish-ReleaseAsset {
     }
 
     $expectedHash = Get-Sha256 -Path $localFile.FullName
-    $existingAssets = @(
-        Invoke-GitHubJson `
-            -Method Get `
-            -Uri "$script:ApiBase/repos/$script:Repository/releases/$($Release.id)/assets?per_page=100" `
-            -Body $null
-    )
-    $asset = @($existingAssets | Where-Object { $_.name -eq $Name }) | Select-Object -First 1
+    $existingAssets = Invoke-GitHubJson `
+        -Method Get `
+        -Uri "$script:ApiBase/repos/$script:Repository/releases/$($Release.id)/assets?per_page=100" `
+        -Body $null
+    $asset = Find-GitHubReleaseAsset -Assets $existingAssets -Name $Name
     if ($null -eq $asset) {
         $uploadBase = $Release.upload_url -replace '\{\?name,label\}$', ''
         $uploadUri = "${uploadBase}?name=$([Uri]::EscapeDataString($Name))"
