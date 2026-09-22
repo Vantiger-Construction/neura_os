@@ -5,12 +5,12 @@ on:
     paths: ['.github/workflows/neura-approved-artifact-cleanup-once.yml']
 permissions: {}
 concurrency:
-  group: neura-approved-artifact-cleanup-20260920
+  group: neura-approved-artifact-cleanup-20260920-cloud
   cancel-in-progress: false
 jobs:
   cleanup:
     if: github.repository == 'Vantiger-Construction/neura_os'
-    runs-on: [self-hosted, Windows, X64, neura]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       actions: write
