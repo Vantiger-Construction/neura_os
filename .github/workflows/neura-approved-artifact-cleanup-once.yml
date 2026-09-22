@@ -16,7 +16,7 @@ jobs:
       actions: write
     steps:
       - name: Delete only the nineteen explicitly approved old package artifacts
-        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        shell: 'pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         env:
           NEURA_CLEANUP_TOKEN: ${{ github.token }}
         run: |
