@@ -29,11 +29,18 @@ analysis, toolchain checks and Windows packaged-launch check.
 
 ## Outputs and recovery
 
-Configured Windows runs upload the entire release directory as a ZIP, including
-its executable, DLLs and data. Android runs upload the installable debug APK.
-Each package includes a build manifest and SHA-256 checksums. The manifest records
-the checked-out commit (the merge commit for a PR run), project origin, config
-digest, run identity and pending device-QA status. It contains no client key.
+Configured Windows runs publish the entire release directory as a ZIP, including
+its executable, DLLs and data. Android package runs publish the installable debug
+APK. Required deliverables use a GitHub prerelease keyed by PR head and packaged
+source commit, rather than GitHub Actions artifact storage. Each platform publishes
+the binary, a build manifest and SHA-256 checksums as separate release assets.
+
+The delivery step verifies the preserved-package checksums before publication,
+then downloads every published asset through GitHub's release API and compares its
+byte length and SHA-256 digest with the local file. The job fails unless all three
+assets upload and download cleanly. The manifest records the PR head, checked-out
+commit (the merge commit for a PR run), project origin, config digest, run identity,
+release tag and pending device-QA status. It contains no client key.
 
 Before upload, both jobs retain the deliverable on the selected runner volume:
 
@@ -44,13 +51,14 @@ Before upload, both jobs retain the deliverable on the selected runner volume:
 
 The exact path appears in the preserve step and job summary. These directories
 are outside the generated `neura-ci` cleanup tree and are not overwritten. A
-configured package upload failure fails the job even if compilation succeeded;
-the retained copy remains available to the runner's operator. Retrieve that copy
-from the runner if GitHub artifact storage is exhausted. Do not classify an
-upload quota failure as a Flutter compile failure.
+required release upload or download-verification failure fails the job even if
+compilation succeeded; the retained copy remains available to the runner's
+operator. Do not classify a delivery failure as a Flutter compile failure.
 
-GitHub artifacts expire after three days. Runner recovery copies require manual
-cleanup after delivery and verification; they are not deleted automatically.
+Prerelease assets do not use the Actions artifact quota or the old three-day
+artifact expiry. Remove superseded CI prereleases after the replacement head is
+verified. Runner recovery copies also require manual cleanup after delivery and
+verification; they are not deleted automatically.
 
 ## Release gates
 
