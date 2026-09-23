@@ -64,6 +64,14 @@
         "responses": {
           "200": {
             "description": "Versioned action contracts and limits",
+            "headers": {
+              "X-Neura-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "X-Neura-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -75,7 +83,13 @@
           "401": {
             "$ref": "#/components/responses/Error"
           },
+          "426": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
+            "$ref": "#/components/responses/RetryableError"
+          },
+          "503": {
             "$ref": "#/components/responses/RetryableError"
           }
         }
@@ -97,6 +111,14 @@
         "responses": {
           "202": {
             "description": "Queued for visible native review; not executed",
+            "headers": {
+              "X-Neura-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "X-Neura-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -107,6 +129,14 @@
           },
           "200": {
             "description": "Idempotent retry returned the original receipt",
+            "headers": {
+              "X-Neura-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "X-Neura-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -117,6 +147,12 @@
           },
           "400": {
             "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "408": {
+            "$ref": "#/components/responses/RetryableError"
           },
           "409": {
             "$ref": "#/components/responses/Error"
@@ -130,7 +166,13 @@
           "415": {
             "$ref": "#/components/responses/Error"
           },
+          "426": {
+            "$ref": "#/components/responses/Error"
+          },
           "429": {
+            "$ref": "#/components/responses/RetryableError"
+          },
+          "503": {
             "$ref": "#/components/responses/RetryableError"
           }
         }
@@ -153,6 +195,14 @@
         "responses": {
           "200": {
             "description": "Content-free proposal status",
+            "headers": {
+              "X-Neura-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "X-Neura-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -163,6 +213,18 @@
           },
           "404": {
             "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "426": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RetryableError"
+          },
+          "503": {
+            "$ref": "#/components/responses/RetryableError"
           }
         }
       }
@@ -200,6 +262,14 @@
     "responses": {
       "Error": {
         "description": "Stable v1 error code plus typed details",
+        "headers": {
+          "X-Neura-Api-Version": {
+            "$ref": "#/components/headers/ApiVersion"
+          },
+          "X-Neura-Trace-Id": {
+            "$ref": "#/components/headers/TraceId"
+          }
+        },
         "content": {
           "application/json": {
             "schema": {
@@ -211,6 +281,12 @@
       "RetryableError": {
         "description": "Temporary failure",
         "headers": {
+          "X-Neura-Api-Version": {
+            "$ref": "#/components/headers/ApiVersion"
+          },
+          "X-Neura-Trace-Id": {
+            "$ref": "#/components/headers/TraceId"
+          },
           "Retry-After": {
             "$ref": "#/components/headers/RetryAfter"
           }

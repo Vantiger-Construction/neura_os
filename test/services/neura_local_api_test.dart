@@ -220,5 +220,22 @@ void main() {
     });
     expect(paths.keys, isNot(contains('/execute')));
     expect(paths.keys, isNot(contains('/memory')));
+
+    final components = contract['components'] as Map;
+    final responseComponents = components['responses'] as Map;
+    for (final path in paths.values.cast<Map>()) {
+      for (final operation in path.values.cast<Map>()) {
+        final responses = operation['responses'] as Map;
+        for (final response in responses.values.cast<Map>()) {
+          final reference = response[r'$ref'];
+          final resolved = reference is String
+              ? responseComponents[reference.split('/').last] as Map
+              : response;
+          final headers = resolved['headers'] as Map;
+          expect(headers, contains('X-Neura-Api-Version'));
+          expect(headers, contains('X-Neura-Trace-Id'));
+        }
+      }
+    }
   });
 }
