@@ -17,15 +17,18 @@ class AmbientFx extends StatefulWidget {
 
 class _AmbientFxState extends State<AmbientFx>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(seconds: 12))
-        ..repeat();
+  late final AnimationController _c;
   final Random _r = Random(7);
   late final List<_Orb> _orbs;
 
   @override
   void initState() {
     super.initState();
+    // Created eagerly (not lazily) so a widget that starts disabled doesn't
+    // build its Ticker for the first time inside dispose(), where looking up
+    // TickerMode on a deactivated element asserts.
+    _c =
+        AnimationController(vsync: this, duration: const Duration(seconds: 12));
     _orbs = List.generate(9, (i) {
       return _Orb(
         x: _r.nextDouble(),
@@ -35,6 +38,21 @@ class _AmbientFxState extends State<AmbientFx>
         phase: _r.nextDouble() * pi * 2,
       );
     });
+    if (widget.enabled) _c.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant AmbientFx oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A repeating controller keeps waking the engine every frame even when
+    // nothing is listening, so toggling FX off in Settings must actually stop
+    // it, not just stop drawing.
+    if (widget.enabled == oldWidget.enabled) return;
+    if (widget.enabled) {
+      _c.repeat();
+    } else {
+      _c.stop();
+    }
   }
 
   @override
@@ -47,18 +65,22 @@ class _AmbientFxState extends State<AmbientFx>
   Widget build(BuildContext context) {
     if (!widget.enabled) return const SizedBox.shrink();
 
+    // RepaintBoundary keeps this full-screen 60Hz repaint in its own layer so
+    // it doesn't drag the rest of the shell's layer along with it each frame.
     return IgnorePointer(
-      child: AnimatedBuilder(
-        animation: _c,
-        builder: (context, _) {
-          return CustomPaint(
-            painter: _AmbientPainter(
-              t: _c.value,
-              orbs: _orbs,
-            ),
-            child: const SizedBox.expand(),
-          );
-        },
+      child: RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (context, _) {
+            return CustomPaint(
+              painter: _AmbientPainter(
+                t: _c.value,
+                orbs: _orbs,
+              ),
+              child: const SizedBox.expand(),
+            );
+          },
+        ),
       ),
     );
   }
