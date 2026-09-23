@@ -278,8 +278,9 @@ class NeuraLocalApi {
 
       final body = jsonDecode(utf8.decode(bytes));
       if (body is! Map<String, dynamic> ||
-          body.keys
-              .any((key) => !{'request_id', 'action', 'arguments'}.contains(key))) {
+          body.keys.any(
+            (key) => !{'request_id', 'action', 'arguments'}.contains(key),
+          )) {
         throw const FormatException();
       }
       final requestId = body['request_id'];

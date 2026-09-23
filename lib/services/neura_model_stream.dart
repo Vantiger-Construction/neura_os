@@ -38,14 +38,17 @@ enum NeuraModelFailureKind {
 }
 
 extension NeuraModelFailureKindPolicy on NeuraModelFailureKind {
-  bool get retryable => switch (this) {
-        NeuraModelFailureKind.timeout ||
-        NeuraModelFailureKind.rateLimited ||
-        NeuraModelFailureKind.providerUnavailable ||
-        NeuraModelFailureKind.connection =>
-          true,
-        _ => false,
-      };
+  bool get retryable {
+    switch (this) {
+      case NeuraModelFailureKind.timeout:
+      case NeuraModelFailureKind.rateLimited:
+      case NeuraModelFailureKind.providerUnavailable:
+      case NeuraModelFailureKind.connection:
+        return true;
+      default:
+        return false;
+    }
+  }
 }
 
 NeuraModelFailureKind neuraFailureKindForStatus(int statusCode) {

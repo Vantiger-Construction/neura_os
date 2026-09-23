@@ -149,7 +149,8 @@ class NeuraModelRequestBudget {
     final frozen = (jsonDecode(jsonEncode(tools)) as List)
         .map((item) => Map<String, dynamic>.from(item as Map))
         .toList(growable: false);
-    if (frozen.length > maxTools || jsonEncode(frozen).length > maxToolCharacters) {
+    if (frozen.length > maxTools ||
+        jsonEncode(frozen).length > maxToolCharacters) {
       throw const NeuraRequestBudgetExceeded(
         'The action definitions exceed the safe request budget.',
       );
