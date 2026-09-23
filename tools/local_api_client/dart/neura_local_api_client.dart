@@ -3,23 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-const _rooms = <String>{
-  'penthouse',
-  'reflection_bay',
-  'joy_lounge',
-  'mood_den',
-  'dream_atrium',
-  'legacy_vault',
-};
-
-const _tones = <String>{
-  'strategist',
-  'calm_wellness',
-  'warm_companion',
-  'cinematic_guide',
-  'quiet_private',
-};
-
 const _usage = '''
 Neura Local App API client
 
@@ -36,16 +19,28 @@ The URL may instead be supplied through NEURA_LOCAL_API_URL.
 ''';
 
 final class ApiResponse {
-  const ApiResponse(this.statusCode, this.body);
+  const ApiResponse(
+    this.statusCode,
+    this.body, {
+    this.apiVersion,
+    this.traceId,
+    this.retryAfter,
+  });
 
   final int statusCode;
   final Object? body;
+  final String? apiVersion;
+  final String? traceId;
+  final String? retryAfter;
 
   Map<String, Object?> toJson(String command) => {
         'command': command,
         'status_code': statusCode,
         'body': body,
         'network_error': false,
+        'api_version': apiVersion,
+        'trace_id': traceId,
+        'retry_after': retryAfter,
       };
 }
 
@@ -87,7 +82,8 @@ final class NeuraLocalApiClient {
         method == 'GET' ? await _http.getUrl(uri) : await _http.postUrl(uri);
     request
       ..followRedirects = false
-      ..headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+      ..headers.set(HttpHeaders.authorizationHeader, 'Bearer $token')
+      ..headers.set('x-neura-api-version', '1');
     if (body != null) {
       request.headers.contentType = ContentType.json;
       request.write(jsonEncode(body));
@@ -106,7 +102,13 @@ final class NeuraLocalApiClient {
         responseBody = responseText;
       }
     }
-    return ApiResponse(response.statusCode, responseBody);
+    return ApiResponse(
+      response.statusCode,
+      responseBody,
+      apiVersion: response.headers.value('x-neura-api-version'),
+      traceId: response.headers.value('x-neura-trace-id'),
+      retryAfter: response.headers.value(HttpHeaders.retryAfterHeader),
+    );
   }
 
   void close() => _http.close(force: true);
@@ -160,7 +162,16 @@ Future<void> main(List<String> arguments) async {
         response = await client.get('capabilities');
         break;
       case 'propose':
-        response = await client.post('proposals', _proposal(options));
+        final capabilities = await client.get('capabilities');
+        if (capabilities.statusCode < 200 ||
+            capabilities.statusCode >= 300) {
+          response = capabilities;
+        } else {
+          response = await client.post(
+            'proposals',
+            _proposal(options, capabilities.body),
+          );
+        }
         break;
       case 'status':
         final id = options['id'];
@@ -263,13 +274,26 @@ String _readToken() {
   }
 }
 
-Map<String, Object?> _proposal(Map<String, String> options) {
+Map<String, Object?> _proposal(
+  Map<String, String> options,
+  Object? capabilityBody,
+) {
   final action = options['action'];
-  if (!{'open_room', 'set_tone', 'sync_journal'}.contains(action)) {
-    throw const FormatException(
-      '--action must be open_room, set_tone, or sync_journal.',
-    );
+  if (action == null || !RegExp(r'^[a-z][a-z0-9_]{0,63}$').hasMatch(action)) {
+    throw const FormatException('--action must be a valid action name.');
   }
+  if (capabilityBody is! Map ||
+      capabilityBody['api_version'] != 1 ||
+      capabilityBody['approval'] != 'each_action_in_neura' ||
+      capabilityBody['cloud_ai'] != false ||
+      capabilityBody['memory_access'] != false) {
+    throw const FormatException('Neura returned an incompatible API contract.');
+  }
+  final contracts = capabilityBody['action_contracts'];
+  if (contracts is! Map || contracts[action] is! Map) {
+    throw FormatException('Neura does not advertise action "$action".');
+  }
+  final contract = contracts[action] as Map;
   final generatedId =
       'dart-${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 31)}';
   final requestId = options['request-id'] ?? generatedId;
@@ -280,33 +304,27 @@ Map<String, Object?> _proposal(Map<String, String> options) {
   }
 
   final value = options['value'];
-  late final Map<String, Object?> proposalArguments;
-  switch (action) {
-    case 'open_room':
-      if (!_rooms.contains(value)) {
-        throw FormatException(
-          '--value must be a known room: ${_rooms.join(', ')}.',
-        );
-      }
-      proposalArguments = {'room': value};
-      break;
-    case 'set_tone':
-      if (!_tones.contains(value)) {
-        throw FormatException(
-          '--value must be a known tone: ${_tones.join(', ')}.',
-        );
-      }
-      proposalArguments = {'tone': value};
-      break;
-    case 'sync_journal':
-      if (value != null) {
-        throw const FormatException('sync_journal does not accept --value.');
-      }
-      proposalArguments = {};
-      break;
-    default:
-      throw StateError('Unreachable proposal action.');
+  final valueRequired = contract['value_required'] == true;
+  final argumentName = contract['argument_name'];
+  final allowedValues = contract['allowed_values'];
+  if (valueRequired) {
+    if (argumentName is! String || argumentName.isEmpty) {
+      throw const FormatException('Neura returned an invalid action contract.');
+    }
+    if (value == null ||
+        allowedValues is! List ||
+        !allowedValues.whereType<String>().contains(value)) {
+      final allowed = allowedValues is List
+          ? allowedValues.whereType<String>().join(', ')
+          : '';
+      throw FormatException('--value must be one of: $allowed.');
+    }
+  } else if (value != null) {
+    throw FormatException('$action does not accept --value.');
   }
+  final proposalArguments = <String, Object?>{
+    if (valueRequired) argumentName as String: value,
+  };
 
   return {
     'request_id': requestId,

@@ -22,6 +22,29 @@ Provider wire formats follow [Responses streaming](https://developers.openai.com
 
 In an isolated Dart 3.12.0 JIT benchmark, a 32,768-character unpunctuated reply delivered as 4,096 growing snapshots took a median 110.293 ms with the previous speech scanner and 0.590 ms after this change (five measured runs after two warmups, identical output). A synthetic burst of 1,000 deltas scheduled one UI update and retained all text. These measure the algorithms, not end-to-end device or provider latency. Thirty focused streaming, speech and batching tests passed in the pure Dart harness; full Flutter/device validation remains required.
 
+### API resilience v1.1 extension
+
+- Provider failures are classified without storing response bodies, prompts or
+  credentials. Timeout, connection, rate-limit and provider-availability
+  failures are retryable; authentication, quota, invalid-request and malformed
+  response failures are not.
+- Neura permits at most one same-provider retry before any streamed output.
+  The delay honors bounded `Retry-After` guidance or uses jittered backoff, is
+  interruptible by barge-in and Safe Mode, and requires a new visible approval
+  before the retry leaves the device.
+- A tool continuation and any request that already emitted output are never
+  retried or switched to another provider. Provider fallback still requires a
+  separate preview and approval.
+- Passive process-local circuit state opens only after repeated transient
+  failures. It sends no background health probes and contains no conversation
+  content.
+- Request budgeting keeps a contiguous suffix of recent conversation turns,
+  preserves the latest user/tool exchange, bounds text, wire and tool-schema
+  sizes, and discloses omitted older-message counts in the approval preview.
+- Diagnostics now record only counters and timing measurements such as
+  time-to-first-token and completion latency. No prompt, response, path, key or
+  selected-file content is added to diagnostics.
+
 ## 2. Journal sync and recovery
 
 - Fetch remote revisions before uploads, with pagination and a bounded maximum.
@@ -52,9 +75,24 @@ Example body:
 {"request_id":"my-app-001","action":"open_room","arguments":{"room":"reflection_bay"}}
 ```
 
-Other allowed proposals: `set_tone` with a known `tone`, and `sync_journal` with empty arguments. The latter requires a confirmation explaining that journal entries go to the configured cloud account. Request IDs are idempotent within a session; reusing one for different arguments is rejected. Proposals expire after two minutes. Limits: 4 KiB bodies, 60 authenticated requests/minute, eight simultaneous handlers, 64 receipts/session. There is no HTTP approval endpoint.
+Other allowed proposals: `set_tone` with a known `tone`, and `sync_journal` with empty arguments. The latter requires a confirmation explaining that journal entries go to the configured cloud account. Request IDs are idempotent within a session; reusing one for different arguments is rejected. Proposals expire after two minutes. Limits: 4 KiB bodies, 60 authenticated requests/minute, eight simultaneous handlers, 16 active proposals, 64 retained receipts and 256 non-replayable request IDs per session. There is no HTTP approval endpoint.
 
 This first API serves trusted applications on the same device. Windows–Android continuity uses the configured sync backend; cross-device LAN control is not enabled.
+
+### Local API v1.1 resilience extension
+
+- The checked-in contract is `docs/neura-local-api-v1.openapi.json`. Clients
+  send `X-Neura-Api-Version: 1`; responses include the negotiated major version
+  and a content-free `X-Neura-Trace-Id`.
+- `/v1/capabilities` now advertises action argument contracts and operational
+  limits. The Dart and PowerShell clients consume those contracts rather than
+  carrying separate room and tone allowlists.
+- Existing string error codes remain compatible with v1 clients. A typed
+  `error_info` object adds retryability and trace correlation, while temporary
+  pressure responses include `Retry-After`.
+- Final receipts are pruned independently of session request-ID tombstones.
+  This prevents completed receipts from exhausting the active queue without
+  permitting a retired request ID to replay an action.
 
 ## Validation and release checks
 

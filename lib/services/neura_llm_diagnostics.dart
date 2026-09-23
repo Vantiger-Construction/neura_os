@@ -13,10 +13,14 @@ class NeuraLlmDiagnostics {
   int cancellations = 0;
   int toolDrops = 0;
   int fallbacks = 0;
+  int providerFallbacks = 0;
+  int contextMessagesOmitted = 0;
   DateTime? lastAttemptAt;
   DateTime? lastSuccessAt;
   DateTime? lastFailureAt;
   String? lastError;
+  int? lastFirstTokenMs;
+  int? lastCompletionMs;
 
   bool get healthy =>
       failures == 0 ||
@@ -47,6 +51,19 @@ class NeuraLlmDiagnostics {
   void recordCancellation() => cancellations += 1;
   void recordToolDrop() => toolDrops += 1;
   void recordFallback() => fallbacks += 1;
+  void recordProviderFallback() => providerFallbacks += 1;
+
+  void recordContextOmission(int count) {
+    if (count > 0) contextMessagesOmitted += count;
+  }
+
+  void recordFirstToken(Duration elapsed) {
+    lastFirstTokenMs = elapsed.inMilliseconds;
+  }
+
+  void recordCompletion(Duration elapsed) {
+    lastCompletionMs = elapsed.inMilliseconds;
+  }
 
   Map<String, dynamic> snapshot() {
     final isHealthy = healthy;
@@ -59,13 +76,17 @@ class NeuraLlmDiagnostics {
       'cancellations': cancellations,
       'tool_drops': toolDrops,
       'fallbacks': fallbacks,
+      'provider_fallbacks': providerFallbacks,
+      'context_messages_omitted': contextMessagesOmitted,
+      'last_first_token_ms': lastFirstTokenMs,
+      'last_completion_ms': lastCompletionMs,
       'last_attempt_at': lastAttemptAt?.toIso8601String(),
       'last_success_at': lastSuccessAt?.toIso8601String(),
       'last_failure_at': lastFailureAt?.toIso8601String(),
       'last_error': lastError,
       'remedy': isHealthy
           ? 'LLM responder is healthy.'
-          : 'Check network access and the configured Anthropic API key, then retry.',
+          : 'Check network access and configured model credentials, then retry.',
     };
   }
 
@@ -83,9 +104,13 @@ class NeuraLlmDiagnostics {
     cancellations = 0;
     toolDrops = 0;
     fallbacks = 0;
+    providerFallbacks = 0;
+    contextMessagesOmitted = 0;
     lastAttemptAt = null;
     lastSuccessAt = null;
     lastFailureAt = null;
     lastError = null;
+    lastFirstTokenMs = null;
+    lastCompletionMs = null;
   }
 }
