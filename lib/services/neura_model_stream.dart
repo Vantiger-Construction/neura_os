@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -24,10 +25,72 @@ class NeuraTurnComplete extends NeuraStreamEvent {
   final List<Map<String, dynamic>> openAiOutput;
 }
 
+enum NeuraModelFailureKind {
+  timeout,
+  rateLimited,
+  providerUnavailable,
+  authentication,
+  quota,
+  invalidRequest,
+  invalidResponse,
+  connection,
+  unknown,
+}
+
+extension NeuraModelFailureKindPolicy on NeuraModelFailureKind {
+  bool get retryable => switch (this) {
+        NeuraModelFailureKind.timeout ||
+        NeuraModelFailureKind.rateLimited ||
+        NeuraModelFailureKind.providerUnavailable ||
+        NeuraModelFailureKind.connection =>
+          true,
+        _ => false,
+      };
+}
+
+NeuraModelFailureKind neuraFailureKindForStatus(int statusCode) {
+  if (statusCode == 401 || statusCode == 403) {
+    return NeuraModelFailureKind.authentication;
+  }
+  if (statusCode == 402) return NeuraModelFailureKind.quota;
+  if (statusCode == 408) return NeuraModelFailureKind.timeout;
+  if (statusCode == 429) return NeuraModelFailureKind.rateLimited;
+  if (statusCode >= 500) return NeuraModelFailureKind.providerUnavailable;
+  if (statusCode >= 400) return NeuraModelFailureKind.invalidRequest;
+  return NeuraModelFailureKind.invalidResponse;
+}
+
+Duration? neuraRetryAfter(String? value, {DateTime? now}) {
+  if (value == null || value.trim().isEmpty) return null;
+  final seconds = int.tryParse(value.trim());
+  if (seconds != null) {
+    return Duration(seconds: seconds.clamp(0, 30).toInt());
+  }
+  try {
+    final retryAt = HttpDate.parse(value).toUtc();
+    final delay = retryAt.difference((now ?? DateTime.now()).toUtc());
+    if (delay <= Duration.zero) return Duration.zero;
+    return delay > const Duration(seconds: 30)
+        ? const Duration(seconds: 30)
+        : delay;
+  } on FormatException {
+    return null;
+  }
+}
+
 class NeuraStreamFailure implements Exception {
-  const NeuraStreamFailure(this.message, {this.statusCode});
+  const NeuraStreamFailure(
+    this.message, {
+    this.statusCode,
+    this.kind = NeuraModelFailureKind.unknown,
+    this.retryAfter,
+  });
   final String message;
   final int? statusCode;
+  final NeuraModelFailureKind kind;
+  final Duration? retryAfter;
+  bool get retryable => kind.retryable;
+
   @override
   String toString() => message;
 }
@@ -183,8 +246,11 @@ class NeuraModelStreamTransport {
       cancel.throwIfCancelled();
       if (response.statusCode != 200) {
         throw NeuraStreamFailure(
-            '${provider.label} request failed (${response.statusCode}).',
-            statusCode: response.statusCode);
+          '${provider.label} request failed (${response.statusCode}).',
+          statusCode: response.statusCode,
+          kind: neuraFailureKindForStatus(response.statusCode),
+          retryAfter: neuraRetryAfter(response.headers['retry-after']),
+        );
       }
       var bytes = 0;
       final bounded = response.stream.map((chunk) {
@@ -301,10 +367,24 @@ class NeuraModelStreamTransport {
       }
       throw const NeuraStreamFailure(
           'Connection ended before the reply completed.');
+    } on TimeoutException {
+      cancel.throwIfCancelled();
+      throw const NeuraStreamFailure(
+        'The model request timed out.',
+        kind: NeuraModelFailureKind.timeout,
+      );
+    } on http.ClientException {
+      cancel.throwIfCancelled();
+      throw const NeuraStreamFailure(
+        'The model connection failed.',
+        kind: NeuraModelFailureKind.connection,
+      );
     } on FormatException {
       cancel.throwIfCancelled();
       throw const NeuraStreamFailure(
-          'The provider returned an invalid response.');
+        'The provider returned an invalid response.',
+        kind: NeuraModelFailureKind.invalidResponse,
+      );
     } catch (_) {
       cancel.throwIfCancelled();
       rethrow;

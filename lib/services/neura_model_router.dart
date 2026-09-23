@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
@@ -9,6 +10,7 @@ import '../intent_compiler/neura_action_graph.dart' show NeuraActionEffect;
 import '../reliability/safe_boot.dart';
 import 'neura_model_credentials.dart';
 import 'neura_generation_cancel.dart';
+import 'neura_llm_diagnostics.dart';
 import 'neura_model_stream.dart';
 import 'neura_model_types.dart';
 
@@ -17,6 +19,7 @@ class NeuraCloudRequestPreview {
   final String purpose;
   final int messageCount;
   final int characterCount;
+  final int omittedMessageCount;
   final bool includesImage;
   final bool includesPrivateContext;
   final String textPreview;
@@ -26,6 +29,7 @@ class NeuraCloudRequestPreview {
     required this.purpose,
     required this.messageCount,
     required this.characterCount,
+    this.omittedMessageCount = 0,
     required this.includesImage,
     required this.includesPrivateContext,
     this.textPreview = '',
@@ -41,6 +45,7 @@ class NeuraModelRequest {
   final String purpose;
   final bool includesPrivateContext;
   final int maxTokens;
+  final int omittedMessageCount;
 
   const NeuraModelRequest({
     required this.systemPrompt,
@@ -48,6 +53,7 @@ class NeuraModelRequest {
     required this.purpose,
     required this.includesPrivateContext,
     this.maxTokens = 2048,
+    this.omittedMessageCount = 0,
   });
 
   NeuraCloudRequestPreview previewFor(NeuraModelProvider provider) {
@@ -59,11 +65,132 @@ class NeuraModelRequest {
       purpose: purpose,
       messageCount: messages.length,
       characterCount: encoded.length + systemPrompt.length,
+      omittedMessageCount: omittedMessageCount,
       includesImage: hasTypedImage || hasImageUrl,
       includesPrivateContext: includesPrivateContext,
       textPreview: _previewText(systemPrompt, messages),
     );
   }
+}
+
+/// Enforces a predictable request envelope before the approval preview is
+/// shown. Recent messages win; the latest user/tool exchange is never silently
+/// dropped. Image bytes count toward the wire budget but not the text budget.
+class NeuraModelRequestBudget {
+  static const maxMessages = 48;
+  static const maxTextCharacters = 96 * 1024;
+  static const maxWireCharacters = 8 * 1024 * 1024;
+  static const maxSystemCharacters = 32 * 1024;
+  static const maxToolCharacters = 64 * 1024;
+  static const maxTools = 32;
+
+  static NeuraModelRequest freezeAndApply(NeuraModelRequest source) {
+    if (source.systemPrompt.length > maxSystemCharacters) {
+      throw const NeuraRequestBudgetExceeded(
+        'The system instructions exceed the safe request budget.',
+      );
+    }
+    final messages = (jsonDecode(jsonEncode(source.messages)) as List)
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList(growable: false);
+    if (messages.isEmpty) {
+      return NeuraModelRequest(
+        systemPrompt: source.systemPrompt,
+        messages: const [],
+        purpose: source.purpose,
+        includesPrivateContext: source.includesPrivateContext,
+        maxTokens: source.maxTokens,
+        omittedMessageCount: source.omittedMessageCount,
+      );
+    }
+
+    var mandatoryStart = messages.length - 1;
+    if (_containsType(messages.last, 'tool_result') && messages.length > 1) {
+      mandatoryStart--;
+    }
+    final kept = messages.sublist(mandatoryStart).toList();
+    var textCharacters = source.systemPrompt.length + _textSize(kept);
+    var wireCharacters = source.systemPrompt.length + jsonEncode(kept).length;
+    if (textCharacters > maxTextCharacters ||
+        wireCharacters > maxWireCharacters ||
+        kept.length > maxMessages) {
+      throw const NeuraRequestBudgetExceeded(
+        'The latest message or action result is too large to send safely.',
+      );
+    }
+
+    for (var index = mandatoryStart - 1; index >= 0; index--) {
+      final candidate = messages[index];
+      final nextText = textCharacters + _textSize(candidate);
+      final nextWire = wireCharacters + jsonEncode(candidate).length;
+      if (kept.length >= maxMessages ||
+          nextText > maxTextCharacters ||
+          nextWire > maxWireCharacters) {
+        break;
+      }
+      kept.insert(0, candidate);
+      textCharacters = nextText;
+      wireCharacters = nextWire;
+    }
+
+    return NeuraModelRequest(
+      systemPrompt: source.systemPrompt,
+      messages: List.unmodifiable(kept),
+      purpose: source.purpose,
+      includesPrivateContext: source.includesPrivateContext,
+      maxTokens: source.maxTokens,
+      omittedMessageCount:
+          source.omittedMessageCount + messages.length - kept.length,
+    );
+  }
+
+  static List<Map<String, dynamic>> freezeTools(
+      List<Map<String, dynamic>> tools) {
+    final frozen = (jsonDecode(jsonEncode(tools)) as List)
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList(growable: false);
+    if (frozen.length > maxTools || jsonEncode(frozen).length > maxToolCharacters) {
+      throw const NeuraRequestBudgetExceeded(
+        'The action definitions exceed the safe request budget.',
+      );
+    }
+    return List.unmodifiable(frozen);
+  }
+
+  static bool _containsType(Object? value, String type) {
+    if (value is Map) {
+      if (value['type'] == type) return true;
+      return value.values.any((item) => _containsType(item, type));
+    }
+    if (value is List) {
+      return value.any((item) => _containsType(item, type));
+    }
+    return false;
+  }
+
+  static int _textSize(Object? value, {String? key}) {
+    if (value is String) return key == 'data' ? 0 : value.length;
+    if (value is List) {
+      return value.fold(0, (sum, item) => sum + _textSize(item));
+    }
+    if (value is Map) {
+      var total = 0;
+      for (final entry in value.entries) {
+        total += entry.key.toString().length;
+        total += _textSize(entry.value, key: entry.key.toString());
+      }
+      return total;
+    }
+    return value?.toString().length ?? 0;
+  }
+}
+
+class NeuraRequestBudgetExceeded implements Exception {
+  const NeuraRequestBudgetExceeded(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
 }
 
 String _previewText(String systemPrompt, List<Map<String, dynamic>> messages) {
@@ -142,6 +269,16 @@ class NeuraOpenAiTransport implements NeuraModelTransport {
         provider,
         response.statusCode,
         'OpenAI request failed.',
+        kind: neuraFailureKindForStatus(response.statusCode),
+        retryAfter: neuraRetryAfter(response.headers['retry-after']),
+      );
+    }
+    if (response.bodyBytes.length > NeuraModelStreamTransport.maxStreamBytes) {
+      throw NeuraModelTransportException(
+        provider,
+        200,
+        'OpenAI returned an oversized response.',
+        kind: NeuraModelFailureKind.invalidResponse,
       );
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -165,6 +302,7 @@ class NeuraOpenAiTransport implements NeuraModelTransport {
       provider,
       200,
       'OpenAI returned no text.',
+      kind: NeuraModelFailureKind.invalidResponse,
     );
   }
 
@@ -213,6 +351,16 @@ class NeuraAnthropicTransport implements NeuraModelTransport {
         provider,
         response.statusCode,
         'Anthropic request failed.',
+        kind: neuraFailureKindForStatus(response.statusCode),
+        retryAfter: neuraRetryAfter(response.headers['retry-after']),
+      );
+    }
+    if (response.bodyBytes.length > NeuraModelStreamTransport.maxStreamBytes) {
+      throw NeuraModelTransportException(
+        provider,
+        200,
+        'Anthropic returned an oversized response.',
+        kind: NeuraModelFailureKind.invalidResponse,
       );
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -229,6 +377,7 @@ class NeuraAnthropicTransport implements NeuraModelTransport {
       provider,
       200,
       'Anthropic returned no text.',
+      kind: NeuraModelFailureKind.invalidResponse,
     );
   }
 }
@@ -239,8 +388,16 @@ class NeuraSecureModelRouter {
     List<NeuraModelTransport>? transports,
     NeuraPersonalConstitution? constitution,
     List<NeuraModelStreamTransport>? streamTransports,
+    DateTime Function()? now,
+    Future<void> Function(Duration, NeuraGenerationCancel?)? sleep,
+    Random? random,
+    NeuraLlmDiagnostics? diagnostics,
   })  : _credentials = credentials ?? NeuraModelCredentials.instance,
-        _constitutionOverride = constitution {
+        _constitutionOverride = constitution,
+        _now = now ?? DateTime.now,
+        _sleep = sleep ?? _defaultSleep,
+        _random = random ?? Random(),
+        _diagnostics = diagnostics ?? NeuraLlmDiagnostics.instance {
     final availableTransports =
         transports ?? [NeuraOpenAiTransport(), NeuraAnthropicTransport()];
     _streamTransports = {
@@ -256,10 +413,23 @@ class NeuraSecureModelRouter {
 
   final NeuraModelCredentials _credentials;
   final NeuraPersonalConstitution? _constitutionOverride;
+  final DateTime Function() _now;
+  final Future<void> Function(Duration, NeuraGenerationCancel?) _sleep;
+  final Random _random;
+  final NeuraLlmDiagnostics _diagnostics;
+  final Map<NeuraModelProvider, _NeuraProviderCircuit> _circuits = {
+    for (final provider in NeuraModelProvider.values)
+      provider: _NeuraProviderCircuit(),
+  };
   late final Map<NeuraModelProvider, NeuraModelTransport> _transports;
 
   late final Map<NeuraModelProvider, NeuraModelStreamTransport>
       _streamTransports;
+
+  Map<String, Object?> get providerHealthSnapshot => {
+        for (final entry in _circuits.entries)
+          entry.key.name: entry.value.snapshot(_now()),
+      };
 
   Stream<NeuraStreamEvent> stream(
     NeuraModelRequest request, {
@@ -268,19 +438,13 @@ class NeuraSecureModelRouter {
     required NeuraCloudApprovalHandler requestApproval,
     NeuraModelProvider? provider,
   }) async* {
-    // Freeze the request before preview: callers cannot change the approved body.
-    request = NeuraModelRequest(
-      systemPrompt: request.systemPrompt,
-      messages: (jsonDecode(jsonEncode(request.messages)) as List)
-          .map((item) => Map<String, dynamic>.from(item as Map))
-          .toList(),
-      purpose: request.purpose,
-      includesPrivateContext: request.includesPrivateContext,
-      maxTokens: request.maxTokens,
+    // Freeze and bound the exact body before its approval preview is shown.
+    final previouslyOmitted = request.omittedMessageCount;
+    request = NeuraModelRequestBudget.freezeAndApply(request);
+    _diagnostics.recordContextOmission(
+      request.omittedMessageCount - previouslyOmitted,
     );
-    final frozenTools = (jsonDecode(jsonEncode(tools)) as List)
-        .map((item) => Map<String, dynamic>.from(item as Map))
-        .toList();
+    final frozenTools = NeuraModelRequestBudget.freezeTools(tools);
     void check() {
       cancel.throwIfCancelled();
       _throwIfSafeMode();
@@ -299,47 +463,67 @@ class NeuraSecureModelRouter {
       }
       check();
       Object? lastError;
+      var switchingProvider = false;
       for (final candidate
           in provider == null ? NeuraModelProvider.values : [provider]) {
         check();
         final transport = _streamTransports[candidate];
         if (transport == null) continue;
+        final circuit = _circuits[candidate]!;
+        if (provider == null && circuit.isOpen(_now())) {
+          lastError = NeuraProviderCircuitOpen(candidate, circuit.openUntil!);
+          switchingProvider = true;
+          continue;
+        }
         final key = await _credentials.read(candidate);
         check();
         if (key == null) continue;
-        final approved = await Future.any<bool>([
-          requestApproval(request.previewFor(candidate)),
-          cancel.whenCancelled.then((_) => false),
-        ]);
-        check();
-        if (!approved) throw const NeuraCloudApprovalDenied();
-        var emitted = false;
-        try {
-          await for (final event in transport.stream(
-            apiKey: key,
-            systemPrompt: request.systemPrompt,
-            messages: request.messages,
-            tools: frozenTools,
-            cancel: cancel,
-            maxTokens: request.maxTokens,
-          )) {
-            check();
-            emitted = true;
-            yield event;
-          }
-          return;
-        } catch (error) {
-          check();
-          // Never replay a partial answer or a tool round through another provider.
-          if (emitted ||
-              provider != null ||
-              !(error is NeuraStreamFailure ||
-                  error is http.ClientException ||
-                  error is TimeoutException)) {
-            rethrow;
-          }
-          lastError = error;
+        if (switchingProvider) {
+          _diagnostics.recordProviderFallback();
+          switchingProvider = false;
         }
+        var failed = false;
+        for (var attempt = 0; attempt < 2; attempt++) {
+          final approved = await Future.any<bool>([
+            requestApproval(request.previewFor(candidate)),
+            cancel.whenCancelled.then((_) => false),
+          ]);
+          check();
+          if (!approved) throw const NeuraCloudApprovalDenied();
+          var emitted = false;
+          try {
+            await for (final event in transport.stream(
+              apiKey: key,
+              systemPrompt: request.systemPrompt,
+              messages: request.messages,
+              tools: frozenTools,
+              cancel: cancel,
+              maxTokens: request.maxTokens,
+            )) {
+              check();
+              emitted = true;
+              yield event;
+            }
+            circuit.recordSuccess();
+            return;
+          } catch (error) {
+            check();
+            final failure = _streamFailure(error);
+            circuit.recordFailure(failure.kind, _now());
+            lastError = failure;
+            failed = true;
+            // A continuation follows tool execution and must never replay.
+            // Visible output also makes any retry or provider switch unsafe.
+            if (emitted || provider != null) rethrow;
+            final retry = attempt == 0 && failure.retryable;
+            if (!retry) break;
+            _diagnostics.recordRetry();
+            await _sleep(_retryDelay(failure), cancel);
+            check();
+            // The loop obtains a new visible approval before retrying.
+          }
+        }
+        if (failed && provider == null) switchingProvider = true;
       }
       throw lastError ??
           StateError('No securely configured model provider is available.');
@@ -352,14 +536,10 @@ class NeuraSecureModelRouter {
     NeuraModelRequest request, {
     required NeuraCloudApprovalHandler requestApproval,
   }) async {
-    request = NeuraModelRequest(
-      systemPrompt: request.systemPrompt,
-      messages: (jsonDecode(jsonEncode(request.messages)) as List)
-          .map((item) => Map<String, dynamic>.from(item as Map))
-          .toList(),
-      purpose: request.purpose,
-      includesPrivateContext: request.includesPrivateContext,
-      maxTokens: request.maxTokens,
+    final previouslyOmitted = request.omittedMessageCount;
+    request = NeuraModelRequestBudget.freezeAndApply(request);
+    _diagnostics.recordContextOmission(
+      request.omittedMessageCount - previouslyOmitted,
     );
     _throwIfSafeMode();
     if (_constitutionOverride == null) {
@@ -373,40 +553,133 @@ class NeuraSecureModelRouter {
     ];
 
     Object? lastError;
+    var switchingProvider = false;
     for (final provider in candidates) {
       _throwIfSafeMode();
       _throwIfConstitutionBlocks(request);
+      final circuit = _circuits[provider]!;
+      if (circuit.isOpen(_now())) {
+        lastError = NeuraProviderCircuitOpen(provider, circuit.openUntil!);
+        switchingProvider = true;
+        continue;
+      }
       final key = await _credentials.read(provider);
       _throwIfSafeMode();
       _throwIfConstitutionBlocks(request);
       if (key == null) continue;
-
-      // Approval is deliberately requested inside the provider loop. A
-      // fallback is a second outbound request and therefore needs fresh
-      // approval rather than inheriting consent from the failed primary.
-      final approved = await requestApproval(request.previewFor(provider));
-      _throwIfSafeMode();
-      if (!approved) {
-        throw const NeuraCloudApprovalDenied();
+      if (switchingProvider) {
+        _diagnostics.recordProviderFallback();
+        switchingProvider = false;
       }
-      _throwIfConstitutionBlocks(request);
 
       final transport = _transports[provider];
       if (transport == null) continue;
 
-      late final String text;
-      try {
-        text = await transport.complete(apiKey: key, request: request);
-      } catch (error) {
-        lastError = error;
-        continue;
+      var failed = false;
+      for (var attempt = 0; attempt < 2; attempt++) {
+        // Every outbound attempt, including an exact retry or fallback,
+        // receives a new preview and a new decision.
+        final approved = await requestApproval(request.previewFor(provider));
+        _throwIfSafeMode();
+        if (!approved) throw const NeuraCloudApprovalDenied();
+        _throwIfConstitutionBlocks(request);
+
+        try {
+          final text = await transport.complete(apiKey: key, request: request);
+          _throwIfSafeMode();
+          circuit.recordSuccess();
+          return NeuraModelResponse(text: text, provider: provider);
+        } catch (error) {
+          _throwIfSafeMode();
+          _throwIfConstitutionBlocks(request);
+          final failure = _completionFailure(provider, error);
+          circuit.recordFailure(failure.kind, _now());
+          lastError = failure;
+          failed = true;
+          if (attempt != 0 || !failure.retryable) break;
+          _diagnostics.recordRetry();
+          await _sleep(_retryDelay(failure), null);
+          _throwIfSafeMode();
+          _throwIfConstitutionBlocks(request);
+        }
       }
-      _throwIfSafeMode();
-      return NeuraModelResponse(text: text, provider: provider);
+      if (failed) switchingProvider = true;
     }
 
     if (lastError != null) throw lastError;
     throw StateError('No securely configured model provider is available.');
+  }
+
+  Duration _retryDelay(Object failure) {
+    final supplied = switch (failure) {
+      NeuraStreamFailure value => value.retryAfter,
+      NeuraModelTransportException value => value.retryAfter,
+      _ => null,
+    };
+    if (supplied != null) {
+      return supplied > const Duration(seconds: 30)
+          ? const Duration(seconds: 30)
+          : supplied;
+    }
+    return Duration(milliseconds: 250 + _random.nextInt(251));
+  }
+
+  NeuraStreamFailure _streamFailure(Object error) {
+    if (error is NeuraStreamFailure) return error;
+    if (error is TimeoutException) {
+      return const NeuraStreamFailure(
+        'The model request timed out.',
+        kind: NeuraModelFailureKind.timeout,
+      );
+    }
+    if (error is http.ClientException) {
+      return const NeuraStreamFailure(
+        'The model connection failed.',
+        kind: NeuraModelFailureKind.connection,
+      );
+    }
+    return const NeuraStreamFailure(
+      'The model provider failed.',
+      kind: NeuraModelFailureKind.unknown,
+    );
+  }
+
+  NeuraModelTransportException _completionFailure(
+      NeuraModelProvider provider, Object error) {
+    if (error is NeuraModelTransportException) return error;
+    if (error is TimeoutException) {
+      return NeuraModelTransportException(
+        provider,
+        408,
+        'The model request timed out.',
+        kind: NeuraModelFailureKind.timeout,
+      );
+    }
+    if (error is http.ClientException) {
+      return NeuraModelTransportException(
+        provider,
+        0,
+        'The model connection failed.',
+        kind: NeuraModelFailureKind.connection,
+      );
+    }
+    return NeuraModelTransportException(
+      provider,
+      0,
+      'The model provider failed.',
+      kind: error is FormatException
+          ? NeuraModelFailureKind.invalidResponse
+          : NeuraModelFailureKind.unknown,
+    );
+  }
+
+  static Future<void> _defaultSleep(
+      Duration duration, NeuraGenerationCancel? cancel) async {
+    if (cancel != null) {
+      await cancel.delay(duration);
+    } else {
+      await Future<void>.delayed(duration);
+    }
   }
 
   void _throwIfSafeMode() {
@@ -458,13 +731,63 @@ class NeuraModelTransportException implements Exception {
   final NeuraModelProvider provider;
   final int statusCode;
   final String message;
+  final NeuraModelFailureKind kind;
+  final Duration? retryAfter;
+  bool get retryable => kind.retryable;
 
   const NeuraModelTransportException(
     this.provider,
     this.statusCode,
-    this.message,
-  );
+    this.message, {
+    this.kind = NeuraModelFailureKind.unknown,
+    this.retryAfter,
+  });
 
   @override
   String toString() => '${provider.label} ($statusCode): $message';
+}
+
+class NeuraProviderCircuitOpen implements Exception {
+  const NeuraProviderCircuitOpen(this.provider, this.retryAt);
+  final NeuraModelProvider provider;
+  final DateTime retryAt;
+
+  @override
+  String toString() => '${provider.label} is temporarily unavailable.';
+}
+
+class _NeuraProviderCircuit {
+  static const failureThreshold = 3;
+  static const openDuration = Duration(seconds: 30);
+
+  int consecutiveTransientFailures = 0;
+  DateTime? openUntil;
+
+  bool isOpen(DateTime now) {
+    final until = openUntil;
+    if (until == null) return false;
+    if (now.isBefore(until)) return true;
+    openUntil = null;
+    consecutiveTransientFailures = 0;
+    return false;
+  }
+
+  void recordFailure(NeuraModelFailureKind kind, DateTime now) {
+    if (!kind.retryable) return;
+    consecutiveTransientFailures++;
+    if (consecutiveTransientFailures >= failureThreshold) {
+      openUntil = now.add(openDuration);
+    }
+  }
+
+  void recordSuccess() {
+    consecutiveTransientFailures = 0;
+    openUntil = null;
+  }
+
+  Map<String, Object?> snapshot(DateTime now) => {
+        'state': isOpen(now) ? 'open' : 'closed',
+        'consecutive_transient_failures': consecutiveTransientFailures,
+        'retry_at': openUntil?.toUtc().toIso8601String(),
+      };
 }
