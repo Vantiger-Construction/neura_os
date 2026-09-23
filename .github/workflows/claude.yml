@@ -1,0 +1,74 @@
+name: Claude Code
+
+# Lets a repo collaborator mention @claude on an issue or PR (comment, review,
+# review comment, or issue body) to have Claude respond on GitHub.
+#
+# Setup (one time, by a repo admin):
+#   Settings -> Secrets and variables -> Actions -> New repository secret
+#   Name: ANTHROPIC_API_KEY
+# Until that secret exists the job fails at the action step; it does nothing
+# else and touches nothing in the repo.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened, assigned]
+
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  claude:
+    name: Claude responds to @claude
+    # Only trusted authors can trigger it: an outside commenter on a fork or
+    # public-facing thread must not be able to spend the API key or steer the
+    # agent.
+    if: >-
+      (
+        github.event_name == 'issue_comment' &&
+        contains(github.event.comment.body, '@claude') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+      ) || (
+        github.event_name == 'pull_request_review_comment' &&
+        contains(github.event.comment.body, '@claude') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+      ) || (
+        github.event_name == 'pull_request_review' &&
+        contains(github.event.review.body, '@claude') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association)
+      ) || (
+        github.event_name == 'issues' &&
+        (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')) &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
+      )
+    # GitHub-hosted on purpose: the self-hosted Windows runner is the shared CI
+    # machine and shouldn't run agent-driven commands from comment text.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Least privilege: Claude can read the repo and comment on issues/PRs, but
+    # cannot push. Raise `contents` to `write` if you want it to open branches
+    # and commit fixes.
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      actions: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        # Pinned to a commit (anthropics/claude-code-action v1, 2026-09-19).
+        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
