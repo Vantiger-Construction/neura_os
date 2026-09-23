@@ -10,17 +10,35 @@ void main() {
     await NeuraPrefsCache.init();
   });
 
-  test('speak-replies-aloud defaults to off', () {
-    expect(NeuraTtsService.instance.speakRepliesEnabled, isFalse);
+  test('automatic reply speech defaults to off', () {
+    final service = NeuraTtsService.instance;
+    expect(service.replySpeechMode, NeuraReplySpeechMode.off);
+    expect(service.speakRepliesEnabled, isFalse);
   });
 
-  test('setSpeakRepliesEnabled persists and is reflected immediately',
-      () async {
+  test('each explicit reply speech mode persists', () async {
     final service = NeuraTtsService.instance;
-    await service.setSpeakRepliesEnabled(true);
+
+    await service.setReplySpeechMode(NeuraReplySpeechMode.afterComplete);
+    expect(service.replySpeechMode, NeuraReplySpeechMode.afterComplete);
     expect(service.speakRepliesEnabled, isTrue);
 
-    await service.setSpeakRepliesEnabled(false);
+    await service.setReplySpeechMode(NeuraReplySpeechMode.streamed);
+    expect(service.replySpeechMode, NeuraReplySpeechMode.streamed);
+    expect(service.speakRepliesEnabled, isTrue);
+
+    await service.setReplySpeechMode(NeuraReplySpeechMode.off);
+    expect(service.replySpeechMode, NeuraReplySpeechMode.off);
     expect(service.speakRepliesEnabled, isFalse);
+  });
+
+  test('legacy boolean setter maps to streamed or off', () async {
+    final service = NeuraTtsService.instance;
+
+    await service.setSpeakRepliesEnabled(true);
+    expect(service.replySpeechMode, NeuraReplySpeechMode.streamed);
+
+    await service.setSpeakRepliesEnabled(false);
+    expect(service.replySpeechMode, NeuraReplySpeechMode.off);
   });
 }
