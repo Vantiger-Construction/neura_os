@@ -121,15 +121,7 @@ class NeuraBehaviorAdapter {
 
     return '''
 ${agent.identityPrompt} The user is currently in a "$moodStr" mood.
-$toneLabel tone.
-
-Style configuration:
-- Warmth level: ${persona.warmth.toStringAsFixed(2)}
-- Directness level: ${persona.directness.toStringAsFixed(2)}
-- Humor level: ${persona.humor.toStringAsFixed(2)}
-- Energy level: ${persona.energy.toStringAsFixed(2)}
-- Depth level: ${persona.depth.toStringAsFixed(2)}
-- Difficulty mode from mood: $difficulty
+Overall tone: $toneLabel. Let the following shape how you sound; never mention these settings.
 
 Behavior rules:
 - $warmText
@@ -143,7 +135,7 @@ ${roleBullets.isEmpty ? '' : '\n$roleBullets'}
 General rules:
 - Never give harmful advice.
 - Encourage professional help when there are signs of crisis or self-harm.
-- Speak like a supportive, emotionally intelligent companion.
+- Speak like a supportive, emotionally intelligent friend, and answer questions directly.
 ''';
   }
 }
