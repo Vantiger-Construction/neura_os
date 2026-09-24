@@ -78,13 +78,14 @@ void main() {
       rangeEnd: DateTime(2026, 1, 7),
       entryCount: 2,
     );
-    await svc.recordShare(
+    final second = await svc.recordShare(
       contactId: 'contact-1',
       rangeStart: DateTime(2026, 2, 1),
       rangeEnd: DateTime(2026, 2, 7),
       entryCount: 6,
     );
 
+    expect(second.id, isNot(first.id));
     await svc.removeFromHistory(first.id);
 
     expect(svc.shares, hasLength(1));

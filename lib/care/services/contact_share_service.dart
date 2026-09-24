@@ -68,10 +68,15 @@ class ContactShareService {
     required int entryCount,
   }) async {
     await load();
+    final now = DateTime.now();
+    var idMicros = now.microsecondsSinceEpoch;
+    while (_shares.any((share) => share.id == 'share_$idMicros')) {
+      idMicros++;
+    }
     final record = ContactShareRecord(
-      id: 'share_${DateTime.now().microsecondsSinceEpoch}',
+      id: 'share_$idMicros',
       contactId: contactId,
-      sharedAt: DateTime.now(),
+      sharedAt: now,
       rangeStart: rangeStart,
       rangeEnd: rangeEnd,
       entryCount: entryCount,
