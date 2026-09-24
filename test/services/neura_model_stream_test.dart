@@ -200,6 +200,52 @@ void main() {
     expect(client.closed, isTrue);
   });
 
+  test('Anthropic keeps the signed thinking block for tool continuation',
+      () async {
+    final client = StreamClient(Stream.fromIterable([
+      frame({
+        'type': 'content_block_start',
+        'index': 0,
+        'content_block': {'type': 'thinking', 'thinking': ''}
+      }),
+      frame({
+        'type': 'content_block_delta',
+        'index': 0,
+        'delta': {'type': 'signature_delta', 'signature': 'sig-abc'}
+      }),
+      frame({'type': 'content_block_stop', 'index': 0}),
+      frame({
+        'type': 'content_block_start',
+        'index': 1,
+        'content_block': {
+          'type': 'tool_use',
+          'id': 'c1',
+          'name': 'set_tone',
+          'input': {}
+        }
+      }),
+      frame({
+        'type': 'content_block_delta',
+        'index': 1,
+        'delta': {'type': 'input_json_delta', 'partial_json': '{"tone":"x"}'}
+      }),
+      frame({'type': 'content_block_stop', 'index': 1}),
+      frame({
+        'type': 'message_delta',
+        'delta': {'stop_reason': 'tool_use'}
+      }),
+      frame({'type': 'message_stop'}),
+    ]));
+    final result = await run(NeuraModelStreamTransport(
+        NeuraModelProvider.anthropic,
+        clientFactory: () => client)).toList();
+    final blocks = (result.last as NeuraTurnComplete).blocks;
+    expect(blocks.first,
+        {'type': 'thinking', 'thinking': '', 'signature': 'sig-abc'});
+    expect(blocks.last['input'], {'tone': 'x'});
+    expect(result.whereType<NeuraTextDelta>(), isEmpty);
+  });
+
   test('buffered Anthropic text cannot complete a truncated tool stream',
       () async {
     final client = StreamClient(Stream.fromIterable([
