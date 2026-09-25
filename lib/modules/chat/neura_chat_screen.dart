@@ -16,6 +16,7 @@ import '../../neura_shell/neura_shell.dart';
 import '../../persona/agents/agent_persona_catalog.dart';
 import '../../persona/models/agent_persona.dart';
 import '../../persona/services/agent_selection_service.dart';
+import '../../persona/services/neura_conversation_mode.dart';
 import '../../services/neura_ai_service.dart';
 import '../../services/neura_chat_policy.dart';
 import '../../services/neura_generation_cancel.dart';
@@ -46,6 +47,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   ];
 
   bool _speechEnabled = true;
+  NeuraConversationMode _conversationMode = NeuraConversationMode.balanced;
   bool _busy = false;
   NeuraSelectedContext? _selectedContext;
   bool _includeMemory = false;
@@ -108,6 +110,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     _replySpeech?.cancel();
     NeuraAiService.instance.cancelActiveGeneration();
     _continuousMode = false;
+    _listening = false;
+    unawaited(_voiceInput.stopRecording().catchError((_) => ''));
     unawaited(NeuraTtsService.instance.stop().catchError((_) {}));
   }
 
@@ -192,6 +196,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       return;
     }
 
+    if (SafeBoot.instance.safeMode.value) return;
     _continuousMode = true;
     await _startListeningTurn();
   }
@@ -201,7 +206,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     _turnEnding = true;
     try {
       final text = await _voiceInput.stopRecording();
-      if (!mounted) return;
+      if (!mounted || SafeBoot.instance.safeMode.value) return;
       setState(() {
         _listening = false;
         _controller.text = text;
@@ -215,7 +220,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   }
 
   Future<void> _startListeningTurn() async {
-    if (!_continuousMode || !mounted) return;
+    if (!_continuousMode || !mounted || SafeBoot.instance.safeMode.value) return;
 
     unawaited(_voiceSub?.cancel());
     _voiceSub = _voiceInput.transcriptStream.listen((partial) {
@@ -242,7 +247,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
       _continuousMode = false;
       return;
     }
-    if (!mounted) return;
+    if (!mounted || SafeBoot.instance.safeMode.value || !_continuousMode) {
+      await _voiceInput.stopRecording();
+      return;
+    }
     setState(() => _listening = true);
   }
 
@@ -387,6 +395,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     }
 
     final room = NeuraShell.of(context).room;
+    final conversationMode = _conversationMode;
     final policy = NeuraChatPolicy.forRoom(room.id);
     final selectedContext = _selectedContext;
     final includeMemory = _includeMemory && policy.persistMemory;
@@ -493,6 +502,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         history,
         agentId: _activeAgent.id,
         roomId: room.id,
+        conversationMode: conversationMode,
         generationId: generationId,
         selectedContext: selectedContext,
         includePermittedMemory: includeMemory,
@@ -878,6 +888,15 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
           ),
         ),
         actions: [
+          PopupMenuButton<NeuraConversationMode>(
+            tooltip: 'Conversation mode: ${_conversationMode.label}',
+            icon: const Icon(Icons.tune),
+            onSelected: (mode) => setState(() => _conversationMode = mode),
+            itemBuilder: (_) => [
+              for (final mode in NeuraConversationMode.values)
+                PopupMenuItem(value: mode, child: Text(mode.label)),
+            ],
+          ),
           IconButton(
             tooltip: 'AI diagnostics',
             onPressed: _showAiDiagnostics,
