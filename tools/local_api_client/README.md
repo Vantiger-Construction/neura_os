@@ -6,6 +6,12 @@ added in PR #87. They connect only to an address in the exact form
 only health, capabilities, proposal creation, and proposal-status commands.
 There is deliberately no approve or execute command.
 
+Both clients negotiate major API version 1, capture Neura's content-free trace
+ID, and read proposal argument names and allowed values from
+`/v1/capabilities`. Room and tone lists are therefore no longer duplicated in
+the clients. Temporary API failures include a typed `error_info` object and,
+where useful, `Retry-After`; clients still leave retry decisions to the caller.
+
 The PowerShell verifier talks to a real running Neura process over the operating
 system loopback socket. It is the release-evidence path outside the Flutter test
 harness.
@@ -90,6 +96,7 @@ The verifier pauses only where a human must observe or act in Neura. It checks:
 | Authentication | Missing and wrong tokens return 401; the current token returns API v1 health |
 | Native-client boundary | A browser `Origin` is rejected |
 | Capability boundary | Only `open_room`, `set_tone`, and `sync_journal` are advertised; cloud AI and memory are false |
+| Contract negotiation | API v1.1+, trace headers, action contracts and server limits are advertised |
 | No direct execution | `/v1/execute` and `/v1/memory` return 404 |
 | Proposal handling | A proposal starts pending, an identical retry shares its receipt, and conflicting ID reuse returns 409 |
 | Visible approval | The native **Current room** row stays on Penthouse before review; **Approve once** finishes the receipt and changes it to Reflection Bay |

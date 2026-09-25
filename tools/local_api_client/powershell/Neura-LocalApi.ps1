@@ -7,7 +7,7 @@ param(
     [string]$Command,
     [string]$BaseUrl = $env:NEURA_LOCAL_API_URL,
     [Security.SecureString]$Token,
-    [ValidateSet('open_room', 'set_tone', 'sync_journal')]
+    [ValidatePattern('^[a-z][a-z0-9_]{0,63}$')]
     [string]$Action,
     [AllowNull()][string]$Value,
     [ValidatePattern('^[A-Za-z0-9_-]{1,64}$')]
@@ -30,6 +30,7 @@ try {
     $method = 'GET'
     $path = $Command
     $body = $null
+    $result = $null
 
     switch ($Command) {
         'propose' {
@@ -41,10 +42,22 @@ try {
             }
             $method = 'POST'
             $path = 'proposals'
+            $capabilities = Invoke-NeuraApiRequest `
+                -BaseUri $baseUri `
+                -Method GET `
+                -Path capabilities `
+                -Token $sessionToken
+            if ($capabilities.NetworkError -or
+                $capabilities.StatusCode -lt 200 -or
+                $capabilities.StatusCode -ge 300) {
+                $result = $capabilities
+                break
+            }
             $body = New-NeuraProposalJson `
                 -RequestId $RequestId `
                 -Action $Action `
-                -Value $Value
+                -Value $Value `
+                -Capabilities $capabilities.Body
         }
         'status' {
             if ([string]::IsNullOrWhiteSpace($ProposalId)) {
@@ -54,12 +67,14 @@ try {
         }
     }
 
-    $result = Invoke-NeuraApiRequest `
-        -BaseUri $baseUri `
-        -Method $method `
-        -Path $path `
-        -Token $sessionToken `
-        -JsonBody $body
+    if ($null -eq $result) {
+        $result = Invoke-NeuraApiRequest `
+            -BaseUri $baseUri `
+            -Method $method `
+            -Path $path `
+            -Token $sessionToken `
+            -JsonBody $body
+    }
 
     [PSCustomObject]@{
         command       = $Command
@@ -67,6 +82,9 @@ try {
         body          = $result.Body
         network_error = $result.NetworkError
         error_type    = $result.ErrorType
+        api_version   = $result.ApiVersion
+        trace_id      = $result.TraceId
+        retry_after   = $result.RetryAfter
     } | ConvertTo-Json -Depth 8
 
     if ($result.NetworkError) { exit 4 }
