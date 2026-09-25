@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:uuid/uuid.dart';
 
@@ -13,9 +14,11 @@ import '../persona/models/neura_audience.dart';
 import '../persona/services/neura_audience_service.dart';
 import '../persona/services/neura_prompt_builder.dart';
 import '../reliability/safe_boot.dart';
+import '../relationships/services/crisis_text_scan.dart';
 import '../relationships/services/distress_detector.dart';
 import '../src/modules/focus/focus_controller.dart';
 import '../src/modules/focus/focus_mode.dart';
+import 'crisis_playbook_surface.dart';
 import 'neura_chat_policy.dart';
 import 'neura_generation_cancel.dart';
 import 'neura_llm_diagnostics.dart';
@@ -434,6 +437,7 @@ class NeuraAiService {
   Future<String?> _checkGuardrails(List<NeuraChatTurn> history) async {
     if (history.isEmpty) return null;
     final lastMessage = history.last.text;
+    final scan = CrisisTextScan.of(lastMessage);
 
     final moodEntries = await MoodStore.instance.getAll();
     final recentEntries = moodEntries.length > 10
@@ -445,7 +449,7 @@ class NeuraAiService {
     final signal = DistressDetector().detect(
       recentMoods: recentMoods,
       appOpensLastHour: 0,
-      lotsOfNegativeWords: false,
+      lotsOfNegativeWords: scan.distress,
     );
 
     await NeuraAudienceService.instance.load();
@@ -457,7 +461,7 @@ class NeuraAiService {
       userInFocusMode:
           FocusController.instance.state.value.mode != FocusMode.off,
       isMinor: isMinor,
-      distressScore: signal.active ? 0.9 : 0.1,
+      distressScore: scan.crisis ? 0.95 : (signal.active ? 0.9 : 0.1),
     );
 
     final proposal = NeuraProposal(
@@ -473,26 +477,45 @@ class NeuraAiService {
     );
     if (decision.allow) return null;
 
-    if (signal.active) {
-      await WeeklySnapshotBridge.instance.logStormEvent(
-        StormEvent(
-          id: const Uuid().v4(),
-          timestamp: DateTime.now(),
-          intensity: 'medium',
-          primaryFeeling: 'distressed',
-          shortSummary: 'Distress detected during a chat conversation.',
-          needNow: 'support',
-          safetyRisk: true,
-          meta: {'source': 'chat_guardrail', 'reasons': signal.reasons},
-        ),
-      );
+    final supportMode = scan.crisis || signal.active;
+    if (supportMode) {
+      try {
+        await WeeklySnapshotBridge.instance.logStormEvent(
+          StormEvent(
+            id: const Uuid().v4(),
+            timestamp: DateTime.now(),
+            intensity: 'medium',
+            primaryFeeling: 'distressed',
+            shortSummary: 'Distress detected during a chat conversation.',
+            needNow: 'support',
+            safetyRisk: true,
+            meta: {
+              'source': 'chat_guardrail',
+              'reasons': [
+                if (scan.crisis) 'Explicit crisis language detected.',
+                ...signal.reasons,
+              ],
+            },
+          ),
+        );
+      } catch (_) {
+        // Local event persistence must never prevent an immediate support
+        // response from reaching the person.
+      }
     }
 
     var message = decision.safeAlternative?.message ?? decision.reason;
     final reasonLower = decision.reason.toLowerCase();
-    if (reasonLower.contains('distress') || reasonLower.contains('support')) {
+    final isSupportDecision = supportMode ||
+        reasonLower.contains('distress') ||
+        reasonLower.contains('support');
+    if (isSupportDecision) {
       message += '\n\nIf you need immediate help: '
-          '${SupportResources.us['988']}. ${SupportResources.us['911']}.';
+          '${SupportResources.forLocale(PlatformDispatcher.instance.locale.toLanguageTag())}';
+      final playbook = CrisisPlaybookSurface.select(scan, lastMessage);
+      if (playbook != null) {
+        message += '\n\n${CrisisPlaybookSurface.format(playbook)}';
+      }
     }
     return message;
   }
