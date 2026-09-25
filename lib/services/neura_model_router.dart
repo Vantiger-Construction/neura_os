@@ -320,7 +320,6 @@ class NeuraAnthropicTransport implements NeuraModelTransport {
       : _client = client ?? http.Client();
 
   static const _endpoint = 'https://api.anthropic.com/v1/messages';
-  static const _model = 'claude-sonnet-5';
   final http.Client _client;
 
   @override
@@ -340,10 +339,11 @@ class NeuraAnthropicTransport implements NeuraModelTransport {
             'content-type': 'application/json',
           },
           body: jsonEncode({
-            'model': _model,
+            'model': kNeuraAnthropicModel,
             'max_tokens': request.maxTokens,
             'system': request.systemPrompt,
             'messages': request.messages,
+            'output_config': {'effort': kNeuraAnthropicEffort},
           }),
         )
         .timeout(const Duration(seconds: 30));

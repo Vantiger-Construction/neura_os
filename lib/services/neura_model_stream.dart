@@ -137,7 +137,8 @@ class NeuraModelStreamTransport {
       };
     }
     return {
-      'model': 'claude-sonnet-5',
+      'model': kNeuraAnthropicModel,
+      'output_config': {'effort': kNeuraAnthropicEffort},
       'system': systemPrompt,
       'messages': messages
           .map((m) => {
@@ -332,6 +333,16 @@ class NeuraModelStreamTransport {
               yield NeuraTextDelta(provider, text);
             } else if (delta['type'] == 'input_json_delta') {
               inputs[index]?.write(delta['partial_json'] as String);
+            } else if (delta['type'] == 'thinking_delta') {
+              // Thinking is never shown, but the block must be replayed
+              // unchanged (text + signature) when a tool round continues.
+              final block = blocks[index];
+              if (block != null) {
+                block['thinking'] =
+                    '${block['thinking'] ?? ''}${delta['thinking'] ?? ''}';
+              }
+            } else if (delta['type'] == 'signature_delta') {
+              blocks[index]?['signature'] = delta['signature'] as String;
             }
             break;
           case 'content_block_stop':
