@@ -8,7 +8,8 @@ class CrisisPlaybookSurface {
   static CrisisPlaybook? select(CrisisTextScan scan, String message) {
     final service = CrisisPlaybookService.instance;
     if (scan.crisis) {
-      return service.findById('feeling_unsafe') ?? service.findByKeyword(message);
+      return service.findById('feeling_unsafe') ??
+          service.findByKeyword(message);
     }
     if (scan.distress) {
       return service.findByKeyword(message) ?? service.findById('overwhelmed');
