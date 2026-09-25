@@ -3,21 +3,50 @@ import 'package:flutter/foundation.dart';
 import '../../modules/core/app_log.dart';
 import '../../startup/neura_prefs_cache.dart';
 
+enum NeuraCompanionMotion { still, subtle, expressive }
+
+enum NeuraCompanionScale { compact, standard, large }
+
+extension NeuraCompanionScaleValue on NeuraCompanionScale {
+  double get factor => switch (this) {
+        NeuraCompanionScale.compact => 0.84,
+        NeuraCompanionScale.standard => 1.0,
+        NeuraCompanionScale.large => 1.14,
+      };
+}
+
 class ShellPrefs {
   final bool ambientFx;
   final bool portalFx;
   final bool walkingShimmer;
+  final NeuraCompanionMotion companionMotion;
+  final NeuraCompanionScale companionScale;
+  final bool roomActivityHints;
 
-  const ShellPrefs(
-      {required this.ambientFx,
-      required this.portalFx,
-      required this.walkingShimmer});
+  const ShellPrefs({
+    required this.ambientFx,
+    required this.portalFx,
+    required this.walkingShimmer,
+    this.companionMotion = NeuraCompanionMotion.subtle,
+    this.companionScale = NeuraCompanionScale.standard,
+    this.roomActivityHints = true,
+  });
 
-  ShellPrefs copyWith({bool? ambientFx, bool? portalFx, bool? walkingShimmer}) {
+  ShellPrefs copyWith({
+    bool? ambientFx,
+    bool? portalFx,
+    bool? walkingShimmer,
+    NeuraCompanionMotion? companionMotion,
+    NeuraCompanionScale? companionScale,
+    bool? roomActivityHints,
+  }) {
     return ShellPrefs(
       ambientFx: ambientFx ?? this.ambientFx,
       portalFx: portalFx ?? this.portalFx,
       walkingShimmer: walkingShimmer ?? this.walkingShimmer,
+      companionMotion: companionMotion ?? this.companionMotion,
+      companionScale: companionScale ?? this.companionScale,
+      roomActivityHints: roomActivityHints ?? this.roomActivityHints,
     );
   }
 
@@ -25,6 +54,9 @@ class ShellPrefs {
         'ambientFx': ambientFx,
         'portalFx': portalFx,
         'walkingShimmer': walkingShimmer,
+        'companionMotion': companionMotion.name,
+        'companionScale': companionScale.name,
+        'roomActivityHints': roomActivityHints,
       };
 
   static ShellPrefs fromJson(Map<String, dynamic> json) {
@@ -32,11 +64,23 @@ class ShellPrefs {
       ambientFx: (json['ambientFx'] as bool?) ?? true,
       portalFx: (json['portalFx'] as bool?) ?? true,
       walkingShimmer: (json['walkingShimmer'] as bool?) ?? true,
+      companionMotion: NeuraCompanionMotion.values.firstWhere(
+        (value) => value.name == json['companionMotion'],
+        orElse: () => NeuraCompanionMotion.subtle,
+      ),
+      companionScale: NeuraCompanionScale.values.firstWhere(
+        (value) => value.name == json['companionScale'],
+        orElse: () => NeuraCompanionScale.standard,
+      ),
+      roomActivityHints: (json['roomActivityHints'] as bool?) ?? true,
     );
   }
 
-  static const defaults =
-      ShellPrefs(ambientFx: true, portalFx: true, walkingShimmer: true);
+  static const defaults = ShellPrefs(
+    ambientFx: true,
+    portalFx: true,
+    walkingShimmer: true,
+  );
 }
 
 class ShellPrefsController {
@@ -46,8 +90,9 @@ class ShellPrefsController {
 
   static const _prefsKey = 'neura.shell.prefs.v1';
 
-  final ValueNotifier<ShellPrefs> prefs =
-      ValueNotifier<ShellPrefs>(ShellPrefs.defaults);
+  final ValueNotifier<ShellPrefs> prefs = ValueNotifier<ShellPrefs>(
+    ShellPrefs.defaults,
+  );
 
   Future<void> init() async {
     try {
