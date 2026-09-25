@@ -220,7 +220,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   }
 
   Future<void> _startListeningTurn() async {
-    if (!_continuousMode || !mounted || SafeBoot.instance.safeMode.value) return;
+    if (!_continuousMode || !mounted || SafeBoot.instance.safeMode.value) {
+      return;
+    }
 
     unawaited(_voiceSub?.cancel());
     _voiceSub = _voiceInput.transcriptStream.listen((partial) {
