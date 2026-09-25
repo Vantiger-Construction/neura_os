@@ -8,10 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../core/memory/memory_graph_service.dart';
 import '../../neura_link/reply_speech_queue.dart';
 import '../../reliability/safe_boot.dart';
-import '../../screens/journal_prompt_screen.dart';
-import '../../screens/neura_voice_settings_screen.dart';
 import '../../services/neura_selected_context.dart';
-import '../../modules/mood/mood_checkin_screen.dart';
 import '../../modules/mood/mood_models.dart';
 import '../../modules/mood/mood_store.dart';
 import '../../neura_shell/models/neura_room.dart';
@@ -30,10 +27,10 @@ import '../../services/neura_tone_runtime.dart';
 import '../../services/neura_tts_service.dart';
 import '../../services/neura_voice_command.dart';
 import '../../services/wake_word_listener_service.dart';
-import '../../src/modules/settings/settings.dart';
 import '../../widgets/neura_cloud_request_preview.dart';
 import '../core/ai_engine.dart';
 import '../core/app_log.dart';
+import 'neura_voice_destinations.dart';
 
 class NeuraChatScreen extends StatefulWidget {
   const NeuraChatScreen({super.key});
@@ -168,33 +165,39 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   Future<void> _openAgentPicker() async {
     final selected = await showModalBottomSheet<String?>(
       context: context,
+      isScrollControlled: true,
       builder: (sheetContext) {
         final room = NeuraShell.of(context).room;
         final auto = AgentSelectionService.instance.isAuto;
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.auto_mode),
-                title: const Text('Auto'),
-                subtitle: Text('Matches ${room.title}'),
-                trailing: auto ? const Icon(Icons.check) : null,
-                onTap: () => Navigator.of(sheetContext).pop(_autoSentinel),
-              ),
-              const Divider(height: 1),
-              for (final agent in AgentPersonaCatalog.all)
-                if (!agent.isInternal)
-                  ListTile(
-                    leading: Icon(agent.icon),
-                    title: Text(agent.displayName),
-                    subtitle: Text(agent.tagline),
-                    trailing: (!auto && _activeAgent.id == agent.id)
-                        ? const Icon(Icons.check)
-                        : null,
-                    onTap: () => Navigator.of(sheetContext).pop(agent.id),
-                  ),
-            ],
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.75,
+            ),
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.auto_mode),
+                  title: const Text('Auto'),
+                  subtitle: Text('Matches ${room.title}'),
+                  trailing: auto ? const Icon(Icons.check) : null,
+                  onTap: () => Navigator.of(sheetContext).pop(_autoSentinel),
+                ),
+                const Divider(height: 1),
+                for (final agent in AgentPersonaCatalog.all)
+                  if (!agent.isInternal)
+                    ListTile(
+                      leading: Icon(agent.icon),
+                      title: Text(agent.displayName),
+                      subtitle: Text(agent.tagline),
+                      trailing: (!auto && _activeAgent.id == agent.id)
+                          ? const Icon(Icons.check)
+                          : null,
+                      onTap: () => Navigator.of(sheetContext).pop(agent.id),
+                    ),
+              ],
+            ),
           ),
         );
       },
@@ -359,6 +362,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       return;
     }
 
+    final destination = neuraVoiceDestination(command);
+    if (destination != null) {
+      await _openVoiceDestination(destination.name, destination.builder);
+      return;
+    }
+
     switch (command) {
       case NeuraVoiceCommand.help:
         await _showVoiceCommands();
@@ -382,26 +391,85 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         setState(() => _speechEnabled = true);
         _showVoiceNotice('Replies are unmuted in this chat.');
         return;
+      case NeuraVoiceCommand.chooseCompanion:
+        await _openAgentPicker();
+        return;
+      case NeuraVoiceCommand.scrollUp:
+      case NeuraVoiceCommand.scrollDown:
+      case NeuraVoiceCommand.scrollToTop:
+      case NeuraVoiceCommand.scrollToBottom:
+        await _scrollVoiceChat(command);
+        return;
+      case NeuraVoiceCommand.removeSelectedContext:
+        final hadContext = _selectedContext != null;
+        setState(() => _selectedContext = null);
+        _showVoiceNotice(hadContext
+            ? 'Selected text removed from the next reply. The file is unchanged.'
+            : 'No text file is selected for the next reply.');
+        return;
+      case NeuraVoiceCommand.excludeMemories:
+        setState(() => _includeMemory = false);
+        _showVoiceNotice(
+            'Memories excluded from the next reply. Existing chat messages remain.');
+        return;
       case NeuraVoiceCommand.openJournal:
-        await _openVoiceDestination(
-            '/memory/journal-prompt', (_) => const JournalPromptScreen());
-        return;
       case NeuraVoiceCommand.openMood:
-        await _openVoiceDestination(
-            '/care/mood-check-in', (_) => const MoodCheckInScreen());
-        return;
+      case NeuraVoiceCommand.openMoodHistory:
+      case NeuraVoiceCommand.openWeeklyReview:
+      case NeuraVoiceCommand.openDreamJournal:
+      case NeuraVoiceCommand.openFocus:
+      case NeuraVoiceCommand.openQuests:
+      case NeuraVoiceCommand.openTimeline:
       case NeuraVoiceCommand.openSettings:
-        await _openVoiceDestination('/settings', (_) => const SettingsScreen());
-        return;
       case NeuraVoiceCommand.openVoiceSettings:
-        await _openVoiceDestination(
-            '/settings/voice', (_) => const NeuraVoiceSettingsScreen());
-        return;
+      case NeuraVoiceCommand.openAccessibility:
+      case NeuraVoiceCommand.openThemes:
+      case NeuraVoiceCommand.openPrivacy:
+      case NeuraVoiceCommand.openNotifications:
+      case NeuraVoiceCommand.openHelp:
       case NeuraVoiceCommand.quietMode:
       case NeuraVoiceCommand.balancedMode:
       case NeuraVoiceCommand.companionMode:
       case NeuraVoiceCommand.coachMode:
         return;
+    }
+  }
+
+  Future<void> _scrollVoiceChat(NeuraVoiceCommand command) async {
+    if (!_scrollController.hasClients) return;
+    final session = _voiceSession;
+    final position = _scrollController.position;
+    final page = position.viewportDimension * 0.8;
+    final target = switch (command) {
+      NeuraVoiceCommand.scrollUp => position.pixels - page,
+      NeuraVoiceCommand.scrollDown => position.pixels + page,
+      NeuraVoiceCommand.scrollToTop => position.minScrollExtent,
+      NeuraVoiceCommand.scrollToBottom => position.maxScrollExtent,
+      _ => position.pixels,
+    };
+    await _scrollController.animateTo(
+      target.clamp(position.minScrollExtent, position.maxScrollExtent),
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+    );
+    // Lazy chat rows can refine the scroll extent during the animation.
+    // Correct against the laid-out bounds without applying a stale command.
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted ||
+        session != _voiceSession ||
+        SafeBoot.instance.safeMode.value ||
+        !_scrollController.hasClients) {
+      return;
+    }
+    final current = _scrollController.position;
+    final settled = switch (command) {
+      NeuraVoiceCommand.scrollToTop => current.minScrollExtent,
+      NeuraVoiceCommand.scrollToBottom => current.maxScrollExtent,
+      _ =>
+        current.pixels.clamp(current.minScrollExtent, current.maxScrollExtent),
+    };
+    if ((current.pixels - settled).abs() > 0.1) {
+      _scrollController.jumpTo(settled);
     }
   }
 
@@ -434,11 +502,20 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                 'a command. Ordinary speech remains a chat message.',
               ),
               const SizedBox(height: 12),
-              for (final command in NeuraVoiceCommand.values)
-                ListTile(
-                  dense: true,
-                  title: Text('“Neura, ${command.phrase}”'),
+              for (final group in NeuraVoiceCommandGroup.values) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 16, bottom: 8),
+                  child: Text(group.label,
+                      style: Theme.of(context).textTheme.titleMedium),
                 ),
+                for (final command in NeuraVoiceCommand.values
+                    .where((command) => command.group == group))
+                  ListTile(
+                    dense: true,
+                    title: Text('“Neura, ${command.phrase}”'),
+                    subtitle: Text(command.description),
+                  ),
+              ],
               const Text(
                 'Voice commands cannot approve cloud requests, save journal '
                 'entries, or turn on background listening. Safe Mode keeps '
