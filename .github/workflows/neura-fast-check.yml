@@ -162,9 +162,7 @@ jobs:
             ([Math]::Max(0, $systemAfter - $systemBefore) / 1GB)
           )
 
-          # Prefer non-system volumes. When the runner has at least 6.0 GB free
-          # on its system volume, it may safely serve as one of the two bounded
-          # output volumes while retaining headroom for runner metadata.
+          # Keep the runner metadata headroom guard before selecting C:.
           if ($systemAfter -lt 0.25GB) {
             throw (
               "The runner needs at least 0.25 GB on {0} for runner metadata; " +
@@ -191,19 +189,17 @@ jobs:
             )
           }
 
-          if ($eligible.Count -eq 0 -or
-              ($eligible.Count -eq 1 -and
-               $eligible[0].AvailableFreeSpace -lt 8.0GB)) {
-            throw (
-              'Validation requires either two writable volumes with at least ' +
-              '3.0 GB free each, or one shared writable volume with at least ' +
-              '8.0 GB free. The system volume is eligible only when at least ' +
-              '6.0 GB remains free.'
-            )
+          # Keep this Windows validation on C:, including checkout, caches,
+          # temporary files, and both Flutter and Rust build output. Retain
+          # the existing 8 GB minimum for sharing one output volume.
+          $flutterDrive = $eligible |
+            Where-Object { $_.Name -eq 'C:\' } |
+            Select-Object -First 1
+          if ($null -eq $flutterDrive -or
+              $flutterDrive.AvailableFreeSpace -lt 8.0GB) {
+            throw 'Windows validation requires writable C:\ with at least 8.0 GB free.'
           }
-
-          $rustDrive = $eligible[0]
-          $flutterDrive = if ($eligible.Count -ge 2) { $eligible[1] } else { $eligible[0] }
+          $rustDrive = $flutterDrive
           "rust_volume=$($rustDrive.RootDirectory.FullName)" |
             Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "flutter_volume=$($flutterDrive.RootDirectory.FullName)" |
@@ -225,11 +221,23 @@ jobs:
       NEURA_RUST_VOLUME: ${{ needs.reclaim-runner-space.outputs.rust_volume }}
 
     steps:
-      - name: Route source checkout to an alternate volume
+      - name: 'Route source checkout to C:'
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
+
+          # Selection and validation are separate jobs; check C: again in
+          # case runner disk usage changed while this job was queued.
+          if ($env:NEURA_FLUTTER_VOLUME -ne 'C:\' -or
+              $env:NEURA_RUST_VOLUME -ne 'C:\') {
+            throw 'Windows validation output volumes must both be C:\.'
+          }
+          $buildDrive = [System.IO.DriveInfo]::new('C:\')
+          if (-not $buildDrive.IsReady -or
+              $buildDrive.AvailableFreeSpace -lt 8.0GB) {
+            throw 'C:\ needs at least 8.0 GB free before Windows validation checkout.'
+          }
 
           function Remove-LinkOrDirectory {
             param([Parameter(Mandatory)][string]$Path)
@@ -308,7 +316,7 @@ jobs:
             ) -f $systemRoot, ($free / 1GB)
           }
 
-      - name: Route generated output to alternate volumes
+      - name: 'Route generated output to C:'
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-StrictMode -Version Latest
