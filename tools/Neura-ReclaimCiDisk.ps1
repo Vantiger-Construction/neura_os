@@ -94,7 +94,7 @@ if (Test-Path -LiteralPath $env:RUNNER_TEMP -PathType Container) {
 [GC]::WaitForPendingFinalizers()
 
 $after = Get-FreeBytes -Path $workspace
-$reclaimed = [Math]::Max(0, $after - $before)
+$reclaimed = [Math]::Max([long]0, [long]($after - $before))
 
 Write-Host (
     "Runner system-volume free space after cleanup: {0:N2} GB " +
