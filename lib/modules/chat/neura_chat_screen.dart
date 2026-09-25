@@ -847,6 +847,19 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
               Text('Interruptions: ${snapshot['cancellations']}'),
               Text('Dropped tools: ${snapshot['tool_drops']}'),
               Text('Local fallbacks: ${snapshot['fallbacks']}'),
+              Text('Provider fallbacks: ${snapshot['provider_fallbacks']}'),
+              Text(
+                'Older context turns omitted: '
+                '${snapshot['context_messages_omitted']}',
+              ),
+              if (snapshot['last_first_token_ms'] != null)
+                Text(
+                  'Last first token: ${snapshot['last_first_token_ms']} ms',
+                ),
+              if (snapshot['last_completion_ms'] != null)
+                Text(
+                  'Last completion: ${snapshot['last_completion_ms']} ms',
+                ),
               if (snapshot['last_error'] != null) ...[
                 const SizedBox(height: 8),
                 Text('Last error: ${snapshot['last_error']}'),

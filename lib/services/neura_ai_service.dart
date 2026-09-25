@@ -92,7 +92,10 @@ class NeuraAiService {
 
   bool get cloudRequestsAllowed => !SafeBoot.instance.safeMode.value;
   String? get activeGenerationId => _activeGenerationId;
-  Map<String, dynamic> get diagnosticsSnapshot => _diagnostics.snapshot();
+  Map<String, dynamic> get diagnosticsSnapshot => {
+        ..._diagnostics.snapshot(),
+        'provider_health': _modelRouter.providerHealthSnapshot,
+      };
 
   /// Cancels the currently streamed reply, if any. This is safe to call when
   /// no generation is active and is the primitive used by the chat UI for
@@ -167,6 +170,8 @@ class NeuraAiService {
       while (true) {
         cancel.throwIfCancelled();
         _diagnostics.recordAttempt();
+        final latency = Stopwatch()..start();
+        var firstTokenRecorded = false;
         NeuraTurnComplete? completed;
         await for (final event in _modelRouter.stream(
           NeuraModelRequest(
@@ -186,12 +191,19 @@ class NeuraAiService {
           requestApproval: requestCloudApproval ?? _denyCloudRequest,
         )) {
           cancel.throwIfCancelled();
-          if (event is NeuraTextDelta) yield event.text;
+          if (event is NeuraTextDelta) {
+            if (!firstTokenRecorded && event.text.isNotEmpty) {
+              firstTokenRecorded = true;
+              _diagnostics.recordFirstToken(latency.elapsed);
+            }
+            yield event.text;
+          }
           if (event is NeuraTurnComplete) completed = event;
         }
         if (completed == null) {
           throw const NeuraStreamFailure('Reply did not complete.');
         }
+        _diagnostics.recordCompletion(latency.elapsed);
         _diagnostics.recordSuccess();
         activeProvider = completed.provider;
         final blocks = completed.blocks;
@@ -378,15 +390,26 @@ class NeuraAiService {
       audience: NeuraAudienceService.instance.currentAudience,
       includePersistentMemory: false,
     );
-    final response = await _modelRouter.complete(
-      NeuraModelRequest(
-        systemPrompt: prompt,
-        messages: history.map((turn) => turn.toJson()).toList(),
-        purpose: 'generated summary',
-        includesPrivateContext: true,
-      ),
-      requestApproval: requestCloudApproval ?? _denyCloudRequest,
-    );
+    _diagnostics.recordAttempt();
+    final latency = Stopwatch()..start();
+    late final NeuraModelResponse response;
+    try {
+      response = await _modelRouter.complete(
+        NeuraModelRequest(
+          systemPrompt: prompt,
+          messages: history.map((turn) => turn.toJson()).toList(),
+          purpose: 'generated summary',
+          includesPrivateContext: true,
+        ),
+        requestApproval: requestCloudApproval ?? _denyCloudRequest,
+      );
+      _diagnostics.recordFirstToken(latency.elapsed);
+      _diagnostics.recordCompletion(latency.elapsed);
+      _diagnostics.recordSuccess();
+    } catch (error) {
+      _diagnostics.recordFailure(error);
+      rethrow;
+    }
     final postBlocked = await _checkGuardrails([
       NeuraChatTurn(isUser: true, text: response.text),
     ]);

@@ -98,6 +98,7 @@ function Invoke-NeuraApiRequest {
         if (-not ([string]::IsNullOrWhiteSpace($Origin))) {
             $request.Headers.TryAddWithoutValidation('Origin', $Origin) | Out-Null
         }
+        $request.Headers.TryAddWithoutValidation('X-Neura-Api-Version', '1') | Out-Null
         if ($null -ne $JsonBody) {
             $request.Content = [System.Net.Http.StringContent]::new(
                 $JsonBody,
@@ -121,6 +122,15 @@ function Invoke-NeuraApiRequest {
             Body         = $body
             NetworkError = $false
             ErrorType    = $null
+            ApiVersion   = [string]$(if ($response.Headers.Contains('X-Neura-Api-Version')) {
+                $response.Headers.GetValues('X-Neura-Api-Version') | Select-Object -First 1
+            })
+            TraceId      = [string]$(if ($response.Headers.Contains('X-Neura-Trace-Id')) {
+                $response.Headers.GetValues('X-Neura-Trace-Id') | Select-Object -First 1
+            })
+            RetryAfter   = [string]$(if ($response.Headers.Contains('Retry-After')) {
+                $response.Headers.GetValues('Retry-After') | Select-Object -First 1
+            })
         }
     } catch {
         return [PSCustomObject]@{
@@ -128,6 +138,9 @@ function Invoke-NeuraApiRequest {
             Body         = $null
             NetworkError = $true
             ErrorType    = $_.Exception.GetType().Name
+            ApiVersion   = $null
+            TraceId      = $null
+            RetryAfter   = $null
         }
     } finally {
         $plainToken = $null
@@ -142,38 +155,34 @@ function New-NeuraProposalJson {
     param(
         [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9_-]{1,64}$')]
         [string]$RequestId,
-        [Parameter(Mandatory)][ValidateSet('open_room', 'set_tone', 'sync_journal')]
+        [Parameter(Mandatory)][ValidatePattern('^[a-z][a-z0-9_]{0,63}$')]
         [string]$Action,
-        [AllowNull()][string]$Value
+        [AllowNull()][string]$Value,
+        [Parameter(Mandatory)][object]$Capabilities
     )
 
-    $arguments = switch ($Action) {
-        'open_room' {
-            $rooms = @(
-                'penthouse', 'reflection_bay', 'joy_lounge', 'mood_den',
-                'dream_atrium', 'legacy_vault'
-            )
-            if ($rooms -notcontains $Value) {
-                throw "Value must be a known room: $($rooms -join ', ')."
-            }
-            @{ room = $Value }
+    if ($Capabilities.api_version -ne 1 -or
+        $Capabilities.approval -ne 'each_action_in_neura' -or
+        $Capabilities.cloud_ai -ne $false -or
+        $Capabilities.memory_access -ne $false -or
+        $null -eq $Capabilities.action_contracts) {
+        throw 'Neura returned an incompatible API contract.'
+    }
+    $contractProperty = $Capabilities.action_contracts.PSObject.Properties[$Action]
+    if ($null -eq $contractProperty) {
+        throw "Neura does not advertise action '$Action'."
+    }
+    $contract = $contractProperty.Value
+    $arguments = @{}
+    if ($contract.value_required -eq $true) {
+        $allowedValues = @($contract.allowed_values)
+        if ([string]::IsNullOrWhiteSpace([string]$contract.argument_name) -or
+            $allowedValues -notcontains $Value) {
+            throw "Value must be one of: $($allowedValues -join ', ')."
         }
-        'set_tone' {
-            $tones = @(
-                'strategist', 'calm_wellness', 'warm_companion',
-                'cinematic_guide', 'quiet_private'
-            )
-            if ($tones -notcontains $Value) {
-                throw "Value must be a known tone: $($tones -join ', ')."
-            }
-            @{ tone = $Value }
-        }
-        'sync_journal' {
-            if (-not ([string]::IsNullOrWhiteSpace($Value))) {
-                throw 'sync_journal does not accept a value.'
-            }
-            @{}
-        }
+        $arguments[[string]$contract.argument_name] = $Value
+    } elseif (-not ([string]::IsNullOrWhiteSpace($Value))) {
+        throw "$Action does not accept a value."
     }
 
     return @{

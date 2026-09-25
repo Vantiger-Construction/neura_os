@@ -24,6 +24,11 @@ Future<bool> showNeuraCloudRequestPreview(
           const SizedBox(height: 12),
           Text('Purpose: ${preview.purpose}'),
           Text('Messages: ${preview.messageCount}'),
+          if (preview.omittedMessageCount > 0)
+            Text(
+              'Older messages omitted for reliability: '
+              '${preview.omittedMessageCount}',
+            ),
           Text('Approximate characters: ${preview.characterCount}'),
           Text('Includes an image: ${preview.includesImage ? "Yes" : "No"}'),
           Text(
@@ -37,8 +42,8 @@ Future<bool> showNeuraCloudRequestPreview(
             ),
           const SizedBox(height: 12),
           const Text(
-            'Approval applies once. A fallback provider requires another '
-            'preview and approval.',
+            'Approval applies once. An exact retry or fallback provider '
+            'requires another preview and approval.',
           ),
         ],
       )),
