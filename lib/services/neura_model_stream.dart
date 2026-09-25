@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import 'neura_cloud_transaction.dart';
 import 'neura_generation_cancel.dart';
 import 'neura_model_types.dart';
 
@@ -216,9 +217,15 @@ class NeuraModelStreamTransport {
     required List<Map<String, dynamic>> messages,
     required List<Map<String, dynamic>> tools,
     required NeuraGenerationCancel cancel,
+    required NeuraCloudTransactionEnvelope transaction,
     int maxTokens = 2048,
   }) async* {
     cancel.throwIfCancelled();
+    final endpoint = NeuraCloudTransactionEnvelope.audienceFor(provider);
+    transaction.validateFor(
+      requestedProvider: provider,
+      requestedAudience: endpoint,
+    );
     final body = buildBody(systemPrompt, messages, tools, maxTokens: maxTokens);
     final client = _clientFactory();
     final finished = Completer<void>();
@@ -230,9 +237,7 @@ class NeuraModelStreamTransport {
       final openAi = provider == NeuraModelProvider.openAi;
       final request = http.Request(
           'POST',
-          Uri.parse(openAi
-              ? 'https://api.openai.com/v1/responses'
-              : 'https://api.anthropic.com/v1/messages'))
+          endpoint)
         ..followRedirects = false
         ..headers.addAll({
           'content-type': 'application/json',
@@ -240,6 +245,7 @@ class NeuraModelStreamTransport {
           if (openAi) 'authorization': 'Bearer $apiKey',
           if (!openAi) 'x-api-key': apiKey,
           if (!openAi) 'anthropic-version': '2023-06-01',
+          ...transaction.requestHeaders(),
         })
         ..body = jsonEncode(body);
       final response = await Future.any<http.StreamedResponse>([

@@ -22,6 +22,22 @@ Future<bool> showNeuraCloudRequestPreview(
             'Nothing is sent unless you approve this request.',
           ),
           const SizedBox(height: 12),
+          Text('Approval state: ${preview.approvalState.name}'),
+          Text('Destination: ${preview.audience.host}'),
+          Text(
+            preview.retryCount == 0
+                ? 'Attempt: initial request'
+                : 'Attempt: exact retry ${preview.retryCount}',
+          ),
+          Text(
+            'Request fingerprint: '
+            '${preview.promptDigest.substring(0, 12)}…',
+          ),
+          Text(
+            'Shared caching: '
+            '${preview.privateCacheProhibited ? "Prohibited" : "Allowed"}',
+          ),
+          const SizedBox(height: 12),
           Text('Purpose: ${preview.purpose}'),
           Text('Messages: ${preview.messageCount}'),
           if (preview.omittedMessageCount > 0)

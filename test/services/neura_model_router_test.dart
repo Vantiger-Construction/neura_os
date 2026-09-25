@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:neuro_companion/constitution/neura_constitution_service.dart';
 import 'package:neuro_companion/constitution/neura_personal_constitution.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
+import 'package:neuro_companion/services/neura_cloud_transaction.dart';
 import 'package:neuro_companion/services/neura_model_credentials.dart';
 import 'package:neuro_companion/services/neura_model_router.dart';
 import 'package:neuro_companion/services/neura_model_types.dart';
@@ -30,6 +31,20 @@ class _MemoryStorage implements NeuraModelCredentialStorage {
   }
 }
 
+NeuraCloudTransactionEnvelope _transactionFor(
+  NeuraModelProvider provider,
+) =>
+    NeuraCloudTransactionEnvelope(
+      approvalId: 'approval-test',
+      traceId: 'trace-test',
+      idempotencyKey: 'idempotency-test',
+      promptDigest:
+          '0000000000000000000000000000000000000000000000000000000000000000',
+      provider: provider,
+      audience: NeuraCloudTransactionEnvelope.audienceFor(provider),
+      retryCount: 0,
+    );
+
 class _Transport implements NeuraModelTransport {
   _Transport(this.provider, {this.result, this.error, this.onComplete});
 
@@ -39,6 +54,7 @@ class _Transport implements NeuraModelTransport {
   final Object? error;
   final void Function()? onComplete;
   int calls = 0;
+  final List<NeuraCloudTransactionEnvelope> transactions = [];
 
   @override
   Future<String> complete({
@@ -46,6 +62,8 @@ class _Transport implements NeuraModelTransport {
     required NeuraModelRequest request,
   }) async {
     calls++;
+    final transaction = request.transaction;
+    if (transaction != null) transactions.add(transaction);
     onComplete?.call();
     if (error != null) throw error!;
     return result!;
@@ -56,6 +74,7 @@ class _StreamTransport extends NeuraModelStreamTransport {
   _StreamTransport(super.provider, this.events);
   final Stream<NeuraStreamEvent> Function() events;
   int calls = 0;
+  final List<NeuraCloudTransactionEnvelope> transactions = [];
   @override
   Stream<NeuraStreamEvent> stream({
     required String apiKey,
@@ -63,9 +82,11 @@ class _StreamTransport extends NeuraModelStreamTransport {
     required List<Map<String, dynamic>> messages,
     required List<Map<String, dynamic>> tools,
     required NeuraGenerationCancel cancel,
+    required NeuraCloudTransactionEnvelope transaction,
     int maxTokens = 2048,
   }) {
     calls++;
+    transactions.add(transaction);
     return events();
   }
 }
@@ -189,7 +210,7 @@ void main() {
         const NeuraTextDelta(NeuraModelProvider.openAi, 'ready'),
       );
     });
-    final approvals = <NeuraModelProvider>[];
+    final approvals = <NeuraCloudRequestPreview>[];
     final delays = <Duration>[];
     final router = NeuraSecureModelRouter(
       credentials: credentials,
@@ -202,13 +223,23 @@ void main() {
       tools: [],
       cancel: NeuraGenerationCancel('retry'),
       requestApproval: (preview) async {
-        approvals.add(preview.provider);
+        approvals.add(preview);
         return true;
       },
     ).toList();
 
     expect(transport.calls, 2);
-    expect(approvals, [NeuraModelProvider.openAi, NeuraModelProvider.openAi]);
+    expect(
+      approvals.map((preview) => preview.provider),
+      [NeuraModelProvider.openAi, NeuraModelProvider.openAi],
+    );
+    expect(approvals.first.approvalId, isNot(approvals.last.approvalId));
+    expect(
+      approvals.first.transaction.idempotencyKey,
+      approvals.last.transaction.idempotencyKey,
+    );
+    expect(approvals.map((preview) => preview.retryCount), [0, 1]);
+    expect(transport.transactions, hasLength(2));
     expect(delays, [const Duration(seconds: 2)]);
     expect((events.single as NeuraTextDelta).text, 'ready');
   });
@@ -516,7 +547,12 @@ void main() {
     expect(bounded.messages.last['content'], 'turn-59');
     expect(bounded.omittedMessageCount, 12);
     expect(
-      bounded.previewFor(NeuraModelProvider.openAi).omittedMessageCount,
+      bounded
+          .previewFor(
+            NeuraModelProvider.openAi,
+            _transactionFor(NeuraModelProvider.openAi),
+          )
+          .omittedMessageCount,
       12,
     );
   });
@@ -856,6 +892,80 @@ void main() {
     );
     expect(approvals, 1);
     expect(transport.calls, 0);
+  });
+
+  test('fallback is a new audience-bound transaction on the same trace',
+      () async {
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    await credentials.save(NeuraModelProvider.anthropic, anthropicKey);
+    final primary = _Transport(
+      NeuraModelProvider.openAi,
+      error: StateError('unavailable'),
+    );
+    final fallback = _Transport(
+      NeuraModelProvider.anthropic,
+      result: 'fallback',
+    );
+    final previews = <NeuraCloudRequestPreview>[];
+    final router = NeuraSecureModelRouter(
+      credentials: credentials,
+      transports: [primary, fallback],
+    );
+
+    final response = await router.complete(
+      request,
+      requestApproval: (preview) async {
+        previews.add(preview);
+        return true;
+      },
+    );
+
+    expect(response.provider, NeuraModelProvider.anthropic);
+    expect(previews, hasLength(2));
+    expect(previews.first.traceId, previews.last.traceId);
+    expect(
+      previews.first.transaction.idempotencyKey,
+      isNot(previews.last.transaction.idempotencyKey),
+    );
+    expect(previews.first.audience.host, 'api.openai.com');
+    expect(previews.last.audience.host, 'api.anthropic.com');
+  });
+
+  test('audit trail records trace metadata without prompt or digest', () async {
+    const privateWords = 'do-not-log-these-private-words';
+    const privateRequest = NeuraModelRequest(
+      systemPrompt: 'Be kind.',
+      messages: [
+        {'role': 'user', 'content': privateWords},
+      ],
+      purpose: 'chat reply',
+      includesPrivateContext: false,
+    );
+    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+    await credentials.save(NeuraModelProvider.openAi, openAiKey);
+    final transport = _Transport(
+      NeuraModelProvider.openAi,
+      result: 'ok',
+    );
+    final router = NeuraSecureModelRouter(
+      credentials: credentials,
+      transports: [transport],
+    );
+    late NeuraCloudRequestPreview preview;
+
+    await router.complete(
+      privateRequest,
+      requestApproval: (value) async {
+        preview = value;
+        return true;
+      },
+    );
+
+    final encoded = router.cloudAuditSnapshot.toString();
+    expect(encoded, contains(preview.traceId));
+    expect(encoded, isNot(contains(privateWords)));
+    expect(encoded, isNot(contains(preview.promptDigest)));
   });
 
   test('credential deletion is verified', () async {

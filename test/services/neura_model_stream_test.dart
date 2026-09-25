@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:neuro_companion/services/neura_cloud_transaction.dart';
 import 'package:neuro_companion/services/neura_generation_cancel.dart';
 import 'package:neuro_companion/services/neura_model_stream.dart';
 import 'package:neuro_companion/services/neura_model_types.dart';
@@ -27,6 +28,21 @@ class StreamClient extends http.BaseClient {
 
 List<int> frame(Map<String, dynamic> event) =>
     utf8.encode('data: ${jsonEncode(event)}\r\n\r\n');
+
+NeuraCloudTransactionEnvelope transactionFor(
+  NeuraModelProvider provider,
+) =>
+    NeuraCloudTransactionEnvelope(
+      approvalId: 'approval-1',
+      traceId: 'trace-1',
+      idempotencyKey: 'idempotency-1',
+      promptDigest:
+          '0000000000000000000000000000000000000000000000000000000000000000',
+      provider: provider,
+      audience: NeuraCloudTransactionEnvelope.audienceFor(provider),
+      retryCount: 0,
+    );
+
 Stream<NeuraStreamEvent> run(NeuraModelStreamTransport transport,
         {NeuraGenerationCancel? cancel}) =>
     transport.stream(
@@ -37,6 +53,7 @@ Stream<NeuraStreamEvent> run(NeuraModelStreamTransport transport,
       ],
       tools: [],
       cancel: cancel ?? NeuraGenerationCancel('test'),
+      transaction: transactionFor(transport.provider),
     );
 
 void main() {
@@ -90,6 +107,11 @@ void main() {
     expect(body['store'], false);
     expect(body['parallel_tool_calls'], false);
     expect(client.sent!.followRedirects, false);
+    expect(client.sent!.headers['cache-control'], 'no-store');
+    expect(client.sent!.headers['pragma'], 'no-cache');
+    expect(client.sent!.headers['idempotency-key'], 'idempotency-1');
+    expect(client.sent!.headers['x-neura-approval-id'], 'approval-1');
+    expect(client.sent!.headers, isNot(contains('prompt-digest')));
     expect(client.closed, true);
   });
   test('truncated tool stream never grants execution authority', () async {
