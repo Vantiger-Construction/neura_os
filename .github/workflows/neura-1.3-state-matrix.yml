@@ -112,13 +112,7 @@ jobs:
         run: |
           Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
           dart format --output=none --set-exit-if-changed lib test
-          $formatExit = $LASTEXITCODE
-          if ($formatExit -ne 0) {
-            # Show the pinned formatter's repair while retaining the failed gate.
-            dart format lib/services/neura_local_api.dart test/services/neura_local_api_test.dart test/services/neura_model_router_test.dart tools/local_api_client/dart/neura_local_api_client.dart
-            git diff -- lib/services/neura_local_api.dart test/services/neura_local_api_test.dart test/services/neura_model_router_test.dart tools/local_api_client/dart/neura_local_api_client.dart
-          }
-          exit $formatExit
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Analyze startup state code
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'

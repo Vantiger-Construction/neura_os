@@ -1,0 +1,53 @@
+name: Temporary PR 97 formatting evidence
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths: ['.github/workflows/neura-format-repair.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  formatter:
+    if: github.event.pull_request.number == 97
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /pubspec.yaml
+            /lib/services/neura_local_api.dart
+            /test/services/neura_local_api_test.dart
+            /test/services/neura_model_router_test.dart
+            /tools/local_api_client/dart/neura_local_api_client.dart
+      - name: Capture pinned Dart 3.12.2 formatting diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_dir="$RUNNER_TEMP/neura-format-sdk"
+          mkdir -p "$sdk_dir"
+          archive="$sdk_dir/dartsdk-linux-x64-release.zip"
+          sdk_url="https://storage.googleapis.com/dart-archive/channels/stable/release/3.12.2/sdk/dartsdk-linux-x64-release.zip"
+          curl --fail --location --retry 2 --max-time 180 "$sdk_url" --output "$archive"
+          expected=$(curl --fail --location --retry 2 --max-time 30 "$sdk_url.sha256" | awk '{print $1}')
+          [[ "$expected" =~ ^[a-fA-F0-9]{64}$ ]]
+          printf '%s  %s\n' "$expected" "$archive" | sha256sum --check -
+          unzip -q "$archive" -d "$sdk_dir"
+          "$sdk_dir/dart-sdk/bin/dart" --disable-analytics
+          "$sdk_dir/dart-sdk/bin/dart" --version
+          # Match pubspec.yaml's Dart 3.0 package language version.
+          # This only captures a repair; mandatory validation still checks Git.
+          "$sdk_dir/dart-sdk/bin/dart" format --language-version=3.0 \
+            lib/services/neura_local_api.dart \
+            test/services/neura_local_api_test.dart \
+            test/services/neura_model_router_test.dart \
+            tools/local_api_client/dart/neura_local_api_client.dart
+          git --no-pager diff --no-color -- \
+            lib/services/neura_local_api.dart \
+            test/services/neura_local_api_test.dart \
+            test/services/neura_model_router_test.dart \
+            tools/local_api_client/dart/neura_local_api_client.dart
