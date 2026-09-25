@@ -22,6 +22,7 @@ import '../../persona/services/agent_selection_service.dart';
 import '../../persona/services/neura_conversation_mode.dart';
 import '../../services/neura_ai_service.dart';
 import '../../services/neura_chat_policy.dart';
+import '../../services/neura_context_receipt.dart';
 import '../../services/neura_generation_cancel.dart';
 import '../../services/neura_llm_diagnostics.dart';
 import '../../services/neura_reply_batch.dart';
@@ -32,6 +33,7 @@ import '../../services/neura_voice_command.dart';
 import '../../services/wake_word_listener_service.dart';
 import '../../src/modules/settings/settings.dart';
 import '../../widgets/neura_cloud_request_preview.dart';
+import '../../widgets/neura_context_receipt_chip.dart';
 import '../core/ai_engine.dart';
 import '../core/app_log.dart';
 
@@ -327,11 +329,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 88),
-      ));
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+        ),
+      );
   }
 
   Future<void> _handleVoiceCommand(NeuraVoiceCommand command) async {
@@ -384,18 +388,24 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         return;
       case NeuraVoiceCommand.openJournal:
         await _openVoiceDestination(
-            '/memory/journal-prompt', (_) => const JournalPromptScreen());
+          '/memory/journal-prompt',
+          (_) => const JournalPromptScreen(),
+        );
         return;
       case NeuraVoiceCommand.openMood:
         await _openVoiceDestination(
-            '/care/mood-check-in', (_) => const MoodCheckInScreen());
+          '/care/mood-check-in',
+          (_) => const MoodCheckInScreen(),
+        );
         return;
       case NeuraVoiceCommand.openSettings:
         await _openVoiceDestination('/settings', (_) => const SettingsScreen());
         return;
       case NeuraVoiceCommand.openVoiceSettings:
         await _openVoiceDestination(
-            '/settings/voice', (_) => const NeuraVoiceSettingsScreen());
+          '/settings/voice',
+          (_) => const NeuraVoiceSettingsScreen(),
+        );
         return;
       case NeuraVoiceCommand.quietMode:
       case NeuraVoiceCommand.balancedMode:
@@ -407,10 +417,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
 
   Future<void> _openVoiceDestination(String name, WidgetBuilder builder) async {
     if (!mounted || SafeBoot.instance.safeMode.value) return;
-    await Navigator.of(context).push<void>(MaterialPageRoute<void>(
-      settings: RouteSettings(name: name),
-      builder: builder,
-    ));
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: name),
+        builder: builder,
+      ),
+    );
   }
 
   Future<void> _showVoiceCommands() async {
@@ -425,8 +437,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
-              Text('Voice commands',
-                  style: Theme.of(context).textTheme.titleLarge),
+              Text(
+                'Voice commands',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
               const SizedBox(height: 12),
               const Text(
                 'Tap the chat mic, then say “Neura” followed by a command. '
@@ -587,11 +601,22 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final policy = NeuraChatPolicy.forRoom(room.id);
     final selectedContext = _selectedContext;
     final includeMemory = _includeMemory && policy.persistMemory;
+    final historyIncludedPrivateContext = _privateContextUsed;
     // Derived replies remain in the visible history after next-reply controls
     // reset. Keep their privacy restrictions for the lifetime of this chat.
     _privateContextUsed =
         _privateContextUsed || selectedContext != null || includeMemory;
     final persistMemory = policy.persistMemory && !_privateContextUsed;
+    final cloudContextReceipt = NeuraContextReceipt(
+      route: NeuraReplyRoute.approvedCloud,
+      roomId: room.id,
+      usedVisibleHistory: true,
+      usedSelectedText: selectedContext != null,
+      usedPermittedMemory: includeMemory,
+      historyIncludedPrivateContext: historyIncludedPrivateContext,
+      usedImage: hasImage,
+      savedToLongTermMemory: persistMemory,
+    );
     final displayText =
         text.isEmpty && hasImage ? 'What do you see in this photo?' : text;
     final generationId =
@@ -642,6 +667,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         displayText,
         generationId: generationId,
         persistMemory: persistMemory,
+        imageAttached: hasImage,
       );
       return;
     }
@@ -650,6 +676,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       '',
       agentId: _activeAgent.id,
       utteranceId: generationId,
+      contextReceipt: cloudContextReceipt,
     )..agentCaption = _computeAgentCaption(_activeAgent.id);
     setState(() {
       _lines.add(botLine);
@@ -717,6 +744,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         'utterance_id': generationId,
         'seq': botLine.seq,
         'room': room.id,
+        'context_receipt': cloudContextReceipt.toMetadata(),
       });
       unawaited(
         _remember(
@@ -763,6 +791,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
           displayText,
           generationId: generationId,
           persistMemory: persistMemory,
+          imageAttached: hasImage,
         );
       } else {
         setState(() => botLine.interrupted = true);
@@ -791,15 +820,38 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     String text, {
     required String generationId,
     required bool persistMemory,
+    bool imageAttached = false,
   }) async {
     NeuraLlmDiagnostics.instance.recordFallback();
-    final reply = NeuraAICore.instance.respond(text);
+    final offline = NeuraAICore.instance.respondDetailed(
+      text,
+      roomId: NeuraShell.of(context).room.id,
+      imageAttached: imageAttached,
+    );
+    final reply = offline.text;
+    unawaited(
+      AppLog.instance.info('chat_offline_reply', <String, Object?>{
+        'intent': offline.intent,
+        'suggested_step_count': offline.suggestedSteps.length,
+        'room': NeuraShell.of(context).room.id,
+      }),
+    );
     if (!mounted || _activeReplyId != generationId) return;
 
     final fallbackLine = _ChatLine.bot(
       reply,
       agentId: _activeAgent.id,
       utteranceId: generationId,
+      contextReceipt: NeuraContextReceipt(
+        route: NeuraReplyRoute.onDevice,
+        roomId: NeuraShell.of(context).room.id,
+        usedVisibleHistory: false,
+        usedSelectedText: false,
+        usedPermittedMemory: false,
+        historyIncludedPrivateContext: false,
+        usedImage: false,
+        savedToLongTermMemory: persistMemory,
+      ),
     )..agentCaption = _computeAgentCaption(_activeAgent.id);
     setState(() {
       _lines.add(fallbackLine);
@@ -1015,13 +1067,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                 '${snapshot['context_messages_omitted']}',
               ),
               if (snapshot['last_first_token_ms'] != null)
-                Text(
-                  'Last first token: ${snapshot['last_first_token_ms']} ms',
-                ),
+                Text('Last first token: ${snapshot['last_first_token_ms']} ms'),
               if (snapshot['last_completion_ms'] != null)
-                Text(
-                  'Last completion: ${snapshot['last_completion_ms']} ms',
-                ),
+                Text('Last completion: ${snapshot['last_completion_ms']} ms'),
               if (snapshot['last_error'] != null) ...[
                 const SizedBox(height: 8),
                 Text('Last error: ${snapshot['last_error']}'),
@@ -1077,9 +1125,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
             },
             itemBuilder: (_) => const [
               PopupMenuItem(
-                  value: 'voice_commands', child: Text('Voice commands')),
+                value: 'voice_commands',
+                child: Text('Voice commands'),
+              ),
               PopupMenuItem(
-                  value: 'diagnostics', child: Text('AI diagnostics')),
+                value: 'diagnostics',
+                child: Text('AI diagnostics'),
+              ),
             ],
           ),
           if (_continuousMode)
@@ -1187,6 +1239,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                                 ],
                               ),
                             ],
+                            if (!line.isUser &&
+                                line.contextReceipt != null) ...<Widget>[
+                              const SizedBox(height: 6),
+                              NeuraContextReceiptChip(
+                                receipt: line.contextReceipt!,
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -1286,6 +1345,7 @@ class _ChatLine {
   final String? utteranceId;
   final String? imageBase64;
   final String? imageMediaType;
+  final NeuraContextReceipt? contextReceipt;
   int seq = 0;
   bool interrupted = false;
 
@@ -1303,6 +1363,7 @@ class _ChatLine {
     this.utteranceId,
     this.imageBase64,
     this.imageMediaType,
+    this.contextReceipt,
   });
 
   factory _ChatLine.user(
@@ -1319,6 +1380,17 @@ class _ChatLine {
         imageMediaType: imageMediaType,
       );
 
-  factory _ChatLine.bot(String t, {String? agentId, String? utteranceId}) =>
-      _ChatLine(false, t, agentId: agentId, utteranceId: utteranceId);
+  factory _ChatLine.bot(
+    String t, {
+    String? agentId,
+    String? utteranceId,
+    NeuraContextReceipt? contextReceipt,
+  }) =>
+      _ChatLine(
+        false,
+        t,
+        agentId: agentId,
+        utteranceId: utteranceId,
+        contextReceipt: contextReceipt,
+      );
 }
