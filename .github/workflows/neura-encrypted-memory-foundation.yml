@@ -12,6 +12,7 @@ on:
       - "test/encrypted_memory/**"
       - "docs/ENCRYPTED_MEMORY_FOUNDATION_v1.6.md"
       - "docs/ENCRYPTED_MEMORY_SESSION_ADAPTER_v1.6.1.md"
+      - "docs/ENCRYPTED_MEMORY_PROVENANCE_v1.7.md"
   workflow_dispatch:
 
 permissions:
