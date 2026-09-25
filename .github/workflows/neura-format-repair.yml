@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-          ref: ${{ matrix.pr == 97 && github.event.pull_request.head.sha || '8cd67a48a4afd3e7eefa159220628ff17b301a40' }}
+          ref: ${{ matrix.pr == 97 && github.event.pull_request.head.sha || '12085ce9d0f1ba51e480cfe395bb617240606cd7' }}
       - name: Install pinned Flutter 3.44.7
         shell: bash
         run: |
@@ -30,7 +30,7 @@ jobs:
           sdk_dir="$RUNNER_TEMP/neura-flutter"
           mkdir -p "$sdk_dir"
           curl --fail --location --retry 2 --max-time 60 \
-            https://storage.googleapis.com/flutter_infra_release/flutter/releases/releases_linux.json \
+            https://storage.googleapis.com/flutter_infra_release/releases/releases_linux.json \
             --output "$sdk_dir/releases.json"
           python3 - "$sdk_dir/releases.json" "$sdk_dir" <<'PY'
           import json, pathlib, sys
