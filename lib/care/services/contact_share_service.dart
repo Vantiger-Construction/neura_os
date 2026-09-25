@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:uuid/uuid.dart';
+
 import '../models/contact_share_record.dart';
 import '../../startup/neura_prefs_cache.dart';
 
@@ -69,7 +71,7 @@ class ContactShareService {
   }) async {
     await load();
     final record = ContactShareRecord(
-      id: 'share_${DateTime.now().microsecondsSinceEpoch}',
+      id: 'share_${const Uuid().v4()}',
       contactId: contactId,
       sharedAt: DateTime.now(),
       rangeStart: rangeStart,
