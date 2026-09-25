@@ -68,6 +68,14 @@ jobs:
       - name: Restore dependencies
         run: flutter pub get
 
+      - name: Verify committed dependency lock
+        shell: bash
+        run: |
+          if ! git diff --exit-code -- pubspec.lock; then
+            echo "::error::Flutter dependency resolution changed pubspec.lock."
+            exit 1
+          fi
+
       - name: Verify canonical formatting
         shell: bash
         run: |

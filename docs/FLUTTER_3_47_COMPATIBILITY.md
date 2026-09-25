@@ -7,6 +7,8 @@ a compatibility gate, not a release approval.
 ## Pinned Android toolchain
 
 - Flutter 3.47.5 (stable)
+- Dart 3.12 from the pinned Flutter SDK, while the package language-version
+  floor remains at Dart 3.0 to keep formatter migration out of this gate
 - Android Gradle Plugin 9.1.0
 - Gradle 9.3.1
 - Java 17
@@ -24,7 +26,7 @@ The draft must remain unmerged until all of the following are demonstrated on
 the retained Windows/Android runner:
 
 1. `flutter pub get` succeeds from the committed lockfile without an
-   unreviewed dependency upgrade.
+   unreviewed dependency upgrade, and leaves `pubspec.lock` unchanged.
 2. `flutter analyze --fatal-infos` and the full Flutter test suite pass.
 3. The Windows release build starts in normal mode and Safe Mode; text entry,
    IME composition, accessibility focus, local speech capture, and microphone
@@ -50,6 +52,14 @@ on representative integrated and discrete GPUs before changing production
 defaults. Capture startup failures, device-loss recovery, suspend/resume,
 multi-window behavior, and idle memory. A renderer experiment must retain a
 documented runtime rollback path.
+
+## Dart language-version decision
+
+This gate runs the app on Flutter 3.47's bundled Dart 3.12 toolchain without
+raising the package's minimum Dart language version. Raising that floor changes
+the canonical formatter for existing sources and would mix a broad mechanical
+rewrite into the runtime migration. Make that repository-wide formatter change
+in a separate PR with an independently reviewable diff.
 
 ## Rollback
 
