@@ -9,6 +9,7 @@ import '../constitution/neura_personal_constitution.dart';
 import '../intent_compiler/neura_action_graph.dart' show NeuraActionEffect;
 import '../reliability/safe_boot.dart';
 import 'neura_model_credentials.dart';
+import 'neura_cloud_transaction.dart';
 import 'neura_generation_cancel.dart';
 import 'neura_llm_diagnostics.dart';
 import 'neura_model_stream.dart';
@@ -16,6 +17,7 @@ import 'neura_model_types.dart';
 
 class NeuraCloudRequestPreview {
   final NeuraModelProvider provider;
+  final NeuraCloudTransactionEnvelope transaction;
   final String purpose;
   final int messageCount;
   final int characterCount;
@@ -26,6 +28,7 @@ class NeuraCloudRequestPreview {
 
   const NeuraCloudRequestPreview({
     required this.provider,
+    required this.transaction,
     required this.purpose,
     required this.messageCount,
     required this.characterCount,
@@ -34,10 +37,18 @@ class NeuraCloudRequestPreview {
     required this.includesPrivateContext,
     this.textPreview = '',
   });
+
+  NeuraCloudApprovalState get approvalState => transaction.approvalState;
+  String get approvalId => transaction.approvalId;
+  String get traceId => transaction.traceId;
+  String get promptDigest => transaction.promptDigest;
+  Uri get audience => transaction.audience;
+  int get retryCount => transaction.retryCount;
+  bool get privateCacheProhibited => transaction.privateCacheProhibited;
 }
 
-typedef NeuraCloudApprovalHandler = Future<bool> Function(
-    NeuraCloudRequestPreview preview);
+typedef NeuraCloudApprovalHandler =
+    Future<bool> Function(NeuraCloudRequestPreview preview);
 
 class NeuraModelRequest {
   final String systemPrompt;
@@ -46,6 +57,7 @@ class NeuraModelRequest {
   final bool includesPrivateContext;
   final int maxTokens;
   final int omittedMessageCount;
+  final NeuraCloudTransactionEnvelope? transaction;
 
   const NeuraModelRequest({
     required this.systemPrompt,
@@ -54,14 +66,19 @@ class NeuraModelRequest {
     required this.includesPrivateContext,
     this.maxTokens = 2048,
     this.omittedMessageCount = 0,
+    this.transaction,
   });
 
-  NeuraCloudRequestPreview previewFor(NeuraModelProvider provider) {
+  NeuraCloudRequestPreview previewFor(
+    NeuraModelProvider provider,
+    NeuraCloudTransactionEnvelope transaction,
+  ) {
     final encoded = jsonEncode(messages);
     final hasTypedImage = encoded.contains('"type":"image"');
     final hasImageUrl = encoded.contains('"image_url"');
     return NeuraCloudRequestPreview(
       provider: provider,
+      transaction: transaction,
       purpose: purpose,
       messageCount: messages.length,
       characterCount: encoded.length + systemPrompt.length,
@@ -69,6 +86,18 @@ class NeuraModelRequest {
       includesImage: hasTypedImage || hasImageUrl,
       includesPrivateContext: includesPrivateContext,
       textPreview: _previewText(systemPrompt, messages),
+    );
+  }
+
+  NeuraModelRequest bindTransaction(NeuraCloudTransactionEnvelope envelope) {
+    return NeuraModelRequest(
+      systemPrompt: systemPrompt,
+      messages: messages,
+      purpose: purpose,
+      includesPrivateContext: includesPrivateContext,
+      maxTokens: maxTokens,
+      omittedMessageCount: omittedMessageCount,
+      transaction: envelope,
     );
   }
 }
@@ -101,6 +130,7 @@ class NeuraModelRequestBudget {
         includesPrivateContext: source.includesPrivateContext,
         maxTokens: source.maxTokens,
         omittedMessageCount: source.omittedMessageCount,
+        transaction: source.transaction,
       );
     }
 
@@ -141,11 +171,13 @@ class NeuraModelRequestBudget {
       maxTokens: source.maxTokens,
       omittedMessageCount:
           source.omittedMessageCount + messages.length - kept.length,
+      transaction: source.transaction,
     );
   }
 
   static List<Map<String, dynamic>> freezeTools(
-      List<Map<String, dynamic>> tools) {
+    List<Map<String, dynamic>> tools,
+  ) {
     final frozen = (jsonDecode(jsonEncode(tools)) as List)
         .map((item) => Map<String, dynamic>.from(item as Map))
         .toList(growable: false);
@@ -203,10 +235,12 @@ String _previewText(String systemPrompt, List<Map<String, dynamic>> messages) {
       lines.add(content);
     } else if (content is List) {
       for (final block in content.whereType<Map>()) {
-        lines.add(block['type'] == 'image'
-            ? '[Attached image]'
-            : (block['text'] ?? block['content'] ?? '[Action request]')
-                .toString());
+        lines.add(
+          block['type'] == 'image'
+              ? '[Attached image]'
+              : (block['text'] ?? block['content'] ?? '[Action request]')
+                    .toString(),
+        );
       }
     }
   }
@@ -231,7 +265,7 @@ abstract interface class NeuraModelTransport {
 
 class NeuraOpenAiTransport implements NeuraModelTransport {
   NeuraOpenAiTransport({http.Client? client})
-      : _client = client ?? http.Client();
+    : _client = client ?? http.Client();
 
   static const _endpoint = 'https://api.openai.com/v1/responses';
   static const _model = 'gpt-5.6-luna';
@@ -245,16 +279,26 @@ class NeuraOpenAiTransport implements NeuraModelTransport {
     required String apiKey,
     required NeuraModelRequest request,
   }) async {
+    final transaction = request.transaction;
+    if (transaction == null) {
+      throw StateError('Cloud transaction metadata is required.');
+    }
+    final endpoint = Uri.parse(_endpoint);
+    transaction.validateFor(
+      requestedProvider: provider,
+      requestedAudience: endpoint,
+    );
     final input = <Map<String, dynamic>>[
       {'role': 'system', 'content': request.systemPrompt},
       ...request.messages.map(_normalizeMessage),
     ];
     final response = await _client
         .post(
-          Uri.parse(_endpoint),
+          endpoint,
           headers: {
             'authorization': 'Bearer $apiKey',
             'content-type': 'application/json',
+            ...transaction.requestHeaders(),
           },
           body: jsonEncode({
             'model': _model,
@@ -317,7 +361,7 @@ class NeuraOpenAiTransport implements NeuraModelTransport {
 
 class NeuraAnthropicTransport implements NeuraModelTransport {
   NeuraAnthropicTransport({http.Client? client})
-      : _client = client ?? http.Client();
+    : _client = client ?? http.Client();
 
   static const _endpoint = 'https://api.anthropic.com/v1/messages';
   final http.Client _client;
@@ -330,13 +374,23 @@ class NeuraAnthropicTransport implements NeuraModelTransport {
     required String apiKey,
     required NeuraModelRequest request,
   }) async {
+    final transaction = request.transaction;
+    if (transaction == null) {
+      throw StateError('Cloud transaction metadata is required.');
+    }
+    final endpoint = Uri.parse(_endpoint);
+    transaction.validateFor(
+      requestedProvider: provider,
+      requestedAudience: endpoint,
+    );
     final response = await _client
         .post(
-          Uri.parse(_endpoint),
+          endpoint,
           headers: {
             'x-api-key': apiKey,
             'anthropic-version': '2023-06-01',
             'content-type': 'application/json',
+            ...transaction.requestHeaders(),
           },
           body: jsonEncode({
             'model': kNeuraAnthropicModel,
@@ -393,17 +447,23 @@ class NeuraSecureModelRouter {
     Future<void> Function(Duration, NeuraGenerationCancel?)? sleep,
     Random? random,
     NeuraLlmDiagnostics? diagnostics,
-  })  : _credentials = credentials ?? NeuraModelCredentials.instance,
-        _constitutionOverride = constitution,
-        _now = now ?? DateTime.now,
-        _sleep = sleep ?? _defaultSleep,
-        _random = random ?? Random(),
-        _diagnostics = diagnostics ?? NeuraLlmDiagnostics.instance {
+    NeuraCloudTransactionFactory? transactionFactory,
+    NeuraCloudAuditTrail? auditTrail,
+  }) : _credentials = credentials ?? NeuraModelCredentials.instance,
+       _constitutionOverride = constitution,
+       _now = now ?? DateTime.now,
+       _sleep = sleep ?? _defaultSleep,
+       _random = random ?? Random(),
+       _diagnostics = diagnostics ?? NeuraLlmDiagnostics.instance,
+       _transactionFactory =
+           transactionFactory ?? NeuraCloudTransactionFactory(),
+       _auditTrail = auditTrail ?? NeuraCloudAuditTrail() {
     final availableTransports =
         transports ?? [NeuraOpenAiTransport(), NeuraAnthropicTransport()];
     _streamTransports = {
-      for (final transport in streamTransports ??
-          NeuraModelProvider.values.map(NeuraModelStreamTransport.new))
+      for (final transport
+          in streamTransports ??
+              NeuraModelProvider.values.map(NeuraModelStreamTransport.new))
         transport.provider: transport,
     };
     _transports = {
@@ -418,6 +478,8 @@ class NeuraSecureModelRouter {
   final Future<void> Function(Duration, NeuraGenerationCancel?) _sleep;
   final Random _random;
   final NeuraLlmDiagnostics _diagnostics;
+  final NeuraCloudTransactionFactory _transactionFactory;
+  final NeuraCloudAuditTrail _auditTrail;
   final Map<NeuraModelProvider, _NeuraProviderCircuit> _circuits = {
     for (final provider in NeuraModelProvider.values)
       provider: _NeuraProviderCircuit(),
@@ -425,12 +487,15 @@ class NeuraSecureModelRouter {
   late final Map<NeuraModelProvider, NeuraModelTransport> _transports;
 
   late final Map<NeuraModelProvider, NeuraModelStreamTransport>
-      _streamTransports;
+  _streamTransports;
 
   Map<String, Object?> get providerHealthSnapshot => {
-        for (final entry in _circuits.entries)
-          entry.key.name: entry.value.snapshot(_now()),
-      };
+    for (final entry in _circuits.entries)
+      entry.key.name: entry.value.snapshot(_now()),
+  };
+
+  List<Map<String, Object?>> get cloudAuditSnapshot =>
+      _auditTrail.events.map((event) => event.toJson()).toList(growable: false);
 
   Stream<NeuraStreamEvent> stream(
     NeuraModelRequest request, {
@@ -446,6 +511,8 @@ class NeuraSecureModelRouter {
       request.omittedMessageCount - previouslyOmitted,
     );
     final frozenTools = NeuraModelRequestBudget.freezeTools(tools);
+    final traceId = _transactionFactory.newTraceId();
+    final canonicalPayload = _canonicalPayload(request, frozenTools);
     void check() {
       cancel.throwIfCancelled();
       _throwIfSafeMode();
@@ -483,16 +550,34 @@ class NeuraSecureModelRouter {
           _diagnostics.recordProviderFallback();
           switchingProvider = false;
         }
+        final idempotencyKey = _transactionFactory.newIdempotencyKey();
         var failed = false;
         for (var attempt = 0; attempt < 2; attempt++) {
+          final transaction = await _transactionFactory.create(
+            provider: candidate,
+            canonicalPayload: canonicalPayload,
+            traceId: traceId,
+            idempotencyKey: idempotencyKey,
+            retryCount: attempt,
+          );
+          check();
+          _auditTrail.record(
+            transaction,
+            NeuraCloudAuditStage.approvalRequired,
+          );
           final approved = await Future.any<bool>([
-            requestApproval(request.previewFor(candidate)),
+            requestApproval(request.previewFor(candidate, transaction)),
             cancel.whenCancelled.then((_) => false),
           ]);
           check();
-          if (!approved) throw const NeuraCloudApprovalDenied();
+          if (!approved) {
+            _auditTrail.record(transaction, NeuraCloudAuditStage.denied);
+            throw const NeuraCloudApprovalDenied();
+          }
+          _auditTrail.record(transaction, NeuraCloudAuditStage.approved);
           var emitted = false;
           try {
+            _auditTrail.record(transaction, NeuraCloudAuditStage.sent);
             await for (final event in transport.stream(
               apiKey: key,
               systemPrompt: request.systemPrompt,
@@ -500,16 +585,23 @@ class NeuraSecureModelRouter {
               tools: frozenTools,
               cancel: cancel,
               maxTokens: request.maxTokens,
+              transaction: transaction,
             )) {
               check();
               emitted = true;
               yield event;
             }
             circuit.recordSuccess();
+            _auditTrail.record(transaction, NeuraCloudAuditStage.succeeded);
             return;
           } catch (error) {
             check();
             final failure = _streamFailure(error);
+            _auditTrail.record(
+              transaction,
+              NeuraCloudAuditStage.failed,
+              failureKind: failure.kind.name,
+            );
             circuit.recordFailure(failure.kind, _now());
             lastError = failure;
             failed = true;
@@ -548,6 +640,8 @@ class NeuraSecureModelRouter {
     }
     _throwIfSafeMode();
     _throwIfConstitutionBlocks(request);
+    final traceId = _transactionFactory.newTraceId();
+    final canonicalPayload = _canonicalPayload(request, const []);
     final candidates = <NeuraModelProvider>[
       NeuraModelProvider.openAi,
       NeuraModelProvider.anthropic,
@@ -576,24 +670,51 @@ class NeuraSecureModelRouter {
       final transport = _transports[provider];
       if (transport == null) continue;
 
+      final idempotencyKey = _transactionFactory.newIdempotencyKey();
       var failed = false;
       for (var attempt = 0; attempt < 2; attempt++) {
         // Every outbound attempt, including an exact retry or fallback,
         // receives a new preview and a new decision.
-        final approved = await requestApproval(request.previewFor(provider));
+        final transaction = await _transactionFactory.create(
+          provider: provider,
+          canonicalPayload: canonicalPayload,
+          traceId: traceId,
+          idempotencyKey: idempotencyKey,
+          retryCount: attempt,
+        );
         _throwIfSafeMode();
-        if (!approved) throw const NeuraCloudApprovalDenied();
+        _throwIfConstitutionBlocks(request);
+        _auditTrail.record(transaction, NeuraCloudAuditStage.approvalRequired);
+        final approved = await requestApproval(
+          request.previewFor(provider, transaction),
+        );
+        _throwIfSafeMode();
+        if (!approved) {
+          _auditTrail.record(transaction, NeuraCloudAuditStage.denied);
+          throw const NeuraCloudApprovalDenied();
+        }
+        _auditTrail.record(transaction, NeuraCloudAuditStage.approved);
         _throwIfConstitutionBlocks(request);
 
         try {
-          final text = await transport.complete(apiKey: key, request: request);
+          _auditTrail.record(transaction, NeuraCloudAuditStage.sent);
+          final text = await transport.complete(
+            apiKey: key,
+            request: request.bindTransaction(transaction),
+          );
           _throwIfSafeMode();
           circuit.recordSuccess();
+          _auditTrail.record(transaction, NeuraCloudAuditStage.succeeded);
           return NeuraModelResponse(text: text, provider: provider);
         } catch (error) {
           _throwIfSafeMode();
           _throwIfConstitutionBlocks(request);
           final failure = _completionFailure(provider, error);
+          _auditTrail.record(
+            transaction,
+            NeuraCloudAuditStage.failed,
+            failureKind: failure.kind.name,
+          );
           circuit.recordFailure(failure.kind, _now());
           lastError = failure;
           failed = true;
@@ -625,6 +746,20 @@ class NeuraSecureModelRouter {
     return Duration(milliseconds: 250 + _random.nextInt(251));
   }
 
+  String _canonicalPayload(
+    NeuraModelRequest request,
+    List<Map<String, dynamic>> tools,
+  ) {
+    return jsonEncode({
+      'system_prompt': request.systemPrompt,
+      'messages': request.messages,
+      'tools': tools,
+      'purpose': request.purpose,
+      'includes_private_context': request.includesPrivateContext,
+      'max_tokens': request.maxTokens,
+    });
+  }
+
   NeuraStreamFailure _streamFailure(Object error) {
     if (error is NeuraStreamFailure) return error;
     if (error is TimeoutException) {
@@ -646,7 +781,9 @@ class NeuraSecureModelRouter {
   }
 
   NeuraModelTransportException _completionFailure(
-      NeuraModelProvider provider, Object error) {
+    NeuraModelProvider provider,
+    Object error,
+  ) {
     if (error is NeuraModelTransportException) return error;
     if (error is TimeoutException) {
       return NeuraModelTransportException(
@@ -675,7 +812,9 @@ class NeuraSecureModelRouter {
   }
 
   static Future<void> _defaultSleep(
-      Duration duration, NeuraGenerationCancel? cancel) async {
+    Duration duration,
+    NeuraGenerationCancel? cancel,
+  ) async {
     if (cancel != null) {
       await cancel.delay(duration);
     } else {
@@ -787,8 +926,8 @@ class _NeuraProviderCircuit {
   }
 
   Map<String, Object?> snapshot(DateTime now) => {
-        'state': isOpen(now) ? 'open' : 'closed',
-        'consecutive_transient_failures': consecutiveTransientFailures,
-        'retry_at': openUntil?.toUtc().toIso8601String(),
-      };
+    'state': isOpen(now) ? 'open' : 'closed',
+    'consecutive_transient_failures': consecutiveTransientFailures,
+    'retry_at': openUntil?.toUtc().toIso8601String(),
+  };
 }
