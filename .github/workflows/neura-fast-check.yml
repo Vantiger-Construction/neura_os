@@ -159,7 +159,7 @@ jobs:
             "System volume {0} free: {1:N2} GB (reclaimed {2:N2} GB)" -f
             $systemRoot,
             ($systemAfter / 1GB),
-            ([Math]::Max(0, $systemAfter - $systemBefore) / 1GB)
+            ([Math]::Max([long]0, [long]($systemAfter - $systemBefore)) / 1GB)
           )
 
           # Keep the runner metadata headroom guard before selecting C:.

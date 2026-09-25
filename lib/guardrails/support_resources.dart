@@ -8,4 +8,16 @@ class SupportResources {
     'emergency':
         'If you are in immediate danger, contact your local emergency number.',
   };
+
+  /// Returns reviewed crisis wording for the supplied locale. Unknown or
+  /// country-less locales use the global emergency fallback rather than
+  /// guessing that a US number applies.
+  static String forLocale(String? localeName) {
+    final normalized = (localeName ?? '').toLowerCase().replaceAll('-', '_');
+    final localeParts = normalized.split('_');
+    if (localeParts.contains('us')) {
+      return '${us['988']}. ${us['911']}.';
+    }
+    return global['emergency']!;
+  }
 }
