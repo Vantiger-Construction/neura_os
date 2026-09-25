@@ -24,8 +24,9 @@ class NeuraSpeechToTextService {
   // wake-word listener, which needs to share this with the chat screen).
   static final NeuraSpeechToTextService instance = NeuraSpeechToTextService._();
 
-  static const MethodChannel _channel =
-      MethodChannel('neura/speech_recognition');
+  static const MethodChannel _channel = MethodChannel(
+    'neura/speech_recognition',
+  );
 
   final StreamController<String> _transcriptStream =
       StreamController.broadcast();
@@ -67,8 +68,9 @@ class NeuraSpeechToTextService {
       case 'onPartial':
         if (!listeningAllowed) return;
         final hypothesis = call.arguments as String? ?? '';
-        _transcriptStream
-            .add(_finalText.isEmpty ? hypothesis : '$_finalText $hypothesis');
+        _transcriptStream.add(
+          _finalText.isEmpty ? hypothesis : '$_finalText $hypothesis',
+        );
         _segmentStream.add(
           NeuraSpeechSegment(
             engineId: 'windows_winrt',
@@ -84,8 +86,7 @@ class NeuraSpeechToTextService {
         final phrase = arguments is Map
             ? arguments['text']?.toString() ?? ''
             : arguments as String? ?? '';
-        final rawConfidence =
-            arguments is Map ? arguments['confidence'] : null;
+        final rawConfidence = arguments is Map ? arguments['confidence'] : null;
         final confidence = rawConfidence is num
             ? rawConfidence.toDouble().clamp(0.0, 1.0).toDouble()
             : null;
@@ -169,11 +170,7 @@ class NeuraSpeechToTextService {
       return true;
     } catch (error, stack) {
       _listening = false;
-      await AppLog.instance.caught(
-        'speech_to_text_start_failed',
-        error,
-        stack,
-      );
+      await AppLog.instance.caught('speech_to_text_start_failed', error, stack);
       _transcriptStream.add('Speech-to-text not available on this device.');
       return false;
     }
@@ -200,11 +197,7 @@ class NeuraSpeechToTextService {
     } catch (error, stack) {
       _listening = false;
       _completePendingStop();
-      await AppLog.instance.caught(
-        'speech_to_text_stop_failed',
-        error,
-        stack,
-      );
+      await AppLog.instance.caught('speech_to_text_stop_failed', error, stack);
       if (identical(_stopCompleter, completer)) _stopCompleter = null;
       return _finalText;
     }

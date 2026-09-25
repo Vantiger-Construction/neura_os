@@ -91,8 +91,7 @@ final class NeuraVoiceTurnMetadata {
             meanConfidence! > 1)) {
       throw const FormatException('Invalid mean confidence.');
     }
-    if (affect == null &&
-        affectOrigin != NeuraVoiceAffectOrigin.unavailable) {
+    if (affect == null && affectOrigin != NeuraVoiceAffectOrigin.unavailable) {
       throw const FormatException('Affect origin requires an affect value.');
     }
     if (affectConfirmed &&
@@ -130,10 +129,7 @@ final class NeuraVoiceTurnMetadata {
 
 /// Builds metadata without retaining transcript text.
 final class NeuraVoiceTurnMetadataBuilder {
-  NeuraVoiceTurnMetadataBuilder({
-    required this.turnId,
-    required this.engineId,
-  });
+  NeuraVoiceTurnMetadataBuilder({required this.turnId, required this.engineId});
 
   final String turnId;
   final String engineId;
@@ -163,9 +159,7 @@ final class NeuraVoiceTurnMetadataBuilder {
 
   void markInterruption() => _interruptionCount++;
 
-  NeuraVoiceTurnMetadata build({
-    NeuraVoiceAffect? estimatedAffect,
-  }) {
+  NeuraVoiceTurnMetadata build({NeuraVoiceAffect? estimatedAffect}) {
     final first = _firstObservedAtUtc;
     final last = _lastObservedAtUtc;
     if (first == null || last == null) {
@@ -178,8 +172,9 @@ final class NeuraVoiceTurnMetadataBuilder {
       turnId: turnId,
       engineId: engineId,
       observedAtUtc: first,
-      speechDuration:
-          last.isAfter(first) ? last.difference(first) : Duration.zero,
+      speechDuration: last.isAfter(first)
+          ? last.difference(first)
+          : Duration.zero,
       pauseCount: _pauseCount,
       interruptionCount: _interruptionCount,
       meanConfidence: mean,
@@ -197,7 +192,7 @@ final class NeuraVoiceTurnMetadataBuilder {
 /// optional access. Cloud disclosure requires its own fresh single-use lease.
 final class NeuraVoiceTurnMetadataStore {
   NeuraVoiceTurnMetadataStore({required bool Function() safeModeReader})
-      : _safeModeReader = safeModeReader;
+    : _safeModeReader = safeModeReader;
 
   final bool Function() _safeModeReader;
   final Map<String, NeuraVoiceTurnMetadata> _records = {};
@@ -210,11 +205,7 @@ final class NeuraVoiceTurnMetadataStore {
     required DateTime nowUtc,
   }) {
     _requireAvailable();
-    lease.consume(
-      metadata.turnId,
-      NeuraVoiceMetadataOperation.capture,
-      nowUtc,
-    );
+    lease.consume(metadata.turnId, NeuraVoiceMetadataOperation.capture, nowUtc);
     if (_records.containsKey(metadata.turnId)) {
       throw StateError('Voice metadata turn already exists.');
     }
@@ -251,11 +242,7 @@ final class NeuraVoiceTurnMetadataStore {
     required DateTime nowUtc,
   }) {
     _requireAvailable();
-    lease.consume(
-      turnId,
-      NeuraVoiceMetadataOperation.discloseCloud,
-      nowUtc,
-    );
+    lease.consume(turnId, NeuraVoiceMetadataOperation.discloseCloud, nowUtc);
     final metadata = _records[turnId];
     if (metadata == null) return null;
     return {

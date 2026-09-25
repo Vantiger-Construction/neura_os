@@ -80,62 +80,57 @@ void main() {
     );
   });
 
-  test('capture, inspection, correction, and disclosure need separate leases',
-      () {
-    final store = NeuraVoiceTurnMetadataStore(
-      safeModeReader: () => false,
-    );
-    final metadata = NeuraVoiceTurnMetadata(
-      turnId: 'turn-1',
-      engineId: 'fake-local',
-      observedAtUtc: issuedAt,
-      speechDuration: const Duration(seconds: 2),
-      pauseCount: 1,
-      interruptionCount: 0,
-      meanConfidence: 0.75,
-      affect: NeuraVoiceAffect.tense,
-      affectOrigin: NeuraVoiceAffectOrigin.onDeviceEstimate,
-    );
-
-    store.record(
-      lease: lease('capture', NeuraVoiceMetadataOperation.capture),
-      metadata: metadata,
-      nowUtc: issuedAt.add(const Duration(seconds: 1)),
-    );
-    final before = store.read(
-      lease: lease('read-1', NeuraVoiceMetadataOperation.read),
-      turnId: 'turn-1',
-      nowUtc: issuedAt.add(const Duration(seconds: 2)),
-    );
-    expect(before?.affectConfirmed, isFalse);
-
-    expect(
-      store.correctAffect(
-        lease: lease('correct', NeuraVoiceMetadataOperation.correct),
+  test(
+    'capture, inspection, correction, and disclosure need separate leases',
+    () {
+      final store = NeuraVoiceTurnMetadataStore(safeModeReader: () => false);
+      final metadata = NeuraVoiceTurnMetadata(
         turnId: 'turn-1',
-        affect: NeuraVoiceAffect.calm,
-        nowUtc: issuedAt.add(const Duration(seconds: 3)),
-      ),
-      isTrue,
-    );
-    final disclosure = store.createCloudDisclosure(
-      lease: lease(
-        'disclose',
-        NeuraVoiceMetadataOperation.discloseCloud,
-      ),
-      turnId: 'turn-1',
-      nowUtc: issuedAt.add(const Duration(seconds: 4)),
-    );
+        engineId: 'fake-local',
+        observedAtUtc: issuedAt,
+        speechDuration: const Duration(seconds: 2),
+        pauseCount: 1,
+        interruptionCount: 0,
+        meanConfidence: 0.75,
+        affect: NeuraVoiceAffect.tense,
+        affectOrigin: NeuraVoiceAffectOrigin.onDeviceEstimate,
+      );
 
-    expect(disclosure?['affect'], 'calm');
-    expect(disclosure?['affect_confirmed'], isTrue);
-    expect(disclosure.toString(), isNot(contains('private')));
-  });
+      store.record(
+        lease: lease('capture', NeuraVoiceMetadataOperation.capture),
+        metadata: metadata,
+        nowUtc: issuedAt.add(const Duration(seconds: 1)),
+      );
+      final before = store.read(
+        lease: lease('read-1', NeuraVoiceMetadataOperation.read),
+        turnId: 'turn-1',
+        nowUtc: issuedAt.add(const Duration(seconds: 2)),
+      );
+      expect(before?.affectConfirmed, isFalse);
+
+      expect(
+        store.correctAffect(
+          lease: lease('correct', NeuraVoiceMetadataOperation.correct),
+          turnId: 'turn-1',
+          affect: NeuraVoiceAffect.calm,
+          nowUtc: issuedAt.add(const Duration(seconds: 3)),
+        ),
+        isTrue,
+      );
+      final disclosure = store.createCloudDisclosure(
+        lease: lease('disclose', NeuraVoiceMetadataOperation.discloseCloud),
+        turnId: 'turn-1',
+        nowUtc: issuedAt.add(const Duration(seconds: 4)),
+      );
+
+      expect(disclosure?['affect'], 'calm');
+      expect(disclosure?['affect_confirmed'], isTrue);
+      expect(disclosure.toString(), isNot(contains('private')));
+    },
+  );
 
   test('unconfirmed affect is withheld from fresh cloud disclosure', () {
-    final store = NeuraVoiceTurnMetadataStore(
-      safeModeReader: () => false,
-    );
+    final store = NeuraVoiceTurnMetadataStore(safeModeReader: () => false);
     store.record(
       lease: lease('capture', NeuraVoiceMetadataOperation.capture),
       metadata: NeuraVoiceTurnMetadata(
@@ -152,10 +147,7 @@ void main() {
     );
 
     final disclosure = store.createCloudDisclosure(
-      lease: lease(
-        'disclose',
-        NeuraVoiceMetadataOperation.discloseCloud,
-      ),
+      lease: lease('disclose', NeuraVoiceMetadataOperation.discloseCloud),
       turnId: 'turn-1',
       nowUtc: issuedAt.add(const Duration(seconds: 2)),
     );
@@ -166,9 +158,7 @@ void main() {
 
   test('Safe Mode blocks metadata access before consuming consent', () {
     var safeMode = true;
-    final store = NeuraVoiceTurnMetadataStore(
-      safeModeReader: () => safeMode,
-    );
+    final store = NeuraVoiceTurnMetadataStore(safeModeReader: () => safeMode);
     final capture = lease('capture', NeuraVoiceMetadataOperation.capture);
 
     expect(

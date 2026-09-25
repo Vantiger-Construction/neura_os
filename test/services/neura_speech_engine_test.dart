@@ -48,11 +48,7 @@ final class _Engine implements NeuraSpeechEngine {
 void main() {
   test('selection keeps experimental engines opt-in', () async {
     final registry = NeuraSpeechEngineRegistry()
-      ..register(_Engine(
-        'onnx',
-        platforms: {'windows'},
-        experimental: true,
-      ))
+      ..register(_Engine('onnx', platforms: {'windows'}, experimental: true))
       ..register(_Engine('winrt', platforms: {'windows'}));
 
     expect(
@@ -64,9 +60,22 @@ void main() {
         platform: 'windows',
         preferredId: 'onnx',
         includeExperimental: true,
-      ))
-          ?.id,
+      ))?.id,
       'onnx',
+    );
+  });
+
+  test('selection skips an unavailable preferred engine', () async {
+    final registry = NeuraSpeechEngineRegistry()
+      ..register(_Engine('preferred', platforms: {'windows'}, available: false))
+      ..register(_Engine('fallback', platforms: {'windows'}));
+
+    expect(
+      (await registry.select(
+        platform: 'windows',
+        preferredId: 'preferred',
+      ))?.id,
+      'fallback',
     );
   });
 
@@ -81,4 +90,3 @@ void main() {
     );
   });
 }
-

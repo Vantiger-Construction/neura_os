@@ -11,8 +11,7 @@ final class _Probe implements NeuraSpeechBenchmarkProbe {
   Future<int?> residentSetBytes() async => reads++ == 0 ? 1000 : 1400;
 
   @override
-  Future<NeuraThermalState> thermalState() async =>
-      NeuraThermalState.nominal;
+  Future<NeuraThermalState> thermalState() async => NeuraThermalState.nominal;
 }
 
 final class _FakeEngine implements NeuraSpeechEngine {

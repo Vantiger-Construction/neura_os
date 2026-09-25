@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
@@ -20,14 +18,13 @@ void main() {
 
   setUp(() {
     SafeBoot.instance.safeMode.value = false;
-    binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      channel,
-      (call) async {
-        if (call.method == 'isAvailable') return true;
-        if (call.method == 'stop') await native('onStopped');
-        return true;
-      },
-    );
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      if (call.method == 'isAvailable') return true;
+      if (call.method == 'stop') await native('onStopped');
+      return true;
+    });
   });
 
   tearDown(() async {
@@ -64,14 +61,10 @@ void main() {
     await native('onListening');
 
     SafeBoot.instance.safeMode.value = true;
-    await native('onFinal', {
-      'text': 'must be ignored',
-      'confidence': 0.9,
-    });
+    await native('onFinal', {'text': 'must be ignored', 'confidence': 0.9});
     await Future<void>.delayed(Duration.zero);
 
     expect(received, isEmpty);
     await subscription.cancel();
   });
 }
-

@@ -43,9 +43,8 @@ class VoiceJournalService {
   Stream<String> get transcriptStream => _usesNativeWindows
       ? _native.transcriptStream
       : _pluginTranscriptStream.stream;
-  Stream<NeuraSpeechSegment> get segmentStream => _usesNativeWindows
-      ? _native.segmentStream
-      : _pluginSegmentStream.stream;
+  Stream<NeuraSpeechSegment> get segmentStream =>
+      _usesNativeWindows ? _native.segmentStream : _pluginSegmentStream.stream;
 
   ValueListenable<bool> get recording => _recording;
 
@@ -123,10 +122,9 @@ class VoiceJournalService {
           final observedAtUtc = DateTime.now().toUtc();
           final pauseBefore =
               result.finalResult && _lastPluginFinalAtUtc != null
-                  ? observedAtUtc.difference(_lastPluginFinalAtUtc!)
-                  : Duration.zero;
-          final confidence = result.confidence >= 0 &&
-                  result.confidence <= 1
+              ? observedAtUtc.difference(_lastPluginFinalAtUtc!)
+              : Duration.zero;
+          final confidence = result.confidence >= 0 && result.confidence <= 1
               ? result.confidence
               : null;
           _pluginSegmentStream.add(
@@ -163,11 +161,7 @@ class VoiceJournalService {
     } catch (error, stack) {
       _pluginListening = false;
       _markRecordingStopped();
-      await AppLog.instance.caught(
-        'voice_journal_start_failed',
-        error,
-        stack,
-      );
+      await AppLog.instance.caught('voice_journal_start_failed', error, stack);
       if (!_disposed) {
         _pluginTranscriptStream.add(
           'Speech-to-text could not start on this device.',
@@ -212,11 +206,7 @@ class VoiceJournalService {
     try {
       await _stt.stop();
     } catch (error, stack) {
-      await AppLog.instance.caught(
-        'voice_journal_stop_failed',
-        error,
-        stack,
-      );
+      await AppLog.instance.caught('voice_journal_stop_failed', error, stack);
     }
     return _current;
   }

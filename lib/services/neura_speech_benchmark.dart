@@ -37,18 +37,18 @@ final class NeuraSpeechBenchmarkResult {
   final String? failureKind;
 
   Map<String, Object?> toJson() => {
-        'engine_id': engineId,
-        'started': started,
-        'completed': completed,
-        'start_latency_ms': startLatency.inMilliseconds,
-        'first_final_latency_ms': firstFinalLatency?.inMilliseconds,
-        'stop_latency_ms': stopLatency.inMilliseconds,
-        'rss_delta_bytes': rssDeltaBytes,
-        'package_bytes': packageBytes,
-        'thermal_before': thermalBefore.name,
-        'thermal_after': thermalAfter.name,
-        'failure_kind': failureKind,
-      };
+    'engine_id': engineId,
+    'started': started,
+    'completed': completed,
+    'start_latency_ms': startLatency.inMilliseconds,
+    'first_final_latency_ms': firstFinalLatency?.inMilliseconds,
+    'stop_latency_ms': stopLatency.inMilliseconds,
+    'rss_delta_bytes': rssDeltaBytes,
+    'package_bytes': packageBytes,
+    'thermal_before': thermalBefore.name,
+    'thermal_after': thermalAfter.name,
+    'failure_kind': failureKind,
+  };
 }
 
 /// Device benchmark harness. It records operational measurements only and
@@ -57,8 +57,8 @@ final class NeuraSpeechBenchmarkHarness {
   NeuraSpeechBenchmarkHarness({
     required bool Function() safeModeReader,
     required NeuraSpeechBenchmarkProbe probe,
-  })  : _safeModeReader = safeModeReader,
-        _probe = probe;
+  }) : _safeModeReader = safeModeReader,
+       _probe = probe;
 
   final bool Function() _safeModeReader;
   final NeuraSpeechBenchmarkProbe _probe;
