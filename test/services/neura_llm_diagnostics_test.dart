@@ -23,6 +23,10 @@ void main() {
     diagnostics.recordCancellation();
     diagnostics.recordToolDrop();
     diagnostics.recordFallback();
+    diagnostics.recordProviderFallback();
+    diagnostics.recordContextOmission(3);
+    diagnostics.recordFirstToken(const Duration(milliseconds: 125));
+    diagnostics.recordCompletion(const Duration(milliseconds: 450));
 
     snapshot = diagnostics.snapshot();
     expect(snapshot['healthy'], isTrue);
@@ -30,6 +34,10 @@ void main() {
     expect(snapshot['cancellations'], 1);
     expect(snapshot['tool_drops'], 1);
     expect(snapshot['fallbacks'], 1);
+    expect(snapshot['provider_fallbacks'], 1);
+    expect(snapshot['context_messages_omitted'], 3);
+    expect(snapshot['last_first_token_ms'], 125);
+    expect(snapshot['last_completion_ms'], 450);
     expect(snapshot['last_error'], isNull);
   });
 

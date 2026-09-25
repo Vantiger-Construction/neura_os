@@ -7,15 +7,16 @@ import 'package:neuro_companion/services/neura_model_stream.dart';
 import 'package:neuro_companion/services/neura_model_types.dart';
 
 class StreamClient extends http.BaseClient {
-  StreamClient(this.events, {this.status = 200});
+  StreamClient(this.events, {this.status = 200, this.headers = const {}});
   final Stream<List<int>> events;
   final int status;
+  final Map<String, String> headers;
   http.BaseRequest? sent;
   bool closed = false;
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     sent = request;
-    return http.StreamedResponse(events, status);
+    return http.StreamedResponse(events, status, headers: headers);
   }
 
   @override
@@ -320,6 +321,34 @@ void main() {
             clientFactory: () => client)).toList(),
         throwsA(isA<NeuraStreamFailure>().having(
             (e) => e.toString(), 'message', isNot(contains('secret')))));
+  });
+  test('HTTP rate limits expose typed retry policy without provider body',
+      () async {
+    final client = StreamClient(
+      Stream.value(utf8.encode('private provider details')),
+      status: 429,
+      headers: const {'retry-after': '3'},
+    );
+    try {
+      await run(NeuraModelStreamTransport(
+        NeuraModelProvider.openAi,
+        clientFactory: () => client,
+      )).toList();
+      fail('Expected a typed stream failure.');
+    } on NeuraStreamFailure catch (failure) {
+      expect(failure.kind, NeuraModelFailureKind.rateLimited);
+      expect(failure.retryable, isTrue);
+      expect(failure.retryAfter, const Duration(seconds: 3));
+      expect(failure.toString(), isNot(contains('private')));
+    }
+  });
+  test('authentication failures are never retried', () {
+    expect(
+      neuraFailureKindForStatus(401),
+      NeuraModelFailureKind.authentication,
+    );
+    expect(neuraFailureKindForStatus(401).retryable, isFalse);
+    expect(neuraFailureKindForStatus(503).retryable, isTrue);
   });
   test('pre-cancelled generation sends nothing', () async {
     final cancel = NeuraGenerationCancel('cancelled')..cancel();
