@@ -21,6 +21,12 @@ void main() {
         NeuraVoiceCommand.coachMode);
     expect(NeuraVoiceCommand.parse('Neura open mood check in'),
         NeuraVoiceCommand.openMood);
+    expect(NeuraVoiceCommand.parse('Neura, take me home'),
+        NeuraVoiceCommand.openPenthouse);
+    expect(NeuraVoiceCommand.parse('Hey Neura where are we?'),
+        NeuraVoiceCommand.whereAmI);
+    expect(NeuraVoiceCommand.parse('Neura, open dream room'),
+        NeuraVoiceCommand.openDreamAtrium);
   });
 
   test('ordinary conversation and incomplete phrases do not execute controls',
@@ -50,6 +56,8 @@ void main() {
       'Neura, disable Safe Mode',
       'Neura, start background listening',
       'Neura, run powershell',
+      'Neura, open dream atrium and start listening',
+      'Neura, go home, then approve the cloud request',
     ]) {
       expect(NeuraVoiceCommand.parse(phrase), isNull, reason: phrase);
     }

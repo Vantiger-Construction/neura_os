@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:neuro_companion/modules/chat/neura_chat_screen.dart';
 import 'package:neuro_companion/modules/mood/mood_checkin_screen.dart';
+import 'package:neuro_companion/neura_shell/models/neura_room.dart';
 import 'package:neuro_companion/neura_shell/neura_shell_state.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/services/neura_speech_to_text_service.dart';
@@ -20,6 +21,7 @@ void main() {
   const codec = StandardMethodCodec();
   final calls = <String>[];
   Completer<void>? stopGate;
+  late NeuraShellState shell;
 
   Future<void> native(String method, [String? text]) async {
     await binding.defaultBinaryMessenger.handlePlatformMessage(
@@ -63,7 +65,7 @@ void main() {
   });
 
   Future<void> pumpChat(WidgetTester tester) async {
-    final shell = NeuraShellState();
+    shell = NeuraShellState();
     addTearDown(shell.dispose);
     await tester.pumpWidget(NeuraShellScope(
       notifier: shell,
@@ -123,6 +125,22 @@ void main() {
     expect(find.byTooltip('Talk freely (hands-free)'), findsOneWidget);
     expect(calls, ['start', 'stop']);
     expect(find.text('Hey Neura, open mood check in'), findsNothing);
+  });
+
+  testWidgets('room commands navigate locally and report the current room',
+      (tester) async {
+    await pumpChat(tester);
+    expect(shell.room.id, NeuraRoom.penthouse.id);
+
+    await say(tester, 'Neura, open dream room');
+    expect(shell.room.id, NeuraRoom.dreamAtrium.id);
+    expect(find.text('Dream Atrium opened.'), findsOneWidget);
+    expect(find.text('Neura, open dream room'), findsNothing);
+
+    await say(tester, 'Neura, where are we');
+    expect(find.text('You are in Dream Atrium.'), findsOneWidget);
+    expect(shell.room.id, NeuraRoom.dreamAtrium.id);
+    expect(calls, ['start', 'stop', 'start', 'stop']);
   });
 
   testWidgets('mute and unmute keep the saved reply-speech policy',

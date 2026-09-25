@@ -22,6 +22,13 @@ channel before these microphone controls are available.
 | Neura, open mood check-in | Open the local mood form; the user still presses Save. |
 | Neura, open settings | Open Settings. |
 | Neura, open voice settings | Open voice and reply-speech settings. |
+| Neura, where am I | Show the current Neura room. |
+| Neura, open penthouse | Move to the Penthouse. “Go home” also works. |
+| Neura, open reflection bay | Move to Reflection Bay. |
+| Neura, open joy lounge | Move to the Joy Lounge. |
+| Neura, open mood den | Move to the Mood Den. |
+| Neura, open dream atrium | Move to the Dream Atrium. |
+| Neura, open legacy vault | Move to the Legacy Vault. |
 
 Controls match complete phrases from final recognition results. Partial speech,
 quoted mentions, and longer compound requests do not trigger a local command.
@@ -32,7 +39,9 @@ Recognized commands are consumed before the chat send path. Their transcripts
 are not added to chat history, model context, memory, or diagnostics. Opening a
 screen grants no permission to save, share, or upload its contents. Commands
 cannot approve cloud requests, change Safe Mode, enable persistent memory, or
-enable background listening. Unmute does not override the saved Off setting.
+enable background listening. Room commands only change the current local room
+and its saved room selection; they do not read or write room content. Unmute
+does not override the saved Off setting.
 
 Safe Mode, ending the session, and app backgrounding invalidate pending voice
 callbacks. Navigation stops capture first. Returning from a command-opened
@@ -53,6 +62,8 @@ screen or resuming the app does not restart the chat microphone automatically.
    and listening did not restart.
 6. Set reply speech to Off, then say “Neura, unmute replies.” Confirm Off remains
    selected and the app directs the user to Voice settings.
+7. Open each room by voice and ask “Neura, where am I.” Confirm the room changes,
+   the spoken command never enters chat history, and listening stays stopped.
 
 The automated widget tests exercise native speech callbacks with a mocked
 platform channel. A physical microphone, Windows permission prompts, and spoken
