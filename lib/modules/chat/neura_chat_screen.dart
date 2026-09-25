@@ -397,12 +397,44 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         await _openVoiceDestination(
             '/settings/voice', (_) => const NeuraVoiceSettingsScreen());
         return;
+      case NeuraVoiceCommand.whereAmI:
+        _showVoiceNotice('You are in ${NeuraShell.of(context).room.title}.');
+        return;
+      case NeuraVoiceCommand.openPenthouse:
+        await _openVoiceRoom(NeuraRoom.penthouse);
+        return;
+      case NeuraVoiceCommand.openReflectionBay:
+        await _openVoiceRoom(NeuraRoom.reflectionBay);
+        return;
+      case NeuraVoiceCommand.openJoyLounge:
+        await _openVoiceRoom(NeuraRoom.joyLounge);
+        return;
+      case NeuraVoiceCommand.openMoodDen:
+        await _openVoiceRoom(NeuraRoom.moodDen);
+        return;
+      case NeuraVoiceCommand.openDreamAtrium:
+        await _openVoiceRoom(NeuraRoom.dreamAtrium);
+        return;
+      case NeuraVoiceCommand.openLegacyVault:
+        await _openVoiceRoom(NeuraRoom.legacyVault);
+        return;
       case NeuraVoiceCommand.quietMode:
       case NeuraVoiceCommand.balancedMode:
       case NeuraVoiceCommand.companionMode:
       case NeuraVoiceCommand.coachMode:
         return;
     }
+  }
+
+  Future<void> _openVoiceRoom(NeuraRoom room) async {
+    if (!mounted || SafeBoot.instance.safeMode.value) return;
+    final shell = NeuraShell.of(context);
+    if (shell.room.id != room.id) await shell.setRoom(room);
+    if (!mounted || SafeBoot.instance.safeMode.value) return;
+    setState(() {
+      _activeAgent = AgentSelectionService.instance.resolveAgent(room);
+    });
+    _showVoiceNotice('${room.title} opened.');
   }
 
   Future<void> _openVoiceDestination(String name, WidgetBuilder builder) async {
