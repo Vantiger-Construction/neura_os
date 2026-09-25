@@ -111,7 +111,10 @@ class NeuraPromptBuilder {
             'encourage reaching out to a trusted adult or a crisis line.';
       case NeuraAudience.adult:
       case null:
-        return '';
+        return 'If the person expresses thoughts of self-harm, suicide, or '
+            'being in danger, respond with calm care, do not try to counsel '
+            'them through it alone, and point them to immediate crisis '
+            'resources and someone they trust.';
     }
   }
 

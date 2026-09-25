@@ -9,11 +9,14 @@ void main() {
     expect(prompt, contains('best effort'));
     expect(prompt, contains('explain recommendations'));
     expect(prompt, contains('never pretend'));
+    expect(prompt, contains('do not know'));
+    expect(prompt, contains('immediate crisis resources'));
     expect(prompt, contains('privacy'));
     expect(prompt, contains('autonomy'));
     expect(prompt, contains('safe mode'));
     expect(prompt, contains('required approval'));
     expect(prompt, contains('admit mistakes'));
+    expect(NeuraCharacterCharter.principles, contains('crisis_care'));
   });
 
   test('character charter principles cannot be changed at runtime', () {

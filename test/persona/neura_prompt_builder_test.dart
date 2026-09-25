@@ -72,7 +72,7 @@ void main() {
       expect(prompt, contains('TEENAGER'));
     });
 
-    test('an adult audience (and no audience) adds no safety-profile block',
+    test('an adult audience (and no audience) adds crisis-care guidance',
         () async {
       final adultPrompt = await NeuraPromptBuilder.instance.buildSystemMessage(
         audience: NeuraAudience.adult,
@@ -85,6 +85,7 @@ void main() {
 
       expect(adultPrompt, isNot(contains('CHILD')));
       expect(adultPrompt, isNot(contains('TEENAGER')));
+      expect(adultPrompt, contains('immediate crisis resources'));
       expect(adultPrompt, noAudiencePrompt);
     });
 
