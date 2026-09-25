@@ -10,6 +10,7 @@ import '../cognitive/neura_bandwidth_engine.dart';
 import '../cognitive/neura_cognitive_state.dart';
 import '../core/memory/memory_graph_service.dart';
 import '../intelligence/capability_registry.dart';
+import '../intelligence/intelligence_preferences.dart';
 import '../intelligence/models.dart';
 import '../intelligence/neura_intelligence_controller.dart';
 import '../intelligence/opportunity_radar.dart';
@@ -70,14 +71,14 @@ class _BannerCandidate {
   final RelationshipProfile? relationshipProfile;
 
   ProactiveBanner toBanner(NeuraDecisionReceipt receipt) => ProactiveBanner(
-        kind: kind,
-        title: candidate.title,
-        body: candidate.body,
-        candidate: candidate,
-        receipt: receipt,
-        joyMoment: joyMoment,
-        relationshipProfile: relationshipProfile,
-      );
+    kind: kind,
+    title: candidate.title,
+    body: candidate.body,
+    candidate: candidate,
+    receipt: receipt,
+    joyMoment: joyMoment,
+    relationshipProfile: relationshipProfile,
+  );
 }
 
 /// Builds local opportunities and sends every one through Neura's privacy,
@@ -88,7 +89,6 @@ class ProactiveBannerService {
   static final ProactiveBannerService instance = ProactiveBannerService._();
 
   static const _stateKey = 'neura.proactive_banner.state.v2';
-  static const _cooldown = Duration(hours: 12);
   static const _extendedCooldown = Duration(days: 7);
   static const _dismissalsBeforeExtendedCooldown = 3;
   static const _stormSuppressWindow = Duration(hours: 24);
@@ -115,10 +115,7 @@ class ProactiveBannerService {
     }
   }
 
-  Future<void> _saveState(
-    Map<String, dynamic> state,
-    int generation,
-  ) async {
+  Future<void> _saveState(Map<String, dynamic> state, int generation) async {
     await NeuraPrefsCache.prefs.setString(_stateKey, jsonEncode(state));
     if (!_isCurrent(generation)) {
       await NeuraPrefsCache.prefs.remove(_stateKey);
@@ -130,7 +127,9 @@ class ProactiveBannerService {
     await NeuraIntelligenceController.instance.initialize();
     final preferences = NeuraIntelligenceController.instance.preferences;
     final now = DateTime.now();
-    if (!preferences.enabled || preferences.isQuietAt(now)) return null;
+    if (!preferences.allowsProactiveSuggestions || preferences.isQuietAt(now)) {
+      return null;
+    }
 
     final state = await _loadState();
     final lastShownMs = _coerceInt(state['lastShownEpochMs']);
@@ -138,10 +137,10 @@ class ProactiveBannerService {
         _coerceInt(state['consecutiveDismissals']) ?? 0;
     if (lastShownMs != null) {
       final lastShown = DateTime.fromMillisecondsSinceEpoch(lastShownMs);
-      final cooldown =
-          consecutiveDismissals >= _dismissalsBeforeExtendedCooldown
-              ? _extendedCooldown
-              : _cooldown;
+      final cooldown = cooldownFor(
+        preferences.proactivityLevel,
+        consecutiveDismissals: consecutiveDismissals,
+      );
       if (now.isBefore(lastShown.add(cooldown))) return null;
     }
 
@@ -152,10 +151,7 @@ class ProactiveBannerService {
         allowSensitiveSignals: preferences.allowSensitiveSignals,
       );
     } catch (_) {
-      snapshot = NeuraIntelligenceSnapshot(
-        generatedAt: now,
-        signals: const [],
-      );
+      snapshot = NeuraIntelligenceSnapshot(generatedAt: now, signals: const []);
     }
 
     // Read local mood history once for every candidate that needs it. This
@@ -176,12 +172,12 @@ class ProactiveBannerService {
     final inStorm = await _inStormContext(now);
     final eligible = inStorm
         ? candidates
-            .where(
-              (item) =>
-                  item.kind == ProactiveBannerKind.wellness ||
-                  item.kind == ProactiveBannerKind.care,
-            )
-            .toList(growable: false)
+              .where(
+                (item) =>
+                    item.kind == ProactiveBannerKind.wellness ||
+                    item.kind == ProactiveBannerKind.care,
+              )
+              .toList(growable: false)
         : candidates;
     if (eligible.isEmpty) return null;
 
@@ -191,25 +187,25 @@ class ProactiveBannerService {
       recentMoods: recentMoods,
     );
     final cognitive = await _cognitiveSuppressionSignals(now);
-    final council =
-        await NeuraIntelligenceController.instance.evaluateCandidates(
-      candidates: eligible.map((item) => item.candidate),
-      now: now,
-      distressScore: distress,
-      bandwidthStrain: cognitive.bandwidthStrain,
-      outcomeLoopSuppression: cognitive.outcomeLoopSuppression,
-    );
+    final council = await NeuraIntelligenceController.instance
+        .evaluateCandidates(
+          candidates: eligible.map((item) => item.candidate),
+          now: now,
+          distressScore: distress,
+          bandwidthStrain: cognitive.bandwidthStrain,
+          outcomeLoopSuppression: cognitive.outcomeLoopSuppression,
+        );
     if (council.visible.isEmpty) return null;
 
-    final byId = {
-      for (final item in eligible) item.candidate.id: item,
-    };
+    final byId = {for (final item in eligible) item.candidate.id: item};
     final lastKind = state['lastKind']?.toString();
     var visible = council.visible;
-    final alternate = visible.where((decision) {
-      final item = byId[decision.candidate.id];
-      return item != null && item.kind.name != lastKind;
-    }).toList(growable: false);
+    final alternate = visible
+        .where((decision) {
+          final item = byId[decision.candidate.id];
+          return item != null && item.kind.name != lastKind;
+        })
+        .toList(growable: false);
     if (alternate.isNotEmpty) visible = alternate;
 
     final selected = visible.first;
@@ -220,6 +216,17 @@ class ProactiveBannerService {
       return null;
     }
     return source.toBanner(selected.receipt);
+  }
+
+  @visibleForTesting
+  static Duration cooldownFor(
+    NeuraProactivityLevel level, {
+    required int consecutiveDismissals,
+  }) {
+    if (consecutiveDismissals >= _dismissalsBeforeExtendedCooldown) {
+      return _extendedCooldown;
+    }
+    return level.appOpenCooldown;
   }
 
   /// Commits quota and cooldown only after the dashboard confirms the card
@@ -249,7 +256,7 @@ class ProactiveBannerService {
   /// store read error) falls back to "no extra suppression" rather than
   /// blocking the dashboard.
   Future<({double bandwidthStrain, bool outcomeLoopSuppression})>
-      _cognitiveSuppressionSignals(DateTime now) async {
+  _cognitiveSuppressionSignals(DateTime now) async {
     try {
       final liveSignals = await _liveSignals.collect(
         baseline: NeuraCognitiveSignals.defaults(),
@@ -288,12 +295,12 @@ class ProactiveBannerService {
     // A local, reversible Care banner may respond to one sustained,
     // user-recorded low-mood trend. Other DistressDetector consumers keep
     // the more conservative multi-signal threshold of 3.
-    final signal =
-        (detector ?? const DistressDetector(activationThreshold: 2)).detect(
-      recentMoods: recentMoods,
-      appOpensLastHour: 0,
-      lotsOfNegativeWords: false,
-    );
+    final signal = (detector ?? const DistressDetector(activationThreshold: 2))
+        .detect(
+          recentMoods: recentMoods,
+          appOpensLastHour: 0,
+          lotsOfNegativeWords: false,
+        );
     return signal.active
         ? rawMoodDistress.clamp(0.75, 1.0).toDouble()
         : rawMoodDistress;
@@ -322,8 +329,9 @@ class ProactiveBannerService {
 
   Future<List<int>> _recentMoodsNeg2to2() async {
     final entries = await MoodStore.instance.getAll();
-    final recent =
-        entries.length > 10 ? entries.sublist(entries.length - 10) : entries;
+    final recent = entries.length > 10
+        ? entries.sublist(entries.length - 10)
+        : entries;
     return recent
         .map(
           (entry) => ((entry.mood0to10 - 5) / 2.5).round().clamp(-2, 2).toInt(),
@@ -361,10 +369,7 @@ class ProactiveBannerService {
         urgency: 0.35,
         disruption: 0.12,
         confidence: moodSignal?.confidence ?? 0.7,
-        payload: const {
-          'opportunity_kind': 'joy',
-          'module': 'joy_engine',
-        },
+        payload: const {'opportunity_kind': 'joy', 'module': 'joy_engine'},
       );
       return _BannerCandidate(
         candidate: candidate,
@@ -452,8 +457,9 @@ class ProactiveBannerService {
       const insight = RelationshipInsightService();
       final suggestion = insight.computeOneGoodMove(
         recentMoods: recentMoods,
-        promisesOutstanding:
-            profiles.any((profile) => profile.openPromiseCount > 0),
+        promisesOutstanding: profiles.any(
+          (profile) => profile.openPromiseCount > 0,
+        ),
         daysSinceLastContact: maxDays,
       );
       if (suggestion == null) return null;
@@ -503,8 +509,9 @@ class ProactiveBannerService {
     await _enqueueWrite((generation) async {
       final state = await _loadState();
       if (!_isCurrent(generation)) return;
-      final consecutive =
-          acted ? 0 : (_coerceInt(state['consecutiveDismissals']) ?? 0) + 1;
+      final consecutive = acted
+          ? 0
+          : (_coerceInt(state['consecutiveDismissals']) ?? 0) + 1;
       await _saveState({
         ...state,
         'consecutiveDismissals': consecutive,
@@ -546,9 +553,7 @@ class ProactiveBannerService {
     _writesSuspended = false;
   }
 
-  Future<void> _enqueueWrite(
-    Future<void> Function(int generation) operation,
-  ) {
+  Future<void> _enqueueWrite(Future<void> Function(int generation) operation) {
     if (_writesSuspended) return Future<void>.value();
     final generation = _dataGeneration;
     final next = _writeQueue.then(
