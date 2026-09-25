@@ -13,6 +13,7 @@ import '../persona/agents/agent_persona_catalog.dart';
 import '../persona/models/neura_audience.dart';
 import '../persona/services/neura_audience_service.dart';
 import '../persona/services/neura_prompt_builder.dart';
+import '../persona/services/neura_conversation_mode.dart';
 import '../reliability/safe_boot.dart';
 import '../relationships/services/crisis_text_scan.dart';
 import '../relationships/services/distress_detector.dart';
@@ -127,6 +128,7 @@ class NeuraAiService {
     NeuraSelectedContext? selectedContext,
     bool includePermittedMemory = false,
     bool historyIncludesPrivateContext = false,
+    NeuraConversationMode conversationMode = NeuraConversationMode.balanced,
   }) async* {
     _throwIfCloudBlocked();
     if (!isConfigured) {
@@ -159,6 +161,7 @@ class NeuraAiService {
         audience: audience,
         module: roomId,
         includePersistentMemory: useMemory,
+        conversationMode: conversationMode,
       );
       cancel.throwIfCancelled();
       final messages = history.map((t) => t.toJson()).toList();

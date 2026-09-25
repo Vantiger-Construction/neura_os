@@ -7,6 +7,7 @@ import '../models/neura_character_charter.dart';
 import '../services/neura_persona_service.dart';
 import '../services/neura_behavior_adapter.dart';
 import '../models/neura_response_style.dart';
+import 'neura_conversation_mode.dart';
 
 /// High-level helper to prepare Neura style + prompt data before calling your LLM.
 class NeuraPromptBuilder {
@@ -55,6 +56,7 @@ class NeuraPromptBuilder {
     NeuraAudience? audience,
     String? module,
     bool includePersistentMemory = true,
+    NeuraConversationMode conversationMode = NeuraConversationMode.balanced,
   }) async {
     final style = await resolveStyle(agentId: agentId, audience: audience);
     final profileSnippet =
@@ -65,6 +67,7 @@ class NeuraPromptBuilder {
     final parts = [
       NeuraCharacterCharter.systemPrompt,
       style.systemPromptSnippet,
+      'Conversation style: ${conversationMode.prompt} This changes presentation only; existing safety, consent, memory, and action restrictions still apply.',
       _moduleContextFor(module),
       _audienceSafetyProfileFor(audience),
       profileSnippet,
