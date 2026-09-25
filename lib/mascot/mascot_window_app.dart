@@ -308,17 +308,23 @@ class _MascotHomeState extends State<_MascotHome>
             ),
         ],
       ),
-      child: Image.asset(
-        'assets/images/neura_fullbody.png',
-        fit: BoxFit.contain,
-        cacheWidth:
-            (_kWindowWidth * MediaQuery.devicePixelRatioOf(context)).round(),
-        cacheHeight:
-            (_kWindowHeight * MediaQuery.devicePixelRatioOf(context)).round(),
-        errorBuilder: (_, __, ___) => const Center(
-          child: Text(
-            'NEURA',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+      // The sprite never changes between frames; only the glow above it does.
+      // Give it its own layer so it's composited, not re-rasterized, as the
+      // glow alpha animates.
+      child: RepaintBoundary(
+        child: Image.asset(
+          'assets/images/neura_fullbody.png',
+          fit: BoxFit.contain,
+          cacheWidth:
+              (_kWindowWidth * MediaQuery.devicePixelRatioOf(context)).round(),
+          cacheHeight:
+              (_kWindowHeight * MediaQuery.devicePixelRatioOf(context)).round(),
+          errorBuilder: (_, __, ___) => const Center(
+            child: Text(
+              'NEURA',
+              style:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+            ),
           ),
         ),
       ),

@@ -53,14 +53,18 @@ class _NeuraRoomBackdropState extends State<NeuraRoomBackdrop>
           colors: colors,
         ),
       ),
-      child: AnimatedBuilder(
-        animation: _t,
-        builder: (context, _) {
-          return CustomPaint(
-            painter: _SparkFieldPainter(progress: _t.value, sparks: _sparks),
-            child: const SizedBox.expand(),
-          );
-        },
+      // Isolate the per-frame spark repaint from the gradient underneath so
+      // the gradient layer isn't re-recorded 60 times a second.
+      child: RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _t,
+          builder: (context, _) {
+            return CustomPaint(
+              painter: _SparkFieldPainter(progress: _t.value, sparks: _sparks),
+              child: const SizedBox.expand(),
+            );
+          },
+        ),
       ),
     );
   }
