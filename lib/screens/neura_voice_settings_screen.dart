@@ -21,7 +21,7 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
   double _rate = 0.5;
   double _pitch = 1.05;
   double _volume = 1.0;
-  bool _speakReplies = false;
+  NeuraReplySpeechMode _replySpeechMode = NeuraReplySpeechMode.off;
 
   @override
   void initState() {
@@ -45,7 +45,7 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
       _rate = service.speechRate;
       _pitch = service.pitch;
       _volume = service.volume;
-      _speakReplies = service.speakRepliesEnabled;
+      _replySpeechMode = service.replySpeechMode;
       _loading = false;
     });
   }
@@ -55,6 +55,12 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
     final voice = _voices.firstWhere((option) => option.name == name);
     setState(() => _selected = name);
     await NeuraTtsService.instance.setVoice(voice);
+  }
+
+  void _setReplySpeechMode(NeuraReplySpeechMode? mode) {
+    if (mode == null) return;
+    setState(() => _replySpeechMode = mode);
+    unawaited(NeuraTtsService.instance.setReplySpeechMode(mode));
   }
 
   Widget _slider({
@@ -98,16 +104,33 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                SwitchListTile(
-                  value: _speakReplies,
-                  onChanged: (value) {
-                    setState(() => _speakReplies = value);
-                    unawaited(service.setSpeakRepliesEnabled(value));
-                  },
-                  title: const Text("Speak Neura's replies aloud"),
-                  subtitle: const Text(
-                    'Off by default. When on, chat replies are spoken as they '
-                    'arrive; talking or typing stops playback immediately.',
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          'Automatic reply speech',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                      RadioGroup<NeuraReplySpeechMode>(
+                        groupValue: _replySpeechMode,
+                        onChanged: _setReplySpeechMode,
+                        child: Column(
+                          children: [
+                            for (final mode in NeuraReplySpeechMode.values)
+                              RadioListTile<NeuraReplySpeechMode>(
+                                value: mode,
+                                title: Text(mode.label),
+                                subtitle: Text(mode.description),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const Divider(height: 1),

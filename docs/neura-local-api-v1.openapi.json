@@ -1,0 +1,582 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Neura Local App API",
+    "version": "1.1.0",
+    "description": "Loopback-only, session-only proposal API. HTTP callers can propose actions but cannot approve or execute them."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:{port}/v1",
+      "variables": {
+        "port": {
+          "default": "49152"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "sessionBearer": []
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "Authenticated content-free readiness",
+            "headers": {
+              "X-Neura-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "X-Neura-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "426": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RetryableError"
+          },
+          "503": {
+            "$ref": "#/components/responses/RetryableError"
+          }
+        }
+      }
+    },
+    "/capabilities": {
+      "get": {
+        "operationId": "getCapabilities",
+        "responses": {
+          "200": {
+            "description": "Versioned action contracts and limits",
+            "headers": {
+              "X-Neura-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "X-Neura-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capabilities"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "426": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RetryableError"
+          },
+          "503": {
+            "$ref": "#/components/responses/RetryableError"
+          }
+        }
+      }
+    },
+    "/proposals": {
+      "post": {
+        "operationId": "createProposal",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Queued for visible native review; not executed",
+            "headers": {
+              "X-Neura-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "X-Neura-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Receipt"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Idempotent retry returned the original receipt",
+            "headers": {
+              "X-Neura-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "X-Neura-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Receipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "408": {
+            "$ref": "#/components/responses/RetryableError"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "410": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error"
+          },
+          "426": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RetryableError"
+          },
+          "503": {
+            "$ref": "#/components/responses/RetryableError"
+          }
+        }
+      }
+    },
+    "/proposals/{id}": {
+      "get": {
+        "operationId": "getProposalReceipt",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Content-free proposal status",
+            "headers": {
+              "X-Neura-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "X-Neura-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Receipt"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "426": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/RetryableError"
+          },
+          "503": {
+            "$ref": "#/components/responses/RetryableError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Short-lived token shown only in Neura's visible Local app API screen"
+      }
+    },
+    "headers": {
+      "ApiVersion": {
+        "description": "Negotiated major API version",
+        "schema": {
+          "type": "string",
+          "const": "1"
+        }
+      },
+      "TraceId": {
+        "description": "Content-free request correlation identifier",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "RetryAfter": {
+        "description": "Seconds before a bounded retry",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Stable v1 error code plus typed details",
+        "headers": {
+          "X-Neura-Api-Version": {
+            "$ref": "#/components/headers/ApiVersion"
+          },
+          "X-Neura-Trace-Id": {
+            "$ref": "#/components/headers/TraceId"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "RetryableError": {
+        "description": "Temporary failure",
+        "headers": {
+          "X-Neura-Api-Version": {
+            "$ref": "#/components/headers/ApiVersion"
+          },
+          "X-Neura-Trace-Id": {
+            "$ref": "#/components/headers/TraceId"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/RetryAfter"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Health": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "api_version",
+          "api_minor_version",
+          "contract_version",
+          "status",
+          "approval_required"
+        ],
+        "properties": {
+          "api_version": {
+            "type": "integer",
+            "const": 1
+          },
+          "api_minor_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "contract_version": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "const": "ready"
+          },
+          "approval_required": {
+            "type": "boolean",
+            "const": true
+          }
+        }
+      },
+      "ActionContract": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "argument_name",
+          "value_required",
+          "allowed_values"
+        ],
+        "properties": {
+          "argument_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value_required": {
+            "type": "boolean"
+          },
+          "allowed_values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          }
+        }
+      },
+      "Capabilities": {
+        "type": "object",
+        "required": [
+          "api_version",
+          "api_minor_version",
+          "actions",
+          "action_contracts",
+          "limits",
+          "approval",
+          "cloud_ai",
+          "memory_access"
+        ],
+        "properties": {
+          "api_version": {
+            "type": "integer",
+            "const": 1
+          },
+          "api_minor_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "action_contracts": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ActionContract"
+            }
+          },
+          "limits": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "approval": {
+            "type": "string",
+            "const": "each_action_in_neura"
+          },
+          "cloud_ai": {
+            "type": "boolean",
+            "const": false
+          },
+          "memory_access": {
+            "type": "boolean",
+            "const": false
+          }
+        }
+      },
+      "ProposalRequest": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/OpenRoomProposal"
+          },
+          {
+            "$ref": "#/components/schemas/SetToneProposal"
+          },
+          {
+            "$ref": "#/components/schemas/SyncJournalProposal"
+          }
+        ]
+      },
+      "OpenRoomProposal": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "action",
+          "arguments"
+        ],
+        "properties": {
+          "request_id": {
+            "$ref": "#/components/schemas/RequestId"
+          },
+          "action": {
+            "const": "open_room"
+          },
+          "arguments": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "room"
+            ],
+            "properties": {
+              "room": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "SetToneProposal": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "action",
+          "arguments"
+        ],
+        "properties": {
+          "request_id": {
+            "$ref": "#/components/schemas/RequestId"
+          },
+          "action": {
+            "const": "set_tone"
+          },
+          "arguments": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tone"
+            ],
+            "properties": {
+              "tone": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "SyncJournalProposal": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "action",
+          "arguments"
+        ],
+        "properties": {
+          "request_id": {
+            "$ref": "#/components/schemas/RequestId"
+          },
+          "action": {
+            "const": "sync_journal"
+          },
+          "arguments": {
+            "type": "object",
+            "maxProperties": 0
+          }
+        }
+      },
+      "RequestId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+      },
+      "Receipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "reviewing",
+              "finished",
+              "denied",
+              "failed",
+              "retry_needed",
+              "expired"
+            ]
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error",
+          "error_info"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Backward-compatible v1 error code"
+          },
+          "error_info": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "retryable",
+              "trace_id"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "retryable": {
+                "type": "boolean"
+              },
+              "trace_id": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "x-neura-boundaries": {
+    "loopback_only": true,
+    "browser_origins_rejected": true,
+    "approval_endpoint": false,
+    "direct_execution_endpoint": false,
+    "cloud_ai": false,
+    "memory_access": false,
+    "microphone_access": false
+  }
+}

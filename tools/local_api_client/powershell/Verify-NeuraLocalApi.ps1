@@ -140,16 +140,20 @@ try {
         -not $health.NetworkError -and
         $health.StatusCode -eq 200 -and
         $health.Body.api_version -eq 1 -and
+        $health.Body.api_minor_version -ge 1 -and
         $health.Body.status -eq 'ready' -and
-        $health.Body.approval_required -eq $true
+        $health.Body.approval_required -eq $true -and
+        $health.ApiVersion -eq '1' -and
+        -not ([string]::IsNullOrWhiteSpace($health.TraceId))
     )
     Add-LiveCheck -Name 'authenticated_health' -Passed $healthPassed `
-        -Expected 'HTTP 200, API v1, ready, approval_required=true' `
+        -Expected 'HTTP 200, API v1.1+, trace ID, ready, approval_required=true' `
         -Observed $(if ($health.NetworkError) { 'network_error' } else { $health.StatusCode })
 
     $capabilities = Invoke-NeuraApiRequest -BaseUri $baseUri -Method GET `
         -Path capabilities -Token $sessionToken
     $actions = @($capabilities.Body.actions)
+    $contracts = $capabilities.Body.action_contracts
     $capabilitiesPassed = (
         -not $capabilities.NetworkError -and
         $capabilities.StatusCode -eq 200 -and
@@ -159,7 +163,12 @@ try {
         $actions.Count -eq 3 -and
         $actions -contains 'open_room' -and
         $actions -contains 'set_tone' -and
-        $actions -contains 'sync_journal'
+        $actions -contains 'sync_journal' -and
+        $null -ne $contracts.open_room -and
+        $null -ne $contracts.set_tone -and
+        $null -ne $contracts.sync_journal -and
+        @($contracts.open_room.allowed_values) -contains 'reflection_bay' -and
+        $capabilities.Body.limits.body_bytes -eq 4096
     )
     Add-LiveCheck -Name 'capabilities_are_bounded' -Passed $capabilitiesPassed `
         -Expected 'Only three proposal actions; native approval; no cloud AI or memory' `
@@ -179,7 +188,8 @@ try {
 
     $requestId = "live-$([Guid]::NewGuid().ToString('N'))"
     $proposalJson = New-NeuraProposalJson -RequestId $requestId `
-        -Action open_room -Value reflection_bay
+        -Action open_room -Value reflection_bay `
+        -Capabilities $capabilities.Body
     $proposal = Invoke-NeuraApiRequest -BaseUri $baseUri -Method POST `
         -Path proposals -Token $sessionToken -JsonBody $proposalJson
     $proposalId = if ($null -ne $proposal.Body) { [string]$proposal.Body.id } else { '' }
@@ -208,7 +218,8 @@ try {
         -Observed $(if ($duplicate.NetworkError) { 'network_error' } else { $duplicate.StatusCode })
 
     $conflictJson = New-NeuraProposalJson -RequestId $requestId `
-        -Action open_room -Value joy_lounge
+        -Action open_room -Value joy_lounge `
+        -Capabilities $capabilities.Body
     $conflict = Invoke-NeuraApiRequest -BaseUri $baseUri -Method POST `
         -Path proposals -Token $sessionToken -JsonBody $conflictJson
     Add-LiveCheck -Name 'request_id_reuse_rejected' `
@@ -236,7 +247,8 @@ try {
 
     $denyRequestId = "deny-$([Guid]::NewGuid().ToString('N'))"
     $denyJson = New-NeuraProposalJson -RequestId $denyRequestId `
-        -Action open_room -Value joy_lounge
+        -Action open_room -Value joy_lounge `
+        -Capabilities $capabilities.Body
     $denyProposal = Invoke-NeuraApiRequest -BaseUri $baseUri -Method POST `
         -Path proposals -Token $sessionToken -JsonBody $denyJson
     $denyId = if ($null -ne $denyProposal.Body) { [string]$denyProposal.Body.id } else { '' }
