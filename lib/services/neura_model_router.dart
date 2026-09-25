@@ -47,8 +47,8 @@ class NeuraCloudRequestPreview {
   bool get privateCacheProhibited => transaction.privateCacheProhibited;
 }
 
-typedef NeuraCloudApprovalHandler = Future<bool> Function(
-    NeuraCloudRequestPreview preview);
+typedef NeuraCloudApprovalHandler =
+    Future<bool> Function(NeuraCloudRequestPreview preview);
 
 class NeuraModelRequest {
   final String systemPrompt;
@@ -89,9 +89,7 @@ class NeuraModelRequest {
     );
   }
 
-  NeuraModelRequest bindTransaction(
-    NeuraCloudTransactionEnvelope envelope,
-  ) {
+  NeuraModelRequest bindTransaction(NeuraCloudTransactionEnvelope envelope) {
     return NeuraModelRequest(
       systemPrompt: systemPrompt,
       messages: messages,
@@ -178,7 +176,8 @@ class NeuraModelRequestBudget {
   }
 
   static List<Map<String, dynamic>> freezeTools(
-      List<Map<String, dynamic>> tools) {
+    List<Map<String, dynamic>> tools,
+  ) {
     final frozen = (jsonDecode(jsonEncode(tools)) as List)
         .map((item) => Map<String, dynamic>.from(item as Map))
         .toList(growable: false);
@@ -236,10 +235,12 @@ String _previewText(String systemPrompt, List<Map<String, dynamic>> messages) {
       lines.add(content);
     } else if (content is List) {
       for (final block in content.whereType<Map>()) {
-        lines.add(block['type'] == 'image'
-            ? '[Attached image]'
-            : (block['text'] ?? block['content'] ?? '[Action request]')
-                .toString());
+        lines.add(
+          block['type'] == 'image'
+              ? '[Attached image]'
+              : (block['text'] ?? block['content'] ?? '[Action request]')
+                    .toString(),
+        );
       }
     }
   }
@@ -264,7 +265,7 @@ abstract interface class NeuraModelTransport {
 
 class NeuraOpenAiTransport implements NeuraModelTransport {
   NeuraOpenAiTransport({http.Client? client})
-      : _client = client ?? http.Client();
+    : _client = client ?? http.Client();
 
   static const _endpoint = 'https://api.openai.com/v1/responses';
   static const _model = 'gpt-5.6-luna';
@@ -360,7 +361,7 @@ class NeuraOpenAiTransport implements NeuraModelTransport {
 
 class NeuraAnthropicTransport implements NeuraModelTransport {
   NeuraAnthropicTransport({http.Client? client})
-      : _client = client ?? http.Client();
+    : _client = client ?? http.Client();
 
   static const _endpoint = 'https://api.anthropic.com/v1/messages';
   final http.Client _client;
@@ -448,20 +449,21 @@ class NeuraSecureModelRouter {
     NeuraLlmDiagnostics? diagnostics,
     NeuraCloudTransactionFactory? transactionFactory,
     NeuraCloudAuditTrail? auditTrail,
-  })  : _credentials = credentials ?? NeuraModelCredentials.instance,
-        _constitutionOverride = constitution,
-        _now = now ?? DateTime.now,
-        _sleep = sleep ?? _defaultSleep,
-        _random = random ?? Random(),
-        _diagnostics = diagnostics ?? NeuraLlmDiagnostics.instance,
-        _transactionFactory =
-            transactionFactory ?? NeuraCloudTransactionFactory(),
-        _auditTrail = auditTrail ?? NeuraCloudAuditTrail() {
+  }) : _credentials = credentials ?? NeuraModelCredentials.instance,
+       _constitutionOverride = constitution,
+       _now = now ?? DateTime.now,
+       _sleep = sleep ?? _defaultSleep,
+       _random = random ?? Random(),
+       _diagnostics = diagnostics ?? NeuraLlmDiagnostics.instance,
+       _transactionFactory =
+           transactionFactory ?? NeuraCloudTransactionFactory(),
+       _auditTrail = auditTrail ?? NeuraCloudAuditTrail() {
     final availableTransports =
         transports ?? [NeuraOpenAiTransport(), NeuraAnthropicTransport()];
     _streamTransports = {
-      for (final transport in streamTransports ??
-          NeuraModelProvider.values.map(NeuraModelStreamTransport.new))
+      for (final transport
+          in streamTransports ??
+              NeuraModelProvider.values.map(NeuraModelStreamTransport.new))
         transport.provider: transport,
     };
     _transports = {
@@ -485,16 +487,15 @@ class NeuraSecureModelRouter {
   late final Map<NeuraModelProvider, NeuraModelTransport> _transports;
 
   late final Map<NeuraModelProvider, NeuraModelStreamTransport>
-      _streamTransports;
+  _streamTransports;
 
   Map<String, Object?> get providerHealthSnapshot => {
-        for (final entry in _circuits.entries)
-          entry.key.name: entry.value.snapshot(_now()),
-      };
+    for (final entry in _circuits.entries)
+      entry.key.name: entry.value.snapshot(_now()),
+  };
 
-  List<Map<String, Object?>> get cloudAuditSnapshot => _auditTrail.events
-      .map((event) => event.toJson())
-      .toList(growable: false);
+  List<Map<String, Object?>> get cloudAuditSnapshot =>
+      _auditTrail.events.map((event) => event.toJson()).toList(growable: false);
 
   Stream<NeuraStreamEvent> stream(
     NeuraModelRequest request, {
@@ -683,10 +684,7 @@ class NeuraSecureModelRouter {
         );
         _throwIfSafeMode();
         _throwIfConstitutionBlocks(request);
-        _auditTrail.record(
-          transaction,
-          NeuraCloudAuditStage.approvalRequired,
-        );
+        _auditTrail.record(transaction, NeuraCloudAuditStage.approvalRequired);
         final approved = await requestApproval(
           request.previewFor(provider, transaction),
         );
@@ -783,7 +781,9 @@ class NeuraSecureModelRouter {
   }
 
   NeuraModelTransportException _completionFailure(
-      NeuraModelProvider provider, Object error) {
+    NeuraModelProvider provider,
+    Object error,
+  ) {
     if (error is NeuraModelTransportException) return error;
     if (error is TimeoutException) {
       return NeuraModelTransportException(
@@ -812,7 +812,9 @@ class NeuraSecureModelRouter {
   }
 
   static Future<void> _defaultSleep(
-      Duration duration, NeuraGenerationCancel? cancel) async {
+    Duration duration,
+    NeuraGenerationCancel? cancel,
+  ) async {
     if (cancel != null) {
       await cancel.delay(duration);
     } else {
@@ -924,8 +926,8 @@ class _NeuraProviderCircuit {
   }
 
   Map<String, Object?> snapshot(DateTime now) => {
-        'state': isOpen(now) ? 'open' : 'closed',
-        'consecutive_transient_failures': consecutiveTransientFailures,
-        'retry_at': openUntil?.toUtc().toIso8601String(),
-      };
+    'state': isOpen(now) ? 'open' : 'closed',
+    'consecutive_transient_failures': consecutiveTransientFailures,
+    'retry_at': openUntil?.toUtc().toIso8601String(),
+  };
 }

@@ -14,55 +14,54 @@ Future<bool> showNeuraCloudRequestPreview(
     builder: (dialogContext) => AlertDialog(
       title: Text('Send to ${preview.provider.label}?'),
       content: SingleChildScrollView(
-          child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Nothing is sent unless you approve this request.',
-          ),
-          const SizedBox(height: 12),
-          Text('Approval state: ${preview.approvalState.name}'),
-          Text('Destination: ${preview.audience.host}'),
-          Text(
-            preview.retryCount == 0
-                ? 'Attempt: initial request'
-                : 'Attempt: exact retry ${preview.retryCount}',
-          ),
-          Text(
-            'Request fingerprint: '
-            '${preview.promptDigest.substring(0, 12)}…',
-          ),
-          Text(
-            'Shared caching: '
-            '${preview.privateCacheProhibited ? "Prohibited" : "Allowed"}',
-          ),
-          const SizedBox(height: 12),
-          Text('Purpose: ${preview.purpose}'),
-          Text('Messages: ${preview.messageCount}'),
-          if (preview.omittedMessageCount > 0)
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Nothing is sent unless you approve this request.'),
+            const SizedBox(height: 12),
+            Text('Approval state: ${preview.approvalState.name}'),
+            Text('Destination: ${preview.audience.host}'),
             Text(
-              'Older messages omitted for reliability: '
-              '${preview.omittedMessageCount}',
+              preview.retryCount == 0
+                  ? 'Attempt: initial request'
+                  : 'Attempt: exact retry ${preview.retryCount}',
             ),
-          Text('Approximate characters: ${preview.characterCount}'),
-          Text('Includes an image: ${preview.includesImage ? "Yes" : "No"}'),
-          Text(
-            'Includes private context: '
-            '${preview.includesPrivateContext ? "Yes" : "No"}',
-          ),
-          if (preview.textPreview.isNotEmpty)
-            ExpansionTile(
-              title: const Text('Review text and context'),
-              children: [SelectableText(preview.textPreview)],
+            Text(
+              'Request fingerprint: '
+              '${preview.promptDigest.substring(0, 12)}…',
             ),
-          const SizedBox(height: 12),
-          const Text(
-            'Approval applies once. An exact retry or fallback provider '
-            'requires another preview and approval.',
-          ),
-        ],
-      )),
+            Text(
+              'Shared caching: '
+              '${preview.privateCacheProhibited ? "Prohibited" : "Allowed"}',
+            ),
+            const SizedBox(height: 12),
+            Text('Purpose: ${preview.purpose}'),
+            Text('Messages: ${preview.messageCount}'),
+            if (preview.omittedMessageCount > 0)
+              Text(
+                'Older messages omitted for reliability: '
+                '${preview.omittedMessageCount}',
+              ),
+            Text('Approximate characters: ${preview.characterCount}'),
+            Text('Includes an image: ${preview.includesImage ? "Yes" : "No"}'),
+            Text(
+              'Includes private context: '
+              '${preview.includesPrivateContext ? "Yes" : "No"}',
+            ),
+            if (preview.textPreview.isNotEmpty)
+              ExpansionTile(
+                title: const Text('Review text and context'),
+                children: [SelectableText(preview.textPreview)],
+              ),
+            const SizedBox(height: 12),
+            const Text(
+              'Approval applies once. An exact retry or fallback provider '
+              'requires another preview and approval.',
+            ),
+          ],
+        ),
+      ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(false),

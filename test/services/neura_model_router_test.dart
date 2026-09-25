@@ -31,9 +31,7 @@ class _MemoryStorage implements NeuraModelCredentialStorage {
   }
 }
 
-NeuraCloudTransactionEnvelope _transactionFor(
-  NeuraModelProvider provider,
-) =>
+NeuraCloudTransactionEnvelope _transactionFor(NeuraModelProvider provider) =>
     NeuraCloudTransactionEnvelope(
       approvalId: 'approval-test',
       traceId: 'trace-test',
@@ -142,30 +140,45 @@ void main() {
     NeuraConstitutionService.instance.resetAfterDataWipe();
   });
 
-  test('stream fallback needs fresh approval and denial sends nothing',
-      () async {
-    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
-    await credentials.save(NeuraModelProvider.openAi, openAiKey);
-    await credentials.save(NeuraModelProvider.anthropic, anthropicKey);
-    final primary = _StreamTransport(NeuraModelProvider.openAi,
-        () => Stream.error(const NeuraStreamFailure('unavailable')));
-    final fallback = _StreamTransport(
+  test(
+    'stream fallback needs fresh approval and denial sends nothing',
+    () async {
+      final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+      await credentials.save(NeuraModelProvider.openAi, openAiKey);
+      await credentials.save(NeuraModelProvider.anthropic, anthropicKey);
+      final primary = _StreamTransport(
+        NeuraModelProvider.openAi,
+        () => Stream.error(const NeuraStreamFailure('unavailable')),
+      );
+      final fallback = _StreamTransport(
         NeuraModelProvider.anthropic,
         () => Stream.value(
-            const NeuraTextDelta(NeuraModelProvider.anthropic, 'hello')));
-    final approvals = <NeuraModelProvider>[];
-    final router = NeuraSecureModelRouter(
-        credentials: credentials, streamTransports: [primary, fallback]);
-    await expectLater(
-        router.stream(request, tools: [], cancel: NeuraGenerationCancel('test'),
-            requestApproval: (preview) async {
-          approvals.add(preview.provider);
-          return preview.provider == NeuraModelProvider.openAi;
-        }).toList(),
-        throwsA(isA<NeuraCloudApprovalDenied>()));
-    expect(approvals, NeuraModelProvider.values);
-    expect(fallback.calls, 0);
-  });
+          const NeuraTextDelta(NeuraModelProvider.anthropic, 'hello'),
+        ),
+      );
+      final approvals = <NeuraModelProvider>[];
+      final router = NeuraSecureModelRouter(
+        credentials: credentials,
+        streamTransports: [primary, fallback],
+      );
+      await expectLater(
+        router
+            .stream(
+              request,
+              tools: [],
+              cancel: NeuraGenerationCancel('test'),
+              requestApproval: (preview) async {
+                approvals.add(preview.provider);
+                return preview.provider == NeuraModelProvider.openAi;
+              },
+            )
+            .toList(),
+        throwsA(isA<NeuraCloudApprovalDenied>()),
+      );
+      expect(approvals, NeuraModelProvider.values);
+      expect(fallback.calls, 0);
+    },
+  );
 
   test('stream never switches providers after visible output', () async {
     final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
@@ -176,115 +189,134 @@ void main() {
       throw const NeuraStreamFailure('disconnected');
     });
     final fallback = _StreamTransport(
-        NeuraModelProvider.anthropic, () => const Stream.empty());
-    final router = NeuraSecureModelRouter(
-        credentials: credentials, streamTransports: [primary, fallback]);
-    await expectLater(
-        router
-            .stream(request,
-                tools: [],
-                cancel: NeuraGenerationCancel('test'),
-                requestApproval: (_) async => true)
-            .toList(),
-        throwsA(isA<NeuraStreamFailure>()));
-    expect(fallback.calls, 0);
-    expect(primary.calls, 1);
-  });
-
-  test('retryable stream failure gets one fresh-approved bounded retry',
-      () async {
-    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
-    await credentials.save(NeuraModelProvider.openAi, openAiKey);
-    var attempts = 0;
-    final transport = _StreamTransport(NeuraModelProvider.openAi, () {
-      attempts++;
-      if (attempts == 1) {
-        return Stream.error(const NeuraStreamFailure(
-          'busy',
-          statusCode: 429,
-          kind: NeuraModelFailureKind.rateLimited,
-          retryAfter: Duration(seconds: 2),
-        ));
-      }
-      return Stream.value(
-        const NeuraTextDelta(NeuraModelProvider.openAi, 'ready'),
-      );
-    });
-    final approvals = <NeuraCloudRequestPreview>[];
-    final delays = <Duration>[];
+      NeuraModelProvider.anthropic,
+      () => const Stream.empty(),
+    );
     final router = NeuraSecureModelRouter(
       credentials: credentials,
-      streamTransports: [transport],
-      sleep: (delay, _) async => delays.add(delay),
+      streamTransports: [primary, fallback],
     );
-
-    final events = await router.stream(
-      request,
-      tools: [],
-      cancel: NeuraGenerationCancel('retry'),
-      requestApproval: (preview) async {
-        approvals.add(preview);
-        return true;
-      },
-    ).toList();
-
-    expect(transport.calls, 2);
-    expect(
-      approvals.map((preview) => preview.provider),
-      [NeuraModelProvider.openAi, NeuraModelProvider.openAi],
-    );
-    expect(approvals.first.approvalId, isNot(approvals.last.approvalId));
-    expect(
-      approvals.first.transaction.idempotencyKey,
-      approvals.last.transaction.idempotencyKey,
-    );
-    expect(approvals.map((preview) => preview.retryCount), [0, 1]);
-    expect(transport.transactions, hasLength(2));
-    expect(delays, [const Duration(seconds: 2)]);
-    expect((events.single as NeuraTextDelta).text, 'ready');
-  });
-
-  test('cancellation during retry backoff prevents the second request',
-      () async {
-    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
-    await credentials.save(NeuraModelProvider.openAi, openAiKey);
-    final transport = _StreamTransport(
-      NeuraModelProvider.openAi,
-      () => Stream.error(const NeuraStreamFailure(
-        'offline',
-        kind: NeuraModelFailureKind.connection,
-      )),
-    );
-    final cancel = NeuraGenerationCancel('cancel-backoff');
-    final router = NeuraSecureModelRouter(
-      credentials: credentials,
-      streamTransports: [transport],
-      sleep: (_, token) async => token!.cancel(),
-    );
-
     await expectLater(
       router
           .stream(
             request,
             tools: [],
-            cancel: cancel,
+            cancel: NeuraGenerationCancel('test'),
             requestApproval: (_) async => true,
           )
           .toList(),
-      throwsA(isA<NeuraGenerationCancelled>()),
+      throwsA(isA<NeuraStreamFailure>()),
     );
-    expect(transport.calls, 1);
+    expect(fallback.calls, 0);
+    expect(primary.calls, 1);
   });
+
+  test(
+    'retryable stream failure gets one fresh-approved bounded retry',
+    () async {
+      final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+      await credentials.save(NeuraModelProvider.openAi, openAiKey);
+      var attempts = 0;
+      final transport = _StreamTransport(NeuraModelProvider.openAi, () {
+        attempts++;
+        if (attempts == 1) {
+          return Stream.error(
+            const NeuraStreamFailure(
+              'busy',
+              statusCode: 429,
+              kind: NeuraModelFailureKind.rateLimited,
+              retryAfter: Duration(seconds: 2),
+            ),
+          );
+        }
+        return Stream.value(
+          const NeuraTextDelta(NeuraModelProvider.openAi, 'ready'),
+        );
+      });
+      final approvals = <NeuraCloudRequestPreview>[];
+      final delays = <Duration>[];
+      final router = NeuraSecureModelRouter(
+        credentials: credentials,
+        streamTransports: [transport],
+        sleep: (delay, _) async => delays.add(delay),
+      );
+
+      final events = await router
+          .stream(
+            request,
+            tools: [],
+            cancel: NeuraGenerationCancel('retry'),
+            requestApproval: (preview) async {
+              approvals.add(preview);
+              return true;
+            },
+          )
+          .toList();
+
+      expect(transport.calls, 2);
+      expect(approvals.map((preview) => preview.provider), [
+        NeuraModelProvider.openAi,
+        NeuraModelProvider.openAi,
+      ]);
+      expect(approvals.first.approvalId, isNot(approvals.last.approvalId));
+      expect(
+        approvals.first.transaction.idempotencyKey,
+        approvals.last.transaction.idempotencyKey,
+      );
+      expect(approvals.map((preview) => preview.retryCount), [0, 1]);
+      expect(transport.transactions, hasLength(2));
+      expect(delays, [const Duration(seconds: 2)]);
+      expect((events.single as NeuraTextDelta).text, 'ready');
+    },
+  );
+
+  test(
+    'cancellation during retry backoff prevents the second request',
+    () async {
+      final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+      await credentials.save(NeuraModelProvider.openAi, openAiKey);
+      final transport = _StreamTransport(
+        NeuraModelProvider.openAi,
+        () => Stream.error(
+          const NeuraStreamFailure(
+            'offline',
+            kind: NeuraModelFailureKind.connection,
+          ),
+        ),
+      );
+      final cancel = NeuraGenerationCancel('cancel-backoff');
+      final router = NeuraSecureModelRouter(
+        credentials: credentials,
+        streamTransports: [transport],
+        sleep: (_, token) async => token!.cancel(),
+      );
+
+      await expectLater(
+        router
+            .stream(
+              request,
+              tools: [],
+              cancel: cancel,
+              requestApproval: (_) async => true,
+            )
+            .toList(),
+        throwsA(isA<NeuraGenerationCancelled>()),
+      );
+      expect(transport.calls, 1);
+    },
+  );
 
   test('Safe Mode during retry backoff prevents the second request', () async {
     final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
     await credentials.save(NeuraModelProvider.openAi, openAiKey);
     final transport = _StreamTransport(
       NeuraModelProvider.openAi,
-      () => Stream.error(const NeuraStreamFailure(
-        'offline',
-        kind: NeuraModelFailureKind.connection,
-      )),
+      () => Stream.error(
+        const NeuraStreamFailure(
+          'offline',
+          kind: NeuraModelFailureKind.connection,
+        ),
+      ),
     );
     final router = NeuraSecureModelRouter(
       credentials: credentials,
@@ -312,10 +344,12 @@ void main() {
     await credentials.save(NeuraModelProvider.anthropic, anthropicKey);
     final primary = _StreamTransport(
       NeuraModelProvider.openAi,
-      () => Stream.error(const NeuraStreamFailure(
-        'offline',
-        kind: NeuraModelFailureKind.connection,
-      )),
+      () => Stream.error(
+        const NeuraStreamFailure(
+          'offline',
+          kind: NeuraModelFailureKind.connection,
+        ),
+      ),
     );
     final fallback = _StreamTransport(
       NeuraModelProvider.anthropic,
@@ -331,16 +365,18 @@ void main() {
     );
 
     await expectLater(
-      router.stream(
-        request,
-        tools: const [],
-        cancel: NeuraGenerationCancel('tool-continuation'),
-        provider: NeuraModelProvider.openAi,
-        requestApproval: (_) async {
-          approvals++;
-          return true;
-        },
-      ).toList(),
+      router
+          .stream(
+            request,
+            tools: const [],
+            cancel: NeuraGenerationCancel('tool-continuation'),
+            provider: NeuraModelProvider.openAi,
+            requestApproval: (_) async {
+              approvals++;
+              return true;
+            },
+          )
+          .toList(),
       throwsA(isA<NeuraStreamFailure>()),
     );
     expect(approvals, 1);
@@ -353,10 +389,12 @@ void main() {
     await credentials.save(NeuraModelProvider.openAi, openAiKey);
     final transport = _StreamTransport(
       NeuraModelProvider.openAi,
-      () => Stream.error(const NeuraStreamFailure(
-        'unavailable',
-        kind: NeuraModelFailureKind.providerUnavailable,
-      )),
+      () => Stream.error(
+        const NeuraStreamFailure(
+          'unavailable',
+          kind: NeuraModelFailureKind.providerUnavailable,
+        ),
+      ),
     );
     final router = NeuraSecureModelRouter(
       credentials: credentials,
@@ -368,35 +406,36 @@ void main() {
 
     for (var index = 0; index < 2; index++) {
       await expectLater(
-        router.stream(
-          request,
-          tools: const [],
-          cancel: NeuraGenerationCancel('circuit-$index'),
-          requestApproval: (_) async {
-            approvals++;
-            return true;
-          },
-        ).toList(),
+        router
+            .stream(
+              request,
+              tools: const [],
+              cancel: NeuraGenerationCancel('circuit-$index'),
+              requestApproval: (_) async {
+                approvals++;
+                return true;
+              },
+            )
+            .toList(),
         throwsA(isA<NeuraStreamFailure>()),
       );
     }
     expect(transport.calls, 4);
     expect(approvals, 4);
-    expect(
-      (router.providerHealthSnapshot['openAi'] as Map)['state'],
-      'open',
-    );
+    expect((router.providerHealthSnapshot['openAi'] as Map)['state'], 'open');
 
     await expectLater(
-      router.stream(
-        request,
-        tools: const [],
-        cancel: NeuraGenerationCancel('open-circuit'),
-        requestApproval: (_) async {
-          approvals++;
-          return true;
-        },
-      ).toList(),
+      router
+          .stream(
+            request,
+            tools: const [],
+            cancel: NeuraGenerationCancel('open-circuit'),
+            requestApproval: (_) async {
+              approvals++;
+              return true;
+            },
+          )
+          .toList(),
       throwsA(isA<NeuraProviderCircuitOpen>()),
     );
     expect(transport.calls, 4);
@@ -406,35 +445,57 @@ void main() {
   test('cancellation while approval is open prevents transport call', () async {
     final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
     await credentials.save(NeuraModelProvider.openAi, openAiKey);
-    final transport =
-        _StreamTransport(NeuraModelProvider.openAi, () => const Stream.empty());
+    final transport = _StreamTransport(
+      NeuraModelProvider.openAi,
+      () => const Stream.empty(),
+    );
     final cancel = NeuraGenerationCancel('test');
     final router = NeuraSecureModelRouter(
-        credentials: credentials, streamTransports: [transport]);
+      credentials: credentials,
+      streamTransports: [transport],
+    );
     await expectLater(
-        router.stream(request, tools: [], cancel: cancel,
+      router
+          .stream(
+            request,
+            tools: [],
+            cancel: cancel,
             requestApproval: (_) async {
-          cancel.cancel();
-          return true;
-        }).toList(),
-        throwsA(isA<NeuraGenerationCancelled>()));
+              cancel.cancel();
+              return true;
+            },
+          )
+          .toList(),
+      throwsA(isA<NeuraGenerationCancelled>()),
+    );
     expect(transport.calls, 0);
   });
 
   test('Safe Mode during stream approval prevents transport call', () async {
     final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
     await credentials.save(NeuraModelProvider.openAi, openAiKey);
-    final transport =
-        _StreamTransport(NeuraModelProvider.openAi, () => const Stream.empty());
+    final transport = _StreamTransport(
+      NeuraModelProvider.openAi,
+      () => const Stream.empty(),
+    );
     final router = NeuraSecureModelRouter(
-        credentials: credentials, streamTransports: [transport]);
+      credentials: credentials,
+      streamTransports: [transport],
+    );
     await expectLater(
-        router.stream(request, tools: [], cancel: NeuraGenerationCancel('test'),
+      router
+          .stream(
+            request,
+            tools: [],
+            cancel: NeuraGenerationCancel('test'),
             requestApproval: (_) async {
-          SafeBoot.instance.safeMode.value = true;
-          return true;
-        }).toList(),
-        throwsA(isA<NeuraGenerationCancelled>()));
+              SafeBoot.instance.safeMode.value = true;
+              return true;
+            },
+          )
+          .toList(),
+      throwsA(isA<NeuraGenerationCancelled>()),
+    );
     expect(transport.calls, 0);
   });
 
@@ -443,8 +504,10 @@ void main() {
     await credentials.save(NeuraModelProvider.openAi, openAiKey);
     await credentials.save(NeuraModelProvider.anthropic, anthropicKey);
     final openAi = _Transport(NeuraModelProvider.openAi, result: 'primary');
-    final anthropic =
-        _Transport(NeuraModelProvider.anthropic, result: 'fallback');
+    final anthropic = _Transport(
+      NeuraModelProvider.anthropic,
+      result: 'fallback',
+    );
     final router = NeuraSecureModelRouter(
       credentials: credentials,
       transports: [openAi, anthropic],
@@ -469,8 +532,10 @@ void main() {
       NeuraModelProvider.openAi,
       error: StateError('primary unavailable'),
     );
-    final anthropic =
-        _Transport(NeuraModelProvider.anthropic, result: 'fallback');
+    final anthropic = _Transport(
+      NeuraModelProvider.anthropic,
+      result: 'fallback',
+    );
     final approvals = <NeuraModelProvider>[];
     final router = NeuraSecureModelRouter(
       credentials: credentials,
@@ -488,10 +553,10 @@ void main() {
       throwsA(isA<NeuraCloudApprovalDenied>()),
     );
 
-    expect(
-      approvals,
-      [NeuraModelProvider.openAi, NeuraModelProvider.anthropic],
-    );
+    expect(approvals, [
+      NeuraModelProvider.openAi,
+      NeuraModelProvider.anthropic,
+    ]);
     expect(openAi.calls, 1);
     expect(anthropic.calls, 0);
   });
@@ -528,76 +593,84 @@ void main() {
     expect(approvals, 2);
   });
 
-  test('request budget keeps a contiguous recent suffix and reports omission',
-      () {
-    final bounded = NeuraModelRequestBudget.freezeAndApply(
-      NeuraModelRequest(
+  test(
+    'request budget keeps a contiguous recent suffix and reports omission',
+    () {
+      final bounded = NeuraModelRequestBudget.freezeAndApply(
+        NeuraModelRequest(
+          systemPrompt: 'safe',
+          messages: [
+            for (var index = 0; index < 60; index++)
+              {'role': 'user', 'content': 'turn-$index'},
+          ],
+          purpose: 'chat reply',
+          includesPrivateContext: false,
+        ),
+      );
+
+      expect(bounded.messages, hasLength(NeuraModelRequestBudget.maxMessages));
+      expect(bounded.messages.first['content'], 'turn-12');
+      expect(bounded.messages.last['content'], 'turn-59');
+      expect(bounded.omittedMessageCount, 12);
+      expect(
+        bounded
+            .previewFor(
+              NeuraModelProvider.openAi,
+              _transactionFor(NeuraModelProvider.openAi),
+            )
+            .omittedMessageCount,
+        12,
+      );
+    },
+  );
+
+  test(
+    'request budget fails before approval when latest content is oversized',
+    () async {
+      final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+      await credentials.save(NeuraModelProvider.openAi, openAiKey);
+      final transport = _StreamTransport(
+        NeuraModelProvider.openAi,
+        () => const Stream.empty(),
+      );
+      final router = NeuraSecureModelRouter(
+        credentials: credentials,
+        streamTransports: [transport],
+      );
+      var approvals = 0;
+      final oversized = NeuraModelRequest(
         systemPrompt: 'safe',
         messages: [
-          for (var index = 0; index < 60; index++)
-            {'role': 'user', 'content': 'turn-$index'},
+          {
+            'role': 'user',
+            'content': List.filled(
+              NeuraModelRequestBudget.maxTextCharacters + 1,
+              'x',
+            ).join(),
+          },
         ],
         purpose: 'chat reply',
         includesPrivateContext: false,
-      ),
-    );
+      );
 
-    expect(bounded.messages, hasLength(NeuraModelRequestBudget.maxMessages));
-    expect(bounded.messages.first['content'], 'turn-12');
-    expect(bounded.messages.last['content'], 'turn-59');
-    expect(bounded.omittedMessageCount, 12);
-    expect(
-      bounded
-          .previewFor(
-            NeuraModelProvider.openAi,
-            _transactionFor(NeuraModelProvider.openAi),
-          )
-          .omittedMessageCount,
-      12,
-    );
-  });
-
-  test('request budget fails before approval when latest content is oversized',
-      () async {
-    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
-    await credentials.save(NeuraModelProvider.openAi, openAiKey);
-    final transport =
-        _StreamTransport(NeuraModelProvider.openAi, () => const Stream.empty());
-    final router = NeuraSecureModelRouter(
-      credentials: credentials,
-      streamTransports: [transport],
-    );
-    var approvals = 0;
-    final oversized = NeuraModelRequest(
-      systemPrompt: 'safe',
-      messages: [
-        {
-          'role': 'user',
-          'content': List.filled(
-            NeuraModelRequestBudget.maxTextCharacters + 1,
-            'x',
-          ).join(),
-        },
-      ],
-      purpose: 'chat reply',
-      includesPrivateContext: false,
-    );
-
-    await expectLater(
-      router.stream(
-        oversized,
-        tools: [],
-        cancel: NeuraGenerationCancel('oversized'),
-        requestApproval: (_) async {
-          approvals++;
-          return true;
-        },
-      ).toList(),
-      throwsA(isA<NeuraRequestBudgetExceeded>()),
-    );
-    expect(approvals, 0);
-    expect(transport.calls, 0);
-  });
+      await expectLater(
+        router
+            .stream(
+              oversized,
+              tools: [],
+              cancel: NeuraGenerationCancel('oversized'),
+              requestApproval: (_) async {
+                approvals++;
+                return true;
+              },
+            )
+            .toList(),
+        throwsA(isA<NeuraRequestBudgetExceeded>()),
+      );
+      expect(approvals, 0);
+      expect(transport.calls, 0);
+    },
+  );
 
   test('denial prevents all network transport calls', () async {
     final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
@@ -694,77 +767,82 @@ void main() {
     expect(response.text, 'ok');
   });
 
-  test('production router observes a constitution tightened after creation',
-      () async {
-    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
-    await credentials.save(NeuraModelProvider.openAi, openAiKey);
-    final openAi = _Transport(NeuraModelProvider.openAi, result: 'unused');
-    final router = NeuraSecureModelRouter(
-      credentials: credentials,
-      transports: [openAi],
-    );
-    await NeuraConstitutionService.instance.save(
-      const NeuraPersonalConstitution(allowCloudAi: false),
-    );
-    var approvalCalls = 0;
+  test(
+    'production router observes a constitution tightened after creation',
+    () async {
+      final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+      await credentials.save(NeuraModelProvider.openAi, openAiKey);
+      final openAi = _Transport(NeuraModelProvider.openAi, result: 'unused');
+      final router = NeuraSecureModelRouter(
+        credentials: credentials,
+        transports: [openAi],
+      );
+      await NeuraConstitutionService.instance.save(
+        const NeuraPersonalConstitution(allowCloudAi: false),
+      );
+      var approvalCalls = 0;
 
-    await expectLater(
-      router.complete(
-        request,
-        requestApproval: (_) async {
-          approvalCalls++;
-          return true;
-        },
-      ),
-      throwsA(isA<NeuraConstitutionBlocked>()),
-    );
+      await expectLater(
+        router.complete(
+          request,
+          requestApproval: (_) async {
+            approvalCalls++;
+            return true;
+          },
+        ),
+        throwsA(isA<NeuraConstitutionBlocked>()),
+      );
 
-    expect(approvalCalls, 0);
-    expect(openAi.calls, 0);
-  });
-
-  test('constitution tightening after primary failure prevents fallback',
-      () async {
-    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
-    await credentials.save(NeuraModelProvider.openAi, openAiKey);
-    await credentials.save(NeuraModelProvider.anthropic, anthropicKey);
-    final openAi = _Transport(
-      NeuraModelProvider.openAi,
-      error: StateError('primary unavailable'),
-      onComplete: () {
-        unawaited(
-          NeuraConstitutionService.instance.save(
-            const NeuraPersonalConstitution(allowCloudAi: false),
-          ),
-        );
-      },
-    );
-    final anthropic =
-        _Transport(NeuraModelProvider.anthropic, result: 'unused');
-    final approvals = <NeuraModelProvider>[];
-    final router = NeuraSecureModelRouter(
-      credentials: credentials,
-      transports: [openAi, anthropic],
-    );
-
-    await expectLater(
-      router.complete(
-        request,
-        requestApproval: (preview) async {
-          approvals.add(preview.provider);
-          return true;
-        },
-      ),
-      throwsA(isA<NeuraConstitutionBlocked>()),
-    );
-
-    expect(approvals, [NeuraModelProvider.openAi]);
-    expect(openAi.calls, 1);
-    expect(anthropic.calls, 0);
-  });
+      expect(approvalCalls, 0);
+      expect(openAi.calls, 0);
+    },
+  );
 
   test(
-      'an explicitly locked-down constitution blocks the request before '
+    'constitution tightening after primary failure prevents fallback',
+    () async {
+      final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+      await credentials.save(NeuraModelProvider.openAi, openAiKey);
+      await credentials.save(NeuraModelProvider.anthropic, anthropicKey);
+      final openAi = _Transport(
+        NeuraModelProvider.openAi,
+        error: StateError('primary unavailable'),
+        onComplete: () {
+          unawaited(
+            NeuraConstitutionService.instance.save(
+              const NeuraPersonalConstitution(allowCloudAi: false),
+            ),
+          );
+        },
+      );
+      final anthropic = _Transport(
+        NeuraModelProvider.anthropic,
+        result: 'unused',
+      );
+      final approvals = <NeuraModelProvider>[];
+      final router = NeuraSecureModelRouter(
+        credentials: credentials,
+        transports: [openAi, anthropic],
+      );
+
+      await expectLater(
+        router.complete(
+          request,
+          requestApproval: (preview) async {
+            approvals.add(preview.provider);
+            return true;
+          },
+        ),
+        throwsA(isA<NeuraConstitutionBlocked>()),
+      );
+
+      expect(approvals, [NeuraModelProvider.openAi]);
+      expect(openAi.calls, 1);
+      expect(anthropic.calls, 0);
+    },
+  );
+
+  test('an explicitly locked-down constitution blocks the request before '
       'approval or transport', () async {
     final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
     await credentials.save(NeuraModelProvider.openAi, openAiKey);
@@ -791,68 +869,76 @@ void main() {
     expect(openAi.calls, 0);
   });
 
-  test('sensitive content is blocked from the cloud even with cloud AI on',
-      () async {
-    const sensitiveRequest = NeuraModelRequest(
-      systemPrompt: 'Be kind.',
-      messages: [
-        {'role': 'user', 'content': 'Hello'},
-      ],
-      purpose: 'chat reply',
-      includesPrivateContext: true,
-    );
-    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
-    await credentials.save(NeuraModelProvider.openAi, openAiKey);
-    final openAi = _Transport(NeuraModelProvider.openAi, result: 'unused');
-    final router = NeuraSecureModelRouter(
-      credentials: credentials,
-      transports: [openAi],
-      constitution: const NeuraPersonalConstitution(), // keepSensitive: true
-    );
+  test(
+    'sensitive content is blocked from the cloud even with cloud AI on',
+    () async {
+      const sensitiveRequest = NeuraModelRequest(
+        systemPrompt: 'Be kind.',
+        messages: [
+          {'role': 'user', 'content': 'Hello'},
+        ],
+        purpose: 'chat reply',
+        includesPrivateContext: true,
+      );
+      final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+      await credentials.save(NeuraModelProvider.openAi, openAiKey);
+      final openAi = _Transport(NeuraModelProvider.openAi, result: 'unused');
+      final router = NeuraSecureModelRouter(
+        credentials: credentials,
+        transports: [openAi],
+        constitution: const NeuraPersonalConstitution(), // keepSensitive: true
+      );
 
-    await expectLater(
-      router.complete(
-        sensitiveRequest,
-        requestApproval: (_) async => true,
-      ),
-      throwsA(isA<NeuraConstitutionBlocked>()),
-    );
-    expect(openAi.calls, 0);
-  });
+      await expectLater(
+        router.complete(sensitiveRequest, requestApproval: (_) async => true),
+        throwsA(isA<NeuraConstitutionBlocked>()),
+      );
+      expect(openAi.calls, 0);
+    },
+  );
 
-  test('private streamed history is blocked before approval or transport',
-      () async {
-    const privateHistory = NeuraModelRequest(
-      systemPrompt: 'Be kind.',
-      messages: [
-        {'role': 'assistant', 'content': 'A reply based on a selected file.'},
-        {'role': 'user', 'content': 'Explain the last answer.'},
-      ],
-      purpose: 'chat reply',
-      includesPrivateContext: true,
-    );
-    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
-    await credentials.save(NeuraModelProvider.openAi, openAiKey);
-    final transport =
-        _StreamTransport(NeuraModelProvider.openAi, () => const Stream.empty());
-    final router = NeuraSecureModelRouter(
-      credentials: credentials,
-      streamTransports: [transport],
-      constitution: const NeuraPersonalConstitution(),
-    );
-    var approvals = 0;
-    await expectLater(
-      router.stream(privateHistory,
-          tools: [], cancel: NeuraGenerationCancel('private-history'),
-          requestApproval: (_) async {
-        approvals++;
-        return true;
-      }).toList(),
-      throwsA(isA<NeuraConstitutionBlocked>()),
-    );
-    expect(approvals, 0);
-    expect(transport.calls, 0);
-  });
+  test(
+    'private streamed history is blocked before approval or transport',
+    () async {
+      const privateHistory = NeuraModelRequest(
+        systemPrompt: 'Be kind.',
+        messages: [
+          {'role': 'assistant', 'content': 'A reply based on a selected file.'},
+          {'role': 'user', 'content': 'Explain the last answer.'},
+        ],
+        purpose: 'chat reply',
+        includesPrivateContext: true,
+      );
+      final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+      await credentials.save(NeuraModelProvider.openAi, openAiKey);
+      final transport = _StreamTransport(
+        NeuraModelProvider.openAi,
+        () => const Stream.empty(),
+      );
+      final router = NeuraSecureModelRouter(
+        credentials: credentials,
+        streamTransports: [transport],
+        constitution: const NeuraPersonalConstitution(),
+      );
+      var approvals = 0;
+      await expectLater(
+        router
+            .stream(
+              privateHistory,
+              tools: [],
+              cancel: NeuraGenerationCancel('private-history'),
+              requestApproval: (_) async {
+                approvals++;
+                return true;
+              },
+            )
+            .toList(),
+        throwsA(isA<NeuraConstitutionBlocked>()),
+      );
+      expect(approvals, 0);
+      expect(transport.calls, 0);
+    },
+  );
 
   test('private stream rechecks local-only policy after approval', () async {
     await NeuraConstitutionService.instance.save(
@@ -860,8 +946,10 @@ void main() {
     );
     final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
     await credentials.save(NeuraModelProvider.openAi, openAiKey);
-    final transport =
-        _StreamTransport(NeuraModelProvider.openAi, () => const Stream.empty());
+    final transport = _StreamTransport(
+      NeuraModelProvider.openAi,
+      () => const Stream.empty(),
+    );
     final router = NeuraSecureModelRouter(
       credentials: credentials,
       streamTransports: [transport],
@@ -877,60 +965,69 @@ void main() {
     );
     var approvals = 0;
     await expectLater(
-      router.stream(privateRequest,
-          tools: [], cancel: NeuraGenerationCancel('private-revocation'),
-          requestApproval: (preview) async {
-        approvals++;
-        expect(preview.includesPrivateContext, isTrue);
-        expect(preview.textPreview, contains('permitted memory'));
-        await NeuraConstitutionService.instance.save(
-          const NeuraPersonalConstitution(keepSensitiveContentLocal: true),
-        );
-        return true;
-      }).toList(),
+      router
+          .stream(
+            privateRequest,
+            tools: [],
+            cancel: NeuraGenerationCancel('private-revocation'),
+            requestApproval: (preview) async {
+              approvals++;
+              expect(preview.includesPrivateContext, isTrue);
+              expect(preview.textPreview, contains('permitted memory'));
+              await NeuraConstitutionService.instance.save(
+                const NeuraPersonalConstitution(
+                  keepSensitiveContentLocal: true,
+                ),
+              );
+              return true;
+            },
+          )
+          .toList(),
       throwsA(isA<NeuraConstitutionBlocked>()),
     );
     expect(approvals, 1);
     expect(transport.calls, 0);
   });
 
-  test('fallback is a new audience-bound transaction on the same trace',
-      () async {
-    final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
-    await credentials.save(NeuraModelProvider.openAi, openAiKey);
-    await credentials.save(NeuraModelProvider.anthropic, anthropicKey);
-    final primary = _Transport(
-      NeuraModelProvider.openAi,
-      error: StateError('unavailable'),
-    );
-    final fallback = _Transport(
-      NeuraModelProvider.anthropic,
-      result: 'fallback',
-    );
-    final previews = <NeuraCloudRequestPreview>[];
-    final router = NeuraSecureModelRouter(
-      credentials: credentials,
-      transports: [primary, fallback],
-    );
+  test(
+    'fallback is a new audience-bound transaction on the same trace',
+    () async {
+      final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+      await credentials.save(NeuraModelProvider.openAi, openAiKey);
+      await credentials.save(NeuraModelProvider.anthropic, anthropicKey);
+      final primary = _Transport(
+        NeuraModelProvider.openAi,
+        error: StateError('unavailable'),
+      );
+      final fallback = _Transport(
+        NeuraModelProvider.anthropic,
+        result: 'fallback',
+      );
+      final previews = <NeuraCloudRequestPreview>[];
+      final router = NeuraSecureModelRouter(
+        credentials: credentials,
+        transports: [primary, fallback],
+      );
 
-    final response = await router.complete(
-      request,
-      requestApproval: (preview) async {
-        previews.add(preview);
-        return true;
-      },
-    );
+      final response = await router.complete(
+        request,
+        requestApproval: (preview) async {
+          previews.add(preview);
+          return true;
+        },
+      );
 
-    expect(response.provider, NeuraModelProvider.anthropic);
-    expect(previews, hasLength(2));
-    expect(previews.first.traceId, previews.last.traceId);
-    expect(
-      previews.first.transaction.idempotencyKey,
-      isNot(previews.last.transaction.idempotencyKey),
-    );
-    expect(previews.first.audience.host, 'api.openai.com');
-    expect(previews.last.audience.host, 'api.anthropic.com');
-  });
+      expect(response.provider, NeuraModelProvider.anthropic);
+      expect(previews, hasLength(2));
+      expect(previews.first.traceId, previews.last.traceId);
+      expect(
+        previews.first.transaction.idempotencyKey,
+        isNot(previews.last.transaction.idempotencyKey),
+      );
+      expect(previews.first.audience.host, 'api.openai.com');
+      expect(previews.last.audience.host, 'api.anthropic.com');
+    },
+  );
 
   test('audit trail records trace metadata without prompt or digest', () async {
     const privateWords = 'do-not-log-these-private-words';
@@ -944,10 +1041,7 @@ void main() {
     );
     final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
     await credentials.save(NeuraModelProvider.openAi, openAiKey);
-    final transport = _Transport(
-      NeuraModelProvider.openAi,
-      result: 'ok',
-    );
+    final transport = _Transport(NeuraModelProvider.openAi, result: 'ok');
     final router = NeuraSecureModelRouter(
       credentials: credentials,
       transports: [transport],

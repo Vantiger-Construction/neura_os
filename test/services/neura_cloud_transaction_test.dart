@@ -20,7 +20,10 @@ void main() {
     expect(envelope.approvalState, NeuraCloudApprovalState.inputRequired);
     expect(envelope.promptDigest, hasLength(64));
     expect(envelope.privateCacheProhibited, isTrue);
-    expect(envelope.requestHeaders(), containsPair('cache-control', 'no-store'));
+    expect(
+      envelope.requestHeaders(),
+      containsPair('cache-control', 'no-store'),
+    );
     expect(
       envelope.requestHeaders(),
       containsPair('idempotency-key', envelope.idempotencyKey),
@@ -66,31 +69,33 @@ void main() {
     expect(retry.isRetry, isTrue);
   });
 
-  test('audit trail contains metadata but exposes no prompt or digest key',
-      () async {
-    var next = 0;
-    final factory = NeuraCloudTransactionFactory(
-      idFactory: () => 'id-${next++}',
-    );
-    final envelope = await factory.create(
-      provider: NeuraModelProvider.anthropic,
-      canonicalPayload: 'private prompt text',
-      traceId: factory.newTraceId(),
-      idempotencyKey: factory.newIdempotencyKey(),
-      retryCount: 0,
-    );
-    final audit = NeuraCloudAuditTrail(capacity: 2);
+  test(
+    'audit trail contains metadata but exposes no prompt or digest key',
+    () async {
+      var next = 0;
+      final factory = NeuraCloudTransactionFactory(
+        idFactory: () => 'id-${next++}',
+      );
+      final envelope = await factory.create(
+        provider: NeuraModelProvider.anthropic,
+        canonicalPayload: 'private prompt text',
+        traceId: factory.newTraceId(),
+        idempotencyKey: factory.newIdempotencyKey(),
+        retryCount: 0,
+      );
+      final audit = NeuraCloudAuditTrail(capacity: 2);
 
-    audit.record(envelope, NeuraCloudAuditStage.approvalRequired);
-    audit.record(envelope, NeuraCloudAuditStage.approved);
-    audit.record(envelope, NeuraCloudAuditStage.sent);
+      audit.record(envelope, NeuraCloudAuditStage.approvalRequired);
+      audit.record(envelope, NeuraCloudAuditStage.approved);
+      audit.record(envelope, NeuraCloudAuditStage.sent);
 
-    expect(audit.events, hasLength(2));
-    final encoded = audit.events.last.toJson().toString();
-    expect(encoded, isNot(contains('private prompt text')));
-    expect(encoded, isNot(contains(envelope.promptDigest)));
-    expect(encoded, contains(envelope.traceId));
-  });
+      expect(audit.events, hasLength(2));
+      final encoded = audit.events.last.toJson().toString();
+      expect(encoded, isNot(contains('private prompt text')));
+      expect(encoded, isNot(contains(envelope.promptDigest)));
+      expect(encoded, contains(envelope.traceId));
+    },
+  );
 
   test('audit retention must be explicitly bounded', () {
     expect(() => NeuraCloudAuditTrail(capacity: 0), throwsRangeError);
