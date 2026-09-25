@@ -144,9 +144,9 @@ class NeuraIntelligenceController extends ChangeNotifier {
     final focusMode = FocusController.instance.state.value.mode.name;
     final quiet = _preferences.isQuietAt(evaluatedAt);
     final policy = NeuraAutonomyPolicy(
-      enabled: _preferences.enabled,
+      enabled: _preferences.allowsProactiveSuggestions,
       allowSensitiveSignals: _preferences.allowSensitiveSignals,
-      maxDailySuggestions: _preferences.maxDailySuggestions,
+      maxDailySuggestions: _preferences.effectiveMaxDailySuggestions,
       suggestionsToday: suggestionsToday,
       suggestionsLastHour: suggestionsLastHour,
       focusMode: focusMode,

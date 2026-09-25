@@ -168,8 +168,9 @@ class _NeuraIntelligenceCenterScreenState
                                     ? 'Safe Mode'
                                     : paused
                                         ? 'Paused'
-                                        : preferences.enabled
-                                            ? 'On-device'
+                                        : preferences
+                                                .allowsProactiveSuggestions
+                                            ? '${preferences.proactivityLevel.label} · on-device'
                                             : 'Off',
                               ),
                             ),
@@ -220,14 +221,37 @@ class _NeuraIntelligenceCenterScreenState
               Card(
                 child: Column(
                   children: [
-                    SwitchListTile(
-                      value: preferences.enabled,
-                      onChanged: (value) =>
-                          _save(preferences.copyWith(enabled: value)),
-                      secondary: const Icon(Icons.auto_awesome_outlined),
+                    ListTile(
+                      leading: const Icon(Icons.auto_awesome_outlined),
                       title: const Text('Proactive intelligence'),
-                      subtitle: const Text(
-                        'Allow optional, dismissible suggestions on the dashboard.',
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 6),
+                          Text(preferences.proactivityLevel.description),
+                          const SizedBox(height: 10),
+                          SegmentedButton<NeuraProactivityLevel>(
+                            segments: NeuraProactivityLevel.values
+                                .map(
+                                  (level) => ButtonSegment(
+                                    value: level,
+                                    label: Text(level.label),
+                                  ),
+                                )
+                                .toList(growable: false),
+                            selected: {preferences.proactivityLevel},
+                            onSelectionChanged: (selection) {
+                              final level = selection.single;
+                              _save(
+                                preferences.copyWith(
+                                  enabled:
+                                      level != NeuraProactivityLevel.off,
+                                  proactivityLevel: level,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ),
                     const Divider(height: 1),
@@ -257,20 +281,34 @@ class _NeuraIntelligenceCenterScreenState
                     ListTile(
                       leading: const Icon(Icons.notifications_paused_outlined),
                       title: Text(
-                        'Daily suggestion limit: '
+                        'Personal daily cap: '
                         '${preferences.maxDailySuggestions}',
                       ),
-                      subtitle: Slider(
-                        value: preferences.maxDailySuggestions.toDouble(),
-                        min: 1,
-                        max: 6,
-                        divisions: 5,
-                        label: preferences.maxDailySuggestions.toString(),
-                        onChanged: (value) => _save(
-                          preferences.copyWith(
-                            maxDailySuggestions: value.round(),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Slider(
+                            value: preferences.maxDailySuggestions.toDouble(),
+                            min: 1,
+                            max: 6,
+                            divisions: 5,
+                            label:
+                                preferences.maxDailySuggestions.toString(),
+                            onChanged:
+                                preferences.allowsProactiveSuggestions
+                                    ? (value) => _save(
+                                          preferences.copyWith(
+                                            maxDailySuggestions: value.round(),
+                                          ),
+                                        )
+                                    : null,
                           ),
-                        ),
+                          Text(
+                            'The ${preferences.proactivityLevel.label.toLowerCase()} '
+                            'level currently limits this to '
+                            '${preferences.effectiveMaxDailySuggestions} per day.',
+                          ),
+                        ],
                       ),
                     ),
                     const Divider(height: 1),

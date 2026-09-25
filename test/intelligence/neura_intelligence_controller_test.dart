@@ -158,6 +158,28 @@ void main() {
       contains('quiet hours'),
     );
   });
+
+  test('off proactivity suppresses a candidate before it reaches the UI',
+      () async {
+    final controller = NeuraIntelligenceController.instance;
+    await controller.updatePreferences(
+      const NeuraIntelligencePreferences(
+        enabled: false,
+        proactivityLevel: NeuraProactivityLevel.off,
+      ),
+    );
+    final now = DateTime.utc(2026, 8, 14, 18);
+    final result = await controller.evaluateCandidates(
+      candidates: [_candidate(now)],
+      now: now,
+    );
+
+    expect(result.visible, isEmpty);
+    expect(
+      controller.records.single.receipt.reasons.join(' '),
+      contains('disabled by the user'),
+    );
+  });
 }
 
 NeuraIntelligenceCandidate _candidate(

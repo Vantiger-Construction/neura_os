@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:neuro_companion/dashboard/proactive_banner_service.dart';
+import 'package:neuro_companion/intelligence/intelligence_preferences.dart';
 import 'package:neuro_companion/relationships/services/distress_detector.dart';
 
 class _FakeDistressDetector extends DistressDetector {
@@ -18,6 +19,28 @@ class _FakeDistressDetector extends DistressDetector {
 }
 
 void main() {
+  group('ProactiveBannerService proactivity dial', () {
+    test('subtle mode waits a day between optional cards', () {
+      expect(
+        ProactiveBannerService.cooldownFor(
+          NeuraProactivityLevel.subtle,
+          consecutiveDismissals: 0,
+        ),
+        const Duration(hours: 24),
+      );
+    });
+
+    test('repeated dismissal expands every level to a seven-day cooldown', () {
+      expect(
+        ProactiveBannerService.cooldownFor(
+          NeuraProactivityLevel.balanced,
+          consecutiveDismissals: 3,
+        ),
+        const Duration(days: 7),
+      );
+    });
+  });
+
   group('ProactiveBannerService.computeDistressScore', () {
     test('falls back to raw mood arithmetic when the detector is inactive', () {
       final score = ProactiveBannerService.computeDistressScore(

@@ -10,6 +10,7 @@ import '../cognitive/neura_bandwidth_engine.dart';
 import '../cognitive/neura_cognitive_state.dart';
 import '../core/memory/memory_graph_service.dart';
 import '../intelligence/capability_registry.dart';
+import '../intelligence/intelligence_preferences.dart';
 import '../intelligence/models.dart';
 import '../intelligence/neura_intelligence_controller.dart';
 import '../intelligence/opportunity_radar.dart';
@@ -88,7 +89,6 @@ class ProactiveBannerService {
   static final ProactiveBannerService instance = ProactiveBannerService._();
 
   static const _stateKey = 'neura.proactive_banner.state.v2';
-  static const _cooldown = Duration(hours: 12);
   static const _extendedCooldown = Duration(days: 7);
   static const _dismissalsBeforeExtendedCooldown = 3;
   static const _stormSuppressWindow = Duration(hours: 24);
@@ -130,7 +130,10 @@ class ProactiveBannerService {
     await NeuraIntelligenceController.instance.initialize();
     final preferences = NeuraIntelligenceController.instance.preferences;
     final now = DateTime.now();
-    if (!preferences.enabled || preferences.isQuietAt(now)) return null;
+    if (!preferences.allowsProactiveSuggestions ||
+        preferences.isQuietAt(now)) {
+      return null;
+    }
 
     final state = await _loadState();
     final lastShownMs = _coerceInt(state['lastShownEpochMs']);
@@ -138,10 +141,10 @@ class ProactiveBannerService {
         _coerceInt(state['consecutiveDismissals']) ?? 0;
     if (lastShownMs != null) {
       final lastShown = DateTime.fromMillisecondsSinceEpoch(lastShownMs);
-      final cooldown =
-          consecutiveDismissals >= _dismissalsBeforeExtendedCooldown
-              ? _extendedCooldown
-              : _cooldown;
+      final cooldown = cooldownFor(
+        preferences.proactivityLevel,
+        consecutiveDismissals: consecutiveDismissals,
+      );
       if (now.isBefore(lastShown.add(cooldown))) return null;
     }
 
@@ -220,6 +223,17 @@ class ProactiveBannerService {
       return null;
     }
     return source.toBanner(selected.receipt);
+  }
+
+  @visibleForTesting
+  static Duration cooldownFor(
+    NeuraProactivityLevel level, {
+    required int consecutiveDismissals,
+  }) {
+    if (consecutiveDismissals >= _dismissalsBeforeExtendedCooldown) {
+      return _extendedCooldown;
+    }
+    return level.appOpenCooldown;
   }
 
   /// Commits quota and cooldown only after the dashboard confirms the card
