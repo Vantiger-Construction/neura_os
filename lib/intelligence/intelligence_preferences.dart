@@ -4,31 +4,31 @@ enum NeuraProactivityLevel { off, subtle, balanced }
 
 extension NeuraProactivityLevelPolicy on NeuraProactivityLevel {
   String get label => switch (this) {
-        NeuraProactivityLevel.off => 'Off',
-        NeuraProactivityLevel.subtle => 'Subtle',
-        NeuraProactivityLevel.balanced => 'Balanced',
-      };
+    NeuraProactivityLevel.off => 'Off',
+    NeuraProactivityLevel.subtle => 'Subtle',
+    NeuraProactivityLevel.balanced => 'Balanced',
+  };
 
   String get description => switch (this) {
-        NeuraProactivityLevel.off =>
-          'Never surface unsolicited companion suggestions.',
-        NeuraProactivityLevel.subtle =>
-          'At most one quiet, dismissible suggestion per day.',
-        NeuraProactivityLevel.balanced =>
-          'Context-sensitive suggestions with the existing attention limits.',
-      };
+    NeuraProactivityLevel.off =>
+      'Never surface unsolicited companion suggestions.',
+    NeuraProactivityLevel.subtle =>
+      'At most one quiet, dismissible suggestion per day.',
+    NeuraProactivityLevel.balanced =>
+      'Context-sensitive suggestions with the existing attention limits.',
+  };
 
   int get maxDailyCap => switch (this) {
-        NeuraProactivityLevel.off => 0,
-        NeuraProactivityLevel.subtle => 1,
-        NeuraProactivityLevel.balanced => 3,
-      };
+    NeuraProactivityLevel.off => 0,
+    NeuraProactivityLevel.subtle => 1,
+    NeuraProactivityLevel.balanced => 3,
+  };
 
   Duration get appOpenCooldown => switch (this) {
-        NeuraProactivityLevel.off => const Duration(days: 365),
-        NeuraProactivityLevel.subtle => const Duration(hours: 24),
-        NeuraProactivityLevel.balanced => const Duration(hours: 12),
-      };
+    NeuraProactivityLevel.off => const Duration(days: 365),
+    NeuraProactivityLevel.subtle => const Duration(hours: 24),
+    NeuraProactivityLevel.balanced => const Duration(hours: 12),
+  };
 }
 
 class NeuraIntelligencePreferences {
@@ -86,13 +86,14 @@ class NeuraIntelligencePreferences {
     DateTime? pausedUntil,
     bool clearPause = false,
   }) {
-    final nextLevel = proactivityLevel ??
+    final nextLevel =
+        proactivityLevel ??
         (enabled == false
             ? NeuraProactivityLevel.off
             : enabled == true &&
-                    this.proactivityLevel == NeuraProactivityLevel.off
-                ? NeuraProactivityLevel.balanced
-                : this.proactivityLevel);
+                  this.proactivityLevel == NeuraProactivityLevel.off
+            ? NeuraProactivityLevel.balanced
+            : this.proactivityLevel);
     final requestedEnabled =
         enabled ?? (proactivityLevel == null ? this.enabled : true);
     final nextEnabled =
@@ -103,32 +104,32 @@ class NeuraIntelligencePreferences {
       allowSensitiveSignals:
           allowSensitiveSignals ?? this.allowSensitiveSignals,
       showDecisionReasons: showDecisionReasons ?? this.showDecisionReasons,
-      maxDailySuggestions:
-          (maxDailySuggestions ?? this.maxDailySuggestions).clamp(1, 6).toInt(),
+      maxDailySuggestions: (maxDailySuggestions ?? this.maxDailySuggestions)
+          .clamp(1, 6)
+          .toInt(),
       quietHoursEnabled: quietHoursEnabled ?? this.quietHoursEnabled,
-      quietHoursStart:
-          (quietHoursStart ?? this.quietHoursStart).clamp(0, 23).toInt(),
+      quietHoursStart: (quietHoursStart ?? this.quietHoursStart)
+          .clamp(0, 23)
+          .toInt(),
       quietHoursEnd: (quietHoursEnd ?? this.quietHoursEnd).clamp(0, 23).toInt(),
       pausedUntil: clearPause ? null : pausedUntil ?? this.pausedUntil,
     );
   }
 
   Map<String, Object?> toJson() => {
-        'v': 2,
-        'enabled': allowsProactiveSuggestions,
-        'proactivity_level': proactivityLevel.name,
-        'allow_sensitive_signals': allowSensitiveSignals,
-        'show_decision_reasons': showDecisionReasons,
-        'max_daily_suggestions': maxDailySuggestions,
-        'quiet_hours_enabled': quietHoursEnabled,
-        'quiet_hours_start': quietHoursStart,
-        'quiet_hours_end': quietHoursEnd,
-        'paused_until': pausedUntil?.toUtc().toIso8601String(),
-      };
+    'v': 2,
+    'enabled': allowsProactiveSuggestions,
+    'proactivity_level': proactivityLevel.name,
+    'allow_sensitive_signals': allowSensitiveSignals,
+    'show_decision_reasons': showDecisionReasons,
+    'max_daily_suggestions': maxDailySuggestions,
+    'quiet_hours_enabled': quietHoursEnabled,
+    'quiet_hours_start': quietHoursStart,
+    'quiet_hours_end': quietHoursEnd,
+    'paused_until': pausedUntil?.toUtc().toIso8601String(),
+  };
 
-  factory NeuraIntelligencePreferences.fromJson(
-    Map<String, Object?> json,
-  ) {
+  factory NeuraIntelligencePreferences.fromJson(Map<String, Object?> json) {
     int integer(String key, int fallback) {
       final value = json[key];
       return value is num ? value.toInt() : fallback;
@@ -151,8 +152,10 @@ class NeuraIntelligencePreferences {
       proactivityLevel: resolvedLevel,
       allowSensitiveSignals: json['allow_sensitive_signals'] == true,
       showDecisionReasons: json['show_decision_reasons'] != false,
-      maxDailySuggestions:
-          integer('max_daily_suggestions', 3).clamp(1, 6).toInt(),
+      maxDailySuggestions: integer(
+        'max_daily_suggestions',
+        3,
+      ).clamp(1, 6).toInt(),
       quietHoursEnabled: json['quiet_hours_enabled'] == true,
       quietHoursStart: integer('quiet_hours_start', 22).clamp(0, 23).toInt(),
       quietHoursEnd: integer('quiet_hours_end', 7).clamp(0, 23).toInt(),
@@ -182,10 +185,7 @@ class NeuraIntelligenceRecord {
     );
   }
 
-  Map<String, Object?> toJson() => {
-        'v': 1,
-        'receipt': receipt.toJson(),
-      };
+  Map<String, Object?> toJson() => {'v': 1, 'receipt': receipt.toJson()};
 
   factory NeuraIntelligenceRecord.fromJson(Map<String, Object?> json) {
     final rawReceipt = json['receipt'];

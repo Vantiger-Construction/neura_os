@@ -196,8 +196,9 @@ class NeuraIntelligenceController extends ChangeNotifier {
           );
         }
       }
-      decisions
-          .add(NeuraCouncilDecision(candidate: candidate, receipt: receipt));
+      decisions.add(
+        NeuraCouncilDecision(candidate: candidate, receipt: receipt),
+      );
       _records.add(
         NeuraIntelligenceRecord(
           title: candidate.title,
@@ -227,15 +228,10 @@ class NeuraIntelligenceController extends ChangeNotifier {
     return _isCurrent(generation) ? _lastCouncil : const NeuraCouncilResult([]);
   }
 
-  Future<void> markShown(String receiptId) => _updateOutcome(
-        receiptId,
-        NeuraSuggestionOutcome.shown,
-      );
+  Future<void> markShown(String receiptId) =>
+      _updateOutcome(receiptId, NeuraSuggestionOutcome.shown);
 
-  Future<void> recordOutcome({
-    required String receiptId,
-    required bool acted,
-  }) {
+  Future<void> recordOutcome({required String receiptId, required bool acted}) {
     return _updateOutcome(
       receiptId,
       acted ? NeuraSuggestionOutcome.acted : NeuraSuggestionOutcome.dismissed,

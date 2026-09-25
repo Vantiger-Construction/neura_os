@@ -9,10 +9,7 @@ void main() {
       );
 
       expect(preferences.enabled, isTrue);
-      expect(
-        preferences.proactivityLevel,
-        NeuraProactivityLevel.balanced,
-      );
+      expect(preferences.proactivityLevel, NeuraProactivityLevel.balanced);
       expect(preferences.allowsProactiveSuggestions, isTrue);
       expect(preferences.effectiveMaxDailySuggestions, 3);
       expect(preferences.allowSensitiveSignals, isFalse);
@@ -24,8 +21,7 @@ void main() {
       expect(preferences.pausedUntil, isNull);
     });
 
-    test('migrates a legacy disabled preference to the explicit off level',
-        () {
+    test('migrates a legacy disabled preference to the explicit off level', () {
       final preferences = NeuraIntelligencePreferences.fromJson(
         const <String, Object?>{'enabled': false},
       );
@@ -40,9 +36,7 @@ void main() {
         proactivityLevel: NeuraProactivityLevel.subtle,
         maxDailySuggestions: 6,
       );
-      final restored = NeuraIntelligencePreferences.fromJson(
-        original.toJson(),
-      );
+      final restored = NeuraIntelligencePreferences.fromJson(original.toJson());
 
       expect(restored.proactivityLevel, NeuraProactivityLevel.subtle);
       expect(restored.effectiveMaxDailySuggestions, 1);
@@ -91,15 +85,10 @@ void main() {
     test('round-trips a pause by instant and can explicitly clear it', () {
       final pausedUntil = DateTime.parse('2026-08-15T02:30:00-05:00');
       final original = NeuraIntelligencePreferences(pausedUntil: pausedUntil);
-      final restored = NeuraIntelligencePreferences.fromJson(
-        original.toJson(),
-      );
+      final restored = NeuraIntelligencePreferences.fromJson(original.toJson());
 
       expect(restored.pausedUntil, isNotNull);
-      expect(
-        restored.pausedUntil!.isAtSameMomentAs(pausedUntil),
-        isTrue,
-      );
+      expect(restored.pausedUntil!.isAtSameMomentAs(pausedUntil), isTrue);
       expect(
         restored.isQuietAt(pausedUntil.subtract(const Duration(seconds: 1))),
         isTrue,

@@ -42,8 +42,8 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
 
   Future<void> _load() async {
     try {
-      final banner =
-          await ProactiveBannerService.instance.maybeGetBannerOnAppOpen();
+      final banner = await ProactiveBannerService.instance
+          .maybeGetBannerOnAppOpen();
       if (!mounted) return;
       setState(() => _banner = banner);
       if (banner != null) {

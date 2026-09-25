@@ -14,8 +14,7 @@ class _FakeDistressDetector extends DistressDetector {
     required List<int> recentMoods,
     required int appOpensLastHour,
     required bool lotsOfNegativeWords,
-  }) =>
-      result;
+  }) => result;
 }
 
 void main() {
@@ -105,16 +104,17 @@ void main() {
   });
 
   group('ProactiveBannerService.isStreakMilestone', () {
-    test('fires only on round-number streak lengths in a synthetic sequence',
-        () {
-      final sequence = [
-        for (var streak = 1; streak <= 32; streak++) streak,
-      ];
-      final milestonesHit =
-          sequence.where(ProactiveBannerService.isStreakMilestone).toList();
+    test(
+      'fires only on round-number streak lengths in a synthetic sequence',
+      () {
+        final sequence = [for (var streak = 1; streak <= 32; streak++) streak];
+        final milestonesHit = sequence
+            .where(ProactiveBannerService.isStreakMilestone)
+            .toList();
 
-      expect(milestonesHit, [7, 14, 30]);
-    });
+        expect(milestonesHit, [7, 14, 30]);
+      },
+    );
 
     test('a streak that never lands on a milestone never fires', () {
       final sequence = [3, 5, 8, 9, 10, 11, 12, 13, 29, 31];
