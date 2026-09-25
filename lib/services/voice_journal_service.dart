@@ -7,6 +7,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../modules/core/app_log.dart';
 import '../reliability/safe_boot.dart';
 import 'neura_companion_presence.dart';
+import 'neura_speech_engine.dart';
 import 'neura_speech_to_text_service.dart';
 
 /// Local speech-to-text used by Voice Journal.
@@ -23,6 +24,8 @@ class VoiceJournalService {
   final stt.SpeechToText _stt = stt.SpeechToText();
   final StreamController<String> _pluginTranscriptStream =
       StreamController<String>.broadcast();
+  final StreamController<NeuraSpeechSegment> _pluginSegmentStream =
+      StreamController<NeuraSpeechSegment>.broadcast();
   final ValueNotifier<bool> _recording = ValueNotifier(false);
 
   bool get _usesNativeWindows =>
@@ -35,10 +38,13 @@ class VoiceJournalService {
   bool _disposed = false;
   int _startGeneration = 0;
   NeuraPresenceLease? _presenceLease;
+  DateTime? _lastPluginFinalAtUtc;
 
   Stream<String> get transcriptStream => _usesNativeWindows
       ? _native.transcriptStream
       : _pluginTranscriptStream.stream;
+  Stream<NeuraSpeechSegment> get segmentStream =>
+      _usesNativeWindows ? _native.segmentStream : _pluginSegmentStream.stream;
 
   ValueListenable<bool> get recording => _recording;
 
@@ -106,12 +112,32 @@ class VoiceJournalService {
       }
 
       _current = '';
+      _lastPluginFinalAtUtc = null;
       _pluginListening = true;
       await _stt.listen(
         onResult: (result) {
           if (_disposed || !listeningAllowed || !_pluginListening) return;
           _current = result.recognizedWords;
           _pluginTranscriptStream.add(_current);
+          final observedAtUtc = DateTime.now().toUtc();
+          final pauseBefore =
+              result.finalResult && _lastPluginFinalAtUtc != null
+              ? observedAtUtc.difference(_lastPluginFinalAtUtc!)
+              : Duration.zero;
+          final confidence = result.confidence >= 0 && result.confidence <= 1
+              ? result.confidence
+              : null;
+          _pluginSegmentStream.add(
+            NeuraSpeechSegment(
+              engineId: 'platform_speech_to_text',
+              text: _current,
+              isFinal: result.finalResult,
+              confidence: confidence,
+              pauseBefore: pauseBefore,
+              observedAtUtc: observedAtUtc,
+            ),
+          );
+          if (result.finalResult) _lastPluginFinalAtUtc = observedAtUtc;
         },
         listenOptions: stt.SpeechListenOptions(
           listenMode: stt.ListenMode.dictation,
@@ -135,11 +161,7 @@ class VoiceJournalService {
     } catch (error, stack) {
       _pluginListening = false;
       _markRecordingStopped();
-      await AppLog.instance.caught(
-        'voice_journal_start_failed',
-        error,
-        stack,
-      );
+      await AppLog.instance.caught('voice_journal_start_failed', error, stack);
       if (!_disposed) {
         _pluginTranscriptStream.add(
           'Speech-to-text could not start on this device.',
@@ -184,11 +206,7 @@ class VoiceJournalService {
     try {
       await _stt.stop();
     } catch (error, stack) {
-      await AppLog.instance.caught(
-        'voice_journal_stop_failed',
-        error,
-        stack,
-      );
+      await AppLog.instance.caught('voice_journal_stop_failed', error, stack);
     }
     return _current;
   }
@@ -213,7 +231,8 @@ class VoiceJournalService {
     } else {
       _pluginListening = false;
       await _stt.cancel();
-      await _pluginTranscriptStream.close();
     }
+    await _pluginTranscriptStream.close();
+    await _pluginSegmentStream.close();
   }
 }
