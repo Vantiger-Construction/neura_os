@@ -245,7 +245,7 @@ jobs:
           # Keep verified platform tools and dependency downloads across runs.
           # The committed lockfile is still resolved on every validation.
           $persistentToolRoot = Join-Path $env:RUNNER_TOOL_CACHE 'neura-android'
-          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.44.7'
+          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.47.5'
           $gradleHome = Join-Path $persistentToolRoot 'gradle-home'
           $sdkRoot = Join-Path $persistentToolRoot 'sdk-36.0.0-ndk-28.2.13676358'
           $jdkRoot = Join-Path $persistentToolRoot 'jdk-17.0.19+10'
@@ -272,13 +272,13 @@ jobs:
             "TMP=$tempRoot"
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Enable pinned Flutter 3.44.7
+      - name: Enable pinned Flutter 3.47.5
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
-          $flutterRoot = Join-Path $env:RUNNER_TOOL_CACHE 'flutter\3.44.7\x64'
+          $flutterRoot = Join-Path $env:RUNNER_TOOL_CACHE 'flutter\3.47.5\x64'
           $flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
           if (-not (Test-Path -LiteralPath $flutterExe -PathType Leaf)) {
-            throw 'Pinned Flutter 3.44.7 is missing from the runner tool cache.'
+            throw 'Pinned Flutter 3.47.5 is missing from the runner tool cache.'
           }
           (Join-Path $flutterRoot 'bin') |
             Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append

@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  FLUTTER_VERSION: "3.44.7"
+  FLUTTER_VERSION: "3.47.5"
 
 jobs:
   state-matrix:
@@ -71,7 +71,7 @@ jobs:
               }
             }
           }
-          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.44.7'
+          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.47.5'
           New-Item -ItemType Directory -Path $workspace -Force | Out-Null
           New-Item -ItemType Directory -Path $pubCache -Force | Out-Null
           New-Item -ItemType Directory -Path (Join-Path $root 'temp') -Force | Out-Null

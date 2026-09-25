@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  FLUTTER_VERSION: "3.44.7"
+  FLUTTER_VERSION: "3.47.5"
 
 jobs:
   validate:
@@ -32,7 +32,7 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v5
-      - name: Use retained Flutter 3.44.7
+      - name: Use retained Flutter 3.47.5
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-StrictMode -Version Latest

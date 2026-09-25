@@ -2,7 +2,6 @@ import org.gradle.api.JavaVersion
 
 plugins {
     id("com.android.application")
-    kotlin("android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -25,10 +24,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
-    }
-
     buildTypes {
         getByName("debug") {
             isMinifyEnabled = false
@@ -42,6 +37,12 @@ android {
                 "proguard-rules.pro",
             )
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 

@@ -4,6 +4,7 @@ on:
   pull_request:
     branches: [Neura]
     paths:
+      - 'android/**'
       - 'lib/**'
       - 'test/**'
       - 'rust/**'
@@ -392,7 +393,7 @@ jobs:
       - name: Install Flutter
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
-          $flutterVersion = '3.44.7'
+          $flutterVersion = '3.47.5'
           $flutterRoot = Join-Path $env:RUNNER_TOOL_CACHE "flutter\$flutterVersion\x64"
           $flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
 

@@ -28,7 +28,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  FLUTTER_VERSION: "3.44.7"
+  FLUTTER_VERSION: "3.47.5"
   POWERSHELL_VERSION: "7.4.6"
 
 jobs:
@@ -146,14 +146,14 @@ jobs:
             throw "Expected PowerShell $requiredVersion; found $installedVersion."
           }
           $installRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-      - name: Use retained Flutter 3.44.7
+      - name: Use retained Flutter 3.47.5
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $flutter = Get-Command flutter -ErrorAction Stop
           $version = (& $flutter.Source --version | Select-Object -First 1)
-          if ($version -notmatch 'Flutter 3\.44\.7') {
-            throw "Expected retained Flutter 3.44.7; found: $version"
+          if ($version -notmatch 'Flutter 3\.47\.5') {
+            throw "Expected retained Flutter 3.47.5; found: $version"
           }
       - name: Build tested Windows package
         shell: pwsh
