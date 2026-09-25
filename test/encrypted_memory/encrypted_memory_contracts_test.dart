@@ -8,10 +8,7 @@ void main() {
     deviceId: 'device-1',
     capsuleId: 'personal',
     classes: const {EncryptedMemoryClass.explicitPreference},
-    sources: const {
-      EncryptedMemorySource.authenticatedUser,
-      EncryptedMemorySource.modelOutput,
-    },
+    sources: const {EncryptedMemorySource.authenticatedUser},
     sensitivity: EncryptedMemorySensitivity.personal,
   );
 

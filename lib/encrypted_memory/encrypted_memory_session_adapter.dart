@@ -345,4 +345,3 @@ void _requireSessionId(String value, String code) {
 
 bool _hasControlCharacter(String value) =>
     value.codeUnits.any((unit) => unit < 0x20 || unit == 0x7f);
-

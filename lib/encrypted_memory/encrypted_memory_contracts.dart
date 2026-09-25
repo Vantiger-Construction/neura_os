@@ -50,13 +50,7 @@ enum EncryptedMemoryIntegrityState { pending, verified, failed }
 
 enum EncryptedMemorySensitivity { standard, personal, sensitive }
 
-enum EncryptedMemoryKeyState {
-  absent,
-  active,
-  rotating,
-  suspended,
-  destroyed,
-}
+enum EncryptedMemoryKeyState { absent, active, rotating, suspended, destroyed }
 
 final class EncryptedMemoryPolicyViolation implements Exception {
   const EncryptedMemoryPolicyViolation(this.code);
@@ -79,8 +73,8 @@ final class EncryptedMemoryAccessScope {
     required Set<EncryptedMemoryClass> classes,
     required Set<EncryptedMemorySource> sources,
     required this.sensitivity,
-  })  : classes = Set.unmodifiable(classes),
-        sources = Set.unmodifiable(sources) {
+  }) : classes = Set.unmodifiable(classes),
+       sources = Set.unmodifiable(sources) {
     _requireBoundedId(ownerId, 'owner_id');
     _requireBoundedId(deviceId, 'device_id');
     _requireBoundedId(capsuleId, 'capsule_id');
@@ -137,14 +131,10 @@ final class EncryptedMemoryProvenance {
     _requireBoundedId(reason, 'provenance_reason');
     if (!observedAtUtc.isUtc ||
         (reviewedAtUtc != null && !reviewedAtUtc!.isUtc)) {
-      throw const EncryptedMemoryPolicyViolation(
-        'provenance_time_not_utc',
-      );
+      throw const EncryptedMemoryPolicyViolation('provenance_time_not_utc');
     }
     if (reviewedAtUtc != null && reviewedAtUtc!.isBefore(observedAtUtc)) {
-      throw const EncryptedMemoryPolicyViolation(
-        'review_precedes_observation',
-      );
+      throw const EncryptedMemoryPolicyViolation('review_precedes_observation');
     }
     if (integrityState == EncryptedMemoryIntegrityState.verified) {
       _requireIntegrityTag(integrityTag);

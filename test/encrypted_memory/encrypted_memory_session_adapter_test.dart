@@ -42,8 +42,7 @@ void main() {
   EncryptedMemorySessionRecord recordFor(
     int generation, {
     EncryptedMemorySource source = EncryptedMemorySource.authenticatedUser,
-    EncryptedMemoryTrustTier trust =
-        EncryptedMemoryTrustTier.authenticatedUser,
+    EncryptedMemoryTrustTier trust = EncryptedMemoryTrustTier.authenticatedUser,
     EncryptedMemoryIntegrityState integrity =
         EncryptedMemoryIntegrityState.verified,
     String? integrityTag = 'sha256:0123456789abcdef',
