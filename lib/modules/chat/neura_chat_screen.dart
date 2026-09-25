@@ -8,7 +8,10 @@ import 'package:file_picker/file_picker.dart';
 import '../../core/memory/memory_graph_service.dart';
 import '../../neura_link/reply_speech_queue.dart';
 import '../../reliability/safe_boot.dart';
+import '../../screens/journal_prompt_screen.dart';
+import '../../screens/neura_voice_settings_screen.dart';
 import '../../services/neura_selected_context.dart';
+import '../../modules/mood/mood_checkin_screen.dart';
 import '../../modules/mood/mood_models.dart';
 import '../../modules/mood/mood_store.dart';
 import '../../neura_shell/models/neura_room.dart';
@@ -16,6 +19,7 @@ import '../../neura_shell/neura_shell.dart';
 import '../../persona/agents/agent_persona_catalog.dart';
 import '../../persona/models/agent_persona.dart';
 import '../../persona/services/agent_selection_service.dart';
+import '../../persona/services/neura_conversation_mode.dart';
 import '../../services/neura_ai_service.dart';
 import '../../services/neura_chat_policy.dart';
 import '../../services/neura_generation_cancel.dart';
@@ -24,7 +28,9 @@ import '../../services/neura_reply_batch.dart';
 import '../../services/neura_speech_to_text_service.dart';
 import '../../services/neura_tone_runtime.dart';
 import '../../services/neura_tts_service.dart';
+import '../../services/neura_voice_command.dart';
 import '../../services/wake_word_listener_service.dart';
+import '../../src/modules/settings/settings.dart';
 import '../../widgets/neura_cloud_request_preview.dart';
 import '../core/ai_engine.dart';
 import '../core/app_log.dart';
@@ -36,7 +42,8 @@ class NeuraChatScreen extends StatefulWidget {
   State<NeuraChatScreen> createState() => _NeuraChatScreenState();
 }
 
-class _NeuraChatScreenState extends State<NeuraChatScreen> {
+class _NeuraChatScreenState extends State<NeuraChatScreen>
+    with WidgetsBindingObserver {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final List<_ChatLine> _lines = [
@@ -46,6 +53,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   ];
 
   bool _speechEnabled = true;
+  NeuraConversationMode _conversationMode = NeuraConversationMode.balanced;
   bool _busy = false;
   NeuraSelectedContext? _selectedContext;
   bool _includeMemory = false;
@@ -63,6 +71,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   StreamSubscription<String>? _voiceSub;
   StreamSubscription<String>? _finalPhraseSub;
   bool _listening = false;
+  bool _startingListening = false;
+  int _voiceSession = 0;
 
   // "Talk freely" mode: once started via the mic, Neura automatically starts
   // listening again after each spoken reply, so the conversation keeps going
@@ -96,6 +106,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     SafeBoot.instance.safeMode.addListener(_stopForSafeMode);
     unawaited(_initAgent());
     WakeWordListenerService.instance.pause();
@@ -103,12 +114,23 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
 
   void _stopForSafeMode() {
     if (!SafeBoot.instance.safeMode.value) return;
+    _voiceSession++;
     _replyUpdates?.dispose();
     _replyUpdates = null;
     _replySpeech?.cancel();
     NeuraAiService.instance.cancelActiveGeneration();
     _continuousMode = false;
+    _listening = false;
+    if (mounted) setState(() {});
+    unawaited(_voiceInput.stopRecording().catchError((_) => ''));
     unawaited(NeuraTtsService.instance.stop().catchError((_) {}));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      unawaited(_endConversation().catchError((_) {}));
+    }
   }
 
   Future<void> _initAgent() async {
@@ -122,6 +144,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
 
   @override
   void dispose() {
+    _voiceSession++;
+    _continuousMode = false;
+    WidgetsBinding.instance.removeObserver(this);
     SafeBoot.instance.safeMode.removeListener(_stopForSafeMode);
     _voiceSub?.cancel();
     _finalPhraseSub?.cancel();
@@ -129,7 +154,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     _replySpeech?.cancel();
     NeuraAiService.instance.cancelActiveGeneration();
     unawaited(NeuraTtsService.instance.stop());
-    if (_listening) {
+    if (_listening || _startingListening || _voiceInput.isListening) {
       unawaited(_voiceInput.stopRecording());
     }
     unawaited(WakeWordListenerService.instance.resume());
@@ -187,21 +212,32 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
   }
 
   Future<void> _toggleListening() async {
+    if (_startingListening) {
+      await _endConversation();
+      return;
+    }
     if (_listening) {
       await _stopListeningAndSend();
       return;
     }
 
+    if (SafeBoot.instance.safeMode.value) return;
     _continuousMode = true;
     await _startListeningTurn();
   }
 
   Future<void> _stopListeningAndSend() async {
-    if (_turnEnding) return;
+    if (_turnEnding || !_continuousMode) return;
+    final session = _voiceSession;
     _turnEnding = true;
     try {
       final text = await _voiceInput.stopRecording();
-      if (!mounted) return;
+      if (!_voiceSessionActive(session)) return;
+      final command = NeuraVoiceCommand.parse(text);
+      if (command != null) {
+        await _handleVoiceCommand(command);
+        return;
+      }
       setState(() {
         _listening = false;
         _controller.text = text;
@@ -209,58 +245,210 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
           offset: _controller.text.length,
         );
       });
+      if (text.trim().isEmpty) {
+        await _endConversation();
+        return;
+      }
       unawaited(_send());
     } finally {
       _turnEnding = false;
     }
   }
 
+  bool _voiceSessionActive(int session) =>
+      mounted &&
+      _continuousMode &&
+      session == _voiceSession &&
+      !SafeBoot.instance.safeMode.value &&
+      (ModalRoute.of(context)?.isCurrent ?? true);
+
   Future<void> _startListeningTurn() async {
-    if (!_continuousMode || !mounted) return;
-
-    unawaited(_voiceSub?.cancel());
-    _voiceSub = _voiceInput.transcriptStream.listen((partial) {
-      if (!mounted) return;
-      setState(() {
-        _controller.text = partial;
-        _controller.selection = TextSelection.collapsed(
-          offset: _controller.text.length,
-        );
-      });
-    });
-
-    // In continuous mode, a completed phrase means the user is done talking
-    // for this turn — end listening and send automatically rather than
-    // waiting for a manual tap on the mic button.
-    unawaited(_finalPhraseSub?.cancel());
-    _finalPhraseSub = _voiceInput.finalPhraseStream.listen((_) {
-      if (!_continuousMode || !mounted) return;
-      unawaited(_stopListeningAndSend());
-    });
-
-    final ok = await _voiceInput.startRecording();
-    if (!ok) {
-      await AppLog.instance.info('voice_input_unavailable', {});
-      _continuousMode = false;
+    if (_startingListening ||
+        _listening ||
+        !_continuousMode ||
+        !mounted ||
+        SafeBoot.instance.safeMode.value) {
       return;
     }
-    if (!mounted) return;
-    setState(() => _listening = true);
+    final session = ++_voiceSession;
+    _startingListening = true;
+    try {
+      await _voiceSub?.cancel();
+      await _finalPhraseSub?.cancel();
+      if (!_voiceSessionActive(session)) return;
+      _voiceSub = _voiceInput.transcriptStream.listen((partial) {
+        if (!_voiceSessionActive(session) || _turnEnding) return;
+        setState(() {
+          _controller.text = partial;
+          _controller.selection = TextSelection.collapsed(
+            offset: _controller.text.length,
+          );
+        });
+      });
+      _finalPhraseSub = _voiceInput.finalPhraseStream.listen((_) {
+        if (!_voiceSessionActive(session)) return;
+        unawaited(_stopListeningAndSend());
+      });
+
+      final ok = await _voiceInput.startRecording();
+      if (!ok) {
+        if (_voiceSessionActive(session)) {
+          setState(() => _continuousMode = false);
+          _showVoiceNotice('Voice input is unavailable on this device.');
+        }
+        await AppLog.instance.info('voice_input_unavailable', {});
+        return;
+      }
+      if (!_voiceSessionActive(session) || _turnEnding) {
+        await _voiceInput.stopRecording();
+        return;
+      }
+      setState(() => _listening = true);
+    } finally {
+      _startingListening = false;
+    }
   }
 
   Future<void> _endConversation() async {
+    final hadVoice = _continuousMode || _listening || _startingListening;
+    _voiceSession++;
     _continuousMode = false;
-    await _interruptActiveReply();
-    if (_listening) {
-      await _voiceInput.stopRecording();
-      if (!mounted) return;
+    if (mounted) {
       setState(() {
         _listening = false;
-        _controller.clear();
+        if (hadVoice) _controller.clear();
       });
-    } else if (mounted) {
-      setState(() {});
     }
+    await _voiceInput.stopRecording();
+    await _interruptActiveReply();
+  }
+
+  void _showVoiceNotice(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+      ));
+  }
+
+  Future<void> _handleVoiceCommand(NeuraVoiceCommand command) async {
+    // Stop capture and invalidate late native callbacks before acting. A
+    // command is never appended to model history or persistent memory.
+    final session = _voiceSession;
+    await _endConversation();
+    if (!mounted ||
+        SafeBoot.instance.safeMode.value ||
+        _voiceSession != session + 1 ||
+        !(ModalRoute.of(context)?.isCurrent ?? true)) {
+      return;
+    }
+
+    final mode = switch (command) {
+      NeuraVoiceCommand.quietMode => NeuraConversationMode.quiet,
+      NeuraVoiceCommand.balancedMode => NeuraConversationMode.balanced,
+      NeuraVoiceCommand.companionMode => NeuraConversationMode.companion,
+      NeuraVoiceCommand.coachMode => NeuraConversationMode.coach,
+      _ => null,
+    };
+    if (mode != null) {
+      setState(() => _conversationMode = mode);
+      _showVoiceNotice('${mode.label} conversation mode selected.');
+      return;
+    }
+
+    switch (command) {
+      case NeuraVoiceCommand.help:
+        await _showVoiceCommands();
+        return;
+      case NeuraVoiceCommand.stopListening:
+        _showVoiceNotice('Chat listening stopped.');
+        return;
+      case NeuraVoiceCommand.stopSpeaking:
+        _showVoiceNotice('Reply stopped. Tap the mic when you want to talk.');
+        return;
+      case NeuraVoiceCommand.muteReplies:
+        setState(() => _speechEnabled = false);
+        _showVoiceNotice('Replies are muted in this chat.');
+        return;
+      case NeuraVoiceCommand.unmuteReplies:
+        if (NeuraTtsService.instance.replySpeechMode ==
+            NeuraReplySpeechMode.off) {
+          _showVoiceNotice('Enable reply speech in Voice settings first.');
+          return;
+        }
+        setState(() => _speechEnabled = true);
+        _showVoiceNotice('Replies are unmuted in this chat.');
+        return;
+      case NeuraVoiceCommand.openJournal:
+        await _openVoiceDestination(
+            '/memory/journal-prompt', (_) => const JournalPromptScreen());
+        return;
+      case NeuraVoiceCommand.openMood:
+        await _openVoiceDestination(
+            '/care/mood-check-in', (_) => const MoodCheckInScreen());
+        return;
+      case NeuraVoiceCommand.openSettings:
+        await _openVoiceDestination('/settings', (_) => const SettingsScreen());
+        return;
+      case NeuraVoiceCommand.openVoiceSettings:
+        await _openVoiceDestination(
+            '/settings/voice', (_) => const NeuraVoiceSettingsScreen());
+        return;
+      case NeuraVoiceCommand.quietMode:
+      case NeuraVoiceCommand.balancedMode:
+      case NeuraVoiceCommand.companionMode:
+      case NeuraVoiceCommand.coachMode:
+        return;
+    }
+  }
+
+  Future<void> _openVoiceDestination(String name, WidgetBuilder builder) async {
+    if (!mounted || SafeBoot.instance.safeMode.value) return;
+    await Navigator.of(context).push<void>(MaterialPageRoute<void>(
+      settings: RouteSettings(name: name),
+      builder: builder,
+    ));
+  }
+
+  Future<void> _showVoiceCommands() async {
+    await _endConversation();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: FractionallySizedBox(
+          heightFactor: 0.75,
+          child: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              Text('Voice commands',
+                  style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 12),
+              const Text(
+                'Tap the chat mic, then say “Neura” followed by a command. '
+                'These controls run on this device. Tap the mic again after '
+                'a command. Ordinary speech remains a chat message.',
+              ),
+              const SizedBox(height: 12),
+              for (final command in NeuraVoiceCommand.values)
+                ListTile(
+                  dense: true,
+                  title: Text('“Neura, ${command.phrase}”'),
+                ),
+              const Text(
+                'Voice commands cannot approve cloud requests, save journal '
+                'entries, or turn on background listening. Safe Mode keeps '
+                'the microphone off.',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _beginVoiceBargeIn() async {
@@ -395,6 +583,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
     }
 
     final room = NeuraShell.of(context).room;
+    final conversationMode = _conversationMode;
     final policy = NeuraChatPolicy.forRoom(room.id);
     final selectedContext = _selectedContext;
     final includeMemory = _includeMemory && policy.persistMemory;
@@ -505,6 +694,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
         history,
         agentId: _activeAgent.id,
         roomId: room.id,
+        conversationMode: conversationMode,
         generationId: generationId,
         selectedContext: selectedContext,
         includePermittedMemory: includeMemory,
@@ -866,10 +1056,31 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
           ),
         ),
         actions: [
-          IconButton(
-            tooltip: 'AI diagnostics',
-            onPressed: _showAiDiagnostics,
-            icon: const Icon(Icons.monitor_heart_outlined),
+          PopupMenuButton<NeuraConversationMode>(
+            tooltip: 'Conversation mode: ${_conversationMode.label}',
+            icon: const Icon(Icons.tune),
+            onSelected: (mode) => setState(() => _conversationMode = mode),
+            itemBuilder: (_) => [
+              for (final mode in NeuraConversationMode.values)
+                PopupMenuItem(value: mode, child: Text(mode.label)),
+            ],
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Chat options',
+            icon: const Icon(Icons.more_vert),
+            onSelected: (option) {
+              if (option == 'voice_commands') {
+                unawaited(_showVoiceCommands());
+              } else {
+                _showAiDiagnostics();
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                  value: 'voice_commands', child: Text('Voice commands')),
+              PopupMenuItem(
+                  value: 'diagnostics', child: Text('AI diagnostics')),
+            ],
           ),
           if (_continuousMode)
             IconButton(
@@ -1045,7 +1256,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen> {
                         : (_busy
                             ? 'Interrupt and talk'
                             : 'Talk freely (hands-free)'),
-                    onPressed: _beginVoiceBargeIn,
+                    onPressed: SafeBoot.instance.safeMode.value
+                        ? null
+                        : _beginVoiceBargeIn,
                     icon: Icon(
                       _listening ? Icons.mic : Icons.mic_none,
                       color: _listening ? Colors.redAccent : null,

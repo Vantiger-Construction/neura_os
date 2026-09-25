@@ -88,8 +88,33 @@ void main() {
     expect(second.id, isNot(first.id));
     await svc.removeFromHistory(first.id);
 
+    svc.resetAfterDataWipe();
+    await svc.load();
+
     expect(svc.shares, hasLength(1));
+    expect(svc.shares.single.id, second.id);
     expect(svc.shares.single.entryCount, 6);
+  });
+
+  test('rapid shares retain distinct identities after reload', () async {
+    final svc = ContactShareService.instance;
+    final ids = <String>{};
+    for (var i = 0; i < 64; i++) {
+      final record = await svc.recordShare(
+        contactId: 'contact-1',
+        rangeStart: DateTime(2026, 1, 1),
+        rangeEnd: DateTime(2026, 1, 7),
+        entryCount: i + 1,
+      );
+      expect(ids.add(record.id), isTrue,
+          reason: 'Every share needs its own ID');
+    }
+
+    svc.resetAfterDataWipe();
+    await svc.load();
+
+    expect(svc.shares, hasLength(64));
+    expect(svc.shares.map((record) => record.id).toSet(), ids);
   });
 
   test('clearForContact removes every record for that contact only', () async {
