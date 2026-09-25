@@ -163,8 +163,7 @@ Future<void> main(List<String> arguments) async {
         break;
       case 'propose':
         final capabilities = await client.get('capabilities');
-        if (capabilities.statusCode < 200 ||
-            capabilities.statusCode >= 300) {
+        if (capabilities.statusCode < 200 || capabilities.statusCode >= 300) {
           response = capabilities;
         } else {
           response = await client.post(

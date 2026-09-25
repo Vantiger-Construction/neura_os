@@ -65,8 +65,8 @@ void main() {
     expect(response.$2['api_version'], 1);
     expect(response.$2['api_minor_version'], 1);
     final contracts = response.$2['action_contracts'] as Map;
-    expect(contracts.keys,
-        containsAll(['open_room', 'set_tone', 'sync_journal']));
+    expect(
+        contracts.keys, containsAll(['open_room', 'set_tone', 'sync_journal']));
     expect(
       (contracts['open_room'] as Map)['allowed_values'],
       contains('reflection_bay'),
@@ -77,8 +77,7 @@ void main() {
   });
   test('unsupported versions and errors use typed correlation envelopes',
       () async {
-    final unsupported =
-        await request('GET', '/v1/health', apiVersion: '2');
+    final unsupported = await request('GET', '/v1/health', apiVersion: '2');
     expect(unsupported.$1, 426);
     expect(unsupported.$2['error'], 'unsupported_api_version');
     final info = unsupported.$2['error_info'] as Map;
@@ -195,9 +194,7 @@ void main() {
   });
   test('rate limiting returns Retry-After and a retryable error', () async {
     late (int, Map<String, dynamic>, HttpHeaders) response;
-    for (var index = 0;
-        index <= NeuraLocalApi.maxRequestsPerMinute;
-        index++) {
+    for (var index = 0; index <= NeuraLocalApi.maxRequestsPerMinute; index++) {
       response = await request('GET', '/v1/health');
     }
     expect(response.$1, 429);

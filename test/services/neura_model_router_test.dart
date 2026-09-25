@@ -197,17 +197,15 @@ void main() {
       sleep: (delay, _) async => delays.add(delay),
     );
 
-    final events = await router
-        .stream(
-          request,
-          tools: [],
-          cancel: NeuraGenerationCancel('retry'),
-          requestApproval: (preview) async {
-            approvals.add(preview.provider);
-            return true;
-          },
-        )
-        .toList();
+    final events = await router.stream(
+      request,
+      tools: [],
+      cancel: NeuraGenerationCancel('retry'),
+      requestApproval: (preview) async {
+        approvals.add(preview.provider);
+        return true;
+      },
+    ).toList();
 
     expect(transport.calls, 2);
     expect(approvals, [NeuraModelProvider.openAi, NeuraModelProvider.openAi]);
@@ -302,18 +300,16 @@ void main() {
     );
 
     await expectLater(
-      router
-          .stream(
-            request,
-            tools: const [],
-            cancel: NeuraGenerationCancel('tool-continuation'),
-            provider: NeuraModelProvider.openAi,
-            requestApproval: (_) async {
-              approvals++;
-              return true;
-            },
-          )
-          .toList(),
+      router.stream(
+        request,
+        tools: const [],
+        cancel: NeuraGenerationCancel('tool-continuation'),
+        provider: NeuraModelProvider.openAi,
+        requestApproval: (_) async {
+          approvals++;
+          return true;
+        },
+      ).toList(),
       throwsA(isA<NeuraStreamFailure>()),
     );
     expect(approvals, 1);
@@ -341,17 +337,15 @@ void main() {
 
     for (var index = 0; index < 2; index++) {
       await expectLater(
-        router
-            .stream(
-              request,
-              tools: const [],
-              cancel: NeuraGenerationCancel('circuit-$index'),
-              requestApproval: (_) async {
-                approvals++;
-                return true;
-              },
-            )
-            .toList(),
+        router.stream(
+          request,
+          tools: const [],
+          cancel: NeuraGenerationCancel('circuit-$index'),
+          requestApproval: (_) async {
+            approvals++;
+            return true;
+          },
+        ).toList(),
         throwsA(isA<NeuraStreamFailure>()),
       );
     }
@@ -363,17 +357,15 @@ void main() {
     );
 
     await expectLater(
-      router
-          .stream(
-            request,
-            tools: const [],
-            cancel: NeuraGenerationCancel('open-circuit'),
-            requestApproval: (_) async {
-              approvals++;
-              return true;
-            },
-          )
-          .toList(),
+      router.stream(
+        request,
+        tools: const [],
+        cancel: NeuraGenerationCancel('open-circuit'),
+        requestApproval: (_) async {
+          approvals++;
+          return true;
+        },
+      ).toList(),
       throwsA(isA<NeuraProviderCircuitOpen>()),
     );
     expect(transport.calls, 4);
@@ -556,17 +548,15 @@ void main() {
     );
 
     await expectLater(
-      router
-          .stream(
-            oversized,
-            tools: [],
-            cancel: NeuraGenerationCancel('oversized'),
-            requestApproval: (_) async {
-              approvals++;
-              return true;
-            },
-          )
-          .toList(),
+      router.stream(
+        oversized,
+        tools: [],
+        cancel: NeuraGenerationCancel('oversized'),
+        requestApproval: (_) async {
+          approvals++;
+          return true;
+        },
+      ).toList(),
       throwsA(isA<NeuraRequestBudgetExceeded>()),
     );
     expect(approvals, 0);

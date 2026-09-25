@@ -237,13 +237,17 @@ class NeuraLocalApi {
       _maintainReceipts();
       final path = request.uri.path;
       if (request.method == 'GET' && path == '/v1/health') {
-        return _reply(request, 200, {
-          'api_version': apiVersion,
-          'api_minor_version': apiMinorVersion,
-          'contract_version': '$apiVersion.$apiMinorVersion',
-          'status': 'ready',
-          'approval_required': true,
-        }, traceId);
+        return _reply(
+            request,
+            200,
+            {
+              'api_version': apiVersion,
+              'api_minor_version': apiMinorVersion,
+              'contract_version': '$apiVersion.$apiMinorVersion',
+              'status': 'ready',
+              'approval_required': true,
+            },
+            traceId);
       }
       if (request.method == 'GET' && path == '/v1/capabilities') {
         return _reply(request, 200, _capabilities(), traceId);
