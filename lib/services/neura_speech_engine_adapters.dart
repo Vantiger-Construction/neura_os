@@ -4,7 +4,7 @@ import 'voice_journal_service.dart';
 
 final class NeuraWinRtSpeechEngineAdapter implements NeuraSpeechEngine {
   NeuraWinRtSpeechEngineAdapter({NeuraSpeechToTextService? service})
-    : _service = service ?? NeuraSpeechToTextService.instance;
+      : _service = service ?? NeuraSpeechToTextService.instance;
 
   final NeuraSpeechToTextService _service;
 

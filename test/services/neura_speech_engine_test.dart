@@ -60,7 +60,8 @@ void main() {
         platform: 'windows',
         preferredId: 'onnx',
         includeExperimental: true,
-      ))?.id,
+      ))
+          ?.id,
       'onnx',
     );
   });
@@ -74,7 +75,8 @@ void main() {
       (await registry.select(
         platform: 'windows',
         preferredId: 'preferred',
-      ))?.id,
+      ))
+          ?.id,
       'fallback',
     );
   });

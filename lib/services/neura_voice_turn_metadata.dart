@@ -172,9 +172,8 @@ final class NeuraVoiceTurnMetadataBuilder {
       turnId: turnId,
       engineId: engineId,
       observedAtUtc: first,
-      speechDuration: last.isAfter(first)
-          ? last.difference(first)
-          : Duration.zero,
+      speechDuration:
+          last.isAfter(first) ? last.difference(first) : Duration.zero,
       pauseCount: _pauseCount,
       interruptionCount: _interruptionCount,
       meanConfidence: mean,
@@ -192,7 +191,7 @@ final class NeuraVoiceTurnMetadataBuilder {
 /// optional access. Cloud disclosure requires its own fresh single-use lease.
 final class NeuraVoiceTurnMetadataStore {
   NeuraVoiceTurnMetadataStore({required bool Function() safeModeReader})
-    : _safeModeReader = safeModeReader;
+      : _safeModeReader = safeModeReader;
 
   final bool Function() _safeModeReader;
   final Map<String, NeuraVoiceTurnMetadata> _records = {};

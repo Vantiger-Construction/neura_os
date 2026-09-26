@@ -108,9 +108,8 @@ final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
             ? confidence.toDouble().clamp(0.0, 1.0).toDouble()
             : null,
         pauseBefore: Duration(
-          milliseconds: pauseMs is num
-              ? pauseMs.toInt().clamp(0, 60000).toInt()
-              : 0,
+          milliseconds:
+              pauseMs is num ? pauseMs.toInt().clamp(0, 60000).toInt() : 0,
         ),
         observedAtUtc: DateTime.now().toUtc(),
       ),

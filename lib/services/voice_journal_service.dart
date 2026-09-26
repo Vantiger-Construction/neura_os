@@ -122,8 +122,8 @@ class VoiceJournalService {
           final observedAtUtc = DateTime.now().toUtc();
           final pauseBefore =
               result.finalResult && _lastPluginFinalAtUtc != null
-              ? observedAtUtc.difference(_lastPluginFinalAtUtc!)
-              : Duration.zero;
+                  ? observedAtUtc.difference(_lastPluginFinalAtUtc!)
+                  : Duration.zero;
           final confidence = result.confidence >= 0 && result.confidence <= 1
               ? result.confidence
               : null;
