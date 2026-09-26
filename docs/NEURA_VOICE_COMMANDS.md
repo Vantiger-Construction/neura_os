@@ -1,11 +1,14 @@
 # Neura chat voice commands
 
 Open **Talk to Neura**, tap the microphone, and say a complete phrase beginning
-with **Neura** or **Hey Neura**. Find the list under **Chat options → Voice
-commands**. Each recognized command ends the current listening session; tap the
+with **Neura** or **Hey Neura**. Find all **31 commands**, grouped by purpose and
+with short descriptions, under **Chat options → Voice commands**. Each
+recognized command ends the current listening session; tap the
 mic again to continue. Commands use the existing chat speech recognizer, currently
 the native Windows speech bridge. Other platforms must provide that speech
 channel before these microphone controls are available.
+
+## Chat controls
 
 | Say | Result |
 | --- | --- |
@@ -14,14 +17,54 @@ channel before these microphone controls are available.
 | Neura, stop speaking | Interrupt the current reply and stop chat listening. |
 | Neura, mute replies | Mute automatic replies for this chat. |
 | Neura, unmute replies | Unmute this chat if reply speech is enabled in Voice settings. |
+| Neura, choose companion | Open the companion picker; tap a choice to change it. |
+| Neura, scroll up | Scroll up roughly one page in the current chat. |
+| Neura, scroll down | Scroll down roughly one page in the current chat. |
+| Neura, scroll to top | Show the first messages in the current chat. |
+| Neura, scroll to bottom | Show the latest messages in the current chat. |
+
+## Conversation style
+
+| Say | Result |
+| --- | --- |
 | Neura, quiet mode | Use brief replies. |
 | Neura, balanced mode | Use the default conversational style. |
 | Neura, companion mode | Use the warmer companion style. |
 | Neura, coach mode | Use the practical next-step style. |
+
+## Open a screen
+
+| Say | Result |
+| --- | --- |
 | Neura, open journal | Open the existing local journal-prompt screen. |
 | Neura, open mood check-in | Open the local mood form; the user still presses Save. |
+| Neura, open mood history | View saved mood check-ins. |
+| Neura, open weekly review | View local review history; Generate remains a separate action. |
+| Neura, open dream journal | View the dream journal calendar. |
+| Neura, open focus | Open Focus Office without changing the selected mode. |
+| Neura, open quests | View quests without marking any complete. |
+| Neura, open timeline | View the local life timeline without exporting it. |
 | Neura, open settings | Open Settings. |
 | Neura, open voice settings | Open voice and reply-speech settings. |
+| Neura, open accessibility | Open comfort and readability settings. |
+| Neura, open themes | Open appearance settings. |
+| Neura, open privacy | Open Privacy & Safety settings without changing consent. |
+| Neura, open notifications | Open notification settings without enabling notifications. |
+| Neura, open help | Open the Getting Started guide. |
+
+## Next reply context
+
+| Say | Result |
+| --- | --- |
+| Neura, remove selected context | Detach the selected text file from the next reply; leave the file unchanged. |
+| Neura, exclude memories | Uncheck permitted memories for the next reply; retain saved memories and existing chat messages. |
+
+Natural alternatives include **page up**, **page down**, **go to first message**,
+**show latest message**, **open focus office**, **open dream calendar**,
+**open appearance**, **remove selected file**, and **don't use memories**.
+These still need the Neura prefix. Adding “please” at the start or end works.
+
+## Recognition and privacy
 
 Controls match complete phrases from final recognition results. Partial speech,
 quoted mentions, and longer compound requests do not trigger a local command.
@@ -33,10 +76,15 @@ are not added to chat history, model context, memory, or diagnostics. Opening a
 screen grants no permission to save, share, or upload its contents. Commands
 cannot approve cloud requests, change Safe Mode, enable persistent memory, or
 enable background listening. Unmute does not override the saved Off setting.
+Detaching a file or excluding memories affects only the pending next-reply
+selection: it does not erase earlier chat messages or reverse an earlier share.
+Existing restrictions on history derived from private context remain in force.
 
 Safe Mode, ending the session, and app backgrounding invalidate pending voice
 callbacks. Navigation stops capture first. Returning from a command-opened
 screen or resuming the app does not restart the chat microphone automatically.
+Commands are available in the chat screen; use the destination's Back control
+to return to chat before issuing another command.
 
 ## Focused device checks
 
@@ -53,6 +101,13 @@ screen or resuming the app does not restart the chat microphone automatically.
    and listening did not restart.
 6. Set reply speech to Off, then say “Neura, unmute replies.” Confirm Off remains
    selected and the app directs the user to Voice settings.
+7. Try scrolling up, down, to the top, and to the bottom of a long conversation.
+   Confirm each command stops capture and stays within the chat's bounds.
+8. Select a text file and enable memories for the next reply. Remove the selected
+   context, then exclude memories. Confirm the file and saved data remain intact.
+9. Open Focus Office, weekly review, notifications, and the companion picker.
+   Confirm opening does not change a mode, generate a review, enable notifications,
+   or select a different companion. Check the remaining screen shortcuts too.
 
 The automated widget tests exercise native speech callbacks with a mocked
 platform channel. A physical microphone, Windows permission prompts, and spoken
