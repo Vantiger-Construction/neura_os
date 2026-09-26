@@ -39,6 +39,8 @@ void main() {
       'open privacy settings': NeuraVoiceCommand.openPrivacy,
       'open notification settings': NeuraVoiceCommand.openNotifications,
       'open getting started': NeuraVoiceCommand.openHelp,
+      'open guided support': NeuraVoiceCommand.guidedSupport,
+      'i need a moment': NeuraVoiceCommand.guidedSupport,
       'choose a companion': NeuraVoiceCommand.chooseCompanion,
       'page up': NeuraVoiceCommand.scrollUp,
       'page down': NeuraVoiceCommand.scrollDown,
