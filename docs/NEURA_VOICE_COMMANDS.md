@@ -1,7 +1,7 @@
 # Neura chat voice commands
 
 Open **Talk to Neura**, tap the microphone, and say a complete phrase beginning
-with **Neura** or **Hey Neura**. Find all **31 commands**, grouped by purpose and
+with **Neura** or **Hey Neura**. Find all **38 commands**, grouped by purpose and
 with short descriptions, under **Chat options → Voice commands**. Each
 recognized command ends the current listening session; tap the
 mic again to continue. Commands use the existing chat speech recognizer, currently
@@ -31,6 +31,18 @@ channel before these microphone controls are available.
 | Neura, balanced mode | Use the default conversational style. |
 | Neura, companion mode | Use the warmer companion style. |
 | Neura, coach mode | Use the practical next-step style. |
+
+## Neura rooms
+
+| Say | Result |
+| --- | --- |
+| Neura, where am I | Show the current Neura room. |
+| Neura, open penthouse | Move to the Penthouse. “Go home” also works. |
+| Neura, open reflection bay | Move to Reflection Bay. |
+| Neura, open joy lounge | Move to the Joy Lounge. |
+| Neura, open mood den | Move to the Mood Den. |
+| Neura, open dream atrium | Move to the Dream Atrium. |
+| Neura, open legacy vault | Move to the Legacy Vault. |
 
 ## Open a screen
 
@@ -75,7 +87,9 @@ Recognized commands are consumed before the chat send path. Their transcripts
 are not added to chat history, model context, memory, or diagnostics. Opening a
 screen grants no permission to save, share, or upload its contents. Commands
 cannot approve cloud requests, change Safe Mode, enable persistent memory, or
-enable background listening. Unmute does not override the saved Off setting.
+enable background listening. Room commands change the current local room and
+its saved room selection without reading or writing room content. Unmute does
+not override the saved Off setting.
 Detaching a file or excluding memories affects only the pending next-reply
 selection: it does not erase earlier chat messages or reverse an earlier share.
 Existing restrictions on history derived from private context remain in force.
@@ -108,6 +122,10 @@ to return to chat before issuing another command.
 9. Open Focus Office, weekly review, notifications, and the companion picker.
    Confirm opening does not change a mode, generate a review, enable notifications,
    or select a different companion. Check the remaining screen shortcuts too.
+10. Open every room by voice and ask “Neura, where am I.” Confirm the room and
+    displayed location agree, the command never enters chat history, and the
+    microphone stays off. “Open dream room” changes rooms; “open dream calendar”
+    opens the separate journal screen.
 
 The automated widget tests exercise native speech callbacks with a mocked
 platform channel. A physical microphone, Windows permission prompts, and spoken

@@ -60,6 +60,35 @@ void main() {
     }
   });
 
+  test('room aliases stay distinct from screen shortcuts and match exactly',
+      () {
+    final examples = {
+      'go home': NeuraVoiceCommand.openPenthouse,
+      'open the penthouse': NeuraVoiceCommand.openPenthouse,
+      'go to reflection bay': NeuraVoiceCommand.openReflectionBay,
+      'open reflection': NeuraVoiceCommand.openReflectionBay,
+      'go to joy lounge': NeuraVoiceCommand.openJoyLounge,
+      'open joy': NeuraVoiceCommand.openJoyLounge,
+      'go to mood den': NeuraVoiceCommand.openMoodDen,
+      'go to dream atrium': NeuraVoiceCommand.openDreamAtrium,
+      'open dream room': NeuraVoiceCommand.openDreamAtrium,
+      'open dream calendar': NeuraVoiceCommand.openDreamJournal,
+      'go to legacy vault': NeuraVoiceCommand.openLegacyVault,
+      'open legacy': NeuraVoiceCommand.openLegacyVault,
+      'where are we': NeuraVoiceCommand.whereAmI,
+      'what room am i in': NeuraVoiceCommand.whereAmI,
+      'which room am i in': NeuraVoiceCommand.whereAmI,
+    };
+    for (final entry in examples.entries) {
+      expect(NeuraVoiceCommand.parse('Hey Neura, ${entry.key} please?'),
+          entry.value,
+          reason: entry.key);
+      expect(NeuraVoiceCommand.parse(entry.key), isNull);
+      expect(NeuraVoiceCommand.parse('Neura, ${entry.key} and send my journal'),
+          isNull);
+    }
+  });
+
   test('ordinary conversation and incomplete phrases do not execute controls',
       () {
     for (final phrase in [
