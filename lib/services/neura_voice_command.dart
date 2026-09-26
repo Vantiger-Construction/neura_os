@@ -57,6 +57,9 @@ enum NeuraVoiceCommand {
       group: NeuraVoiceCommandGroup.screens),
   openHelp('open help', 'Open the Getting Started guide.',
       group: NeuraVoiceCommandGroup.screens),
+  guidedSupport(
+      'help me through this', 'Choose a short, local support activity.',
+      group: NeuraVoiceCommandGroup.screens),
   removeSelectedContext('remove selected context',
       'Remove the text file selected for the next reply.',
       group: NeuraVoiceCommandGroup.context),
@@ -109,6 +112,7 @@ enum NeuraVoiceCommand {
       'open privacy settings' || 'open privacy and safety' => openPrivacy,
       'open notification settings' => openNotifications,
       'open getting started' => openHelp,
+      'open guided support' || 'i need a moment' => guidedSupport,
       'choose a companion' || 'open companion picker' => chooseCompanion,
       'page up' => scrollUp,
       'page down' => scrollDown,
