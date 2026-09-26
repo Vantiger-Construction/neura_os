@@ -13,6 +13,7 @@ on:
       - 'docs/LIVING_INTELLIGENCE_V1_5.md'
       - 'pubspec.yaml'
       - 'pubspec.lock'
+      - 'tools/Enable-NeuraFlutter.ps1'
       - '.github/workflows/neura-1.5-living-intelligence.yml'
   workflow_dispatch:
 
@@ -25,6 +26,7 @@ concurrency:
 
 env:
   FLUTTER_VERSION: '3.47.5'
+  FLUTTER_SHA256: '0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8'
 
 jobs:
   validate:
@@ -108,14 +110,9 @@ jobs:
       - name: Enable pinned Flutter
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
-          $flutterRoot = Join-Path $env:RUNNER_TOOL_CACHE "flutter\$env:FLUTTER_VERSION\x64"
-          $flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
-          if (-not (Test-Path -LiteralPath $flutterExe -PathType Leaf)) {
-            throw "Pinned Flutter $env:FLUTTER_VERSION is missing from the runner tool cache."
-          }
-          (Join-Path $flutterRoot 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          & $flutterExe --version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:NEURA_SOURCE_ROOT\tools\Enable-NeuraFlutter.ps1" `
+            -Version $env:FLUTTER_VERSION `
+            -ExpectedSha256 $env:FLUTTER_SHA256
 
       - name: Restore dependencies
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'

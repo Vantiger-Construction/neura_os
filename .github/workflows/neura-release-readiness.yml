@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/neura-release-readiness.yml"
       - "tools/release/**"
+      - "tools/Enable-NeuraFlutter.ps1"
       - "BUILD_ALL_NEURA_UPGRADES.ps1"
   workflow_dispatch:
     inputs:
@@ -29,6 +30,7 @@ concurrency:
 
 env:
   FLUTTER_VERSION: "3.47.5"
+  FLUTTER_SHA256: "0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8"
   POWERSHELL_VERSION: "7.4.6"
 
 jobs:
@@ -146,15 +148,12 @@ jobs:
             throw "Expected PowerShell $requiredVersion; found $installedVersion."
           }
           $installRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-      - name: Use retained Flutter 3.47.5
+      - name: Enable pinned Flutter 3.47.5
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          $flutter = Get-Command flutter -ErrorAction Stop
-          $version = (& $flutter.Source --version | Select-Object -First 1)
-          if ($version -notmatch 'Flutter 3\.47\.5') {
-            throw "Expected retained Flutter 3.47.5; found: $version"
-          }
+          & "$env:GITHUB_WORKSPACE\tools\Enable-NeuraFlutter.ps1" `
+            -Version $env:FLUTTER_VERSION `
+            -ExpectedSha256 $env:FLUTTER_SHA256
       - name: Build tested Windows package
         shell: pwsh
         run: ./BUILD_ALL_NEURA_UPGRADES.ps1 -Root "${{ github.workspace }}"

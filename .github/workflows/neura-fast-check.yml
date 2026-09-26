@@ -17,6 +17,7 @@ on:
       - 'analysis_options.yaml'
       - 'tools/Neura-FastCheck.ps1'
       - 'tools/Neura-ReclaimCiDisk.ps1'
+      - 'tools/Enable-NeuraFlutter.ps1'
       - '.github/workflows/neura-fast-check.yml'
   workflow_dispatch:
     inputs:
@@ -32,6 +33,10 @@ permissions:
 concurrency:
   group: neura-local-runner-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.47.5'
+  FLUTTER_SHA256: '0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8'
 
 jobs:
   reclaim-runner-space:
@@ -393,27 +398,9 @@ jobs:
       - name: Install Flutter
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
-          $flutterVersion = '3.47.5'
-          $flutterRoot = Join-Path $env:RUNNER_TOOL_CACHE "flutter\$flutterVersion\x64"
-          $flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
-
-          if (-not (Test-Path -LiteralPath $flutterExe -PathType Leaf)) {
-            throw (
-              "Pinned Flutter $flutterVersion is missing from the retained " +
-              "runner tool cache. Re-provision the toolchain before validation."
-            )
-          }
-
-          $flutterBin = Join-Path $flutterRoot 'bin'
-          $flutterBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          & $flutterExe config --no-analytics
-          if ($LASTEXITCODE -ne 0) {
-            throw "Flutter configuration failed with exit code $LASTEXITCODE."
-          }
-          & $flutterExe --version
-          if ($LASTEXITCODE -ne 0) {
-            throw "Flutter verification failed with exit code $LASTEXITCODE."
-          }
+          & "$env:NEURA_SOURCE_ROOT\tools\Enable-NeuraFlutter.ps1" `
+            -Version $env:FLUTTER_VERSION `
+            -ExpectedSha256 $env:FLUTTER_SHA256
 
       - name: Install Rust
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'

@@ -7,8 +7,9 @@ a compatibility gate, not a release approval.
 ## Pinned Android toolchain
 
 - Flutter 3.47.5 (stable)
-- Dart 3.12 from the pinned Flutter SDK, while the package language-version
-  floor remains at Dart 3.0 to keep formatter migration out of this gate
+- Dart 3.13.4 from the pinned Flutter SDK. Dependency resolution records a
+  Dart 3.12 floor, while the package language-version floor remains at Dart
+  3.0 to keep a repository-wide formatter migration out of this gate.
 - Android Gradle Plugin 9.1.0
 - Gradle 9.3.1
 - Java 17
@@ -55,11 +56,11 @@ documented runtime rollback path.
 
 ## Dart language-version decision
 
-This gate runs the app on Flutter 3.47's bundled Dart 3.12 toolchain without
-raising the package's minimum Dart language version. Raising that floor changes
-the canonical formatter for existing sources and would mix a broad mechanical
-rewrite into the runtime migration. Make that repository-wide formatter change
-in a separate PR with an independently reviewable diff.
+This gate runs the app on Flutter 3.47.5's bundled Dart 3.13.4 toolchain
+without raising the package's minimum Dart language version. Raising that
+floor changes the canonical formatter for existing sources and would mix a
+broad mechanical rewrite into the runtime migration. Make that repository-wide
+formatter change in a separate PR with an independently reviewable diff.
 
 ## Rollback
 
