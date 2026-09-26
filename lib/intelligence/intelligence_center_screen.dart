@@ -60,22 +60,20 @@ class _NeuraIntelligenceCenterScreenState
       _ReceiptRange.week => now.subtract(const Duration(days: 7)),
       _ReceiptRange.month => now.subtract(const Duration(days: 30)),
     };
-    return records
-        .where((item) {
-          if (_specialistFilter != _kAllSpecialists &&
-              item.receipt.specialistId != _specialistFilter) {
-            return false;
-          }
-          if (_outcomeFilter != _kAllOutcomes &&
-              item.receipt.userOutcome.name != _outcomeFilter) {
-            return false;
-          }
-          if (cutoff != null && item.receipt.evaluatedAt.isBefore(cutoff)) {
-            return false;
-          }
-          return true;
-        })
-        .toList(growable: false);
+    return records.where((item) {
+      if (_specialistFilter != _kAllSpecialists &&
+          item.receipt.specialistId != _specialistFilter) {
+        return false;
+      }
+      if (_outcomeFilter != _kAllOutcomes &&
+          item.receipt.userOutcome.name != _outcomeFilter) {
+        return false;
+      }
+      if (cutoff != null && item.receipt.evaluatedAt.isBefore(cutoff)) {
+        return false;
+      }
+      return true;
+    }).toList(growable: false);
   }
 
   static String _specialistLabel(String specialistId) {
@@ -136,15 +134,13 @@ class _NeuraIntelligenceCenterScreenState
           final preferences = _controller.preferences;
           final now = DateTime.now();
           final allRecords = _controller.records.reversed.toList();
-          final specialistIds =
-              allRecords
-                  .map((item) => item.receipt.specialistId)
-                  .toSet()
-                  .toList()
-                ..sort();
+          final specialistIds = allRecords
+              .map((item) => item.receipt.specialistId)
+              .toSet()
+              .toList()
+            ..sort();
           final records = _applyFilters(allRecords, now).take(50).toList();
-          final paused =
-              preferences.pausedUntil != null &&
+          final paused = preferences.pausedUntil != null &&
               now.isBefore(preferences.pausedUntil!);
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -172,10 +168,10 @@ class _NeuraIntelligenceCenterScreenState
                                 safeMode
                                     ? 'Safe Mode'
                                     : paused
-                                    ? 'Paused'
-                                    : preferences.allowsProactiveSuggestions
-                                    ? '${preferences.proactivityLevel.label} · on-device'
-                                    : 'Off',
+                                        ? 'Paused'
+                                        : preferences.allowsProactiveSuggestions
+                                            ? '${preferences.proactivityLevel.label} · on-device'
+                                            : 'Off',
                               ),
                             ),
                           ),
@@ -299,10 +295,10 @@ class _NeuraIntelligenceCenterScreenState
                             label: preferences.maxDailySuggestions.toString(),
                             onChanged: preferences.allowsProactiveSuggestions
                                 ? (value) => _save(
-                                    preferences.copyWith(
-                                      maxDailySuggestions: value.round(),
-                                    ),
-                                  )
+                                      preferences.copyWith(
+                                        maxDailySuggestions: value.round(),
+                                      ),
+                                    )
                                 : null,
                           ),
                           Text(
@@ -408,24 +404,21 @@ class _NeuraIntelligenceCenterScreenState
                       ),
                       DropdownButton<String>(
                         value: _outcomeFilter,
-                        items:
-                            [
-                                  _kAllOutcomes,
-                                  ...NeuraSuggestionOutcome.values.map(
-                                    (o) => o.name,
-                                  ),
-                                ]
-                                .map(
-                                  (name) => DropdownMenuItem(
-                                    value: name,
-                                    child: Text(
-                                      name == _kAllOutcomes
-                                          ? 'All outcomes'
-                                          : name,
-                                    ),
-                                  ),
-                                )
-                                .toList(growable: false),
+                        items: [
+                          _kAllOutcomes,
+                          ...NeuraSuggestionOutcome.values.map(
+                            (o) => o.name,
+                          ),
+                        ]
+                            .map(
+                              (name) => DropdownMenuItem(
+                                value: name,
+                                child: Text(
+                                  name == _kAllOutcomes ? 'All outcomes' : name,
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
                         onChanged: (value) => setState(
                           () => _outcomeFilter = value ?? _kAllOutcomes,
                         ),
@@ -522,19 +515,19 @@ class _NeuraIntelligenceCenterScreenState
   }
 
   static IconData _riskIcon(NeuraCapabilityRisk risk) => switch (risk) {
-    NeuraCapabilityRisk.readOnly => Icons.visibility_outlined,
-    NeuraCapabilityRisk.reversibleLocal => Icons.undo_outlined,
-    NeuraCapabilityRisk.sensitiveLocal => Icons.lock_outline,
-    NeuraCapabilityRisk.external => Icons.open_in_new,
-    NeuraCapabilityRisk.critical => Icons.block,
-  };
+        NeuraCapabilityRisk.readOnly => Icons.visibility_outlined,
+        NeuraCapabilityRisk.reversibleLocal => Icons.undo_outlined,
+        NeuraCapabilityRisk.sensitiveLocal => Icons.lock_outline,
+        NeuraCapabilityRisk.external => Icons.open_in_new,
+        NeuraCapabilityRisk.critical => Icons.block,
+      };
 
   static String _approvalLabel(NeuraApprovalMode mode) => switch (mode) {
-    NeuraApprovalMode.none => 'user gesture',
-    NeuraApprovalMode.session => 'session approval',
-    NeuraApprovalMode.everyTime => 'approve every time',
-    NeuraApprovalMode.blocked => 'blocked',
-  };
+        NeuraApprovalMode.none => 'user gesture',
+        NeuraApprovalMode.session => 'session approval',
+        NeuraApprovalMode.everyTime => 'approve every time',
+        NeuraApprovalMode.blocked => 'blocked',
+      };
 }
 
 class _ReceiptTile extends StatelessWidget {

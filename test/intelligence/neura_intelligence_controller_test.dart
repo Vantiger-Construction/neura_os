@@ -191,16 +191,17 @@ void main() {
 NeuraIntelligenceCandidate _candidate(
   DateTime now, {
   String id = 'controller-candidate',
-}) => NeuraIntelligenceCandidate(
-  id: id,
-  capabilityId: NeuraCapabilityRegistry.surfaceSuggestion,
-  specialistId: 'controller_test',
-  title: 'Private title',
-  body: 'Private recommendation body',
-  createdAt: now,
-  expiresAt: now.add(const Duration(hours: 1)),
-  benefit: 1,
-  urgency: 0.8,
-  disruption: 0.05,
-  confidence: 1,
-);
+}) =>
+    NeuraIntelligenceCandidate(
+      id: id,
+      capabilityId: NeuraCapabilityRegistry.surfaceSuggestion,
+      specialistId: 'controller_test',
+      title: 'Private title',
+      body: 'Private recommendation body',
+      createdAt: now,
+      expiresAt: now.add(const Duration(hours: 1)),
+      benefit: 1,
+      urgency: 0.8,
+      disruption: 0.05,
+      confidence: 1,
+    );
