@@ -66,13 +66,13 @@ final class NeuraCloudTransactionEnvelope {
   bool get isRetry => retryCount > 0;
 
   static Uri audienceFor(NeuraModelProvider provider) => switch (provider) {
-    NeuraModelProvider.openAi => Uri.parse(
-      'https://api.openai.com/v1/responses',
-    ),
-    NeuraModelProvider.anthropic => Uri.parse(
-      'https://api.anthropic.com/v1/messages',
-    ),
-  };
+        NeuraModelProvider.openAi => Uri.parse(
+            'https://api.openai.com/v1/responses',
+          ),
+        NeuraModelProvider.anthropic => Uri.parse(
+            'https://api.anthropic.com/v1/messages',
+          ),
+      };
 
   void validateFor({
     required NeuraModelProvider requestedProvider,
@@ -90,12 +90,12 @@ final class NeuraCloudTransactionEnvelope {
   /// Headers carry operational identifiers only. Prompt text and its digest
   /// intentionally remain process-local.
   Map<String, String> requestHeaders() => {
-    'cache-control': 'no-store',
-    'pragma': 'no-cache',
-    'idempotency-key': idempotencyKey,
-    'x-neura-approval-id': approvalId,
-    'x-neura-trace-id': traceId,
-  };
+        'cache-control': 'no-store',
+        'pragma': 'no-cache',
+        'idempotency-key': idempotencyKey,
+        'x-neura-approval-id': approvalId,
+        'x-neura-trace-id': traceId,
+      };
 
   static void _requireId(String value, String name) {
     if (value.isEmpty ||
@@ -111,8 +111,8 @@ final class NeuraCloudTransactionEnvelope {
 /// key across an exact retry to the same provider.
 final class NeuraCloudTransactionFactory {
   NeuraCloudTransactionFactory({NeuraCloudIdFactory? idFactory, Sha256? sha256})
-    : _idFactory = idFactory ?? (const Uuid()).v4,
-      _sha256 = sha256 ?? Sha256();
+      : _idFactory = idFactory ?? (const Uuid()).v4,
+        _sha256 = sha256 ?? Sha256();
 
   final NeuraCloudIdFactory _idFactory;
   final Sha256 _sha256;
@@ -128,9 +128,8 @@ final class NeuraCloudTransactionFactory {
     required int retryCount,
   }) async {
     final hash = await _sha256.hash(utf8.encode(canonicalPayload));
-    final digest = hash.bytes
-        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
-        .join();
+    final digest =
+        hash.bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
     return NeuraCloudTransactionEnvelope(
       approvalId: _idFactory(),
       traceId: traceId,
@@ -167,15 +166,15 @@ final class NeuraCloudAuditEvent {
   final String? failureKind;
 
   Map<String, Object?> toJson() => {
-    'trace_id': traceId,
-    'approval_id': approvalId,
-    'provider': provider.name,
-    'audience': audience.host,
-    'retry_count': retryCount,
-    'stage': stage.name,
-    'at_utc': atUtc.toIso8601String(),
-    'failure_kind': failureKind,
-  };
+        'trace_id': traceId,
+        'approval_id': approvalId,
+        'provider': provider.name,
+        'audience': audience.host,
+        'retry_count': retryCount,
+        'stage': stage.name,
+        'at_utc': atUtc.toIso8601String(),
+        'failure_kind': failureKind,
+      };
 }
 
 final class NeuraCloudAuditTrail {

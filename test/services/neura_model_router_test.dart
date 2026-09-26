@@ -162,17 +162,15 @@ void main() {
         streamTransports: [primary, fallback],
       );
       await expectLater(
-        router
-            .stream(
-              request,
-              tools: [],
-              cancel: NeuraGenerationCancel('test'),
-              requestApproval: (preview) async {
-                approvals.add(preview.provider);
-                return preview.provider == NeuraModelProvider.openAi;
-              },
-            )
-            .toList(),
+        router.stream(
+          request,
+          tools: [],
+          cancel: NeuraGenerationCancel('test'),
+          requestApproval: (preview) async {
+            approvals.add(preview.provider);
+            return preview.provider == NeuraModelProvider.openAi;
+          },
+        ).toList(),
         throwsA(isA<NeuraCloudApprovalDenied>()),
       );
       expect(approvals, NeuraModelProvider.values);
@@ -241,17 +239,15 @@ void main() {
         sleep: (delay, _) async => delays.add(delay),
       );
 
-      final events = await router
-          .stream(
-            request,
-            tools: [],
-            cancel: NeuraGenerationCancel('retry'),
-            requestApproval: (preview) async {
-              approvals.add(preview);
-              return true;
-            },
-          )
-          .toList();
+      final events = await router.stream(
+        request,
+        tools: [],
+        cancel: NeuraGenerationCancel('retry'),
+        requestApproval: (preview) async {
+          approvals.add(preview);
+          return true;
+        },
+      ).toList();
 
       expect(transport.calls, 2);
       expect(approvals.map((preview) => preview.provider), [
@@ -365,18 +361,16 @@ void main() {
     );
 
     await expectLater(
-      router
-          .stream(
-            request,
-            tools: const [],
-            cancel: NeuraGenerationCancel('tool-continuation'),
-            provider: NeuraModelProvider.openAi,
-            requestApproval: (_) async {
-              approvals++;
-              return true;
-            },
-          )
-          .toList(),
+      router.stream(
+        request,
+        tools: const [],
+        cancel: NeuraGenerationCancel('tool-continuation'),
+        provider: NeuraModelProvider.openAi,
+        requestApproval: (_) async {
+          approvals++;
+          return true;
+        },
+      ).toList(),
       throwsA(isA<NeuraStreamFailure>()),
     );
     expect(approvals, 1);
@@ -406,17 +400,15 @@ void main() {
 
     for (var index = 0; index < 2; index++) {
       await expectLater(
-        router
-            .stream(
-              request,
-              tools: const [],
-              cancel: NeuraGenerationCancel('circuit-$index'),
-              requestApproval: (_) async {
-                approvals++;
-                return true;
-              },
-            )
-            .toList(),
+        router.stream(
+          request,
+          tools: const [],
+          cancel: NeuraGenerationCancel('circuit-$index'),
+          requestApproval: (_) async {
+            approvals++;
+            return true;
+          },
+        ).toList(),
         throwsA(isA<NeuraStreamFailure>()),
       );
     }
@@ -425,17 +417,15 @@ void main() {
     expect((router.providerHealthSnapshot['openAi'] as Map)['state'], 'open');
 
     await expectLater(
-      router
-          .stream(
-            request,
-            tools: const [],
-            cancel: NeuraGenerationCancel('open-circuit'),
-            requestApproval: (_) async {
-              approvals++;
-              return true;
-            },
-          )
-          .toList(),
+      router.stream(
+        request,
+        tools: const [],
+        cancel: NeuraGenerationCancel('open-circuit'),
+        requestApproval: (_) async {
+          approvals++;
+          return true;
+        },
+      ).toList(),
       throwsA(isA<NeuraProviderCircuitOpen>()),
     );
     expect(transport.calls, 4);
@@ -455,17 +445,15 @@ void main() {
       streamTransports: [transport],
     );
     await expectLater(
-      router
-          .stream(
-            request,
-            tools: [],
-            cancel: cancel,
-            requestApproval: (_) async {
-              cancel.cancel();
-              return true;
-            },
-          )
-          .toList(),
+      router.stream(
+        request,
+        tools: [],
+        cancel: cancel,
+        requestApproval: (_) async {
+          cancel.cancel();
+          return true;
+        },
+      ).toList(),
       throwsA(isA<NeuraGenerationCancelled>()),
     );
     expect(transport.calls, 0);
@@ -483,17 +471,15 @@ void main() {
       streamTransports: [transport],
     );
     await expectLater(
-      router
-          .stream(
-            request,
-            tools: [],
-            cancel: NeuraGenerationCancel('test'),
-            requestApproval: (_) async {
-              SafeBoot.instance.safeMode.value = true;
-              return true;
-            },
-          )
-          .toList(),
+      router.stream(
+        request,
+        tools: [],
+        cancel: NeuraGenerationCancel('test'),
+        requestApproval: (_) async {
+          SafeBoot.instance.safeMode.value = true;
+          return true;
+        },
+      ).toList(),
       throwsA(isA<NeuraGenerationCancelled>()),
     );
     expect(transport.calls, 0);
@@ -654,17 +640,15 @@ void main() {
       );
 
       await expectLater(
-        router
-            .stream(
-              oversized,
-              tools: [],
-              cancel: NeuraGenerationCancel('oversized'),
-              requestApproval: (_) async {
-                approvals++;
-                return true;
-              },
-            )
-            .toList(),
+        router.stream(
+          oversized,
+          tools: [],
+          cancel: NeuraGenerationCancel('oversized'),
+          requestApproval: (_) async {
+            approvals++;
+            return true;
+          },
+        ).toList(),
         throwsA(isA<NeuraRequestBudgetExceeded>()),
       );
       expect(approvals, 0);
@@ -842,7 +826,8 @@ void main() {
     },
   );
 
-  test('an explicitly locked-down constitution blocks the request before '
+  test(
+      'an explicitly locked-down constitution blocks the request before '
       'approval or transport', () async {
     final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
     await credentials.save(NeuraModelProvider.openAi, openAiKey);
@@ -922,17 +907,15 @@ void main() {
       );
       var approvals = 0;
       await expectLater(
-        router
-            .stream(
-              privateHistory,
-              tools: [],
-              cancel: NeuraGenerationCancel('private-history'),
-              requestApproval: (_) async {
-                approvals++;
-                return true;
-              },
-            )
-            .toList(),
+        router.stream(
+          privateHistory,
+          tools: [],
+          cancel: NeuraGenerationCancel('private-history'),
+          requestApproval: (_) async {
+            approvals++;
+            return true;
+          },
+        ).toList(),
         throwsA(isA<NeuraConstitutionBlocked>()),
       );
       expect(approvals, 0);
@@ -965,24 +948,22 @@ void main() {
     );
     var approvals = 0;
     await expectLater(
-      router
-          .stream(
-            privateRequest,
-            tools: [],
-            cancel: NeuraGenerationCancel('private-revocation'),
-            requestApproval: (preview) async {
-              approvals++;
-              expect(preview.includesPrivateContext, isTrue);
-              expect(preview.textPreview, contains('permitted memory'));
-              await NeuraConstitutionService.instance.save(
-                const NeuraPersonalConstitution(
-                  keepSensitiveContentLocal: true,
-                ),
-              );
-              return true;
-            },
-          )
-          .toList(),
+      router.stream(
+        privateRequest,
+        tools: [],
+        cancel: NeuraGenerationCancel('private-revocation'),
+        requestApproval: (preview) async {
+          approvals++;
+          expect(preview.includesPrivateContext, isTrue);
+          expect(preview.textPreview, contains('permitted memory'));
+          await NeuraConstitutionService.instance.save(
+            const NeuraPersonalConstitution(
+              keepSensitiveContentLocal: true,
+            ),
+          );
+          return true;
+        },
+      ).toList(),
       throwsA(isA<NeuraConstitutionBlocked>()),
     );
     expect(approvals, 1);

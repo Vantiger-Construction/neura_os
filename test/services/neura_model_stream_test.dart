@@ -44,16 +44,17 @@ NeuraCloudTransactionEnvelope transactionFor(NeuraModelProvider provider) =>
 Stream<NeuraStreamEvent> run(
   NeuraModelStreamTransport transport, {
   NeuraGenerationCancel? cancel,
-}) => transport.stream(
-  apiKey: 'test-key',
-  systemPrompt: 'Be kind.',
-  messages: [
-    {'role': 'user', 'content': 'Hello'},
-  ],
-  tools: [],
-  cancel: cancel ?? NeuraGenerationCancel('test'),
-  transaction: transactionFor(transport.provider),
-);
+}) =>
+    transport.stream(
+      apiKey: 'test-key',
+      systemPrompt: 'Be kind.',
+      messages: [
+        {'role': 'user', 'content': 'Hello'},
+      ],
+      tools: [],
+      cancel: cancel ?? NeuraGenerationCancel('test'),
+      transaction: transactionFor(transport.provider),
+    );
 
 void main() {
   test('SSE decodes fragmented UTF-8 and multiline fields', () async {

@@ -185,9 +185,8 @@ class NeuraModelStreamTransport {
         switch (block['type']) {
           case 'text':
             parts.add({
-              'type': message['role'] == 'assistant'
-                  ? 'output_text'
-                  : 'input_text',
+              'type':
+                  message['role'] == 'assistant' ? 'output_text' : 'input_text',
               'text': block['text'],
             });
             break;
