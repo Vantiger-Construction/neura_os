@@ -17,7 +17,8 @@ if ([string]::IsNullOrWhiteSpace($env:RUNNER_TOOL_CACHE)) {
 }
 
 $cacheParent = Join-Path $env:RUNNER_TOOL_CACHE 'flutter'
-$flutterRoot = Join-Path $cacheParent "$Version\x64"
+$cacheVersionRoot = Join-Path $cacheParent $Version
+$flutterRoot = Join-Path $cacheVersionRoot 'x64'
 $flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
 $backupRoot = "$flutterRoot.previous"
 $backupExe = Join-Path $backupRoot 'bin\flutter.bat'
@@ -59,6 +60,7 @@ function Get-NeuraFlutterArchive {
 
   $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
   for ($attempt = 1; $attempt -le 3; $attempt++) {
+    $downloadExitCode = 0
     try {
       Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
       if ($curl) {
@@ -71,8 +73,9 @@ function Get-NeuraFlutterArchive {
           --max-time 1800 `
           --output $Destination `
           $Uri
-        if ($LASTEXITCODE -ne 0) {
-          throw "curl.exe exited with code $LASTEXITCODE."
+        $downloadExitCode = $LASTEXITCODE
+        if ($downloadExitCode -ne 0) {
+          throw "curl.exe exited with code $downloadExitCode."
         }
       } else {
         Invoke-WebRequest `
@@ -88,12 +91,79 @@ function Get-NeuraFlutterArchive {
         $attempt,
         $_.Exception.Message
       )
-      if ($attempt -eq 3) {
+      # Retrying a local write failure cannot recover disk space. Remove the
+      # partial archive immediately and leave network failures retryable.
+      Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
+      if ($downloadExitCode -eq 23 -or $attempt -eq 3) {
         throw
       }
       Start-Sleep -Seconds (10 * $attempt)
     }
   }
+}
+
+function Assert-NeuraFlutterInstallSpace {
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [Parameter(Mandatory)][long]$MinimumBytes
+  )
+
+  $volumeRoot = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($Path))
+  $drive = [System.IO.DriveInfo]::new($volumeRoot)
+  if (-not $drive.IsReady -or $drive.AvailableFreeSpace -lt $MinimumBytes) {
+    throw ("Flutter installation needs {0:N2} GB free on cache volume {1}; only {2:N2} GB is available." -f
+      ($MinimumBytes / 1GB), $volumeRoot, ($drive.AvailableFreeSpace / 1GB))
+  }
+}
+
+function Get-NeuraFlutterExpandedBytes {
+  param([Parameter(Mandatory)][string]$ArchivePath)
+
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  $archive = [System.IO.Compression.ZipFile]::OpenRead($ArchivePath)
+  try {
+    [long]$total = 0
+    foreach ($entry in $archive.Entries) { $total += $entry.Length }
+    return $total
+  } finally {
+    $archive.Dispose()
+  }
+}
+
+function Install-NeuraFlutterStagedSdk {
+  param(
+    [Parameter(Mandatory)][string]$StagedRoot,
+    [Parameter(Mandatory)][string]$Destination,
+    [Parameter(Mandatory)][string]$ExpectedVersion
+  )
+
+  $stagedExe = Join-Path $StagedRoot 'bin\flutter.bat'
+  if (-not (Test-NeuraFlutterSdk -Executable $stagedExe -ExpectedVersion $ExpectedVersion)) {
+    throw "The staged Flutter $ExpectedVersion SDK failed its health probe."
+  }
+
+  # Move-Item cannot create the missing <version> parent on a cold cache.
+  New-Item -ItemType Directory -Path (Split-Path -Parent $Destination) -Force | Out-Null
+  $previous = "$Destination.previous"
+  Remove-Item -LiteralPath $previous -Recurse -Force -ErrorAction SilentlyContinue
+  $hadPrevious = Test-Path -LiteralPath $Destination
+  if ($hadPrevious) {
+    Move-Item -LiteralPath $Destination -Destination $previous
+  }
+  try {
+    Move-Item -LiteralPath $StagedRoot -Destination $Destination
+    $installedExe = Join-Path $Destination 'bin\flutter.bat'
+    if (-not (Test-NeuraFlutterSdk -Executable $installedExe -ExpectedVersion $ExpectedVersion)) {
+      throw "The installed Flutter $ExpectedVersion SDK failed its health probe."
+    }
+  } catch {
+    Remove-Item -LiteralPath $Destination -Recurse -Force -ErrorAction SilentlyContinue
+    if ($hadPrevious) {
+      Move-Item -LiteralPath $previous -Destination $Destination
+    }
+    throw
+  }
+  Remove-Item -LiteralPath $previous -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 New-Item -ItemType Directory -Path $cacheParent -Force | Out-Null
@@ -153,17 +223,16 @@ try {
 
     $archiveUri =
       $releaseIndex.base_url.TrimEnd('/') + '/' + $release.archive
-    $temporaryParent = $env:TEMP
-    if ([string]::IsNullOrWhiteSpace($temporaryParent) -or
-        -not (Test-Path -LiteralPath $temporaryParent -PathType Container)) {
-      $temporaryParent = $env:RUNNER_TEMP
-    }
-    $repairRoot = Join-Path $temporaryParent "neura-flutter-$Version-install"
+    # Stage beside the retained SDK, under the same version lock. A test
+    # workspace may have only 2.5 GB free; it is not an SDK install volume.
+    # Keeping staging here also makes promotion a same-volume directory move.
+    $repairRoot = Join-Path $cacheVersionRoot '.install'
     $archivePath = Join-Path $repairRoot 'flutter.zip'
     $extractRoot = Join-Path $repairRoot 'extract'
     $stagedFlutter = Join-Path $extractRoot 'flutter'
 
     Remove-Item -LiteralPath $repairRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Assert-NeuraFlutterInstallSpace -Path $cacheVersionRoot -MinimumBytes 8GB
     New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
 
     try {
@@ -178,6 +247,9 @@ try {
         )
       }
 
+      $expandedBytes = Get-NeuraFlutterExpandedBytes -ArchivePath $archivePath
+      Assert-NeuraFlutterInstallSpace -Path $cacheVersionRoot -MinimumBytes ($expandedBytes + 2GB)
+
       $tar = Get-Command tar.exe -ErrorAction SilentlyContinue
       if ($tar) {
         & $tar.Source -xf $archivePath -C $extractRoot
@@ -188,24 +260,8 @@ try {
         Expand-Archive -LiteralPath $archivePath -DestinationPath $extractRoot
       }
 
-      $stagedExe = Join-Path $stagedFlutter 'bin\flutter.bat'
-      if (-not (Test-NeuraFlutterSdk -Executable $stagedExe -ExpectedVersion $Version)) {
-        throw "The staged Flutter $Version SDK failed its health probe."
-      }
-
-      Remove-Item -LiteralPath $backupRoot -Recurse -Force -ErrorAction SilentlyContinue
-      if (Test-Path -LiteralPath $flutterRoot) {
-        Move-Item -LiteralPath $flutterRoot -Destination $backupRoot
-      }
-      try {
-        Move-Item -LiteralPath $stagedFlutter -Destination $flutterRoot
-      } catch {
-        if (Test-Path -LiteralPath $backupRoot) {
-          Move-Item -LiteralPath $backupRoot -Destination $flutterRoot
-        }
-        throw
-      }
-      Remove-Item -LiteralPath $backupRoot -Recurse -Force -ErrorAction SilentlyContinue
+      Install-NeuraFlutterStagedSdk -StagedRoot $stagedFlutter `
+        -Destination $flutterRoot -ExpectedVersion $Version
     } finally {
       Remove-Item -LiteralPath $repairRoot -Recurse -Force -ErrorAction SilentlyContinue
     }

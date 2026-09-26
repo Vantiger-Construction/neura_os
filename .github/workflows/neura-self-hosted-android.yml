@@ -134,6 +134,9 @@ jobs:
               Where-Object { Test-NeuraCiVolume -Drive $_ } |
               Sort-Object -Property AvailableFreeSpace -Descending
           )
+          [System.IO.DriveInfo]::GetDrives() |
+            Where-Object { $_.IsReady -and $_.DriveType -eq [System.IO.DriveType]::Fixed } |
+            ForEach-Object { Write-Host ("Volume {0}: {1:N2} GB free" -f $_.Name, ($_.AvailableFreeSpace / 1GB)) }
           if ($eligible.Count -eq 0 -or
               ($eligible.Count -eq 1 -and
                $eligible[0].AvailableFreeSpace -lt 8.0GB) -or
@@ -641,6 +644,33 @@ jobs:
           foreach ($path in @($env:NEURA_ANDROID_BUILD_ROOT, $env:NEURA_ANDROID_TOOL_ROOT)) {
             if (-not [string]::IsNullOrWhiteSpace($path) -and (Test-Path -LiteralPath $path)) {
               Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+          # Release this run's checkout as well. Every run gets its own
+          # neura-ci/<run-id>-<attempt>/workspace target; leaving it behind
+          # accumulates full source trees on the bounded build volume.
+          if (-not [string]::IsNullOrWhiteSpace($env:NEURA_ANDROID_SOURCE_ROOT) -and
+              -not [string]::IsNullOrWhiteSpace($env:NEURA_ANDROID_BUILD_VOLUME) -and
+              -not [string]::IsNullOrWhiteSpace($env:NEURA_ANDROID_RUN_KEY)) {
+            $runRoot = Join-Path $env:NEURA_ANDROID_BUILD_VOLUME "neura-ci\$env:NEURA_ANDROID_RUN_KEY"
+            $workspaceTarget = Join-Path $runRoot 'workspace'
+            $cleanupTemp = $env:RUNNER_TEMP
+            if ([string]::IsNullOrWhiteSpace($cleanupTemp) -or
+                -not (Test-Path -LiteralPath $cleanupTemp)) {
+              $cleanupTemp = [System.IO.Path]::GetTempPath().TrimEnd('\')
+            }
+            Set-Location -LiteralPath $cleanupTemp
+            $sourceLink = Get-Item -LiteralPath $env:NEURA_ANDROID_SOURCE_ROOT -Force -ErrorAction SilentlyContinue
+            if ($sourceLink -and
+                ($sourceLink.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+              & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$($sourceLink.FullName)"
+            }
+            if (Test-Path -LiteralPath $workspaceTarget -PathType Container) {
+              Remove-Item -LiteralPath $workspaceTarget -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            if (Test-Path -LiteralPath $runRoot -PathType Container) {
+              Remove-Item -LiteralPath $runRoot -Recurse -Force -ErrorAction SilentlyContinue
             }
           }
 

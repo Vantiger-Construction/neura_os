@@ -566,8 +566,12 @@ jobs:
             }
           }
 
-          Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_SOURCE_ROOT 'build')
-          Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_SOURCE_ROOT 'rust\target')
+          if (-not [string]::IsNullOrWhiteSpace($env:NEURA_SOURCE_ROOT)) {
+            Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_SOURCE_ROOT 'build')
+            Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_SOURCE_ROOT 'rust\target')
+          } else {
+            Write-Warning 'NEURA_SOURCE_ROOT was not initialized; skipping source-link cleanup.'
+          }
 
           foreach ($path in @($env:NEURA_FLUTTER_ROOT, $env:NEURA_RUST_ROOT)) {
             if (-not [string]::IsNullOrWhiteSpace($path)) {

@@ -63,3 +63,5 @@ try {
 } finally {
   Remove-Item -LiteralPath $fixtureRoot -Recurse -Force
 }
+
+& (Join-Path $PSScriptRoot 'Enable-NeuraFlutter.Cache.Tests.ps1')
