@@ -31,6 +31,7 @@ void main() {
   const codec = StandardMethodCodec();
   final calls = <String>[];
   Completer<void>? stopGate;
+  late NeuraShellState shell;
 
   Future<void> native(String method, [String? text]) async {
     await binding.defaultBinaryMessenger.handlePlatformMessage(
@@ -75,7 +76,7 @@ void main() {
   });
 
   Future<void> pumpChat(WidgetTester tester, {NeuraRoom? room}) async {
-    final shell = NeuraShellState();
+    shell = NeuraShellState();
     addTearDown(shell.dispose);
     if (room != null) await shell.setRoom(room);
     await tester.pumpWidget(NeuraShellScope(
@@ -138,6 +139,83 @@ void main() {
     expect(find.text('Hey Neura, open mood check in'), findsNothing);
   });
 
+  testWidgets('room commands navigate locally and report the current room',
+      (tester) async {
+    await pumpChat(tester);
+    expect(shell.room.id, NeuraRoom.penthouse.id);
+
+    await say(tester, 'Neura, open dream room');
+    expect(shell.room.id, NeuraRoom.dreamAtrium.id);
+    expect(find.text('Dream Atrium opened.'), findsOneWidget);
+    expect(find.text('Neura, open dream room'), findsNothing);
+
+    await say(tester, 'Neura, where are we');
+    expect(find.text('You are in Dream Atrium.'), findsOneWidget);
+    expect(shell.room.id, NeuraRoom.dreamAtrium.id);
+    expect(calls, ['start', 'stop', 'start', 'stop']);
+  });
+
+  testWidgets('every room command selects its local room and stops capture',
+      (tester) async {
+    await pumpChat(tester);
+    const destinations = {
+      'open reflection bay': NeuraRoom.reflectionBay,
+      'open joy lounge': NeuraRoom.joyLounge,
+      'open mood den': NeuraRoom.moodDen,
+      'open dream atrium': NeuraRoom.dreamAtrium,
+      'open legacy vault': NeuraRoom.legacyVault,
+      'go home': NeuraRoom.penthouse,
+    };
+    for (final entry in destinations.entries) {
+      final phrase = 'Neura, ${entry.key}';
+      await say(tester, phrase);
+      expect(shell.room, same(entry.value));
+      expect(NeuraPrefsCache.prefs.getString('neura_shell.room_id'),
+          entry.value.id);
+      expect(find.text('${entry.value.title} opened.'), findsOneWidget);
+      expect(find.text(phrase), findsNothing);
+      expect(NeuraSpeechToTextService.instance.isListening, isFalse);
+    }
+    expect(calls, [
+      for (final _ in destinations.entries) ...['start', 'stop']
+    ]);
+  });
+
+  testWidgets('room navigation waits for native capture to stop',
+      (tester) async {
+    await pumpChat(tester);
+    await startListening(tester);
+    stopGate = Completer<void>();
+    await native('onFinal', 'Neura, open dream room');
+    await tester.pump();
+    expect(shell.room, same(NeuraRoom.penthouse));
+    expect(NeuraPrefsCache.prefs.getString('neura_shell.room_id'), isNull);
+    stopGate!.complete();
+    await tester.pumpAndSettle();
+    expect(shell.room, same(NeuraRoom.dreamAtrium));
+    expect(calls, ['start', 'stop']);
+    expect(NeuraSpeechToTextService.instance.isListening, isFalse);
+  });
+
+  testWidgets('Safe Mode cancels a room command while native stop is pending',
+      (tester) async {
+    await pumpChat(tester);
+    await startListening(tester);
+    stopGate = Completer<void>();
+    await native('onFinal', 'Neura, open legacy vault');
+    await tester.pump();
+    SafeBoot.instance.safeMode.value = true;
+    await tester.pump();
+    stopGate!.complete();
+    await tester.pumpAndSettle();
+    expect(shell.room, same(NeuraRoom.penthouse));
+    expect(NeuraPrefsCache.prefs.getString('neura_shell.room_id'), isNull);
+    expect(find.text('Legacy Vault opened.'), findsNothing);
+    expect(find.text('Neura, open legacy vault'), findsNothing);
+    expect(NeuraSpeechToTextService.instance.isListening, isFalse);
+    expect(calls, ['start', 'stop']);
+  });
+
   testWidgets('mute and unmute keep the saved reply-speech policy',
       (tester) async {
     await NeuraTtsService.instance
@@ -152,6 +230,17 @@ void main() {
     expect(find.byTooltip('Mute Neura'), findsOneWidget);
     expect(NeuraTtsService.instance.replySpeechMode,
         NeuraReplySpeechMode.afterComplete);
+  });
+
+  testWidgets('Safe Mode preserves a typed draft when voice is inactive',
+      (tester) async {
+    await pumpChat(tester);
+    await tester.enterText(find.byType(TextField), 'Keep my typed draft.');
+    SafeBoot.instance.safeMode.value = true;
+    await tester.pumpAndSettle();
+    expect(find.text('Keep my typed draft.'), findsOneWidget);
+    expect(NeuraSpeechToTextService.instance.isListening, isFalse);
+    expect(calls, isEmpty);
   });
 
   testWidgets('unmute cannot turn on globally disabled reply speech',
@@ -232,6 +321,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('“Neura, stop listening”'), findsOneWidget);
     expect(find.text('Chat controls'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('“Neura, where am i”'),
+      350,
+      scrollable: find.descendant(
+          of: find.byType(BottomSheet), matching: find.byType(Scrollable)),
+    );
+    expect(find.text('Neura rooms'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('“Neura, exclude memories”'),
       350,
