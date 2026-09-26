@@ -11,10 +11,7 @@ void main() {
 
     test('returns exactly the newly-completed sentence', () {
       final chunker = SpeechStreamChunker();
-      expect(
-        chunker.extractReadyChunk('u1', 'Hello there.'),
-        'Hello there.',
-      );
+      expect(chunker.extractReadyChunk('u1', 'Hello there.'), 'Hello there.');
       // Advancing further text without a new boundary yields nothing yet.
       expect(chunker.extractReadyChunk('u1', 'Hello there. And then'), isEmpty);
       // A second sentence completing returns only the new part.
@@ -40,6 +37,35 @@ void main() {
       );
     });
 
+    test('releases a long completed clause before the sentence ends', () {
+      final chunker = SpeechStreamChunker(earlyClauseCharacters: 60);
+      const first =
+          'I can help you make this smaller by choosing one clear goal, ';
+      expect(chunker.extractReadyChunk('u1', first), first.trim());
+      expect(
+        chunker.extractReadyChunk(
+          'u1',
+          '${first}then we can choose the first ten-minute step.',
+        ),
+        'then we can choose the first ten-minute step.',
+      );
+    });
+
+    test('does not split long text without safe punctuation', () {
+      final chunker = SpeechStreamChunker(earlyClauseCharacters: 20);
+      const text = 'This is deliberately long but has no safe pause yet';
+      expect(chunker.extractReadyChunk('u1', text), isEmpty);
+      expect(chunker.finish('u1', text), text);
+    });
+
+    test('can disable early clauses while preserving sentence chunks', () {
+      final chunker = SpeechStreamChunker(earlyClauseCharacters: 0);
+      const clause =
+          'This clause is long enough for normal early playback, but continues';
+      expect(chunker.extractReadyChunk('u1', clause), isEmpty);
+      expect(chunker.extractReadyChunk('u1', '$clause.'), '$clause.');
+    });
+
     test('tracks multiple concurrent utterance ids independently', () {
       final chunker = SpeechStreamChunker();
       expect(chunker.extractReadyChunk('u1', 'Reply one.'), 'Reply one.');
@@ -51,8 +77,10 @@ void main() {
     });
 
     test('fragmented growing text matches a full-scan reference', () {
-      final sentences =
-          List.filled(100, 'A long clause with é and 🌱. Next?\n').join();
+      final sentences = List.filled(
+        100,
+        'A long clause with é and 🌱. Next?\n',
+      ).join();
       final text = '${sentences}Final unfinished clause';
       for (final step in [1, 2, 7, 61]) {
         final chunker = SpeechStreamChunker();
