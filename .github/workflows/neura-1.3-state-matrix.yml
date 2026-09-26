@@ -89,6 +89,12 @@ jobs:
         with:
           path: source
 
+      - name: Test Flutter provisioning health probe
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          & "$env:NEURA_SOURCE_ROOT\tools\Enable-NeuraFlutter.Tests.ps1"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Enable pinned Flutter
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |

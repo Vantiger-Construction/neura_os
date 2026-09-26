@@ -34,10 +34,21 @@ function Test-NeuraFlutterSdk {
     return $false
   }
 
-  $output = @(& $Executable --version 2>&1)
-  return $LASTEXITCODE -eq 0 -and
+  # Windows PowerShell 5.1 turns redirected native stderr into error records.
+  # Flutter writes bootstrap progress there even when the command succeeds.
+  # Judge this probe by its exit code and version, then restore strict handling.
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $output = @(& $Executable --version 2>&1)
+    $probeExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+
+  return $probeExitCode -eq 0 -and
     ($output -join [Environment]::NewLine) -match
-      "Flutter $([regex]::Escape($ExpectedVersion))"
+      "(?m)^Flutter $([regex]::Escape($ExpectedVersion))(?:\s|$)"
 }
 
 function Get-NeuraFlutterArchive {
