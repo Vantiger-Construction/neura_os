@@ -47,7 +47,11 @@ $protected = @(
 )
 $lock = $null
 $links = @()
+$originalRunId = $env:GITHUB_RUN_ID
+$originalRunAttempt = $env:GITHUB_RUN_ATTEMPT
 try {
+    $env:GITHUB_RUN_ID = '999'
+    $env:GITHUB_RUN_ATTEMPT = '1'
     foreach ($path in $protected) { New-FixtureFile -Path $path }
     $readOnlyFile = Join-Path $stage 'extract/flutter/file.bin'
     New-FixtureFile -Path $readOnlyFile
@@ -55,10 +59,35 @@ try {
     New-FixtureFile -Path (Join-Path $derived 'generated.bin')
     $buildCache = Join-Path $gradle 'caches/build-cache-1'
     New-FixtureFile -Path (Join-Path $buildCache 'generated.bin')
+    $jarCache = Join-Path $gradle 'caches/jars-9'
+    New-FixtureFile -Path (Join-Path $jarCache 'generated.jar')
+    $daemonCache = Join-Path $gradle 'daemon/8.14'
+    New-FixtureFile -Path (Join-Path $daemonCache 'daemon.log')
+    $packageRoot = Join-Path $fixture 'neura-packages/android'
+    foreach ($number in 100..104) {
+        $package = Join-Path $packageRoot "$number-1/package.apk"
+        New-FixtureFile -Path $package
+        (Get-Item -LiteralPath (Split-Path -Parent $package)).LastWriteTime =
+            (Get-Date).AddDays($number - 105)
+    }
+    $activePackage = Join-Path $packageRoot '999-1/package.apk'
+    New-FixtureFile -Path $activePackage
+    (Get-Item -LiteralPath (Split-Path -Parent $activePackage)).LastWriteTime =
+        (Get-Date).AddDays(-10)
     Invoke-NeuraStorageRecovery -ToolCache $toolCache
+    Remove-NeuraStalePackageRuns -Root (Join-Path $fixture 'neura-packages')
     foreach ($path in $protected) { Assert-FixtureExists -Path $path }
-    foreach ($path in @($stage, $derived, $buildCache)) { Assert-FixtureExists -Path $path -Expected $false }
-    Write-Host 'PASS: abandoned staging and derived caches removed; tools, dependencies, backups, packages, and source preserved.'
+    foreach ($path in @($stage, $derived, $buildCache, $jarCache, $daemonCache)) {
+        Assert-FixtureExists -Path $path -Expected $false
+    }
+    foreach ($number in 100..101) {
+        Assert-FixtureExists -Path (Join-Path $packageRoot "$number-1") -Expected $false
+    }
+    foreach ($number in 102..104) {
+        Assert-FixtureExists -Path (Join-Path $packageRoot "$number-1")
+    }
+    Assert-FixtureExists -Path (Join-Path $packageRoot '999-1')
+    Write-Host 'PASS: derived caches and stale delivered packages removed; tools, dependency downloads, three recent packages, backups, and source preserved.'
 
     New-FixtureFile -Path (Join-Path $stage 'active.bin')
     $lockPath = Join-Path $flutter '.3.47.5.install.lock'
@@ -102,6 +131,8 @@ try {
     Assert-FixtureExists -Path (Join-Path $flutter '.9.9.9.install.lock') -Expected $false
     Write-Host 'PASS: report-only mode neither deletes data nor creates an install lock.'
 } finally {
+    $env:GITHUB_RUN_ID = $originalRunId
+    $env:GITHUB_RUN_ATTEMPT = $originalRunAttempt
     if ($lock) { $lock.Dispose() }
     foreach ($link in $links) {
         if ($env:OS -eq 'Windows_NT') { & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$link" }
