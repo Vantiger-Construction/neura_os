@@ -1,14 +1,12 @@
 #include "neura_on_device_asr.h"
 
-#include <atomic>
-#include <chrono>
 #include <filesystem>
 #include <string>
 #include <system_error>
-#include <thread>
 #include <utility>
 
 #if defined(NEURA_WINDOWS_ON_DEVICE_ASR)
+#include "neura_asr_session.h"
 #include <portaudio.h>
 #include <sherpa-onnx/c-api/c-api.h>
 #endif
@@ -18,6 +16,7 @@ namespace {
 constexpr wchar_t kRuntimeOptIn[] = L"NEURA_ON_DEVICE_ASR_ENABLE";
 #if defined(NEURA_WINDOWS_ON_DEVICE_ASR)
 constexpr wchar_t kModelDirectory[] = L"NEURA_ON_DEVICE_ASR_MODEL_DIR";
+constexpr wchar_t kModelProfile[] = L"NEURA_ON_DEVICE_ASR_MODEL_PROFILE";
 #endif
 
 std::wstring ReadEnvironment(const wchar_t* name) {
@@ -61,6 +60,23 @@ bool IsRemoteOrUrlPath(const std::filesystem::path& path) {
          drive_type == DRIVE_NO_ROOT_DIR;
 }
 
+// Reject junctions/symlinks and cloud placeholders before canonicalization or
+// model reads can follow them onto a remote volume or hydrate a cloud file.
+bool IsPlainLocalPath(const std::filesystem::path& path) {
+  if (!path.is_absolute() || IsRemoteOrUrlPath(path)) return false;
+  auto current = path.root_path();
+  for (const auto& component : path.relative_path()) {
+    if (component == L"..") return false;
+    current /= component;
+    const auto attributes = GetFileAttributesW(current.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES ||
+        (attributes & (FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_OFFLINE))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool IsInsideDirectory(const std::filesystem::path& file,
                        const std::filesystem::path& directory) {
   std::error_code error;
@@ -81,30 +97,33 @@ std::string Utf8Path(const std::filesystem::path& path) {
 
 }  // namespace
 
-class NeuraOnDeviceAsr::Impl {
+class NeuraOnDeviceAsr::Impl
+#if defined(NEURA_WINDOWS_ON_DEVICE_ASR)
+    : public neura::AsrBackend
+#endif
+{
  public:
-  explicit Impl(NeuraOnDeviceAsr* owner) : owner_(owner) {}
+  explicit Impl(NeuraOnDeviceAsr* owner)
+#if defined(NEURA_WINDOWS_ON_DEVICE_ASR)
+      : session_(*this, &DeliverSegment, owner)
+#endif
+  {
+    static_cast<void>(owner);
+  }
 
   ~Impl() {
-    Stop();
+    Stop(true);
 #if defined(NEURA_WINDOWS_ON_DEVICE_ASR)
-    if (recognizer_ != nullptr) {
-      SherpaOnnxDestroyOnlineRecognizer(recognizer_);
-      recognizer_ = nullptr;
-    }
-    if (port_audio_initialized_) {
-      Pa_Terminate();
-      port_audio_initialized_ = false;
-    }
+    if (recognizer_ != nullptr) SherpaOnnxDestroyOnlineRecognizer(recognizer_);
+    if (port_audio_initialized_) Pa_Terminate();
 #endif
   }
 
   bool IsAvailable() {
-    if (!RuntimeOptedIn()) {
-      return false;
-    }
+    if (!RuntimeOptedIn()) return false;
 #if defined(NEURA_WINDOWS_ON_DEVICE_ASR)
-    return EnsureInitialized();
+    // Device availability can change even after a model was initialized.
+    return EnsureInitialized() && HasCompatibleInput();
 #else
     return false;
 #endif
@@ -112,104 +131,51 @@ class NeuraOnDeviceAsr::Impl {
 
   bool Start(uint64_t generation) {
 #if defined(NEURA_WINDOWS_ON_DEVICE_ASR)
-    if (accepting_audio_.load() || !IsAvailable()) {
-      return accepting_audio_.load();
-    }
-
-    stream_ = SherpaOnnxCreateOnlineStream(recognizer_);
-    if (stream_ == nullptr) {
-      return false;
-    }
-
-    PaStreamParameters input{};
-    input.device = Pa_GetDefaultInputDevice();
-    const PaDeviceInfo* device = Pa_GetDeviceInfo(input.device);
-    if (input.device == paNoDevice || device == nullptr) {
-      DestroyStream();
-      return false;
-    }
-    input.channelCount = 1;
-    input.sampleFormat = paFloat32;
-    input.suggestedLatency = device->defaultLowInputLatency;
-
-    generation_ = generation;
-    transcript_.clear();
-    last_partial_.clear();
-    accepting_audio_.store(true);
-    decode_running_.store(true);
-
-    const PaError open_error = Pa_OpenStream(
-        &audio_stream_, &input, nullptr, 16000.0,
-        paFramesPerBufferUnspecified, paClipOff, &RecordCallback, this);
-    if (open_error != paNoError) {
-      accepting_audio_.store(false);
-      decode_running_.store(false);
-      DestroyStream();
-      return false;
-    }
-
-    decoder_thread_ = std::thread(&Impl::DecodeLoop, this);
-    const PaError start_error = Pa_StartStream(audio_stream_);
-    if (start_error != paNoError) {
-      accepting_audio_.store(false);
-      Pa_CloseStream(audio_stream_);
-      audio_stream_ = nullptr;
-      decode_running_.store(false);
-      if (decoder_thread_.joinable()) {
-        decoder_thread_.join();
-      }
-      DestroyStream();
-      return false;
-    }
-    return true;
+    return IsAvailable() && session_.Start(generation);
 #else
     static_cast<void>(generation);
     return false;
 #endif
   }
 
-  std::string Stop() {
+  std::string Stop(bool discard = true) {
 #if defined(NEURA_WINDOWS_ON_DEVICE_ASR)
-    accepting_audio_.store(false);
-    if (audio_stream_ != nullptr) {
-      if (Pa_IsStreamActive(audio_stream_) == 1) {
-        Pa_StopStream(audio_stream_);
-      }
-      Pa_CloseStream(audio_stream_);
-      audio_stream_ = nullptr;
-    }
-
-    decode_running_.store(false);
-    if (decoder_thread_.joinable()) {
-      decoder_thread_.join();
-    }
-    DestroyStream();
-
-    std::string result = std::move(transcript_);
-    transcript_.clear();
-    last_partial_.clear();
-    return result;
+    return session_.Stop(discard);
 #else
+    static_cast<void>(discard);
     return {};
 #endif
   }
 
  private:
 #if defined(NEURA_WINDOWS_ON_DEVICE_ASR)
+  static void DeliverSegment(std::string text, bool is_final,
+                             uint64_t generation, void* context) {
+    static_cast<NeuraOnDeviceAsr*>(context)->QueueSegment(
+        std::move(text), is_final, generation);
+  }
+
   static int RecordCallback(const void* input_buffer, void*,
                             unsigned long frames_per_buffer,
                             const PaStreamCallbackTimeInfo*,
                             PaStreamCallbackFlags, void* user_data) {
     auto* self = static_cast<Impl*>(user_data);
-    if (!self->accepting_audio_.load()) {
-      return paComplete;
-    }
-    if (input_buffer != nullptr && self->stream_ != nullptr) {
-      SherpaOnnxOnlineStreamAcceptWaveform(
-          self->stream_, 16000, static_cast<const float*>(input_buffer),
-          static_cast<int32_t>(frames_per_buffer));
-    }
-    return paContinue;
+    return self->capture_(static_cast<const float*>(input_buffer),
+                          frames_per_buffer, self->capture_context_)
+               ? paContinue
+               : paComplete;
+  }
+
+  bool HasCompatibleInput() const {
+    const PaDeviceIndex input_device = Pa_GetDefaultInputDevice();
+    const PaDeviceInfo* device = Pa_GetDeviceInfo(input_device);
+    if (input_device == paNoDevice || device == nullptr) return false;
+    PaStreamParameters input{};
+    input.device = input_device;
+    input.channelCount = 1;
+    input.sampleFormat = paFloat32;
+    input.suggestedLatency = device->defaultLowInputLatency;
+    return Pa_IsFormatSupported(&input, nullptr, 16000.0) == paFormatIsSupported;
   }
 
   bool EnsureInitialized() {
@@ -218,7 +184,7 @@ class NeuraOnDeviceAsr::Impl {
     }
 
     const std::filesystem::path configured(ReadEnvironment(kModelDirectory));
-    if (IsRemoteOrUrlPath(configured)) {
+    if (!IsPlainLocalPath(configured)) {
       return false;
     }
 
@@ -230,11 +196,23 @@ class NeuraOnDeviceAsr::Impl {
       return false;
     }
 
-    const auto encoder = model_directory / L"encoder.int4.onnx";
-    const auto decoder = model_directory / L"decoder.int4.onnx";
-    const auto joiner = model_directory / L"joiner.int4.onnx";
+    const auto profile = ReadEnvironment(kModelProfile);
+    auto encoder = model_directory / L"encoder.int4.onnx";
+    auto decoder = model_directory / L"decoder.int4.onnx";
+    auto joiner = model_directory / L"joiner.int4.onnx";
+    if (profile == L"zipformer-en-2023-06-26-int8") {
+      encoder = model_directory /
+          L"encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx";
+      decoder = model_directory /
+          L"decoder-epoch-99-avg-1-chunk-16-left-128.onnx";
+      joiner = model_directory /
+          L"joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx";
+    } else if (!profile.empty() && profile != L"int4") {
+      return false;
+    }
     const auto tokens = model_directory / L"tokens.txt";
     for (const auto& file : {encoder, decoder, joiner, tokens}) {
+      if (!IsPlainLocalPath(file)) return false;
       const auto canonical = std::filesystem::canonical(file, error);
       if (error || !std::filesystem::is_regular_file(canonical, error) ||
           error || IsRemoteOrUrlPath(canonical) ||
@@ -255,19 +233,7 @@ class NeuraOnDeviceAsr::Impl {
       port_audio_initialized_ = true;
     }
 
-    const PaDeviceIndex input_device = Pa_GetDefaultInputDevice();
-    const PaDeviceInfo* device = Pa_GetDeviceInfo(input_device);
-    if (input_device == paNoDevice || device == nullptr) {
-      return false;
-    }
-    PaStreamParameters input{};
-    input.device = input_device;
-    input.channelCount = 1;
-    input.sampleFormat = paFloat32;
-    input.suggestedLatency = device->defaultLowInputLatency;
-    if (Pa_IsFormatSupported(&input, nullptr, 16000.0) != paFormatIsSupported) {
-      return false;
-    }
+    if (!HasCompatibleInput()) return false;
 
     SherpaOnnxOnlineRecognizerConfig config{};
     config.decoding_method = "greedy_search";
@@ -290,85 +256,92 @@ class NeuraOnDeviceAsr::Impl {
     return recognizer_ != nullptr;
   }
 
-  void DecodeLoop() {
-    while (decode_running_.load()) {
-      DecodeAvailable(false);
-      std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
 
-    if (stream_ == nullptr) {
-      return;
-    }
-    float tail_padding[4800]{};
-    SherpaOnnxOnlineStreamAcceptWaveform(stream_, 16000, tail_padding, 4800);
-    SherpaOnnxOnlineStreamInputFinished(stream_);
-    DecodeAvailable(true);
+  bool CreateStream() override {
+    stream_ = SherpaOnnxCreateOnlineStream(recognizer_);
+    return stream_ != nullptr;
   }
 
-  void DecodeAvailable(bool finishing) {
-    if (stream_ == nullptr || recognizer_ == nullptr) {
-      return;
-    }
-    while (SherpaOnnxIsOnlineStreamReady(recognizer_, stream_)) {
-      SherpaOnnxDecodeOnlineStream(recognizer_, stream_);
-    }
+  bool OpenInput(Capture capture, void* context) override {
+    capture_ = capture;
+    capture_context_ = context;
+    PaStreamParameters input{};
+    input.device = Pa_GetDefaultInputDevice();
+    const PaDeviceInfo* device = Pa_GetDeviceInfo(input.device);
+    if (input.device == paNoDevice || device == nullptr) return false;
+    input.channelCount = 1;
+    input.sampleFormat = paFloat32;
+    input.suggestedLatency = device->defaultLowInputLatency;
+    return Pa_OpenStream(&audio_stream_, &input, nullptr, 16000.0,
+                         paFramesPerBufferUnspecified, paClipOff,
+                         &RecordCallback, this) == paNoError;
+  }
 
-    const SherpaOnnxOnlineRecognizerResult* result =
-        SherpaOnnxGetOnlineStreamResult(recognizer_, stream_);
-    if (result == nullptr) {
-      return;
-    }
-    const std::string text = result->text == nullptr ? "" : result->text;
-    SherpaOnnxDestroyOnlineRecognizerResult(result);
+  bool StartInput() override {
+    return Pa_StartStream(audio_stream_) == paNoError;
+  }
 
-    const bool endpoint =
-        SherpaOnnxOnlineStreamIsEndpoint(recognizer_, stream_) != 0;
-    if ((endpoint || finishing) && !text.empty()) {
-      AppendFinal(text);
-    } else if (!text.empty() && text != last_partial_) {
-      last_partial_ = text;
-      owner_->QueueSegment(text, false, generation_);
-    }
-
-    if (endpoint) {
-      SherpaOnnxOnlineStreamReset(recognizer_, stream_);
-      last_partial_.clear();
+  void CloseInput() noexcept override {
+    if (audio_stream_ != nullptr) {
+      if (Pa_IsStreamActive(audio_stream_) == 1) Pa_StopStream(audio_stream_);
+      Pa_CloseStream(audio_stream_);
+      audio_stream_ = nullptr;
     }
   }
 
-  void AppendFinal(const std::string& text) {
-    if (!transcript_.empty()) {
-      transcript_.append(" ");
-    }
-    transcript_.append(text);
-    last_partial_.clear();
-    owner_->QueueSegment(text, true, generation_);
-  }
-
-  void DestroyStream() {
+  void DestroyStream() noexcept override {
     if (stream_ != nullptr) {
       SherpaOnnxDestroyOnlineStream(stream_);
       stream_ = nullptr;
     }
   }
 
+  void Accept(const float* samples, size_t count) override {
+    SherpaOnnxOnlineStreamAcceptWaveform(
+        stream_, 16000, samples, static_cast<int32_t>(count));
+  }
+
+  bool IsReady() override {
+    return SherpaOnnxIsOnlineStreamReady(recognizer_, stream_) != 0;
+  }
+
+  void Decode() override {
+    SherpaOnnxDecodeOnlineStream(recognizer_, stream_);
+  }
+
+  neura::AsrResult Result() override {
+    const auto* result = SherpaOnnxGetOnlineStreamResult(recognizer_, stream_);
+    if (result == nullptr) return {};
+    // Always release native text, including when string allocation throws.
+    const auto destroy = &SherpaOnnxDestroyOnlineRecognizerResult;
+    const std::unique_ptr<const SherpaOnnxOnlineRecognizerResult,
+                          decltype(destroy)> owned(result, destroy);
+    return {result->text == nullptr ? "" : result->text,
+            SherpaOnnxOnlineStreamIsEndpoint(recognizer_, stream_) != 0};
+  }
+
+  void Reset() override {
+    SherpaOnnxOnlineStreamReset(recognizer_, stream_);
+  }
+
+  void FinishInput() override {
+    const float tail_padding[4800]{};
+    SherpaOnnxOnlineStreamAcceptWaveform(stream_, 16000, tail_padding, 4800);
+    SherpaOnnxOnlineStreamInputFinished(stream_);
+  }
+
   const SherpaOnnxOnlineRecognizer* recognizer_ = nullptr;
   const SherpaOnnxOnlineStream* stream_ = nullptr;
   PaStream* audio_stream_ = nullptr;
-  std::thread decoder_thread_;
-  std::atomic<bool> accepting_audio_{false};
-  std::atomic<bool> decode_running_{false};
+  Capture capture_ = nullptr;
+  void* capture_context_ = nullptr;
   bool port_audio_initialized_ = false;
-  uint64_t generation_ = 0;
   std::string encoder_path_;
   std::string decoder_path_;
   std::string joiner_path_;
   std::string tokens_path_;
-  std::string transcript_;
-  std::string last_partial_;
+  neura::AsrSession session_;
 #endif
-
-  NeuraOnDeviceAsr* owner_;
 };
 
 NeuraOnDeviceAsr::NeuraOnDeviceAsr(flutter::BinaryMessenger* messenger,
@@ -415,7 +388,20 @@ void NeuraOnDeviceAsr::HandleMethodCall(
   if (call.method_name() == "stop") {
     listening_ = false;
     ++generation_;
-    std::string transcript = impl_->Stop();
+    // Safe Mode/disposal can request a discard without flushing pending audio.
+    bool discard = false;
+    const auto* arguments = call.arguments();
+    const auto* map = arguments == nullptr
+                          ? nullptr
+                          : std::get_if<flutter::EncodableMap>(arguments);
+    if (map != nullptr) {
+      const auto flag = map->find(flutter::EncodableValue("discard"));
+      if (flag != map->end()) {
+        const auto* value = std::get_if<bool>(&flag->second);
+        discard = value != nullptr && *value;
+      }
+    }
+    std::string transcript = impl_->Stop(discard);
     ClearPendingSegments();
     result->Success(flutter::EncodableValue(std::move(transcript)));
     return;
@@ -430,6 +416,8 @@ void NeuraOnDeviceAsr::QueueSegment(std::string text, bool is_final,
   }
   {
     std::lock_guard<std::mutex> lock(pending_mutex_);
+    // Bound text awaiting the UI even when the window thread is busy.
+    if (pending_segments_.size() >= 32) pending_segments_.pop_front();
     pending_segments_.push_back(
         PendingSegment{std::move(text), is_final, generation});
   }

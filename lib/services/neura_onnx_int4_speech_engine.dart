@@ -6,12 +6,14 @@ import '../modules/core/app_log.dart';
 import '../reliability/safe_boot.dart';
 import 'neura_speech_engine.dart';
 
-/// Experimental native seam for an ONNX int4 streaming ASR candidate.
+/// Experimental native seam for operator-supplied ONNX streaming ASR.
 ///
 /// No model is bundled and no implementation is assumed. The adapter becomes
 /// selectable only when a platform runner implements the channel and reports
 /// availability. This keeps benchmark code provider-neutral without silently
 /// changing the production recognizer.
+/// The historical int4 identifier is not a claim about model quantization;
+/// the Windows prototype also accepts an explicitly selected int8 profile.
 final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
   NeuraOnnxInt4SpeechEngine({
     MethodChannel channel = const MethodChannel('neura/on_device_asr'),
@@ -27,6 +29,8 @@ final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
   bool _starting = false;
   bool _nativeStartPending = false;
   bool _disposed = false;
+  Future<String>? _stopping;
+  Completer<void>? _startSettled;
   int _startGeneration = 0;
 
   @override
@@ -73,9 +77,11 @@ final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
 
   @override
   Future<bool> start() async {
-    if (!listeningAllowed || _starting) return false;
+    if (!listeningAllowed || _starting || _stopping != null) return false;
     if (_listening) return true;
     final generation = ++_startGeneration;
+    final settled = Completer<void>();
+    _startSettled = settled;
     _starting = true;
     try {
       if (!await isAvailable() ||
@@ -89,18 +95,22 @@ final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
       if (!listeningAllowed || generation != _startGeneration) {
         // A stop can reach native code before its pending start completes.
         // Stop again after that acknowledgement so capture cannot resume.
-        if (started) await _stopNative();
+        if (started) await _stopNative(discard: true);
         return false;
       }
       _listening = started;
       return _listening;
     } catch (error, stack) {
       _listening = false;
+      // An exceptional reply does not prove native capture never started.
+      if (_nativeStartPending) await _stopNative(discard: true);
       await AppLog.instance.caught('onnx_speech_start_failed', error, stack);
       return false;
     } finally {
       _starting = false;
       _nativeStartPending = false;
+      settled.complete();
+      _startSettled = null;
     }
   }
 
@@ -109,13 +119,38 @@ final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
     _startGeneration++;
     final shouldStop = _listening || _nativeStartPending;
     _listening = false;
+    final stopping = _stopping;
+    if (stopping != null) return stopping;
     if (!shouldStop) return '';
-    return _stopNative();
+    final pendingStart = _nativeStartPending ? _startSettled?.future : null;
+    final operation = _stopAndWait(pendingStart);
+    _stopping = operation;
+    try {
+      return await operation;
+    } finally {
+      _stopping = null;
+    }
   }
 
-  Future<String> _stopNative() async {
+  Future<String> _stopAndWait(Future<void>? pendingStart) async {
+    final generation = _startGeneration;
+    final text = await _stopNative(discard: !listeningAllowed);
+    // Native start can acknowledge after the first stop. Its cancelled start
+    // path stops again; disposal/explicit stop must wait for that teardown.
+    if (pendingStart != null) await pendingStart;
+    return listeningAllowed && generation == _startGeneration ? text : '';
+  }
+
+  Future<String> _stopNative({bool discard = false}) async {
+    final generation = _startGeneration;
     try {
-      return await _channel.invokeMethod<String>('stop') ?? '';
+      final text = await _channel.invokeMethod<String>('stop', {
+        'discard': discard,
+      });
+      if (discard || !listeningAllowed || generation != _startGeneration) {
+        return '';
+      }
+      return text ?? '';
     } catch (error, stack) {
       await AppLog.instance.caught('onnx_speech_stop_failed', error, stack);
       return '';
