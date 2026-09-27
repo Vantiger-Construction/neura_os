@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../widgets/neura_explain.dart';
 import 'support_store.dart';
 import 'support_models.dart';
+import 'guided_support_screen.dart';
 
 class SupportCenterScreen extends StatefulWidget {
   const SupportCenterScreen({super.key});
@@ -130,6 +131,15 @@ class _SupportCenterScreenState extends State<SupportCenterScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                FilledButton.icon(
+                  onPressed: () => Navigator.of(context).push<void>(
+                    MaterialPageRoute<void>(
+                        builder: (_) => const GuidedSupportScreen()),
+                  ),
+                  icon: const Icon(Icons.spa_outlined),
+                  label: const Text('Help me through this'),
+                ),
+                const SizedBox(height: 12),
                 const _CalmProtocolCard(),
                 const SizedBox(height: 12),
                 Card(

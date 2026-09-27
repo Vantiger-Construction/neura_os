@@ -32,6 +32,7 @@ import '../../widgets/neura_cloud_request_preview.dart';
 import '../../widgets/neura_context_receipt_chip.dart';
 import '../core/ai_engine.dart';
 import '../core/app_log.dart';
+import '../support/guided_support_screen.dart';
 import 'neura_voice_destinations.dart';
 
 class NeuraChatScreen extends StatefulWidget {
@@ -431,6 +432,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       case NeuraVoiceCommand.openPrivacy:
       case NeuraVoiceCommand.openNotifications:
       case NeuraVoiceCommand.openHelp:
+      case NeuraVoiceCommand.guidedSupport:
       case NeuraVoiceCommand.quietMode:
       case NeuraVoiceCommand.balancedMode:
       case NeuraVoiceCommand.companionMode:
@@ -485,6 +487,25 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         builder: builder,
       ),
     );
+  }
+
+  Future<void> _openGuidedSupport() async {
+    final session = _voiceSession;
+    try {
+      await _endConversation();
+      if (!mounted ||
+          _voiceSession != session + 1 ||
+          !(ModalRoute.of(context)?.isCurrent ?? false)) {
+        return;
+      }
+      // Manual access to fixed local activities remains available in Safe Mode.
+      await Navigator.of(context).push<void>(MaterialPageRoute<void>(
+        settings: const RouteSettings(name: '/care/guided-support'),
+        builder: (_) => const GuidedSupportScreen(),
+      ));
+    } catch (_) {
+      _showVoiceNotice('Could not open support. Please try again.');
+    }
   }
 
   Future<void> _showVoiceCommands() async {
@@ -1224,6 +1245,14 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       ),
       body: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: OutlinedButton.icon(
+              onPressed: _openGuidedSupport,
+              icon: const Icon(Icons.spa_outlined),
+              label: const Text('Help me through this'),
+            ),
+          ),
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
