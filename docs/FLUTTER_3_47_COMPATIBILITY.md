@@ -56,7 +56,7 @@ the package itself tests; it is not evidence that Neura's AGP 9.1.0 build has
 passed.
 
 This criterion follows Flutter's [official built-in Kotlin migration
-guide](https://docs.flutter.dev/release/breaking-changes/gradle-plugin-apply),
+guide](https://docs.flutter.dev/release/breaking-changes/migrate-to-built-in-kotlin/for-app-developers),
 including its Flutter 3.47 requirement for `android.builtInKotlin=true`, and
 Android's [AGP 9 built-in Kotlin
 guidance](https://developer.android.com/build/migrate-to-built-in-kotlin),
