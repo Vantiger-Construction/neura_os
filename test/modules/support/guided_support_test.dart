@@ -4,10 +4,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:neuro_companion/care/screens/neura_care_loop_screen.dart';
 import 'package:neuro_companion/core/memory/memory_crypto.dart';
 import 'package:neuro_companion/modules/support/guided_support_activity.dart';
 import 'package:neuro_companion/modules/support/guided_support_screen.dart';
 import 'package:neuro_companion/modules/support/guided_support_store.dart';
+import 'package:neuro_companion/modules/support/support_center_screen.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,6 +19,7 @@ void main() {
   const secureChannel =
       MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
   final secureValues = <String, String>{};
+  String? clipboardText;
   late GuidedSupportStore store;
 
   setUpAll(() async {
@@ -40,12 +43,30 @@ void main() {
       }
       throw StateError('Unexpected secure storage operation: ${call.method}');
     });
+    binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      switch (call.method) {
+        case 'Clipboard.setData':
+          clipboardText = (call.arguments as Map)['text'] as String?;
+          return null;
+        case 'Clipboard.getData':
+          return clipboardText == null
+              ? null
+              : <String, dynamic>{'text': clipboardText};
+        case 'Clipboard.hasStrings':
+          return <String, dynamic>{
+            'value': clipboardText?.isNotEmpty ?? false,
+          };
+      }
+      return null;
+    });
   });
 
   setUp(() async {
     SafeBoot.instance.safeMode.value = false;
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await NeuraPrefsCache.prefs.clear();
+    clipboardText = null;
     store = GuidedSupportStore();
   });
 
@@ -54,8 +75,12 @@ void main() {
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   });
 
-  tearDownAll(() => binding.defaultBinaryMessenger
-      .setMockMethodCallHandler(secureChannel, null));
+  tearDownAll(() {
+    binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(secureChannel, null);
+    binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null);
+  });
 
   test('reading an empty preference does not create a key or write anything',
       () async {
@@ -141,6 +166,9 @@ void main() {
             stillApproved: () => true),
         throwsStateError);
     expect(await store.read(), isNull);
+    expect(await GuidedSupportStore().read(), isNull);
+    expect(NeuraPrefsCache.prefs.containsKey(GuidedSupportStore.storageKey),
+        isFalse);
   });
 
   test('corruption is surfaced, never accepted as unencrypted preference data',
@@ -163,6 +191,40 @@ void main() {
         store.rememberAfterConfirmation(GuidedSupportActivity.grounding,
             stillApproved: () => true),
         throwsStateError);
+    expect(NeuraPrefsCache.prefs.containsKey(GuidedSupportStore.storageKey),
+        isFalse);
+  });
+
+  test('unavailable OS credentials surface and still permit deletion',
+      () async {
+    await store.rememberAfterConfirmation(GuidedSupportActivity.grounding,
+        stillApproved: () => true);
+    final unavailable = GuidedSupportStore(
+        loadCrypto: () =>
+            Future.error(StateError('OS credentials unavailable')));
+    await expectLater(unavailable.read(), throwsStateError);
+    await unavailable.forget();
+    expect(NeuraPrefsCache.prefs.containsKey(GuidedSupportStore.storageKey),
+        isFalse);
+  });
+
+  test('Safe Mode entered during encryption revokes the pending save',
+      () async {
+    final gate = Completer<void>();
+    final entered = Completer<void>();
+    store = GuidedSupportStore(loadCrypto: () async {
+      entered.complete();
+      await gate.future;
+      return MemoryCrypto.demo();
+    });
+    final writing = store.rememberAfterConfirmation(
+        GuidedSupportActivity.grounding,
+        stillApproved: () => true);
+    final rejected = expectLater(writing, throwsStateError);
+    await entered.future;
+    SafeBoot.instance.safeMode.value = true;
+    gate.complete();
+    await rejected;
     expect(NeuraPrefsCache.prefs.containsKey(GuidedSupportStore.storageKey),
         isFalse);
   });
@@ -190,6 +252,26 @@ void main() {
     }
     await tapText(tester, 'Check in (optional)');
   }
+
+  testWidgets('Care Loop and Support Center entry points open and exit support',
+      (tester) async {
+    for (final host in <Widget>[
+      const NeuraCareLoopScreen(),
+      const SupportCenterScreen(),
+    ]) {
+      await tester.pumpWidget(MaterialApp(home: host));
+      await tester.pumpAndSettle();
+      expect(find.text('Help me through this'), findsOneWidget);
+      await tester.tap(find.text('Help me through this'));
+      await tester.pumpAndSettle();
+      expect(find.byType(GuidedSupportScreen), findsOneWidget);
+      expect(NeuraPrefsCache.prefs.containsKey(GuidedSupportStore.storageKey),
+          isFalse);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byType(GuidedSupportScreen), findsNothing);
+    }
+  });
 
   for (final activity in GuidedSupportActivity.values) {
     testWidgets(
@@ -291,9 +373,44 @@ void main() {
     expect(find.textContaining('You asked Neura to remember'), findsOneWidget);
     await tester.tap(find.byTooltip('Remembered activity'));
     await tester.pumpAndSettle();
-    await tapText(tester, 'Forget activity');
+    await tester.tap(find.text('Copy preference'));
+    await tester.pumpAndSettle();
+    final copied = jsonDecode(clipboardText!) as Map<String, dynamic>;
+    expect(copied.keys.toSet(),
+        {'version', 'activity', 'confirmedAtUtc', 'scope'});
+    expect(copied['activity'], 'grounding');
+    expect(copied['scope'], 'suggest_in_guided_support');
+    expect(copied, isNot(contains('writing')));
+    expect(copied, isNot(contains('feedback')));
+    await tester.tap(find.byTooltip('Remembered activity'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Forget activity'));
+    await tester.pumpAndSettle();
     expect((store as _ScreenStore).record, isNull);
     expect(find.textContaining('You asked Neura to remember'), findsNothing);
+  });
+
+  testWidgets(
+      'unavailable OS credentials stay visible and can still be forgotten',
+      (tester) async {
+    await store.rememberAfterConfirmation(GuidedSupportActivity.grounding,
+        stillApproved: () => true);
+    store = GuidedSupportStore(
+        loadCrypto: () =>
+            Future.error(StateError('OS credentials unavailable')));
+    await tester
+        .pumpWidget(MaterialApp(home: GuidedSupportScreen(store: store)));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('could not be opened'), findsOneWidget);
+    await tester.tap(find.byTooltip('Remembered activity'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('No activity preference is available'),
+        findsOneWidget);
+    await tester.tap(find.text('Forget activity'));
+    await tester.pumpAndSettle();
+    expect(find.text('Remembered activity forgotten.'), findsOneWidget);
+    expect(NeuraPrefsCache.prefs.containsKey(GuidedSupportStore.storageKey),
+        isFalse);
   });
 
   testWidgets('backgrounding invalidates an open confirmation after resuming',
@@ -309,7 +426,7 @@ void main() {
     expect((store as _ScreenStore).record, isNull);
   });
 
-  testWidgets('large text and narrow screens keep every activity reachable',
+  testWidgets('dark mode, large text and narrow screens keep support reachable',
       (tester) async {
     store = _ScreenStore();
     tester.view.physicalSize = const Size(320, 640);
@@ -317,6 +434,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(MaterialApp(
+        theme: ThemeData.dark(useMaterial3: true),
         builder: (context, child) => MediaQuery(
               data: MediaQuery.of(context)
                   .copyWith(textScaler: const TextScaler.linear(2)),
@@ -324,15 +442,26 @@ void main() {
             ),
         home: GuidedSupportScreen(store: store)));
     await tester.pumpAndSettle();
+    expect(
+        Theme.of(tester.element(find.byType(GuidedSupportScreen))).brightness,
+        Brightness.dark);
+    await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    await expectLater(tester, meetsGuideline(textContrastGuideline));
     await tapText(tester, 'One small plan');
     await tester.scrollUntilVisible(find.byType(TextField), 160,
         scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'A small step');
+    await tester.scrollUntilVisible(find.text('Finish without check-in'), 160,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.text('Finish without check-in'), findsOneWidget);
     await tapText(tester, 'Next step');
     await tapText(tester, 'Next step');
     await tapText(tester, 'Check in (optional)');
     await tapText(tester, 'Done');
+    await tester.scrollUntilVisible(find.text('Reach a person'), 160,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.text('Reach a person'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
