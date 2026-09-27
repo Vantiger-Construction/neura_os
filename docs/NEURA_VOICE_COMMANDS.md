@@ -1,7 +1,7 @@
 # Neura chat voice commands
 
 Open **Talk to Neura**, tap the microphone, and say a complete phrase beginning
-with **Neura** or **Hey Neura**. Find all **38 commands**, grouped by purpose and
+with **Neura** or **Hey Neura**. Find all **39 commands**, grouped by purpose and
 with short descriptions, under **Chat options → Voice commands**. Each
 recognized command ends the current listening session; tap the
 mic again to continue. Commands use the existing chat speech recognizer, currently
@@ -63,6 +63,7 @@ channel before these microphone controls are available.
 | Neura, open privacy | Open Privacy & Safety settings without changing consent. |
 | Neura, open notifications | Open notification settings without enabling notifications. |
 | Neura, open help | Open the Getting Started guide. |
+| Neura, help me through this | Open guided support; choose an activity and optionally check in. |
 
 ## Next reply context
 
@@ -74,6 +75,7 @@ channel before these microphone controls are available.
 Natural alternatives include **page up**, **page down**, **go to first message**,
 **show latest message**, **open focus office**, **open dream calendar**,
 **open appearance**, **remove selected file**, and **don't use memories**.
+Guided support also accepts **open guided support** and **I need a moment**.
 These still need the Neura prefix. Adding “please” at the start or end works.
 
 ## Recognition and privacy

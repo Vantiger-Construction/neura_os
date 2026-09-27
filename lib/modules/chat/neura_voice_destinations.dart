@@ -15,6 +15,7 @@ import '../mood/mood_checkin_screen.dart';
 import '../mood/mood_history_screen.dart';
 import '../quests/quest_mode_screen.dart';
 import '../review/weekly_review_screen.dart';
+import '../support/guided_support_screen.dart';
 import '../timeline/life_timeline_screen.dart';
 
 typedef NeuraVoiceDestination = ({String name, WidgetBuilder builder});
@@ -23,6 +24,10 @@ typedef NeuraVoiceDestination = ({String name, WidgetBuilder builder});
 /// and enabling optional features still require their normal on-screen action.
 NeuraVoiceDestination? neuraVoiceDestination(NeuraVoiceCommand command) =>
     switch (command) {
+      NeuraVoiceCommand.guidedSupport => (
+          name: '/care/guided-support',
+          builder: (_) => const GuidedSupportScreen()
+        ),
       NeuraVoiceCommand.openJournal => (
           name: '/memory/journal-prompt',
           builder: (_) => const JournalPromptScreen()

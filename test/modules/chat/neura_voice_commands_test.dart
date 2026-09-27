@@ -11,6 +11,8 @@ import 'package:neuro_companion/modules/core/app_log.dart';
 import 'package:neuro_companion/modules/mood/mood_checkin_screen.dart';
 import 'package:neuro_companion/modules/review/weekly_review_screen.dart';
 import 'package:neuro_companion/modules/review/weekly_review_store.dart';
+import 'package:neuro_companion/modules/support/guided_support_screen.dart';
+import 'package:neuro_companion/modules/support/guided_support_store.dart';
 import 'package:neuro_companion/neura_shell/models/neura_room.dart';
 import 'package:neuro_companion/neura_shell/neura_shell_state.dart';
 import 'package:neuro_companion/notifications/neura_notifications_prefs.dart';
@@ -239,6 +241,49 @@ void main() {
     SafeBoot.instance.safeMode.value = true;
     await tester.pumpAndSettle();
     expect(find.text('Keep my typed draft.'), findsOneWidget);
+    expect(NeuraSpeechToTextService.instance.isListening, isFalse);
+    expect(calls, isEmpty);
+  });
+
+  testWidgets('guided support waits for native stop and consumes the command',
+      (tester) async {
+    await pumpChat(tester);
+    await startListening(tester);
+    stopGate = Completer<void>();
+    await native('onFinal', 'Neura, help me through this');
+    await tester.pump();
+    expect(find.byType(GuidedSupportScreen), findsNothing);
+    stopGate!.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(GuidedSupportScreen), findsOneWidget);
+    expect(NeuraSpeechToTextService.instance.isListening, isFalse);
+    expect(NeuraPrefsCache.prefs.containsKey(GuidedSupportStore.storageKey),
+        isFalse);
+    Navigator.of(tester.element(find.byType(GuidedSupportScreen))).pop();
+    await tester.pumpAndSettle();
+    expect(calls, ['start', 'stop']);
+    expect(find.text('Neura, help me through this'), findsNothing);
+  });
+
+  testWidgets('manual guided support stops an active chat microphone',
+      (tester) async {
+    await pumpChat(tester);
+    await startListening(tester);
+    await tester.tap(find.text('Help me through this'));
+    await tester.pumpAndSettle();
+    expect(find.byType(GuidedSupportScreen), findsOneWidget);
+    expect(calls, ['start', 'stop']);
+    expect(NeuraSpeechToTextService.instance.isListening, isFalse);
+  });
+
+  testWidgets('manual guided support remains available in Safe Mode',
+      (tester) async {
+    await pumpChat(tester);
+    SafeBoot.instance.safeMode.value = true;
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Help me through this'));
+    await tester.pumpAndSettle();
+    expect(find.byType(GuidedSupportScreen), findsOneWidget);
     expect(NeuraSpeechToTextService.instance.isListening, isFalse);
     expect(calls, isEmpty);
   });
