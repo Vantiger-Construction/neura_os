@@ -49,7 +49,9 @@ $lock = $null
 $links = @()
 try {
     foreach ($path in $protected) { New-FixtureFile -Path $path }
-    New-FixtureFile -Path (Join-Path $stage 'extract/flutter/file.bin')
+    $readOnlyFile = Join-Path $stage 'extract/flutter/file.bin'
+    New-FixtureFile -Path $readOnlyFile
+    [IO.File]::SetAttributes($readOnlyFile, [IO.FileAttributes]::ReadOnly)
     New-FixtureFile -Path (Join-Path $derived 'generated.bin')
     $buildCache = Join-Path $gradle 'caches/build-cache-1'
     New-FixtureFile -Path (Join-Path $buildCache 'generated.bin')
