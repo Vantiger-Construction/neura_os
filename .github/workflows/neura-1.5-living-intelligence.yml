@@ -221,4 +221,3 @@ jobs:
           }
           $summary | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           Write-Host 'Diagnostic evidence recorded in the run summary.'
-
