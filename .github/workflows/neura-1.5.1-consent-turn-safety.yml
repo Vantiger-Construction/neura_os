@@ -104,18 +104,48 @@ jobs:
           flutter test --no-pub --reporter expanded \
             2>&1 | tee complete-tests.log
 
-      - name: Upload validation evidence
+      - name: Record diagnostic evidence in run summary
         if: always()
-        uses: actions/upload-artifact@v6
-        # Evidence upload is diagnostic; exhausted artifact quota must not
-        # override the consent and turn safety validation result.
         continue-on-error: true
-        with:
-          name: Neura-1.5.1-consent-turn-safety-evidence
-          path: |
+        shell: 'bash'
+        env:
+          NEURA_REPORT_TITLE: Neura-1.5.1-consent-turn-safety-evidence
+          NEURA_REPORT_PATHS: |
             analyze.log
             focused-safety-tests.log
             complete-tests.log
             pubspec.lock
-          if-no-files-found: warn
-          retention-days: 3
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import html
+          import os
+          import re
+          from pathlib import Path
+
+          summary = [
+              '### ' + os.environ['NEURA_REPORT_TITLE'], '',
+              'Tested commit: ' + os.environ['GITHUB_SHA'], '',
+              'Diagnostic excerpts are below. Full command output remains in the job logs; use Download log archive on this run to save it.', '',
+          ]
+          remaining = 200000
+          for name in os.environ['NEURA_REPORT_PATHS'].splitlines():
+              if not name.strip():
+                  continue
+              path = Path(name)
+              summary.append('#### ' + path.name)
+              if not path.is_file():
+                  summary.append('Not produced; check the preceding validation steps.')
+                  continue
+              data = path.read_bytes()
+              summary.append('SHA-256: ' + hashlib.sha256(data).hexdigest())
+              excerpt = '\n'.join(data.decode('utf-8', errors='replace').splitlines()[-200:])
+              excerpt = html.escape(re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', excerpt))
+              limit = min(40000, remaining)
+              excerpt = excerpt[-limit:] if limit else ''
+              remaining -= len(excerpt)
+              summary.extend(['<pre>', excerpt, '</pre>', ''])
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as output:
+              output.write('\n'.join(summary) + '\n')
+          print('Diagnostic evidence recorded in the run summary.')
+          PY
