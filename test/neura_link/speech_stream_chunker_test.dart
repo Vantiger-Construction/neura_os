@@ -3,6 +3,25 @@ import 'package:neuro_companion/neura_link/speech_stream_chunker.dart';
 
 void main() {
   group('SpeechStreamChunker.extractReadyChunk', () {
+    for (final shrinkToSpoken in [false, true]) {
+      test('clears cached clauses after shrinking (spoken: $shrinkToSpoken)',
+          () {
+        final chunker = SpeechStreamChunker();
+        final oldTail = List.filled(125, 'x').join();
+        expect(
+          chunker.extractReadyChunk('u1', 'Ready. $oldTail, trailing'),
+          'Ready.',
+        );
+        final shorter = shrinkToSpoken
+            ? 'Ready.'
+            : 'Ready. ${List.filled(120, 'y').join()}';
+        expect(chunker.extractReadyChunk('u1', shorter), isEmpty);
+        final newTail = List.filled(160, 'y').join();
+        expect(chunker.extractReadyChunk('u1', 'Ready. $newTail'), isEmpty);
+        expect(chunker.finish('u1', 'Ready. $newTail'), newTail);
+      });
+    }
+
     test('returns nothing until a sentence boundary is reached', () {
       final chunker = SpeechStreamChunker();
       expect(chunker.extractReadyChunk('u1', 'Hello there'), isEmpty);

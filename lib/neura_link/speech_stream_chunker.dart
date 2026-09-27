@@ -24,11 +24,17 @@ class SpeechStreamChunker {
   /// Returns an empty string when no full sentence has completed yet.
   String extractReadyChunk(String id, String fullText) {
     final start = _spokenUpTo[id] ?? 0;
-    if (start >= fullText.length) return '';
     // Stream snapshots grow by appending deltas. An unfinished sentence has
     // already been scanned, so inspect only the newly appended characters.
     // A shorter snapshot falls back to scanning from the unspoken cursor.
     final scanned = _scannedUpTo[id] ?? start;
+    if (scanned > fullText.length) {
+      // Positions from the longer snapshot cannot delimit the replacement.
+      // Invalidate them even if all remaining text was already spoken.
+      _scannedUpTo[id] = start;
+      _clauseBoundary.remove(id);
+    }
+    if (start >= fullText.length) return '';
     final scanStart = scanned <= fullText.length ? scanned : start;
     var sentenceBoundary = -1;
     var clauseBoundary = _clauseBoundary[id] ?? -1;

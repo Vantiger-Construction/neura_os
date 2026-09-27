@@ -27,4 +27,20 @@ void main() {
     expect(reply.text, contains('emergency services'));
     expect(reply.suggestedSteps, isNotEmpty);
   });
+
+  test('an attachment does not hide urgent safety language', () {
+    final reply = core.respondDetailed(
+      'I want to hurt myself',
+      imageAttached: true,
+    );
+    expect(reply.intent, 'urgent_safety');
+    expect(reply.text, contains('emergency services'));
+    expect(reply.suggestedSteps, isNotEmpty);
+  });
+
+  test('an image without text still uses the honest offline fallback', () {
+    final reply = core.respondDetailed('', imageAttached: true);
+    expect(reply.intent, 'image_unavailable_offline');
+    expect(reply.text, contains('cannot inspect'));
+  });
 }

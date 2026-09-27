@@ -29,20 +29,7 @@ class NeuraAICore {
     bool imageAttached = false,
   }) {
     final m = message.trim().toLowerCase();
-    if (imageAttached) {
-      return const NeuraOfflineReply(
-        text: 'I am staying on-device, so I cannot inspect that image. '
-            'Describe what you want me to notice and I can still help.',
-        intent: 'image_unavailable_offline',
-      );
-    }
-    if (m.isEmpty) {
-      return NeuraOfflineReply(
-        text: '${_roomOpening(roomId)} Say the word. I am listening.',
-        intent: 'listen',
-      );
-    }
-
+    // An unsupported attachment must not mask urgent text in the message.
     if (_containsAny(m, const <String>[
       'suicide',
       'kill myself',
@@ -60,6 +47,20 @@ class NeuraAICore {
           'Move near a trusted person',
           'Open Support Center',
         ],
+      );
+    }
+
+    if (imageAttached) {
+      return const NeuraOfflineReply(
+        text: 'I am staying on-device, so I cannot inspect that image. '
+            'Describe what you want me to notice and I can still help.',
+        intent: 'image_unavailable_offline',
+      );
+    }
+    if (m.isEmpty) {
+      return NeuraOfflineReply(
+        text: '${_roomOpening(roomId)} Say the word. I am listening.',
+        intent: 'listen',
       );
     }
 
