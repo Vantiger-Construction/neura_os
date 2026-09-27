@@ -30,6 +30,7 @@ import '../../modules/human/human_prefs_controller.dart';
 import '../../modules/humor/joke_prefs_controller.dart';
 import '../../modules/money/money_store.dart';
 import '../../modules/mood/mood_store.dart';
+import '../../modules/support/guided_support_store.dart';
 import '../../modules/pay_it_forward/goodwill_controller.dart';
 import '../../modules/therapy/therapy_response_store.dart';
 import '../../notifications/neura_notifications_prefs.dart';
@@ -179,6 +180,11 @@ class NeuraDataWipeService {
       failures,
       'mood history writer shutdown',
       MoodStore.instance.resetAfterDataWipe,
+    );
+    await _attempt(
+      failures,
+      'guided support preference removal',
+      GuidedSupportStore.instance.resetAfterDataWipe,
     );
     await _attempt(
       failures,
