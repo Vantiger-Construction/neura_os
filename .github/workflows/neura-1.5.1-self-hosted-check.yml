@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      - name: Select one bounded non-system workspace volume
+      - name: Select one bounded workspace volume
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-StrictMode -Version Latest
@@ -94,11 +94,6 @@ jobs:
           if (-not $systemDrive) {
             throw "Unable to inspect the system volume $systemRoot."
           }
-          $systemFree = $systemDrive.Free
-          if ($systemFree -lt 0.20GB) {
-            throw "The runner needs at least 0.20 GB on $systemRoot for metadata."
-          }
-
           foreach ($repository in Get-ChildItem -LiteralPath $runnerWork -Directory -ErrorAction SilentlyContinue) {
             if ($repository.Name.StartsWith('_')) { continue }
             $checkout = Join-Path $repository.FullName $repository.Name
@@ -108,11 +103,13 @@ jobs:
 
           $cutoff = (Get-Date).AddHours(-2)
           foreach ($drive in [System.IO.DriveInfo]::GetDrives()) {
-            if (-not $drive.IsReady -or $drive.Name -eq $systemRoot) { continue }
+            if (-not $drive.IsReady) { continue }
             $ownedRoot = Join-Path $drive.RootDirectory.FullName 'neura-ci'
             if (Test-Path -LiteralPath $ownedRoot -PathType Container) {
               Get-ChildItem -LiteralPath $ownedRoot -Directory -Force -ErrorAction SilentlyContinue |
                 Where-Object { $_.LastWriteTime -lt $cutoff } |
+                Sort-Object -Property LastWriteTime |
+                Select-Object -First 12 |
                 ForEach-Object { Remove-LinkOrDirectory -Path $_.FullName }
             }
           }
@@ -123,7 +120,23 @@ jobs:
             Sort-Object -Property AvailableFreeSpace -Descending |
             Select-Object -First 1
           if (-not $volume) {
-            throw 'A writable non-system volume with at least 3 GB free is required.'
+            $systemFallbackMinimum = 8.0GB
+            $systemVolume = [System.IO.DriveInfo]::new($systemRoot)
+            if (-not $systemVolume.IsReady -or
+                $systemVolume.AvailableFreeSpace -lt $systemFallbackMinimum -or
+                -not (Test-NeuraVolume -Drive $systemVolume)) {
+              throw ('Validation requires a writable non-system volume with at least 3 GB free, ' +
+                'or an explicit system-volume fallback with at least 8 GB free.')
+            }
+            $volume = $systemVolume
+            $layout = 'system fallback'
+          } else {
+            $layout = 'non-system'
+          }
+
+          $systemFree = ([System.IO.DriveInfo]::new($systemRoot)).AvailableFreeSpace
+          if ($systemFree -lt 1.0GB) {
+            throw "The runner needs at least 1.0 GB on $systemRoot for metadata."
           }
 
           $runKey = "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
@@ -152,7 +165,7 @@ jobs:
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
           Write-Host "Validation workspace: $sourceLink -> $workspaceTarget"
-          Write-Host "Selected volume: $($volume.Name) ($([Math]::Round($volume.AvailableFreeSpace / 1GB, 2)) GB free)"
+          Write-Host "Selected volume ($layout): $($volume.Name) ($([Math]::Round($volume.AvailableFreeSpace / 1GB, 2)) GB free)"
 
       - name: Check out source
         uses: actions/checkout@v5
@@ -178,6 +191,24 @@ jobs:
           Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
           flutter pub get
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Confirm validation headroom
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $runVolume = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($env:NEURA_RUN_ROOT))
+          $systemVolume = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($env:RUNNER_TEMP))
+          $runDrive = [IO.DriveInfo]::new($runVolume)
+          $systemDrive = [IO.DriveInfo]::new($systemVolume)
+          $runMinimum = if ($runVolume -eq $systemVolume) { 4.0GB } else { 2.0GB }
+          Write-Host ("Validation volume {0}: {1:N2} GB free; required {2:N2} GB" -f
+            $runVolume, ($runDrive.AvailableFreeSpace / 1GB), ($runMinimum / 1GB))
+          if ($runDrive.AvailableFreeSpace -lt $runMinimum) {
+            throw 'Validation volume headroom fell below the safe post-restore threshold.'
+          }
+          if ($systemDrive.AvailableFreeSpace -lt 1.0GB) {
+            throw 'The system volume must retain at least 1.0 GB for runner metadata.'
+          }
 
       - name: Prepare canonical source evidence
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
