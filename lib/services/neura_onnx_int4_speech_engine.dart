@@ -24,6 +24,10 @@ final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
   final StreamController<NeuraSpeechSegment> _segments =
       StreamController<NeuraSpeechSegment>.broadcast();
   bool _listening = false;
+  bool _starting = false;
+  bool _nativeStartPending = false;
+  bool _disposed = false;
+  int _startGeneration = 0;
 
   @override
   String get id => 'onnx_int4_experimental';
@@ -44,13 +48,14 @@ final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
   @override
   bool get isListening => _listening;
 
-  bool get listeningAllowed => !SafeBoot.instance.safeMode.value;
+  bool get listeningAllowed => !_disposed && !SafeBoot.instance.safeMode.value;
 
   @override
   Future<bool> isAvailable() async {
     if (!listeningAllowed) return false;
     try {
-      return await _channel.invokeMethod<bool>('isAvailable') == true;
+      final available = await _channel.invokeMethod<bool>('isAvailable');
+      return listeningAllowed && available == true;
     } on MissingPluginException {
       return false;
     } catch (error, stack) {
@@ -65,25 +70,47 @@ final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
 
   @override
   Future<bool> start() async {
-    if (!listeningAllowed || !await isAvailable()) return false;
+    if (!listeningAllowed || _starting) return false;
+    if (_listening) return true;
+    final generation = ++_startGeneration;
+    _starting = true;
     try {
-      _listening = await _channel.invokeMethod<bool>('start') == true;
-      if (!listeningAllowed && _listening) {
-        await stop();
+      if (!await isAvailable() ||
+          !listeningAllowed ||
+          generation != _startGeneration) {
         return false;
       }
+      _nativeStartPending = true;
+      final started = await _channel.invokeMethod<bool>('start') == true;
+      _nativeStartPending = false;
+      if (!listeningAllowed || generation != _startGeneration) {
+        // A stop can reach native code before its pending start completes.
+        // Stop again after that acknowledgement so capture cannot resume.
+        if (started) await _stopNative();
+        return false;
+      }
+      _listening = started;
       return _listening;
     } catch (error, stack) {
       _listening = false;
       await AppLog.instance.caught('onnx_speech_start_failed', error, stack);
       return false;
+    } finally {
+      _starting = false;
+      _nativeStartPending = false;
     }
   }
 
   @override
   Future<String> stop() async {
-    if (!_listening) return '';
+    _startGeneration++;
+    final shouldStop = _listening || _nativeStartPending;
     _listening = false;
+    if (!shouldStop) return '';
+    return _stopNative();
+  }
+
+  Future<String> _stopNative() async {
     try {
       return await _channel.invokeMethod<String>('stop') ?? '';
     } catch (error, stack) {
@@ -117,11 +144,14 @@ final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
   }
 
   void _onSafeModeChanged() {
-    if (!listeningAllowed && _listening) unawaited(stop());
+    if (!listeningAllowed) unawaited(stop());
   }
 
   Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
     SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
+    _channel.setMethodCallHandler(null);
     await stop();
     await _segments.close();
   }

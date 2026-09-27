@@ -103,11 +103,14 @@ final class NeuraSpeechBenchmarkHarness {
 
     final rssBefore = await _probe.residentSetBytes();
     final thermalBefore = await _probe.thermalState();
-    final finalSegment = Completer<void>();
+    if (_safeModeReader()) {
+      throw StateError('Speech benchmarks are blocked in Safe Mode.');
+    }
+    final finalSegment = Completer<Duration>();
     final clock = Stopwatch()..start();
     final subscription = engine.segments.listen((segment) {
       if (segment.isFinal && !finalSegment.isCompleted) {
-        finalSegment.complete();
+        finalSegment.complete(clock.elapsed);
       }
     });
     var started = false;
@@ -120,19 +123,28 @@ final class NeuraSpeechBenchmarkHarness {
       started = await engine.start();
       startClock.stop();
       startLatency = startClock.elapsed;
-      if (!started) {
+      if (_safeModeReader()) {
+        failureKind = 'safe_mode';
+      } else if (!started) {
         failureKind = 'start_failed';
       } else {
-        await exercise();
-        if (_safeModeReader()) {
-          failureKind = 'safe_mode';
-        } else {
-          try {
-            await finalSegment.future.timeout(timeout);
-            firstFinalLatency = clock.elapsed;
-          } on TimeoutException {
-            failureKind = 'timeout';
+        final exerciseClock = Stopwatch()..start();
+        try {
+          await exercise().timeout(timeout);
+          if (_safeModeReader()) {
+            failureKind = 'safe_mode';
+          } else {
+            firstFinalLatency = await finalSegment.future.timeout(
+              timeout - exerciseClock.elapsed,
+            );
+            if (_safeModeReader()) {
+              failureKind = 'safe_mode';
+            }
           }
+        } on TimeoutException {
+          failureKind = 'timeout';
+        } finally {
+          exerciseClock.stop();
         }
       }
     } finally {
