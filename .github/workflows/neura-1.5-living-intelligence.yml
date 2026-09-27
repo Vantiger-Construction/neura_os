@@ -180,16 +180,44 @@ jobs:
           Write-Host "Disk space after cleanup:"
           Get-PSDrive -Name C | Select-Object Name, Used, Free
 
-      - name: Upload validation evidence
+      - name: Record diagnostic evidence in run summary
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v6
-        with:
-          name: Neura-1.5-living-intelligence-evidence
-          path: |
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        env:
+          NEURA_REPORT_TITLE: Neura-1.5-living-intelligence-evidence
+          NEURA_REPORT_PATHS: |
             ${{ github.workspace }}\source\analyze.log
             ${{ github.workspace }}\source\living-intelligence-tests.log
             ${{ github.workspace }}\source\complete-tests.log
             ${{ github.workspace }}\source\pubspec.lock
-          if-no-files-found: warn
-          retention-days: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $summary = @(
+            "### $env:NEURA_REPORT_TITLE",
+            '',
+            "Tested commit: $env:GITHUB_SHA",
+            '',
+            'Diagnostic excerpts are below. Full command output remains in the job logs; use Download log archive on this run to save it.',
+            ''
+          )
+          $remaining = 200000
+          foreach ($path in ($env:NEURA_REPORT_PATHS -split '\r?\n')) {
+            if ([string]::IsNullOrWhiteSpace($path)) { continue }
+            $summary += "#### $(Split-Path -Leaf $path)"
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              $summary += 'Not produced; check the preceding validation steps.'
+              continue
+            }
+            $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            $summary += "SHA-256: $hash"
+            $excerpt = (Get-Content -LiteralPath $path -Tail 200) -join [Environment]::NewLine
+            $excerpt = $excerpt -replace '\x1b\[[0-?]*[ -/]*[@-~]', ''
+            $excerpt = [Net.WebUtility]::HtmlEncode($excerpt)
+            $limit = [Math]::Min(40000, $remaining)
+            if ($excerpt.Length -gt $limit) { $excerpt = $excerpt.Substring($excerpt.Length - $limit) }
+            $remaining -= $excerpt.Length
+            $summary += @('<pre>', $excerpt, '</pre>', '')
+          }
+          $summary | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          Write-Host 'Diagnostic evidence recorded in the run summary.'

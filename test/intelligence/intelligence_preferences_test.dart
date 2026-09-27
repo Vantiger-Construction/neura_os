@@ -9,6 +9,9 @@ void main() {
       );
 
       expect(preferences.enabled, isTrue);
+      expect(preferences.proactivityLevel, NeuraProactivityLevel.balanced);
+      expect(preferences.allowsProactiveSuggestions, isTrue);
+      expect(preferences.effectiveMaxDailySuggestions, 3);
       expect(preferences.allowSensitiveSignals, isFalse);
       expect(preferences.showDecisionReasons, isTrue);
       expect(preferences.maxDailySuggestions, 3);
@@ -16,6 +19,45 @@ void main() {
       expect(preferences.quietHoursStart, 22);
       expect(preferences.quietHoursEnd, 7);
       expect(preferences.pausedUntil, isNull);
+    });
+
+    test('migrates a legacy disabled preference to the explicit off level', () {
+      final preferences = NeuraIntelligencePreferences.fromJson(
+        const <String, Object?>{'enabled': false},
+      );
+
+      expect(preferences.proactivityLevel, NeuraProactivityLevel.off);
+      expect(preferences.allowsProactiveSuggestions, isFalse);
+      expect(preferences.effectiveMaxDailySuggestions, 0);
+    });
+
+    test('round-trips subtle proactivity and tightens the daily cap', () {
+      const original = NeuraIntelligencePreferences(
+        proactivityLevel: NeuraProactivityLevel.subtle,
+        maxDailySuggestions: 6,
+      );
+      final restored = NeuraIntelligencePreferences.fromJson(original.toJson());
+
+      expect(restored.proactivityLevel, NeuraProactivityLevel.subtle);
+      expect(restored.effectiveMaxDailySuggestions, 1);
+      expect(
+        restored.proactivityLevel.appOpenCooldown,
+        const Duration(hours: 24),
+      );
+    });
+
+    test('off remains fail-closed across legacy and level updates', () {
+      final legacyOff = const NeuraIntelligencePreferences().copyWith(
+        enabled: false,
+      );
+      final levelOff = const NeuraIntelligencePreferences().copyWith(
+        proactivityLevel: NeuraProactivityLevel.off,
+      );
+
+      expect(legacyOff.proactivityLevel, NeuraProactivityLevel.off);
+      expect(legacyOff.effectiveMaxDailySuggestions, 0);
+      expect(levelOff.enabled, isFalse);
+      expect(levelOff.toJson()['enabled'], isFalse);
     });
 
     test('clamps persisted and copied numeric policy values', () {
@@ -43,15 +85,10 @@ void main() {
     test('round-trips a pause by instant and can explicitly clear it', () {
       final pausedUntil = DateTime.parse('2026-08-15T02:30:00-05:00');
       final original = NeuraIntelligencePreferences(pausedUntil: pausedUntil);
-      final restored = NeuraIntelligencePreferences.fromJson(
-        original.toJson(),
-      );
+      final restored = NeuraIntelligencePreferences.fromJson(original.toJson());
 
       expect(restored.pausedUntil, isNotNull);
-      expect(
-        restored.pausedUntil!.isAtSameMomentAs(pausedUntil),
-        isTrue,
-      );
+      expect(restored.pausedUntil!.isAtSameMomentAs(pausedUntil), isTrue);
       expect(
         restored.isQuietAt(pausedUntil.subtract(const Duration(seconds: 1))),
         isTrue,
