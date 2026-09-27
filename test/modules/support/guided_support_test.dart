@@ -428,6 +428,8 @@ void main() {
 
   testWidgets('dark mode, large text and narrow screens keep support reachable',
       (tester) async {
+    final semantics = tester.ensureSemantics();
+    addTearDown(semantics.dispose);
     store = _ScreenStore();
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;
