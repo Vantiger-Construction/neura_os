@@ -433,42 +433,45 @@ void main() {
   testWidgets('dark mode, large text and narrow screens keep support reachable',
       (tester) async {
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
-    store = _ScreenStore();
-    tester.view.physicalSize = const Size(320, 640);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(MaterialApp(
-        theme: ThemeData.dark(useMaterial3: true),
-        builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(context)
-                  .copyWith(textScaler: const TextScaler.linear(2)),
-              child: child!,
-            ),
-        home: GuidedSupportScreen(store: store)));
-    await tester.pumpAndSettle();
-    expect(
-        Theme.of(tester.element(find.byType(GuidedSupportScreen))).brightness,
-        Brightness.dark);
-    await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-    await expectLater(tester, meetsGuideline(textContrastGuideline));
-    await tapText(tester, 'One small plan');
-    await tester.scrollUntilVisible(find.byType(TextField), 160,
-        scrollable: find.byType(Scrollable).first);
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'A small step');
-    await tester.scrollUntilVisible(find.text('Finish without check-in'), 160,
-        scrollable: find.byType(Scrollable).first);
-    expect(find.text('Finish without check-in'), findsOneWidget);
-    await tapText(tester, 'Next step');
-    await tapText(tester, 'Next step');
-    await tapText(tester, 'Check in (optional)');
-    await tapText(tester, 'Done');
-    await tester.scrollUntilVisible(find.text('Reach a person'), 160,
-        scrollable: find.byType(Scrollable).first);
-    expect(find.text('Reach a person'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    try {
+      store = _ScreenStore();
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(MaterialApp(
+          theme: ThemeData.dark(useMaterial3: true),
+          builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: const TextScaler.linear(2)),
+                child: child!,
+              ),
+          home: GuidedSupportScreen(store: store)));
+      await tester.pumpAndSettle();
+      expect(
+          Theme.of(tester.element(find.byType(GuidedSupportScreen))).brightness,
+          Brightness.dark);
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      await tapText(tester, 'One small plan');
+      await tester.scrollUntilVisible(find.byType(TextField), 160,
+          scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'A small step');
+      await tester.scrollUntilVisible(find.text('Finish without check-in'), 160,
+          scrollable: find.byType(Scrollable).first);
+      expect(find.text('Finish without check-in'), findsOneWidget);
+      await tapText(tester, 'Next step');
+      await tapText(tester, 'Next step');
+      await tapText(tester, 'Check in (optional)');
+      await tapText(tester, 'Done');
+      await tester.scrollUntilVisible(find.text('Reach a person'), 160,
+          scrollable: find.byType(Scrollable).first);
+      expect(find.text('Reach a person'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    } finally {
+      semantics.dispose();
+    }
   });
 }
 
