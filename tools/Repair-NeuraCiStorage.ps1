@@ -87,9 +87,48 @@ function Get-NeuraDirectoryBytes {
     return $bytes
 }
 
+function Remove-NeuraStalePackageRuns {
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [int]$RetainPerPlatform = 3,
+        [int]$MaximumRemovals = 24,
+        [switch]$ReportOnly
+    )
+    if (-not (Test-NeuraOrdinaryDirectory -Path $Root)) { return }
+    $currentRun = if ($env:GITHUB_RUN_ID -and $env:GITHUB_RUN_ATTEMPT) {
+        "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+    } else { $null }
+    $cutoff = (Get-Date).AddHours(-2)
+    [int]$removed = 0
+    foreach ($platform in @('android', 'windows')) {
+        $platformRoot = Join-Path $Root $platform
+        if (-not (Test-NeuraOrdinaryDirectory -Path $platformRoot)) { continue }
+        $runs = @(
+            Get-ChildItem -LiteralPath $platformRoot -Directory -Force -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $_.Name -match '^\d+-\d+$' -and
+                    (Test-NeuraOrdinaryDirectory -Path $_.FullName)
+                } |
+                Sort-Object -Property LastWriteTime -Descending
+        )
+        $keep = @($runs | Select-Object -First $RetainPerPlatform -ExpandProperty Name)
+        foreach ($run in ($runs | Sort-Object -Property LastWriteTime)) {
+            if ($removed -ge $MaximumRemovals) { return }
+            if ($run.Name -eq $currentRun -or
+                $run.Name -in $keep -or
+                $run.LastWriteTime -ge $cutoff) { continue }
+            Write-Host ("Stale delivered package: {0} ({1:N2} GB)" -f
+                $run.FullName, ((Get-NeuraDirectoryBytes -Path $run.FullName) / 1GB))
+            if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $run.FullName }
+            $removed++
+        }
+    }
+}
+
 function Invoke-NeuraStorageRecovery {
     param(
         [Parameter(Mandatory)][string]$ToolCache,
+        [string[]]$PackageRoots = @(),
         [switch]$ReportOnly
     )
     if (-not (Test-NeuraOrdinaryDirectory -Path $ToolCache)) {
@@ -130,44 +169,60 @@ function Invoke-NeuraStorageRecovery {
         }
     }
 
-    # Android uses this explicit CI cache, not USERPROFILE\.gradle. Retain
-    # downloaded dependencies, Gradle distributions, JDK, SDK, and NDK.
+    # The selected build volume owns all mutable Gradle state. Keep only
+    # reusable wrapper distributions and dependency downloads in the persistent
+    # tool cache; discard every other known Gradle directory when idle.
     $android = Join-Path $ToolCache 'neura-android'
     $gradle = Join-Path $android 'gradle-home'
     $caches = Join-Path $gradle 'caches'
     if ((Test-NeuraOrdinaryDirectory -Path $android) -and
-        (Test-NeuraOrdinaryDirectory -Path $gradle) -and
-        (Test-NeuraOrdinaryDirectory -Path $caches)) {
+        (Test-NeuraOrdinaryDirectory -Path $gradle)) {
         if (@(Get-Process -Name java, javaw -ErrorAction SilentlyContinue).Count -gt 0) {
             Write-Host 'Keeping Gradle derived caches while a Java process is running.'
         } else {
-            foreach ($entry in Get-ChildItem -LiteralPath $caches -Directory -Force) {
-                if (-not (Test-NeuraOrdinaryDirectory -Path $entry.FullName)) { continue }
-                $candidate = $null
-                if ($entry.Name -match '^(build-cache|transforms)-\d+$') {
-                    $candidate = $entry.FullName
-                } elseif ($entry.Name -match '^\d+\.\d+(\.\d+)?$') {
-                    $candidate = Join-Path $entry.FullName 'transforms'
-                }
-                if ($candidate -and (Test-NeuraOrdinaryDirectory -Path $candidate)) {
-                    Write-Host ("Disposable Gradle output: {0} ({1:N2} GB)" -f
-                        $candidate, ((Get-NeuraDirectoryBytes -Path $candidate) / 1GB))
-                    if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $candidate }
+            foreach ($entry in Get-ChildItem -LiteralPath $gradle -Directory -Force) {
+                if ($entry.Name -in @('wrapper', 'caches') -or
+                    -not (Test-NeuraOrdinaryDirectory -Path $entry.FullName)) { continue }
+                Write-Host ("Disposable Gradle directory: {0} ({1:N2} GB)" -f
+                    $entry.FullName, ((Get-NeuraDirectoryBytes -Path $entry.FullName) / 1GB))
+                if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $entry.FullName }
+            }
+            if (Test-NeuraOrdinaryDirectory -Path $caches) {
+                foreach ($entry in Get-ChildItem -LiteralPath $caches -Directory -Force) {
+                    if ($entry.Name -eq 'modules-2' -or
+                        -not (Test-NeuraOrdinaryDirectory -Path $entry.FullName)) { continue }
+                    Write-Host ("Disposable Gradle cache: {0} ({1:N2} GB)" -f
+                        $entry.FullName, ((Get-NeuraDirectoryBytes -Path $entry.FullName) / 1GB))
+                    if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $entry.FullName }
                 }
             }
         }
     }
 
     # Report only sizes inside known CI-owned roots. Never inspect personal
-    # folders or delete retained packages, installed SDKs, or dependency jars.
+    # folders or delete installed SDKs, Flutter versions, or dependency jars.
     foreach ($entry in Get-ChildItem -LiteralPath $ToolCache -Directory -Force) {
         Write-Host ("Retained CI tools: {0} = {1:N2} GB" -f
             $entry.Name, ((Get-NeuraDirectoryBytes -Path $entry.FullName) / 1GB))
     }
-    $volume = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($ToolCache))
-    $packages = Join-Path $volume 'neura-packages'
-    Write-Host ("Retained Neura packages: {0:N2} GB" -f
-        ((Get-NeuraDirectoryBytes -Path $packages) / 1GB))
+    foreach ($packages in $PackageRoots) {
+        if ([string]::IsNullOrWhiteSpace($packages)) { continue }
+        Remove-NeuraStalePackageRuns -Root $packages -ReportOnly:$ReportOnly
+        Write-Host ("Retained Neura packages at {0}: {1:N2} GB" -f
+            $packages, ((Get-NeuraDirectoryBytes -Path $packages) / 1GB))
+    }
 }
 
-Invoke-NeuraStorageRecovery -ToolCache $ToolCache -ReportOnly:$ReportOnly
+$packageRoots = @(
+    [IO.DriveInfo]::GetDrives() |
+        Where-Object {
+            $_.IsReady -and
+            ($_.DriveType -eq [IO.DriveType]::Fixed -or
+             $_.DriveType -eq [IO.DriveType]::Removable)
+        } |
+        ForEach-Object { Join-Path $_.RootDirectory.FullName 'neura-packages' }
+)
+Invoke-NeuraStorageRecovery `
+    -ToolCache $ToolCache `
+    -PackageRoots $packageRoots `
+    -ReportOnly:$ReportOnly
