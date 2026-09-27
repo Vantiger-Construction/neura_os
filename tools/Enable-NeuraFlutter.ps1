@@ -166,6 +166,10 @@ function Install-NeuraFlutterStagedSdk {
   Remove-Item -LiteralPath $previous -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+# This helper also runs before checkout in packaging workflows; direct SDK
+# users (for example, memory tests) need the same abandoned-install recovery.
+& (Join-Path $PSScriptRoot 'Repair-NeuraCiStorage.ps1') -ToolCache $env:RUNNER_TOOL_CACHE
+
 New-Item -ItemType Directory -Path $cacheParent -Force | Out-Null
 $lock = $null
 $lockDeadline = [DateTime]::UtcNow.AddMinutes(30)
@@ -259,6 +263,10 @@ try {
       } else {
         Expand-Archive -LiteralPath $archivePath -DestinationPath $extractRoot
       }
+
+      # The checksum-verified archive is no longer needed after extraction.
+      # Release it before the health probe bootstraps Flutter and Dart.
+      Remove-Item -LiteralPath $archivePath -Force
 
       Install-NeuraFlutterStagedSdk -StagedRoot $stagedFlutter `
         -Destination $flutterRoot -ExpectedVersion $Version
