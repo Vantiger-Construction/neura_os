@@ -38,7 +38,7 @@ jobs:
   reclaim-runner-space:
     name: Select bounded CI output volumes
     runs-on: [self-hosted, Windows, X64, neura]
-    timeout-minutes: 10
+    timeout-minutes: 30
     outputs:
       flutter_volume: ${{ steps.select_volumes.outputs.flutter_volume }}
       rust_volume: ${{ steps.select_volumes.outputs.rust_volume }}
@@ -165,25 +165,56 @@ jobs:
 
           function Remove-NeuraDerivedTree {
               param([Parameter(Mandatory)][string]$Path)
-              $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
-              if ($null -eq $item) { return }
-              # Never traverse junctions or symbolic links, including nested ones.
-              if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-                  Write-Warning "Keeping linked cache entry: $Path"
-                  return
-              }
-              try {
-                  if ($item.PSIsContainer) {
-                      foreach ($child in Get-ChildItem -LiteralPath $Path -Force -ErrorAction Stop) {
-                          Remove-NeuraDerivedTree -Path $child.FullName
+              # Avoid invoking the PowerShell provider for every SDK/cache file. A
+              # large abandoned extraction can otherwise exceed the recovery timeout.
+              # Enumerate one directory at a time and never use recursive deletion:
+              # every entry is checked for reparse points, including nested links.
+              $pending = New-Object System.Collections.Stack
+              $directories = New-Object System.Collections.Stack
+              $pending.Push($Path)
+              while ($pending.Count -gt 0) {
+                  $current = [string]$pending.Pop()
+                  try {
+                      $attributes = [IO.File]::GetAttributes($current)
+                      if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                          Write-Warning "Keeping linked cache entry: $current"
+                          continue
                       }
-                      if (@(Get-ChildItem -LiteralPath $Path -Force -ErrorAction Stop).Count -ne 0) {
-                          return
+                      if (($attributes -band [IO.FileAttributes]::Directory) -ne 0) {
+                          $children = [IO.Directory]::GetFileSystemEntries($current)
+                          $directories.Push($current)
+                          foreach ($child in $children) { $pending.Push($child) }
+                      } else {
+                          if (($attributes -band [IO.FileAttributes]::ReadOnly) -ne 0) {
+                              [IO.File]::SetAttributes($current,
+                                  ($attributes -band (-bnot [IO.FileAttributes]::ReadOnly)))
+                          }
+                          [IO.File]::Delete($current)
                       }
+                  } catch [IO.FileNotFoundException] {
+                      continue
+                  } catch [IO.DirectoryNotFoundException] {
+                      continue
+                  } catch {
+                      Write-Warning "Keeping unavailable cache entry ${current}: $($_.Exception.Message)"
                   }
-                  Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
-              } catch {
-                  Write-Warning "Keeping unavailable cache entry ${Path}: $($_.Exception.Message)"
+              }
+              while ($directories.Count -gt 0) {
+                  $current = [string]$directories.Pop()
+                  try {
+                      $attributes = [IO.File]::GetAttributes($current)
+                      if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
+                      if (($attributes -band [IO.FileAttributes]::ReadOnly) -ne 0) {
+                          [IO.File]::SetAttributes($current,
+                              ($attributes -band (-bnot [IO.FileAttributes]::ReadOnly)))
+                      }
+                      # Non-recursive deletion preserves any skipped or locked child.
+                      [IO.Directory]::Delete($current, $false)
+                  } catch [IO.DirectoryNotFoundException] {
+                      continue
+                  } catch {
+                      Write-Warning "Keeping nonempty or unavailable cache directory ${current}: $($_.Exception.Message)"
+                  }
               }
           }
 
