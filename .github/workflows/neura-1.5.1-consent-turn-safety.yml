@@ -149,4 +149,3 @@ jobs:
               output.write('\n'.join(summary) + '\n')
           print('Diagnostic evidence recorded in the run summary.')
           PY
-
