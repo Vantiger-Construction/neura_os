@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../modules/mood/mood_models.dart';
 import '../../modules/mood/mood_store.dart';
 import '../../modules/support/support_center_screen.dart';
+import '../../modules/support/guided_support_screen.dart';
 import '../../reliability/safe_boot.dart';
 import '../models/neura_care_plan.dart';
 import '../services/neura_care_loop_service.dart';
@@ -96,6 +97,15 @@ class _NeuraCareLoopScreenState extends State<NeuraCareLoopScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          FilledButton.icon(
+            onPressed: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                  builder: (_) => const GuidedSupportScreen()),
+            ),
+            icon: const Icon(Icons.spa_outlined),
+            label: const Text('Help me through this'),
+          ),
+          const SizedBox(height: 12),
           ValueListenableBuilder<bool>(
             valueListenable: SafeBoot.instance.safeMode,
             builder: (context, safeMode, _) => _PrivacyCard(
