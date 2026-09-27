@@ -9,6 +9,8 @@ on:
       - 'test/**'
       - 'tools/New-NeuraClientBuildConfig.ps1'
       - 'tools/Publish-NeuraReleaseAssets.ps1'
+      - 'tools/Repair-NeuraCiStorage.ps1'
+      - 'tools/Repair-NeuraCiStorage.Tests.ps1'
       - 'tools/Save-NeuraConfiguredPackage.ps1'
       - 'tools/Enable-NeuraFlutter.ps1'
       - 'pubspec.yaml'
@@ -111,10 +113,11 @@ jobs:
             if (Test-Path -LiteralPath $ownedRoot -PathType Container) {
               Get-ChildItem -LiteralPath $ownedRoot -Directory -Force -ErrorAction SilentlyContinue |
                 Where-Object { $_.LastWriteTime -lt $cutoff } |
+                Sort-Object -Property LastWriteTime |
+                Select-Object -First 12 |
                 ForEach-Object { Remove-NeuraGeneratedPath -Path $_.FullName }
             }
           }
-
 
           # BEGIN Neura runner storage recovery (kept in sync with tools/Repair-NeuraCiStorage.ps1)
           function Test-NeuraOrdinaryDirectory {
@@ -196,9 +199,48 @@ jobs:
               return $bytes
           }
 
+          function Remove-NeuraStalePackageRuns {
+              param(
+                  [Parameter(Mandatory)][string]$Root,
+                  [int]$RetainPerPlatform = 3,
+                  [int]$MaximumRemovals = 24,
+                  [switch]$ReportOnly
+              )
+              if (-not (Test-NeuraOrdinaryDirectory -Path $Root)) { return }
+              $currentRun = if ($env:GITHUB_RUN_ID -and $env:GITHUB_RUN_ATTEMPT) {
+                  "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+              } else { $null }
+              $cutoff = (Get-Date).AddHours(-2)
+              [int]$removed = 0
+              foreach ($platform in @('android', 'windows')) {
+                  $platformRoot = Join-Path $Root $platform
+                  if (-not (Test-NeuraOrdinaryDirectory -Path $platformRoot)) { continue }
+                  $runs = @(
+                      Get-ChildItem -LiteralPath $platformRoot -Directory -Force -ErrorAction SilentlyContinue |
+                          Where-Object {
+                              $_.Name -match '^\d+-\d+$' -and
+                              (Test-NeuraOrdinaryDirectory -Path $_.FullName)
+                          } |
+                          Sort-Object -Property LastWriteTime -Descending
+                  )
+                  $keep = @($runs | Select-Object -First $RetainPerPlatform -ExpandProperty Name)
+                  foreach ($run in ($runs | Sort-Object -Property LastWriteTime)) {
+                      if ($removed -ge $MaximumRemovals) { return }
+                      if ($run.Name -eq $currentRun -or
+                          $run.Name -in $keep -or
+                          $run.LastWriteTime -ge $cutoff) { continue }
+                      Write-Host ("Stale delivered package: {0} ({1:N2} GB)" -f
+                          $run.FullName, ((Get-NeuraDirectoryBytes -Path $run.FullName) / 1GB))
+                      if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $run.FullName }
+                      $removed++
+                  }
+              }
+          }
+
           function Invoke-NeuraStorageRecovery {
               param(
                   [Parameter(Mandatory)][string]$ToolCache,
+                  [string[]]$PackageRoots = @(),
                   [switch]$ReportOnly
               )
               if (-not (Test-NeuraOrdinaryDirectory -Path $ToolCache)) {
@@ -239,46 +281,62 @@ jobs:
                   }
               }
 
-              # Android uses this explicit CI cache, not USERPROFILE\.gradle. Retain
-              # downloaded dependencies, Gradle distributions, JDK, SDK, and NDK.
+              # The selected build volume now owns all mutable Gradle state.
+              # Keep only Gradle's reusable wrapper distributions and dependency
+              # downloads in the persistent tool cache; discard every other known
+              # Gradle directory when no Java process can be using it.
               $android = Join-Path $ToolCache 'neura-android'
               $gradle = Join-Path $android 'gradle-home'
               $caches = Join-Path $gradle 'caches'
               if ((Test-NeuraOrdinaryDirectory -Path $android) -and
-                  (Test-NeuraOrdinaryDirectory -Path $gradle) -and
-                  (Test-NeuraOrdinaryDirectory -Path $caches)) {
+                  (Test-NeuraOrdinaryDirectory -Path $gradle)) {
                   if (@(Get-Process -Name java, javaw -ErrorAction SilentlyContinue).Count -gt 0) {
                       Write-Host 'Keeping Gradle derived caches while a Java process is running.'
                   } else {
-                      foreach ($entry in Get-ChildItem -LiteralPath $caches -Directory -Force) {
-                          if (-not (Test-NeuraOrdinaryDirectory -Path $entry.FullName)) { continue }
-                          $candidate = $null
-                          if ($entry.Name -match '^(build-cache|transforms)-\d+$') {
-                              $candidate = $entry.FullName
-                          } elseif ($entry.Name -match '^\d+\.\d+(\.\d+)?$') {
-                              $candidate = Join-Path $entry.FullName 'transforms'
-                          }
-                          if ($candidate -and (Test-NeuraOrdinaryDirectory -Path $candidate)) {
-                              Write-Host ("Disposable Gradle output: {0} ({1:N2} GB)" -f
-                                  $candidate, ((Get-NeuraDirectoryBytes -Path $candidate) / 1GB))
-                              if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $candidate }
+                      foreach ($entry in Get-ChildItem -LiteralPath $gradle -Directory -Force) {
+                          if ($entry.Name -in @('wrapper', 'caches') -or
+                              -not (Test-NeuraOrdinaryDirectory -Path $entry.FullName)) { continue }
+                          Write-Host ("Disposable Gradle directory: {0} ({1:N2} GB)" -f
+                              $entry.FullName, ((Get-NeuraDirectoryBytes -Path $entry.FullName) / 1GB))
+                          if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $entry.FullName }
+                      }
+                      if (Test-NeuraOrdinaryDirectory -Path $caches) {
+                          foreach ($entry in Get-ChildItem -LiteralPath $caches -Directory -Force) {
+                              if ($entry.Name -eq 'modules-2' -or
+                                  -not (Test-NeuraOrdinaryDirectory -Path $entry.FullName)) { continue }
+                              Write-Host ("Disposable Gradle cache: {0} ({1:N2} GB)" -f
+                                  $entry.FullName, ((Get-NeuraDirectoryBytes -Path $entry.FullName) / 1GB))
+                              if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $entry.FullName }
                           }
                       }
                   }
               }
 
               # Report only sizes inside known CI-owned roots. Never inspect personal
-              # folders or delete retained packages, installed SDKs, or dependency jars.
+              # folders or delete installed SDKs, Flutter versions, or dependency jars.
               foreach ($entry in Get-ChildItem -LiteralPath $ToolCache -Directory -Force) {
                   Write-Host ("Retained CI tools: {0} = {1:N2} GB" -f
                       $entry.Name, ((Get-NeuraDirectoryBytes -Path $entry.FullName) / 1GB))
               }
-              $volume = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($ToolCache))
-              $packages = Join-Path $volume 'neura-packages'
-              Write-Host ("Retained Neura packages: {0:N2} GB" -f
-                  ((Get-NeuraDirectoryBytes -Path $packages) / 1GB))
+              foreach ($packages in $PackageRoots) {
+                  if ([string]::IsNullOrWhiteSpace($packages)) { continue }
+                  Remove-NeuraStalePackageRuns -Root $packages -ReportOnly:$ReportOnly
+                  Write-Host ("Retained Neura packages at {0}: {1:N2} GB" -f
+                      $packages, ((Get-NeuraDirectoryBytes -Path $packages) / 1GB))
+              }
           }
-          Invoke-NeuraStorageRecovery -ToolCache $env:RUNNER_TOOL_CACHE
+          $packageRoots = @(
+              [IO.DriveInfo]::GetDrives() |
+                  Where-Object {
+                      $_.IsReady -and
+                      ($_.DriveType -eq [IO.DriveType]::Fixed -or
+                       $_.DriveType -eq [IO.DriveType]::Removable)
+                  } |
+                  ForEach-Object { Join-Path $_.RootDirectory.FullName 'neura-packages' }
+          )
+          Invoke-NeuraStorageRecovery `
+              -ToolCache $env:RUNNER_TOOL_CACHE `
+              -PackageRoots $packageRoots
           # END Neura runner storage recovery
 
           $systemDriveName = $systemRoot.TrimEnd('\').TrimEnd(':')
@@ -287,49 +345,73 @@ jobs:
             throw "Unable to inspect the system volume $systemRoot."
           }
           $systemFree = $systemDrive.Free
-          if ($systemFree -lt 0.25GB) {
-            throw "The runner needs 0.25 GB on $systemRoot for metadata; only $([Math]::Round($systemFree / 1GB, 2)) GB is free."
+          $systemMetadataMinimum = 1.0GB
+          $systemBuildMinimum = 16.0GB
+          $sharedVolumeMinimum = 16.0GB
+          $buildVolumeMinimum = 12.0GB
+          $sdkVolumeMinimum = 3.25GB
+          if ($systemFree -lt $systemMetadataMinimum) {
+            throw "The runner needs 1.0 GB on $systemRoot for metadata; only $([Math]::Round($systemFree / 1GB, 2)) GB is free."
           }
 
           $eligible = @(
             [System.IO.DriveInfo]::GetDrives() |
-              Where-Object {
-                $_.IsReady -and
-                ($_.Name -ne $systemRoot -or $systemFree -ge 5.5GB)
-              } |
+              Where-Object { $_.IsReady } |
               Where-Object { Test-NeuraCiVolume -Drive $_ } |
               Sort-Object -Property AvailableFreeSpace -Descending
           )
           [System.IO.DriveInfo]::GetDrives() |
             Where-Object { $_.IsReady -and $_.DriveType -eq [System.IO.DriveType]::Fixed } |
             ForEach-Object { Write-Host ("Volume {0}: {1:N2} GB free" -f $_.Name, ($_.AvailableFreeSpace / 1GB)) }
-          if ($eligible.Count -eq 0 -or
-              ($eligible.Count -eq 1 -and
-               $eligible[0].AvailableFreeSpace -lt 8.0GB) -or
-              ($eligible.Count -ge 2 -and
-               ($eligible[0].AvailableFreeSpace -lt 3.25GB -or
-                $eligible[1].AvailableFreeSpace -lt 2.75GB))) {
-            throw ('Android validation requires either separate writable volumes with ' +
-              'at least 3.25 GB for SDK/JDK data and 2.75 GB for source/build data, ' +
-              'or one shared writable volume with at least 8.0 GB free. The system ' +
-              'volume is eligible only when at least 5.5 GB remains free.')
-          }
-
-          # Prefer one roomy volume so SDK/NDK extraction is not forced onto a
-          # marginal second drive. Fall back to split volumes only when needed.
-          $sharedDrive = $eligible |
-            Where-Object { $_.AvailableFreeSpace -ge 8.0GB } |
+          # Prefer a qualifying non-system build volume even when C: happens
+          # to report more free space. C: remains an explicit 16 GB fallback.
+          $nonSystemCandidates = @($eligible | Where-Object { $_.Name -ne $systemRoot })
+          $systemCandidates = @($eligible | Where-Object { $_.Name -eq $systemRoot })
+          # A shared volume must carry checkout, APK output, run-local Gradle
+          # transforms, and any cold SDK/JDK extraction. The observed 11.59 GB
+          # system-volume run exhausted the disk during JetifyTransform, so the
+          # shared and system fallbacks deliberately require 16 GB.
+          $sharedDrive = $nonSystemCandidates |
+            Where-Object { $_.AvailableFreeSpace -ge $sharedVolumeMinimum } |
             Select-Object -First 1
           if ($sharedDrive) {
             $buildDrive = $sharedDrive
             $sdkDrive = $sharedDrive
             $layout = 'shared'
           } else {
-            # APK/Gradle output is the heavier workload; reserve the largest
-            # remaining volume for it.
-            $buildDrive = $eligible[0]
-            $sdkDrive = $eligible[1]
-            $layout = 'separate'
+            $buildDrive = @(
+              $nonSystemCandidates
+              $systemCandidates
+            ) |
+              Where-Object {
+                $_.AvailableFreeSpace -ge $buildVolumeMinimum -and
+                ($_.Name -ne $systemRoot -or $_.AvailableFreeSpace -ge $systemBuildMinimum)
+              } |
+              Select-Object -First 1
+            $sdkDrive = $eligible |
+              Where-Object {
+                $buildDrive -and
+                $_.Name -ne $buildDrive.Name -and
+                $_.AvailableFreeSpace -ge $sdkVolumeMinimum -and
+                ($_.Name -ne $systemRoot -or $_.AvailableFreeSpace -ge 6.0GB)
+              } |
+              Select-Object -First 1
+            if ($buildDrive -and $sdkDrive) {
+              $layout = 'separate'
+            } else {
+              $sharedDrive = $systemCandidates |
+                Where-Object { $_.AvailableFreeSpace -ge $systemBuildMinimum } |
+                Select-Object -First 1
+              if (-not $sharedDrive) {
+                throw ('Android validation requires either one writable volume with at least 16 GB free, ' +
+                  'or separate writable volumes with at least 12 GB for checkout/build/Gradle data and ' +
+                  '3.25 GB for SDK/JDK staging. The system volume is used for build data only when it ' +
+                  'has at least 16 GB free, and always keeps 1 GB for runner metadata.')
+              }
+              $buildDrive = $sharedDrive
+              $sdkDrive = $sharedDrive
+              $layout = 'system fallback'
+            }
           }
           @(
             "NEURA_ANDROID_SDK_VOLUME=$($sdkDrive.RootDirectory.FullName)",
@@ -416,20 +498,42 @@ jobs:
           $outputRoot = Join-Path $buildRoot 'build'
           $androidUserHome = Join-Path $buildRoot 'android-user'
           $tempRoot = Join-Path $buildRoot 'temp'
-          # Keep verified platform tools and dependency downloads across runs.
-          # The committed lockfile is still resolved on every validation.
+          # Transform/build caches are run-local on the selected build volume.
+          # Retain only checksum-verified tools and Gradle's reusable wrapper and
+          # dependency downloads. The committed lockfile is resolved every run.
           $persistentToolRoot = Join-Path $env:RUNNER_TOOL_CACHE 'neura-android'
           $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.47.5'
-          $gradleHome = Join-Path $persistentToolRoot 'gradle-home'
+          $gradleHome = Join-Path $buildRoot 'gradle-home'
+          $persistentGradleHome = Join-Path $persistentToolRoot 'gradle-home'
+          $persistentGradleWrapper = Join-Path $persistentGradleHome 'wrapper'
+          $persistentGradleModules = Join-Path $persistentGradleHome 'caches\modules-2'
+          $gradleCaches = Join-Path $gradleHome 'caches'
           $sdkRoot = Join-Path $persistentToolRoot 'sdk-36.0.0-ndk-28.2.13676358'
           $jdkRoot = Join-Path $persistentToolRoot 'jdk-17.0.19+10'
 
           Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'build')
           Remove-LinkOrDirectory -Path $buildRoot
           Remove-LinkOrDirectory -Path $toolRoot
-          foreach ($path in @($outputRoot, $pubCache, $gradleHome, $androidUserHome, $tempRoot, $toolRoot, $persistentToolRoot)) {
+          foreach ($path in @(
+            $outputRoot,
+            $pubCache,
+            $gradleHome,
+            $gradleCaches,
+            $persistentGradleWrapper,
+            $persistentGradleModules,
+            $androidUserHome,
+            $tempRoot,
+            $toolRoot,
+            $persistentToolRoot
+          )) {
             New-Item -ItemType Directory -Path $path -Force | Out-Null
           }
+          New-Item -ItemType Junction `
+            -Path (Join-Path $gradleHome 'wrapper') `
+            -Target $persistentGradleWrapper | Out-Null
+          New-Item -ItemType Junction `
+            -Path (Join-Path $gradleCaches 'modules-2') `
+            -Target $persistentGradleModules | Out-Null
           New-Item -ItemType Junction `
             -Path (Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'build') `
             -Target $outputRoot | Out-Null
@@ -437,6 +541,9 @@ jobs:
           @(
             "NEURA_ANDROID_BUILD_ROOT=$buildRoot",
             "NEURA_ANDROID_TOOL_ROOT=$toolRoot",
+            "NEURA_ANDROID_GRADLE_ROOT=$gradleHome",
+            "NEURA_ANDROID_GRADLE_WRAPPER_LINK=$(Join-Path $gradleHome 'wrapper')",
+            "NEURA_ANDROID_GRADLE_MODULES_LINK=$(Join-Path $gradleCaches 'modules-2')",
             "NEURA_ANDROID_SDK_ROOT=$sdkRoot",
             "NEURA_ANDROID_JDK_ROOT=$jdkRoot",
             "PUB_CACHE=$pubCache",
@@ -700,6 +807,34 @@ jobs:
           $configPath = Join-Path $env:RUNNER_TEMP "neura-client-$env:GITHUB_RUN_ID-$env:GITHUB_JOB.json"
           & "$env:NEURA_ANDROID_SOURCE_ROOT\tools\New-NeuraClientBuildConfig.ps1" -OutputPath $configPath -RequireConfiguration:$requireConfig
 
+      - name: Confirm Android build headroom
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $buildRoot = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($env:NEURA_ANDROID_BUILD_ROOT))
+          $systemRoot = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($env:RUNNER_TEMP))
+          $buildDrive = [IO.DriveInfo]::new($buildRoot)
+          $systemDrive = [IO.DriveInfo]::new($systemRoot)
+          $buildMinimum = if ($buildRoot -eq $systemRoot) { 12.0GB } else { 10.0GB }
+          Write-Host ("Build/Gradle volume {0}: {1:N2} GB free; required {2:N2} GB" -f
+            $buildRoot, ($buildDrive.AvailableFreeSpace / 1GB), ($buildMinimum / 1GB))
+          Write-Host ("System volume {0}: {1:N2} GB free" -f
+            $systemRoot, ($systemDrive.AvailableFreeSpace / 1GB))
+          if ($buildDrive.AvailableFreeSpace -lt $buildMinimum) {
+            throw 'Android build headroom fell below the safe pre-build threshold.'
+          }
+          if ($systemDrive.AvailableFreeSpace -lt 1.0GB) {
+            throw 'The system volume must retain at least 1.0 GB for runner metadata during the Android build.'
+          }
+          if ([IO.Path]::GetFullPath($env:GRADLE_USER_HOME) -ne
+              [IO.Path]::GetFullPath($env:NEURA_ANDROID_GRADLE_ROOT)) {
+            throw 'GRADLE_USER_HOME is not routed to the selected Android build volume.'
+          }
+          if ([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($env:GRADLE_USER_HOME)) -ne $buildRoot) {
+            throw 'Gradle transform storage is not on the selected Android build volume.'
+          }
+
       - name: Build APK
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
@@ -786,6 +921,19 @@ jobs:
             }
             & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$buildLink"
             if ($LASTEXITCODE -ne 0) { throw 'Could not unlink the Android build output.' }
+          }
+          foreach ($cacheLinkPath in @(
+            $env:NEURA_ANDROID_GRADLE_WRAPPER_LINK,
+            $env:NEURA_ANDROID_GRADLE_MODULES_LINK
+          )) {
+            if ([string]::IsNullOrWhiteSpace($cacheLinkPath)) { continue }
+            $cacheLink = Get-Item -LiteralPath $cacheLinkPath -Force -ErrorAction SilentlyContinue
+            if (-not $cacheLink) { continue }
+            if (($cacheLink.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) {
+              throw "Expected a Gradle cache junction at $cacheLinkPath."
+            }
+            & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$cacheLinkPath"
+            if ($LASTEXITCODE -ne 0) { throw "Could not unlink Gradle cache path $cacheLinkPath." }
           }
           # Use the tested walker so nested links cannot delete external data.
           $helper = Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'tools\Repair-NeuraCiStorage.ps1'
@@ -877,6 +1025,17 @@ jobs:
             $buildLink = Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'build'
             if (Test-Path -LiteralPath $buildLink) {
               & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$buildLink"
+            }
+          }
+          foreach ($cacheLinkPath in @(
+            $env:NEURA_ANDROID_GRADLE_WRAPPER_LINK,
+            $env:NEURA_ANDROID_GRADLE_MODULES_LINK
+          )) {
+            if ([string]::IsNullOrWhiteSpace($cacheLinkPath)) { continue }
+            $cacheLink = Get-Item -LiteralPath $cacheLinkPath -Force -ErrorAction SilentlyContinue
+            if ($cacheLink -and
+                ($cacheLink.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+              & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$cacheLinkPath"
             }
           }
           foreach ($path in @($env:NEURA_ANDROID_BUILD_ROOT, $env:NEURA_ANDROID_TOOL_ROOT)) {
