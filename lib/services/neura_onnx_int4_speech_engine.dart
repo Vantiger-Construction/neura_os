@@ -37,7 +37,10 @@ final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
       const NeuraSpeechEngineCapabilities(
         onDevice: true,
         supportsPartialResults: true,
-        supportsConfidence: true,
+        // The first Windows runner emits transcript segments and endpoint
+        // state only. Do not invent a confidence value that the selected
+        // streaming transducer does not expose.
+        supportsConfidence: false,
         supportedPlatforms: {'windows', 'android'},
         experimental: true,
       );

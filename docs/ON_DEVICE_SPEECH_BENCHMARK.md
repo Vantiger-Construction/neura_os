@@ -17,10 +17,41 @@ benchmark reject both adapters. This is an intentional correction to the
 architecture boundary, not a claim that current production recognition is
 offline.
 
-The ONNX adapter is intentionally unavailable until a Windows or Android
-runner implements `neura/on_device_asr` and reports `isAvailable: true`.
-No model binary, download, license, or claimed accuracy is hidden in this
-change. Production selection continues to use the existing engines.
+The Windows runner now contains a prototype implementation of
+`neura/on_device_asr` using the Sherpa-ONNX streaming C API and PortAudio. It
+supports only the seam's `isAvailable`, `start`, `stop`, and `onSegment`
+contract. The Android runner remains unimplemented. No model binary, runtime
+DLL, dependency download, license acceptance, or claimed accuracy is hidden in
+this change. Production selection continues to use the existing engines.
+
+## Explicit Windows prototype setup
+
+The prototype has two independent gates and both default off:
+
+1. Configure the Windows build with
+   `NEURA_ENABLE_WINDOWS_ON_DEVICE_ASR=ON` and point the four CMake cache
+   entries `NEURA_SHERPA_ONNX_INCLUDE_DIR`, `NEURA_SHERPA_ONNX_LIBRARY`,
+   `NEURA_PORTAUDIO_INCLUDE_DIR`, and `NEURA_PORTAUDIO_LIBRARY` at SDK files
+   already present on the developer machine. The build does not fetch or copy
+   those SDKs or their runtime DLLs.
+2. At runtime, set `NEURA_ON_DEVICE_ASR_ENABLE=1` and set
+   `NEURA_ON_DEVICE_ASR_MODEL_DIR` to an existing local directory containing
+   `encoder.int4.onnx`, `decoder.int4.onnx`, `joiner.int4.onnx`, and
+   `tokens.txt`. Neura never downloads, relocates, or modifies these files.
+
+`isAvailable` returns true only when the backend was explicitly compiled, the
+runtime opt-in is exactly `1`, all four model files resolve inside that local
+directory, the path is not a URL, UNC path, or remote drive, the model loads,
+and a 16 kHz mono microphone stream is supported. The Dart engine remains
+`experimental`, so even an available backend is excluded from ordinary engine
+selection unless the caller explicitly includes experimental engines. The
+first prototype emits partial/final text but deliberately does not invent
+confidence or pause values that its transducer does not provide.
+
+Run `tools/Test-NeuraWindowsOnDeviceAsrContract.ps1` to verify the default-off,
+no-network-path, channel, and synchronous teardown contract. This source-level
+harness is part of `Neura-FastCheck.ps1`. Device acceptance still requires a
+network-disabled run with an operator-supplied model and runtime DLLs.
 
 ## Device benchmark
 

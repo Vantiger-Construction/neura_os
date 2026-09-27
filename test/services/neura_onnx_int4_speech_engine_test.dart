@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/services/neura_onnx_int4_speech_engine.dart';
+import 'package:neuro_companion/services/neura_speech_engine.dart';
 
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +27,89 @@ void main() {
     await engine.dispose();
     SafeBoot.instance.safeMode.value = false;
     binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null);
+  });
+
+  Future<void> sendNativeSegment(Map<String, Object?> arguments) async {
+    await binding.defaultBinaryMessenger.handlePlatformMessage(
+      channel.name,
+      const StandardMethodCodec().encodeMethodCall(
+        MethodCall('onSegment', arguments),
+      ),
+      (_) {},
+    );
+    await pumpEventQueue();
+  }
+
+  test('an unavailable native backend cannot start capture', () async {
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,
+        (call) async {
+      calls.add(call.method);
+      return false;
+    });
+
+    expect(await engine.isAvailable(), isFalse);
+    expect(await engine.start(), isFalse);
+    expect(engine.isListening, isFalse);
+    expect(calls, ['isAvailable', 'isAvailable']);
+  });
+
+  test('native onSegment maps only while local capture is active', () async {
+    final received = <NeuraSpeechSegment>[];
+    final subscription = engine.segments.listen(received.add);
+
+    expect(await engine.start(), isTrue);
+    await sendNativeSegment({
+      'text': 'kept on this device',
+      'is_final': false,
+      'pause_ms': 125,
+    });
+
+    expect(received, hasLength(1));
+    final segment = received.single;
+    expect(segment.text, 'kept on this device');
+    expect(segment.isFinal, isFalse);
+    expect(segment.confidence, isNull);
+    expect(segment.pauseBefore, const Duration(milliseconds: 125));
+
+    await engine.stop();
+    await sendNativeSegment({
+      'text': 'late native result',
+      'is_final': true,
+    });
+    expect(received, hasLength(1));
+    await subscription.cancel();
+  });
+
+  test('Safe Mode begins teardown and discards queued native segments',
+      () async {
+    final stopReply = Completer<String>();
+    final stopRequested = Completer<void>();
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,
+        (call) async {
+      calls.add(call.method);
+      if (call.method == 'stop') {
+        if (!stopRequested.isCompleted) stopRequested.complete();
+        return stopReply.future;
+      }
+      return true;
+    });
+    final received = <NeuraSpeechSegment>[];
+    final subscription = engine.segments.listen(received.add);
+
+    expect(await engine.start(), isTrue);
+    SafeBoot.instance.safeMode.value = true;
+    await stopRequested.future;
+    expect(engine.isListening, isFalse);
+
+    await sendNativeSegment({
+      'text': 'must be discarded',
+      'is_final': true,
+    });
+    expect(received, isEmpty);
+
+    stopReply.complete('discarded by caller');
+    await pumpEventQueue();
+    await subscription.cancel();
   });
 
   for (final cancellation in ['safe_mode', 'stop', 'dispose']) {
