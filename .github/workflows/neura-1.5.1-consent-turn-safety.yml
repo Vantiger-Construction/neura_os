@@ -18,6 +18,8 @@ on:
       - 'test/intelligence/action_loom_fresh_approval_test.dart'
       - 'test/intelligence/fresh_approval_lease_test.dart'
       - 'docs/LIVING_INTELLIGENCE_V1_5_1.md'
+      - 'tools/Repair-NeuraCiStorage.ps1'
+      - 'tools/Repair-NeuraCiStorage.Tests.ps1'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/neura-1.5.1-consent-turn-safety.yml'
@@ -42,6 +44,10 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v5
+
+      - name: Test bounded storage recovery
+        shell: pwsh
+        run: ./tools/Repair-NeuraCiStorage.Tests.ps1
 
       - name: Reject unresolved merge markers
         shell: bash
@@ -157,4 +163,3 @@ jobs:
               output.write('\n'.join(summary) + '\n')
           print('Diagnostic evidence recorded in the run summary.')
           PY
-

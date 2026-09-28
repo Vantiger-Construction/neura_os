@@ -234,13 +234,95 @@ jobs:
               $pending = New-Object System.Collections.Stack
               $pending.Push($Path)
               while ($pending.Count -gt 0) {
-                  foreach ($item in Get-ChildItem -LiteralPath $pending.Pop() -Force -ErrorAction SilentlyContinue) {
+                  try { $entries = [IO.DirectoryInfo]::new([string]$pending.Pop()).GetFileSystemInfos() }
+                  catch { continue }
+                  foreach ($item in $entries) {
                       if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
-                      if ($item.PSIsContainer) { $pending.Push($item.FullName) }
+                      if (($item.Attributes -band [IO.FileAttributes]::Directory) -ne 0) { $pending.Push($item.FullName) }
                       else { $bytes += $item.Length }
                   }
               }
               return $bytes
+          }
+
+          function Test-NeuraUnlinkedPath {
+              param([Parameter(Mandatory)][string]$Path)
+              # Checking only the final directory would still follow a linked parent.
+              $current = [IO.Path]::GetFullPath($Path)
+              while ($current) {
+                  $item = Get-Item -LiteralPath $current -Force -ErrorAction SilentlyContinue
+                  if (-not $item -or
+                      ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
+                  $parent = [IO.Directory]::GetParent($current)
+                  $current = if ($parent) { $parent.FullName } else { $null }
+              }
+              return $true
+          }
+
+          function Remove-NeuraAgedEntry {
+              param(
+                  [Parameter(Mandatory)][string]$Path,
+                  [Parameter(Mandatory)][datetime]$Before,
+                  [switch]$ReportOnly
+              )
+              if (-not (Test-NeuraUnlinkedPath -Path $Path)) { return }
+              $item = Get-Item -LiteralPath $Path -Force
+              if ($item.LastWriteTime -ge $Before) { return }
+              $bytes = if ($item.PSIsContainer) { Get-NeuraDirectoryBytes -Path $Path } else { $item.Length }
+              Write-Host ("Aged CI-generated entry: {0} ({1:N2} GB; report-only={2})" -f
+                  $Path, ($bytes / 1GB), [bool]$ReportOnly)
+              if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $Path }
+          }
+
+          function Invoke-NeuraRunnerRecovery {
+              param(
+                  [string]$RunnerTemp,
+                  [switch]$ReportOnly
+              )
+              if ([string]::IsNullOrWhiteSpace($RunnerTemp)) { return }
+              $runnerWork = Split-Path -Parent $RunnerTemp
+              if ((Split-Path -Leaf $RunnerTemp) -ne '_temp' -or
+                  (Split-Path -Leaf $runnerWork) -ne '_work' -or
+                  -not (Test-NeuraUnlinkedPath -Path $RunnerTemp)) {
+                  Write-Warning 'Runner temp layout is absent, unexpected, or linked; leaving it untouched.'
+                  return
+              }
+              # A job has one Runner.Worker. Do not reclaim shared data if another job
+              # or a build/test process could still be using it. Age alone is insufficient.
+              if (@(Get-Process -Name 'Runner.Worker' -ErrorAction SilentlyContinue).Count -gt 1 -or
+                  @(Get-Process -Name java, javaw, dart, flutter_tester, MSBuild, cl, rustc, cargo -ErrorAction SilentlyContinue).Count -gt 0) {
+                  Write-Host 'Keeping aged runner data while another worker or build process is active.'
+                  return
+              }
+              $cutoff = (Get-Date).AddHours(-2)
+              $checkout = Join-Path (Join-Path $runnerWork 'neura_os') 'neura_os'
+              foreach ($root in @($checkout, (Join-Path $checkout 'source'))) {
+                  foreach ($relative in @('build', 'rust/target', '.dart_tool', 'android/.gradle')) {
+                      Remove-NeuraAgedEntry -Path (Join-Path $root $relative) -Before $cutoff -ReportOnly:$ReportOnly
+                  }
+              }
+              # Folders first: a long backlog of tiny step scripts must not prevent
+              # recovery of old extraction/test directories. Keep the 24-entry bound.
+              Get-ChildItem -LiteralPath $RunnerTemp -Force -ErrorAction SilentlyContinue |
+                  Where-Object { $_.LastWriteTime -lt $cutoff } |
+                  Sort-Object @{ Expression = 'PSIsContainer'; Descending = $true }, LastWriteTime |
+                  Select-Object -First 24 |
+                  ForEach-Object {
+                      Remove-NeuraAgedEntry -Path $_.FullName -Before $cutoff -ReportOnly:$ReportOnly
+                  }
+              $diagnostics = Join-Path (Split-Path -Parent $runnerWork) '_diag'
+              if (Test-NeuraUnlinkedPath -Path $diagnostics) {
+                  Get-ChildItem -LiteralPath $diagnostics -File -Force -ErrorAction SilentlyContinue |
+                      Where-Object {
+                          $_.Name -match '^(Runner|Worker)_.*\.log$' -and
+                          $_.LastWriteTime -lt (Get-Date).AddDays(-7)
+                      } |
+                      Sort-Object LastWriteTime |
+                      Select-Object -First 24 |
+                      ForEach-Object {
+                          Remove-NeuraAgedEntry -Path $_.FullName -Before (Get-Date).AddDays(-7) -ReportOnly:$ReportOnly
+                      }
+              }
           }
 
           function Remove-NeuraStalePackageRuns {
@@ -284,9 +366,15 @@ jobs:
           function Invoke-NeuraStorageRecovery {
               param(
                   [Parameter(Mandatory)][string]$ToolCache,
+                  [string]$RunnerTemp,
                   [string[]]$PackageRoots = @(),
                   [switch]$ReportOnly
               )
+              $before = @{}
+              foreach ($drive in [IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady -and $_.DriveType -eq 'Fixed' }) {
+                  $before[$drive.Name] = $drive.AvailableFreeSpace
+              }
+              Invoke-NeuraRunnerRecovery -RunnerTemp $RunnerTemp -ReportOnly:$ReportOnly
               if (-not (Test-NeuraOrdinaryDirectory -Path $ToolCache)) {
                   Write-Warning 'Runner tool cache is absent or linked; leaving it untouched.'
                   return
@@ -325,10 +413,9 @@ jobs:
                   }
               }
 
-              # The selected build volume now owns all mutable Gradle state.
-              # Keep only Gradle's reusable wrapper distributions and dependency
-              # downloads in the persistent tool cache; discard every other known
-              # Gradle directory when no Java process can be using it.
+              # The selected build volume owns all mutable Gradle state. Keep only
+              # reusable wrapper distributions and dependency downloads in the persistent
+              # tool cache; discard every other known Gradle directory when idle.
               $android = Join-Path $ToolCache 'neura-android'
               $gradle = Join-Path $android 'gradle-home'
               $caches = Join-Path $gradle 'caches'
@@ -368,7 +455,14 @@ jobs:
                   Write-Host ("Retained Neura packages at {0}: {1:N2} GB" -f
                       $packages, ((Get-NeuraDirectoryBytes -Path $packages) / 1GB))
               }
+              foreach ($name in $before.Keys) {
+                  $drive = [IO.DriveInfo]::new($name)
+                  Write-Host ("CI recovery volume {0}: before={1:N2} GB; after={2:N2} GB; reclaimed={3:N2} GB" -f
+                      $name, ($before[$name] / 1GB), ($drive.AvailableFreeSpace / 1GB),
+                      ([Math]::Max([long]0, [long]($drive.AvailableFreeSpace - $before[$name])) / 1GB))
+              }
           }
+
           $packageRoots = @(
               [IO.DriveInfo]::GetDrives() |
                   Where-Object {
@@ -380,6 +474,7 @@ jobs:
           )
           Invoke-NeuraStorageRecovery `
               -ToolCache $env:RUNNER_TOOL_CACHE `
+              -RunnerTemp $env:RUNNER_TEMP `
               -PackageRoots $packageRoots
           # END Neura runner storage recovery
 
@@ -816,4 +911,3 @@ jobs:
           if (-not [string]::IsNullOrWhiteSpace($env:NEURA_DART_DEFINE_FILE)) {
             Remove-Item -LiteralPath $env:NEURA_DART_DEFINE_FILE -Force -ErrorAction SilentlyContinue
           }
-
