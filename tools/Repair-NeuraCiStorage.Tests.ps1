@@ -23,9 +23,12 @@ function Assert-FixtureExists {
     if ((Test-Path -LiteralPath $Path) -ne $Expected) { throw "Unexpected existence: $Path" }
 }
 $script:javaActive = $false
+$script:workerCount = 1
 function Get-Process {
     param([string[]]$Name, $ErrorAction)
-    if ($script:javaActive) { return [pscustomobject]@{ Id = 42 } }
+    if ('Runner.Worker' -in $Name) {
+        for ($i = 0; $i -lt $script:workerCount; $i++) { [pscustomobject]@{ Id = $i + 1 } }
+    } elseif ($script:javaActive) { return [pscustomobject]@{ Id = 42 } }
 }
 
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('neura-storage-' + [guid]::NewGuid().ToString('N'))
@@ -130,6 +133,73 @@ try {
     Assert-FixtureExists -Path (Join-Path $reportStage 'keep.bin')
     Assert-FixtureExists -Path (Join-Path $flutter '.9.9.9.install.lock') -Expected $false
     Write-Host 'PASS: report-only mode neither deletes data nor creates an install lock.'
+
+    $runner = Join-Path $fixture 'runner'
+    $runnerTemp = Join-Path $runner '_work/_temp'
+    $checkout = Join-Path $runner '_work/neura_os/neura_os'
+    $agedPaths = @(
+        (Join-Path $checkout '.dart_tool'),
+        (Join-Path $checkout 'source/android/.gradle'),
+        (Join-Path $checkout 'source/rust/target')
+    )
+    foreach ($path in $agedPaths) {
+        New-FixtureFile -Path (Join-Path $path 'generated.bin')
+        (Get-Item -LiteralPath $path -Force).LastWriteTime = (Get-Date).AddDays(-1)
+    }
+    $retainedPaths = @(
+        (Join-Path $checkout 'lib/keep.dart'),
+        (Join-Path $checkout 'source/pubspec.lock'),
+        (Join-Path $checkout 'source/build/recent.bin'),
+        (Join-Path $runner '_work/another_repo/another_repo/.dart_tool/keep.bin'),
+        (Join-Path $runner '_work/_actions/actions/checkout/v5/keep.js'),
+        (Join-Path $runner '_diag/Worker_recent.log'),
+        (Join-Path $runner '_diag/unrelated.log'),
+        (Join-Path $runnerTemp 'recent.bin')
+    )
+    foreach ($path in $retainedPaths) { New-FixtureFile -Path $path }
+    $oldDiagnostic = Join-Path $runner '_diag/Worker_old.log'
+    New-FixtureFile -Path $oldDiagnostic
+    (Get-Item -LiteralPath $oldDiagnostic).LastWriteTime = (Get-Date).AddDays(-8)
+    foreach ($number in 1..27) {
+        $tempDirectory = Join-Path $runnerTemp "old-$number"
+        New-FixtureFile -Path (Join-Path $tempDirectory 'generated.bin')
+        (Get-Item -LiteralPath $tempDirectory).LastWriteTime = (Get-Date).AddDays(-1)
+    }
+    Invoke-NeuraRunnerRecovery -RunnerTemp $runnerTemp -ReportOnly
+    foreach ($path in $agedPaths) { Assert-FixtureExists -Path $path }
+    Assert-FixtureExists -Path $oldDiagnostic
+    if (@(Get-ChildItem -LiteralPath $runnerTemp -Directory).Count -ne 27) { throw 'Report-only removed temp data.' }
+    $script:workerCount = 2
+    Invoke-NeuraRunnerRecovery -RunnerTemp $runnerTemp
+    foreach ($path in $agedPaths) { Assert-FixtureExists -Path $path }
+    $script:workerCount = 1
+    $script:javaActive = $true
+    Invoke-NeuraRunnerRecovery -RunnerTemp $runnerTemp
+    foreach ($path in $agedPaths) { Assert-FixtureExists -Path $path }
+    $script:javaActive = $false
+    Invoke-NeuraRunnerRecovery -RunnerTemp $runnerTemp
+    foreach ($path in $agedPaths) { Assert-FixtureExists -Path $path -Expected $false }
+    Assert-FixtureExists -Path $oldDiagnostic -Expected $false
+    foreach ($path in $retainedPaths) { Assert-FixtureExists -Path $path }
+    if (@(Get-ChildItem -LiteralPath $runnerTemp -Directory).Count -ne 3) { throw 'Temp cleanup exceeded its 24-entry bound.' }
+    Write-Host 'PASS: bounded aged checkout/temp/log cleanup preserves source, actions, recent data, and active work.'
+
+    # A linked ancestor of an apparently ordinary generated folder is unsafe.
+    $outsideGenerated = Join-Path $outside '.dart_tool'
+    New-FixtureFile -Path (Join-Path $outsideGenerated 'keep.bin')
+    (Get-Item -LiteralPath $outsideGenerated -Force).LastWriteTime = (Get-Date).AddDays(-1)
+    $sourcePath = Join-Path $checkout 'source'
+    Remove-Item -LiteralPath $sourcePath -Recurse -Force
+    New-Item -ItemType $kind -Path $sourcePath -Target $outside | Out-Null
+    $links += $sourcePath
+    Invoke-NeuraRunnerRecovery -RunnerTemp $runnerTemp
+    Assert-FixtureExists -Path (Join-Path $outsideGenerated 'keep.bin')
+    $unexpectedTemp = Join-Path $fixture 'personal/_temp'
+    New-FixtureFile -Path (Join-Path $unexpectedTemp 'keep.bin')
+    (Get-Item -LiteralPath (Join-Path $unexpectedTemp 'keep.bin')).LastWriteTime = (Get-Date).AddDays(-1)
+    Invoke-NeuraRunnerRecovery -RunnerTemp $unexpectedTemp
+    Assert-FixtureExists -Path (Join-Path $unexpectedTemp 'keep.bin')
+    Write-Host 'PASS: linked ancestors and unexpected runner layouts cannot reach external files.'
 } finally {
     $env:GITHUB_RUN_ID = $originalRunId
     $env:GITHUB_RUN_ATTEMPT = $originalRunAttempt
