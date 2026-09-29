@@ -176,6 +176,27 @@ void main() {
     expect(find.text('Neura, help me through this'), findsNothing);
   });
 
+  testWidgets(
+      'guided support aliases stop capture and return with the microphone off',
+      (tester) async {
+    await pumpChat(tester);
+    for (final phrase in [
+      'Neura, open guided support',
+      'Neura, I need a moment',
+    ]) {
+      await say(tester, phrase);
+      expect(find.byType(GuidedSupportScreen), findsOneWidget);
+      expect(NeuraSpeechToTextService.instance.isListening, isFalse);
+      expect(NeuraPrefsCache.prefs.containsKey(GuidedSupportStore.storageKey),
+          isFalse);
+      Navigator.of(tester.element(find.byType(GuidedSupportScreen))).pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(GuidedSupportScreen), findsNothing);
+      expect(NeuraSpeechToTextService.instance.isListening, isFalse);
+    }
+    expect(calls, ['start', 'stop', 'start', 'stop']);
+  });
+
   testWidgets('manual guided support stops an active chat microphone',
       (tester) async {
     await pumpChat(tester);
