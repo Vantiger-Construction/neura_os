@@ -405,8 +405,9 @@ New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $verificationRoot -Force | Out-Null
 try {
     $binaryName = "NeuraCompanion-$platformLabel-$headShort-$runKey$extension"
-    $binaryPath = Join-Path $stagingRoot $binaryName
-    Copy-Item -LiteralPath $binaryFiles[0].FullName -Destination $binaryPath
+    # The API accepts the release name separately from the local path. Upload
+    # the preserved package directly instead of allocating a second large copy.
+    $binaryPath = $binaryFiles[0].FullName
 
     $projectUrl = [Environment]::GetEnvironmentVariable('NEURA_CLIENT_PROJECT_URL')
     $configSha256 = [Environment]::GetEnvironmentVariable('NEURA_CLIENT_CONFIG_SHA256')
@@ -481,3 +482,4 @@ try {
         }
     }
 }
+

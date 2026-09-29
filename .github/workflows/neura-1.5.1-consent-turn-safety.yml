@@ -18,6 +18,8 @@ on:
       - 'test/intelligence/action_loom_fresh_approval_test.dart'
       - 'test/intelligence/fresh_approval_lease_test.dart'
       - 'docs/LIVING_INTELLIGENCE_V1_5_1.md'
+      - 'tools/Repair-NeuraCiStorage.ps1'
+      - 'tools/Repair-NeuraCiStorage.Tests.ps1'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/neura-1.5.1-consent-turn-safety.yml'
@@ -31,7 +33,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  FLUTTER_VERSION: '3.44.7'
+  FLUTTER_VERSION: '3.47.5'
 
 jobs:
   validate:
@@ -42,6 +44,10 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v5
+
+      - name: Test bounded storage recovery
+        shell: pwsh
+        run: ./tools/Repair-NeuraCiStorage.Tests.ps1
 
       - name: Reject unresolved merge markers
         shell: bash
@@ -67,6 +73,14 @@ jobs:
 
       - name: Restore dependencies
         run: flutter pub get
+
+      - name: Verify committed dependency lock
+        shell: bash
+        run: |
+          if ! git diff --exit-code -- pubspec.lock; then
+            echo "::error::Flutter dependency resolution changed pubspec.lock."
+            exit 1
+          fi
 
       - name: Verify canonical formatting
         shell: bash
@@ -104,18 +118,48 @@ jobs:
           flutter test --no-pub --reporter expanded \
             2>&1 | tee complete-tests.log
 
-      - name: Upload validation evidence
+      - name: Record diagnostic evidence in run summary
         if: always()
-        uses: actions/upload-artifact@v6
-        # Evidence upload is diagnostic; exhausted artifact quota must not
-        # override the consent and turn safety validation result.
         continue-on-error: true
-        with:
-          name: Neura-1.5.1-consent-turn-safety-evidence
-          path: |
+        shell: 'bash'
+        env:
+          NEURA_REPORT_TITLE: Neura-1.5.1-consent-turn-safety-evidence
+          NEURA_REPORT_PATHS: |
             analyze.log
             focused-safety-tests.log
             complete-tests.log
             pubspec.lock
-          if-no-files-found: warn
-          retention-days: 3
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import html
+          import os
+          import re
+          from pathlib import Path
+
+          summary = [
+              '### ' + os.environ['NEURA_REPORT_TITLE'], '',
+              'Tested commit: ' + os.environ['GITHUB_SHA'], '',
+              'Diagnostic excerpts are below. Full command output remains in the job logs; use Download log archive on this run to save it.', '',
+          ]
+          remaining = 200000
+          for name in os.environ['NEURA_REPORT_PATHS'].splitlines():
+              if not name.strip():
+                  continue
+              path = Path(name)
+              summary.append('#### ' + path.name)
+              if not path.is_file():
+                  summary.append('Not produced; check the preceding validation steps.')
+                  continue
+              data = path.read_bytes()
+              summary.append('SHA-256: ' + hashlib.sha256(data).hexdigest())
+              excerpt = '\n'.join(data.decode('utf-8', errors='replace').splitlines()[-200:])
+              excerpt = html.escape(re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', excerpt))
+              limit = min(40000, remaining)
+              excerpt = excerpt[-limit:] if limit else ''
+              remaining -= len(excerpt)
+              summary.extend(['<pre>', excerpt, '</pre>', ''])
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as output:
+              output.write('\n'.join(summary) + '\n')
+          print('Diagnostic evidence recorded in the run summary.')
+          PY

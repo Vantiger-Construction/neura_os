@@ -8,6 +8,7 @@ on:
       - agent/neura-consent-turn-safety-v1.5.1
     paths:
       - ".github/workflows/neura-encrypted-memory-foundation.yml"
+      - "tools/Enable-NeuraFlutter.ps1"
       - "lib/encrypted_memory/**"
       - "test/encrypted_memory/**"
       - "docs/ENCRYPTED_MEMORY_FOUNDATION_v1.6.md"
@@ -22,150 +23,23 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  FLUTTER_VERSION: "3.44.7"
+  FLUTTER_VERSION: "3.47.5"
+  FLUTTER_SHA256: "0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8"
 
 jobs:
   validate:
     name: Validate encrypted memory contracts
     runs-on: [self-hosted, Windows, X64, neura]
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Check out source
         uses: actions/checkout@v5
-      - name: Use retained Flutter 3.44.7
+      - name: Use retained Flutter 3.47.5
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
-          Set-StrictMode -Version Latest
-          $ErrorActionPreference = 'Stop'
-          $flutterVersion = $env:FLUTTER_VERSION
-          $flutterRoot = Join-Path $env:RUNNER_TOOL_CACHE "flutter\$flutterVersion\x64"
-          $flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
-
-          function Test-FlutterSdk {
-            param([Parameter(Mandatory)][string]$Executable)
-
-            if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) {
-              return $false
-            }
-
-            for ($attempt = 1; $attempt -le 3; $attempt++) {
-              $output = @(& $Executable --version 2>&1)
-              $exitCode = $LASTEXITCODE
-              if ($exitCode -eq 0 -and
-                  ($output -join [Environment]::NewLine) -match
-                    "Flutter $([regex]::Escape($flutterVersion))") {
-                return $true
-              }
-
-              Write-Warning (
-                "Flutter health probe {0}/3 failed with exit code {1}: {2}" -f
-                $attempt,
-                $exitCode,
-                (($output | Select-Object -First 4) -join ' ')
-              )
-              if ($attempt -lt 3) {
-                Start-Sleep -Seconds (5 * $attempt)
-              }
-            }
-            return $false
-          }
-
-          if (-not (Test-FlutterSdk -Executable $flutterExe)) {
-            Write-Warning (
-              "Retained Flutter $flutterVersion is missing or unhealthy; " +
-              'preparing a verified replacement.'
-            )
-
-            $releaseIndexUri =
-              'https://storage.googleapis.com/flutter_infra_release/releases/releases_windows.json'
-            $releaseIndex = Invoke-RestMethod -Uri $releaseIndexUri
-            $release = $releaseIndex.releases |
-              Where-Object {
-                $_.version -eq $flutterVersion -and $_.channel -eq 'stable'
-              } |
-              Select-Object -First 1
-            if (-not $release) {
-              throw "Flutter $flutterVersion is absent from the official release index."
-            }
-
-            $archiveUri =
-              $releaseIndex.base_url.TrimEnd('/') + '/' + $release.archive
-            $repairRoot = Join-Path $env:RUNNER_TEMP (
-              "flutter-repair-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
-            )
-            $archivePath = Join-Path $repairRoot 'flutter.zip'
-            $extractRoot = Join-Path $repairRoot 'extract'
-            $stagedFlutter = Join-Path $extractRoot 'flutter'
-            $backupRoot = "$flutterRoot.previous-$env:GITHUB_RUN_ID"
-
-            if (Test-Path -LiteralPath $repairRoot) {
-              Remove-Item -LiteralPath $repairRoot -Recurse -Force
-            }
-            New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
-
-            try {
-              $downloaded = $false
-              for ($attempt = 1; $attempt -le 3; $attempt++) {
-                try {
-                  Invoke-WebRequest -Uri $archiveUri -OutFile $archivePath
-                  $downloaded = $true
-                  break
-                } catch {
-                  Write-Warning (
-                    "Flutter download {0}/3 failed: {1}" -f
-                    $attempt,
-                    $_.Exception.Message
-                  )
-                  Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue
-                  if ($attempt -lt 3) {
-                    Start-Sleep -Seconds (10 * $attempt)
-                  }
-                }
-              }
-              if (-not $downloaded) {
-                throw "Unable to download Flutter $flutterVersion after 3 attempts."
-              }
-
-              if (-not [string]::IsNullOrWhiteSpace([string]$release.hash)) {
-                $actualHash =
-                  (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash
-                if ($actualHash -ne ([string]$release.hash).ToUpperInvariant()) {
-                  throw "Flutter $flutterVersion archive SHA-256 verification failed."
-                }
-              }
-
-              Expand-Archive -LiteralPath $archivePath -DestinationPath $extractRoot
-              $stagedExe = Join-Path $stagedFlutter 'bin\flutter.bat'
-              if (-not (Test-FlutterSdk -Executable $stagedExe)) {
-                throw "The staged Flutter $flutterVersion SDK failed its health probe."
-              }
-
-              New-Item -ItemType Directory -Path (Split-Path $flutterRoot -Parent) -Force |
-                Out-Null
-              Remove-Item -LiteralPath $backupRoot -Recurse -Force -ErrorAction SilentlyContinue
-              if (Test-Path -LiteralPath $flutterRoot) {
-                Move-Item -LiteralPath $flutterRoot -Destination $backupRoot
-              }
-              try {
-                Move-Item -LiteralPath $stagedFlutter -Destination $flutterRoot
-              } catch {
-                if (Test-Path -LiteralPath $backupRoot) {
-                  Move-Item -LiteralPath $backupRoot -Destination $flutterRoot
-                }
-                throw
-              }
-              Remove-Item -LiteralPath $backupRoot -Recurse -Force -ErrorAction SilentlyContinue
-            } finally {
-              Remove-Item -LiteralPath $repairRoot -Recurse -Force -ErrorAction SilentlyContinue
-            }
-          }
-
-          if (-not (Test-FlutterSdk -Executable $flutterExe)) {
-            throw "Flutter $flutterVersion remains unavailable after cache repair."
-          }
-
-          (Join-Path $flutterRoot 'bin') |
-            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & "$env:GITHUB_WORKSPACE\tools\Enable-NeuraFlutter.ps1" `
+            -Version $env:FLUTTER_VERSION `
+            -ExpectedSha256 $env:FLUTTER_SHA256
       - name: Restore dependencies
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: flutter pub get

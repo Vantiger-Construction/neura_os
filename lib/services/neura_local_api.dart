@@ -203,18 +203,24 @@ class NeuraLocalApi {
     _inFlight++;
     try {
       if (!running || !allowed()) {
-        return _error(request, 503, 'unavailable', traceId);
+        return await _error(request, 503, 'unavailable', traceId);
       }
       if (_inFlight > maxInFlight) {
-        return _error(request, 429, 'busy', traceId, retryAfterSeconds: 1);
+        return await _error(
+          request,
+          429,
+          'busy',
+          traceId,
+          retryAfterSeconds: 1,
+        );
       }
       // This API is for native local clients, never browser-origin requests.
       if (request.headers.value('origin') != null || !_authenticated(request)) {
-        return _error(request, 401, 'unauthorized', traceId);
+        return await _error(request, 401, 'unauthorized', traceId);
       }
       final requestedVersion = request.headers.value(_versionHeader);
       if (requestedVersion != null && requestedVersion != '$apiVersion') {
-        return _error(request, 426, 'unsupported_api_version', traceId);
+        return await _error(request, 426, 'unsupported_api_version', traceId);
       }
 
       final now = _now();
@@ -225,7 +231,7 @@ class NeuraLocalApi {
       }
       if (++_requests > maxRequestsPerMinute) {
         final remaining = const Duration(minutes: 1) - now.difference(_window!);
-        return _error(
+        return await _error(
           request,
           429,
           'rate_limited',
@@ -237,7 +243,7 @@ class NeuraLocalApi {
       _maintainReceipts();
       final path = request.uri.path;
       if (request.method == 'GET' && path == '/v1/health') {
-        return _reply(
+        return await _reply(
             request,
             200,
             {
@@ -250,34 +256,34 @@ class NeuraLocalApi {
             traceId);
       }
       if (request.method == 'GET' && path == '/v1/capabilities') {
-        return _reply(request, 200, _capabilities(), traceId);
+        return await _reply(request, 200, _capabilities(), traceId);
       }
       if (request.method == 'GET' && path.startsWith('/v1/proposals/')) {
         final proposal = _proposals[path.substring('/v1/proposals/'.length)];
         if (proposal == null) {
-          return _error(request, 404, 'not_found', traceId);
+          return await _error(request, 404, 'not_found', traceId);
         }
-        return _reply(request, 200, proposal.receipt, traceId);
+        return await _reply(request, 200, proposal.receipt, traceId);
       }
       if (request.method != 'POST' || path != '/v1/proposals') {
-        return _error(request, 404, 'not_found', traceId);
+        return await _error(request, 404, 'not_found', traceId);
       }
       if (request.headers.contentType?.mimeType != 'application/json') {
-        return _error(request, 415, 'json_required', traceId);
+        return await _error(request, 415, 'json_required', traceId);
       }
       if (request.contentLength > maxBodyBytes) {
-        return _error(request, 413, 'too_large', traceId);
+        return await _error(request, 413, 'too_large', traceId);
       }
 
       final bytes = <int>[];
       await for (final chunk in request.timeout(const Duration(seconds: 5))) {
         if (bytes.length + chunk.length > maxBodyBytes) {
-          return _error(request, 413, 'too_large', traceId);
+          return await _error(request, 413, 'too_large', traceId);
         }
         bytes.addAll(chunk);
       }
       if (!allowed() || !running || epoch != _epoch) {
-        return _error(request, 503, 'unavailable', traceId);
+        return await _error(request, 503, 'unavailable', traceId);
       }
 
       final body = jsonDecode(utf8.decode(bytes));
@@ -297,26 +303,26 @@ class NeuraLocalApi {
         throw const FormatException();
       }
       if (!_validAction(action, arguments)) {
-        return _error(request, 400, 'invalid_action', traceId);
+        return await _error(request, 400, 'invalid_action', traceId);
       }
 
       final fingerprint = '$action:${_canonicalJson(arguments)}';
       final previous = _requestIds[requestId];
       if (previous != null) {
         if (previous.fingerprint != fingerprint) {
-          return _error(request, 409, 'request_id_reused', traceId);
+          return await _error(request, 409, 'request_id_reused', traceId);
         }
         final proposal = _proposals[previous.proposalId];
         if (proposal == null) {
-          return _error(request, 410, 'request_id_retired', traceId);
+          return await _error(request, 410, 'request_id_retired', traceId);
         }
-        return _reply(request, 200, proposal.receipt, traceId);
+        return await _reply(request, 200, proposal.receipt, traceId);
       }
       if (_requestIds.length >= maxSessionRequestIds) {
-        return _error(request, 429, 'session_request_limit', traceId);
+        return await _error(request, 429, 'session_request_limit', traceId);
       }
       if (_activeProposalCount >= maxActiveProposals) {
-        return _error(
+        return await _error(
           request,
           429,
           'active_proposal_limit',
@@ -326,7 +332,7 @@ class NeuraLocalApi {
       }
       _makeReceiptRoom();
       if (_proposals.length >= maxReceipts) {
-        return _error(
+        return await _error(
           request,
           429,
           'receipt_capacity',
@@ -345,7 +351,7 @@ class NeuraLocalApi {
       _proposals[proposal.id] = proposal;
       _requestIds[requestId] = _NeuraRequestRecord(fingerprint, proposal.id);
       onChanged?.call();
-      return _reply(request, 202, proposal.receipt, traceId);
+      return await _reply(request, 202, proposal.receipt, traceId);
     } on TimeoutException {
       await _error(request, 408, 'request_timeout', traceId);
     } catch (_) {
