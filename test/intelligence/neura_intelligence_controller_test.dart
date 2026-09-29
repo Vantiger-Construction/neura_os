@@ -87,51 +87,55 @@ void main() {
     );
   });
 
-  test('dismissed outcomes lower a specialist\'s reputation over time',
-      () async {
-    final controller = NeuraIntelligenceController.instance;
-    var now = DateTime.utc(2026, 8, 14, 18);
+  test(
+    'dismissed outcomes lower a specialist\'s reputation over time',
+    () async {
+      final controller = NeuraIntelligenceController.instance;
+      var now = DateTime.utc(2026, 8, 14, 18);
 
-    for (var i = 0; i < 5; i++) {
-      now = now.add(const Duration(days: 1, hours: 1));
-      final result = await controller.evaluateCandidates(
-        candidates: [_candidate(now, id: 'candidate-$i')],
+      for (var i = 0; i < 5; i++) {
+        now = now.add(const Duration(days: 1, hours: 1));
+        final result = await controller.evaluateCandidates(
+          candidates: [_candidate(now, id: 'candidate-$i')],
+          now: now,
+        );
+        await controller.recordOutcome(
+          receiptId: result.visible.single.receipt.id,
+          acted: false,
+        );
+      }
+
+      expect(controller.specialistReputation('controller_test'), lessThan(1.0));
+    },
+  );
+
+  test(
+    'a lowered specialist reputation feeds back into future scoring',
+    () async {
+      final controller = NeuraIntelligenceController.instance;
+      var now = DateTime.utc(2026, 8, 14, 18);
+
+      for (var i = 0; i < 5; i++) {
+        now = now.add(const Duration(days: 1, hours: 1));
+        final result = await controller.evaluateCandidates(
+          candidates: [_candidate(now, id: 'candidate-$i')],
+          now: now,
+        );
+        await controller.recordOutcome(
+          receiptId: result.visible.single.receipt.id,
+          acted: false,
+        );
+      }
+
+      now = now.add(const Duration(hours: 1));
+      final next = await controller.evaluateCandidates(
+        candidates: [_candidate(now, id: 'candidate-final')],
         now: now,
       );
-      await controller.recordOutcome(
-        receiptId: result.visible.single.receipt.id,
-        acted: false,
-      );
-    }
-
-    expect(controller.specialistReputation('controller_test'), lessThan(1.0));
-  });
-
-  test('a lowered specialist reputation feeds back into future scoring',
-      () async {
-    final controller = NeuraIntelligenceController.instance;
-    var now = DateTime.utc(2026, 8, 14, 18);
-
-    for (var i = 0; i < 5; i++) {
-      now = now.add(const Duration(days: 1, hours: 1));
-      final result = await controller.evaluateCandidates(
-        candidates: [_candidate(now, id: 'candidate-$i')],
-        now: now,
-      );
-      await controller.recordOutcome(
-        receiptId: result.visible.single.receipt.id,
-        acted: false,
-      );
-    }
-
-    now = now.add(const Duration(hours: 1));
-    final next = await controller.evaluateCandidates(
-      candidates: [_candidate(now, id: 'candidate-final')],
-      now: now,
-    );
-    final earlierScore = controller.records.first.receipt.score;
-    expect(next.visible.single.receipt.score, lessThan(earlierScore));
-  });
+      final earlierScore = controller.records.first.receipt.score;
+      expect(next.visible.single.receipt.score, lessThan(earlierScore));
+    },
+  );
 
   test('quiet hours suppress a candidate before it reaches the UI', () async {
     final controller = NeuraIntelligenceController.instance;
@@ -158,6 +162,30 @@ void main() {
       contains('quiet hours'),
     );
   });
+
+  test(
+    'off proactivity suppresses a candidate before it reaches the UI',
+    () async {
+      final controller = NeuraIntelligenceController.instance;
+      await controller.updatePreferences(
+        const NeuraIntelligencePreferences(
+          enabled: false,
+          proactivityLevel: NeuraProactivityLevel.off,
+        ),
+      );
+      final now = DateTime.utc(2026, 8, 14, 18);
+      final result = await controller.evaluateCandidates(
+        candidates: [_candidate(now)],
+        now: now,
+      );
+
+      expect(result.visible, isEmpty);
+      expect(
+        controller.records.single.receipt.reasons.join(' '),
+        contains('disabled by the user'),
+      );
+    },
+  );
 }
 
 NeuraIntelligenceCandidate _candidate(
