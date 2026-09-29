@@ -1,5 +1,9 @@
 # Neura encrypted memory session adapter 1.6.1
 
+> Superseded for new integrations by
+> `docs/ENCRYPTED_MEMORY_PROVENANCE_v1.7.md`, which adds exact owner/device
+> retrieval scope plus provenance and quarantine admission.
+
 This slice adds an in-process adapter for explicit `remember` and `recall`
 operations. It retains admitted records only in memory for the current process
 lifetime. It does not claim encryption at rest and has no serialization API.
