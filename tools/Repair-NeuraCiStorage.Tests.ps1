@@ -73,6 +73,10 @@ try {
         (Get-Item -LiteralPath (Split-Path -Parent $package)).LastWriteTime =
             (Get-Date).AddDays($number - 105)
     }
+    $recentPackage = Join-Path $packageRoot '105-1/package.apk'
+    New-FixtureFile -Path $recentPackage
+    (Get-Item -LiteralPath (Split-Path -Parent $recentPackage)).LastWriteTime =
+        (Get-Date).AddMinutes(-30)
     $activePackage = Join-Path $packageRoot '999-1/package.apk'
     New-FixtureFile -Path $activePackage
     (Get-Item -LiteralPath (Split-Path -Parent $activePackage)).LastWriteTime =
@@ -83,14 +87,12 @@ try {
     foreach ($path in @($stage, $derived, $buildCache, $jarCache, $daemonCache)) {
         Assert-FixtureExists -Path $path -Expected $false
     }
-    foreach ($number in 100..101) {
+    foreach ($number in 100..104) {
         Assert-FixtureExists -Path (Join-Path $packageRoot "$number-1") -Expected $false
     }
-    foreach ($number in 102..104) {
-        Assert-FixtureExists -Path (Join-Path $packageRoot "$number-1")
-    }
+    Assert-FixtureExists -Path (Join-Path $packageRoot '105-1')
     Assert-FixtureExists -Path (Join-Path $packageRoot '999-1')
-    Write-Host 'PASS: derived caches and stale delivered packages removed; tools, dependency downloads, three recent packages, backups, and source preserved.'
+    Write-Host 'PASS: derived caches and aged delivered packages removed; tools, dependency downloads, recent/current packages, backups, and source preserved.'
 
     New-FixtureFile -Path (Join-Path $stage 'active.bin')
     $lockPath = Join-Path $flutter '.3.47.5.install.lock'
