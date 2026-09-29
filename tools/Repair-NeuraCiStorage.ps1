@@ -211,7 +211,7 @@ function Invoke-NeuraRunnerRecovery {
 function Remove-NeuraStalePackageRuns {
     param(
         [Parameter(Mandatory)][string]$Root,
-        [int]$RetainPerPlatform = 3,
+        [int]$RetainPerPlatform = 0,
         [int]$MaximumRemovals = 24,
         [switch]$ReportOnly
     )
@@ -232,7 +232,9 @@ function Remove-NeuraStalePackageRuns {
                 } |
                 Sort-Object -Property LastWriteTime -Descending
         )
-        $keep = @($runs | Select-Object -First $RetainPerPlatform -ExpandProperty Name)
+        $keep = if ($RetainPerPlatform -gt 0) {
+            @($runs | Select-Object -First $RetainPerPlatform -ExpandProperty Name)
+        } else { @() }
         foreach ($run in ($runs | Sort-Object -Property LastWriteTime)) {
             if ($removed -ge $MaximumRemovals) { return }
             if ($run.Name -eq $currentRun -or
