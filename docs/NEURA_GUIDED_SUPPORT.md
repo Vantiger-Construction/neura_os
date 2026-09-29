@@ -60,10 +60,18 @@ checked September 26, 2026. These references do not establish effectiveness of
 Neura's implementation. No clinician review or comparative study has been
 performed. Do not market this as treatment or as superior to other wellness apps.
 
-Automated coverage includes encryption and scoped persistence, explicit consent,
-reopening, forgetting, unavailable encryption, corrupt data, data wipe, Safe Mode,
-temporary text clearing, three activity paths, negative feedback, large text on
-a narrow screen, and native voice stop before navigation.
+Automated coverage includes all three entry points, all three activity paths,
+exact voice-command and alias boundaries, native-stop ordering, encrypted scoped
+persistence, restart/replace/inspect/copy/forget behavior, unavailable credentials,
+data wipe, backgrounding, Safe Mode during a pending save, temporary text clearing,
+negative feedback, dark mode, 200% text and a narrow screen. The repository's full
+Flutter validation discovers these tests automatically.
+
+The reproducible mapping and the manual result form are in
+[NEURA_GUIDED_SUPPORT_RELEASE_EVIDENCE.md](release-evidence/NEURA_GUIDED_SUPPORT_RELEASE_EVIDENCE.md).
+That record intentionally leaves physical Windows and Android evidence marked
+**NOT COLLECTED**. A mock platform channel, widget test or successful package build
+must not be recorded as physical-device evidence.
 
 Before general release, perform these device checks on Windows and Android:
 

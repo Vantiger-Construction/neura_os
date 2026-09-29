@@ -56,6 +56,27 @@ void main() {
     }
   });
 
+  test('guided support aliases reject partial, quoted and compound speech', () {
+    for (final phrase in [
+      'help me through this',
+      'open guided support',
+      'i need a moment',
+    ]) {
+      expect(NeuraVoiceCommand.parse('Neura, $phrase'),
+          NeuraVoiceCommand.guidedSupport);
+      expect(NeuraVoiceCommand.parse('“Neura, $phrase”'), isNull);
+      expect(
+          NeuraVoiceCommand.parse('Neura, $phrase and open journal'), isNull);
+    }
+    for (final partial in [
+      'Neura, help me through',
+      'Neura, open guided',
+      'Neura, I need',
+    ]) {
+      expect(NeuraVoiceCommand.parse(partial), isNull, reason: partial);
+    }
+  });
+
   test('ordinary conversation and incomplete phrases do not execute controls',
       () {
     for (final phrase in [
