@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:neuro_companion/modules/navigation/presence_navigation_shell.dart';
+import 'package:neuro_companion/neura_shell/models/neura_room.dart';
 
 void main() {
   group('PresenceNavigationLayoutPolicy', () {
@@ -69,6 +70,7 @@ void main() {
       Size size, {
       int currentIndex = 0,
       List<Widget>? destinationPages,
+      NeuraRoom room = NeuraRoom.penthouse,
     }) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = size;
@@ -94,6 +96,7 @@ void main() {
               now: const Text('A quiet local moment'),
               onOpenNeura: () {},
               onOpenDiagnostics: () {},
+              room: room,
             ),
           ),
         ),
@@ -101,8 +104,9 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('uses a dedicated stage and side rail on wide screens',
-        (tester) async {
+    testWidgets('uses a dedicated stage and side rail on wide screens', (
+      tester,
+    ) async {
       await pumpShell(tester, const Size(1280, 800));
 
       expect(find.byType(NavigationRail), findsOneWidget);
@@ -112,13 +116,32 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('uses a compact stage and bottom rail on phone screens',
-        (tester) async {
+    testWidgets('uses a compact stage and bottom rail on phone screens', (
+      tester,
+    ) async {
       await pumpShell(tester, const Size(400, 860));
 
       expect(find.byType(NavigationRail), findsNothing);
       expect(find.byType(NavigationBar), findsOneWidget);
       expect(find.text('Neura is here'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('moves Neura into the selected room with a local activity', (
+      tester,
+    ) async {
+      await pumpShell(
+        tester,
+        const Size(1280, 800),
+        room: NeuraRoom.reflectionBay,
+      );
+
+      expect(find.text('Reflection Bay · Reflective'), findsOneWidget);
+      expect(
+        find.text('A slower place for reflection and private writing.'),
+        findsOneWidget,
+      );
+      expect(find.text('Memory Vault'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
@@ -134,8 +157,9 @@ void main() {
       expect(find.text('No matching Neura spaces.'), findsOneWidget);
     });
 
-    testWidgets('mounts destinations lazily and retains visited state',
-        (tester) async {
+    testWidgets('mounts destinations lazily and retains visited state', (
+      tester,
+    ) async {
       var spacesMounts = 0;
       var careMounts = 0;
       var careDisposals = 0;

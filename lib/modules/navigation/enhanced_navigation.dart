@@ -11,6 +11,8 @@ import '../../services/auth_service.dart';
 import '../../services/neura_companion_presence.dart';
 import '../../services/update_check_service.dart';
 import '../../services/wake_word_prefs.dart';
+import '../../avatar/neura_avatar_runtime_bridge.dart';
+import '../../src/shell/shell_prefs.dart';
 
 import '../../care/screens/neura_care_loop_screen.dart';
 import '../../dreams/screens/dream_show2_screen.dart';
@@ -80,14 +82,14 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
   void initState() {
     super.initState();
     _commandCatalog = _buildCommandCatalog();
+    NeuraCompanionPresence.instance.state.addListener(_publishAvatarState);
+    ShellPrefsController.instance.prefs.addListener(_publishAvatarState);
     // Legacy Guard (dead-man's-switch) can be enabled from Legacy Vault ->
     // Legacy Guard; this is the startup check that actually detects an
     // overdue check-in and offers to release capsules. No-ops if disabled.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_optionalHooksAllowed) return;
-      unawaited(
-        LegacyDeadmanService.instance.maybePromptOnStartup(context),
-      );
+      unawaited(LegacyDeadmanService.instance.maybePromptOnStartup(context));
     });
 
     // Safe Mode deliberately avoids optional native, network, and proactive
@@ -140,18 +142,34 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     if (_avatarDocked && previous != null) {
       unawaited(previous.setAvatarDockedInApp(false));
     }
+    previous?.removeListener(_publishAvatarState);
     _shellState = shell;
+    shell.addListener(_publishAvatarState);
     _avatarDocked = true;
     unawaited(shell.setAvatarDockedInApp(true));
+    _publishAvatarState();
   }
 
   @override
   void dispose() {
     final shell = _shellState;
+    shell?.removeListener(_publishAvatarState);
+    NeuraCompanionPresence.instance.state.removeListener(_publishAvatarState);
+    ShellPrefsController.instance.prefs.removeListener(_publishAvatarState);
     if (_avatarDocked && shell != null) {
       unawaited(shell.setAvatarDockedInApp(false));
     }
     super.dispose();
+  }
+
+  void _publishAvatarState() {
+    final shell = _shellState;
+    if (shell == null) return;
+    NeuraAvatarRuntimeBridge.instance.publish(
+      room: shell.room,
+      phase: NeuraCompanionPresence.instance.state.value.phase,
+      preferences: ShellPrefsController.instance.prefs.value,
+    );
   }
 
   /// Wraps WeeklySummaristService's own app-open hook so a notification can
@@ -198,7 +216,9 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     if (!prefs.dailyMoodNudgeEnabled) return;
     await NeuraNotificationsService.instance.scheduleDailyMoodNudge(
       TimeOfDay(
-          hour: prefs.dailyMoodNudgeHour, minute: prefs.dailyMoodNudgeMinute),
+        hour: prefs.dailyMoodNudgeHour,
+        minute: prefs.dailyMoodNudgeMinute,
+      ),
     );
   }
 
@@ -209,11 +229,14 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     ScaffoldMessenger.of(context).showMaterialBanner(
       MaterialBanner(
         content: Text(
-            'Neura ${update.tag} is available - you\'re on an older build.'),
+          'Neura ${update.tag} is available - you\'re on an older build.',
+        ),
         actions: [
           TextButton(
-            onPressed: () => launchUrl(Uri.parse(update.htmlUrl),
-                mode: LaunchMode.externalApplication),
+            onPressed: () => launchUrl(
+              Uri.parse(update.htmlUrl),
+              mode: LaunchMode.externalApplication,
+            ),
             child: const Text('View'),
           ),
           TextButton(
@@ -234,11 +257,7 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     _openRoute('/diagnostics', (_) => const DiagnosticsScreen());
   }
 
-  void _openRoute(
-    String routeName,
-    WidgetBuilder builder, {
-    NeuraRoom? room,
-  }) {
+  void _openRoute(String routeName, WidgetBuilder builder, {NeuraRoom? room}) {
     final shell = _shellState;
     if (room != null && shell != null && shell.isLoaded) {
       unawaited(shell.setRoom(room));
@@ -252,9 +271,7 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
   }
 
   void _onTab(int i) {
-    NeuraAdaptiveActivityTracker.instance.recordSurfaceVisit(
-      'primary_tab_$i',
-    );
+    NeuraAdaptiveActivityTracker.instance.recordSurfaceVisit('primary_tab_$i');
     if (_index != i) setState(() => _index = i);
 
     // Optional magic: sync rooms to tabs, so the OS "moves" with you.
@@ -309,6 +326,7 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
               : 'Local only',
       voiceLabel: voiceLabel,
       presenceLabel: presence.label,
+      phase: presence.phase,
     );
   }
 
@@ -383,9 +401,7 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
           icon: Icons.timeline,
           keywords: const <String>['mood', 'history', 'trend'],
           onSelected: () => _openRoute(
-            '/care/mood-history',
-            (_) => const MoodHistoryScreen(),
-          ),
+              '/care/mood-history', (_) => const MoodHistoryScreen()),
         ),
         PresenceCommand(
           id: 'weekly-snapshot',
@@ -451,10 +467,8 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
           subtitle: 'Encrypted notes for what matters.',
           icon: Icons.lock_outline,
           keywords: const <String>['memory', 'encrypted', 'vault'],
-          onSelected: () => _openRoute(
-            '/memory/vault',
-            (_) => const MemoryVaultScreen(),
-          ),
+          onSelected: () =>
+              _openRoute('/memory/vault', (_) => const MemoryVaultScreen()),
         ),
         PresenceCommand(
           id: 'timeline',
@@ -462,10 +476,8 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
           subtitle: 'Your life, one event at a time.',
           icon: Icons.history_edu_outlined,
           keywords: const <String>['life', 'timeline', 'memory'],
-          onSelected: () => _openRoute(
-            '/memory/timeline',
-            (_) => const LifeTimelineScreen(),
-          ),
+          onSelected: () =>
+              _openRoute('/memory/timeline', (_) => const LifeTimelineScreen()),
         ),
         PresenceCommand(
           id: 'support',
@@ -473,10 +485,8 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
           subtitle: 'Grounding tools and people to reach out to.',
           icon: Icons.health_and_safety_outlined,
           keywords: const <String>['support', 'grounding', 'safety'],
-          onSelected: () => _openRoute(
-            '/care/support',
-            (_) => const SupportCenterScreen(),
-          ),
+          onSelected: () =>
+              _openRoute('/care/support', (_) => const SupportCenterScreen()),
         ),
         PresenceCommand(
           id: 'pay-it-forward',
@@ -495,10 +505,8 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
           subtitle: 'Tiny missions to build momentum.',
           icon: Icons.flag_outlined,
           keywords: const <String>['quest', 'goal', 'momentum'],
-          onSelected: () => _openRoute(
-            '/spaces/quests',
-            (_) => const QuestModeScreen(),
-          ),
+          onSelected: () =>
+              _openRoute('/spaces/quests', (_) => const QuestModeScreen()),
         ),
         PresenceCommand(
           id: 'jokes',
@@ -516,9 +524,7 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
           icon: Icons.self_improvement_outlined,
           keywords: const <String>['therapy', 'cbt', 'dbt', 'act'],
           onSelected: () => _openRoute(
-            '/care/therapy-journal',
-            (_) => const TherapyPathScreen(),
-          ),
+              '/care/therapy-journal', (_) => const TherapyPathScreen()),
         ),
         PresenceCommand(
           id: 'money',
@@ -526,10 +532,8 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
           subtitle: 'Track income and expenses on-device.',
           icon: Icons.account_balance_wallet_outlined,
           keywords: const <String>['money', 'budget', 'finance'],
-          onSelected: () => _openRoute(
-            '/spaces/money',
-            (_) => const MoneyManagerScreen(),
-          ),
+          onSelected: () =>
+              _openRoute('/spaces/money', (_) => const MoneyManagerScreen()),
         ),
         PresenceCommand(
           id: 'decision-path',
@@ -579,6 +583,7 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
         AmbientListeningPrefsController.instance.enabled,
         WakeWordPrefsController.instance.enabled,
         NeuraCompanionPresence.instance.state,
+        ShellPrefsController.instance.prefs,
       ]),
       builder: (context, _) => StreamBuilder<dynamic>(
         // Safe Mode never subscribes to the optional cloud auth stream. The
@@ -599,6 +604,8 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
                 now: const ProactiveBannerCard(),
                 onOpenNeura: _openChat,
                 onOpenDiagnostics: _openDiagnostics,
+                room: (_shellState ?? NeuraShell.of(context)).room,
+                preferences: ShellPrefsController.instance.prefs.value,
               ),
               const AmbientRecordingBadge(),
             ],
@@ -633,7 +640,8 @@ class _MemoryHub extends StatelessWidget {
                 final shell = NeuraShell.of(context);
                 if (shell.isLoaded) shell.setRoom(NeuraRoom.reflectionBay);
                 Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => JournalPromptScreen()));
+                  MaterialPageRoute(builder: (_) => JournalPromptScreen()),
+                );
               },
             ),
           ),
@@ -647,8 +655,9 @@ class _MemoryHub extends StatelessWidget {
               onTap: () {
                 final shell = NeuraShell.of(context);
                 if (shell.isLoaded) shell.setRoom(NeuraRoom.reflectionBay);
-                Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const VoiceJournalScreen()));
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const VoiceJournalScreen()),
+                );
               },
             ),
           ),
@@ -658,7 +667,8 @@ class _MemoryHub extends StatelessWidget {
               title: const Text('Mood check‑in'),
               subtitle: const Text('Quick emotional snapshot.'),
               onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const MoodCheckInScreen())),
+                MaterialPageRoute(builder: (_) => const MoodCheckInScreen()),
+              ),
             ),
           ),
           Card(
@@ -717,7 +727,8 @@ class _DreamHub extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           const Text(
-              'Dream hub: visualizer, calendar, and monthly "show" compilation.'),
+            'Dream hub: visualizer, calendar, and monthly "show" compilation.',
+          ),
           const SizedBox(height: 12),
           Card(
             child: ListTile(
@@ -728,7 +739,8 @@ class _DreamHub extends StatelessWidget {
                 final shell = NeuraShell.of(context);
                 if (shell.isLoaded) shell.setRoom(NeuraRoom.dreamAtrium);
                 Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => DreamVisualizerScreen()));
+                  MaterialPageRoute(builder: (_) => DreamVisualizerScreen()),
+                );
               },
             ),
           ),
@@ -737,8 +749,9 @@ class _DreamHub extends StatelessWidget {
               leading: const Icon(Icons.calendar_month),
               title: const Text('Dream Calendar'),
               subtitle: const Text('Browse dreams by date.'),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => DreamJournalCalendarScreen())),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => DreamJournalCalendarScreen()),
+              ),
             ),
           ),
           Card(
@@ -747,7 +760,8 @@ class _DreamHub extends StatelessWidget {
               title: const Text('Monthly Dream Show'),
               subtitle: const Text('Auto-compiled highlight reel.'),
               onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => MonthlyDreamShowScreen())),
+                MaterialPageRoute(builder: (_) => MonthlyDreamShowScreen()),
+              ),
             ),
           ),
           Card(
@@ -756,7 +770,8 @@ class _DreamHub extends StatelessWidget {
               title: const Text('Dream Themes'),
               subtitle: const Text('Recurring themes across your dream log.'),
               onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const DreamShow2Screen())),
+                MaterialPageRoute(builder: (_) => const DreamShow2Screen()),
+              ),
             ),
           ),
         ],

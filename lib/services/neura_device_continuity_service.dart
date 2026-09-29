@@ -3,6 +3,25 @@ import 'dart:convert';
 import '../living_intelligence/device_continuity.dart';
 import '../startup/neura_prefs_cache.dart';
 
+class NeuraDeviceContinuitySnapshot {
+  const NeuraDeviceContinuitySnapshot({
+    required this.activeDevices,
+    required this.revokedDevices,
+    required this.cloudRelayDevices,
+    required this.allowedCategories,
+  });
+
+  final int activeDevices;
+  final int revokedDevices;
+  final int cloudRelayDevices;
+  final Set<NeuraContinuityCategory> allowedCategories;
+
+  bool get handoffReady => activeDevices >= 2;
+  bool get privateRecordsRemainLocal =>
+      !allowedCategories.contains(NeuraContinuityCategory.privateRecords) ||
+      cloudRelayDevices == 0;
+}
+
 /// Wraps [NeuraDeviceContinuityRegistry] (the real pairing/trust policy
 /// kernel) with simple JSON persistence so paired devices survive an app
 /// restart. Device identities and fingerprints are public-key material, not
@@ -23,6 +42,33 @@ class NeuraDeviceContinuityService {
   bool _loaded = false;
 
   List<NeuraDeviceIdentity> get devices => registry.devices;
+
+  /// Metadata-only continuity health. No payload, device fingerprint, pairing
+  /// code, or display name leaves the trust service through this snapshot.
+  NeuraDeviceContinuitySnapshot get snapshot {
+    ensureLoaded();
+    var active = 0;
+    var revoked = 0;
+    var relayed = 0;
+    final categories = <NeuraContinuityCategory>{};
+    for (final device in registry.devices) {
+      if (device.revoked) {
+        revoked += 1;
+        continue;
+      }
+      active += 1;
+      final policy = _policies[device.deviceId];
+      if (policy == null) continue;
+      categories.addAll(policy.allowedCategories);
+      if (policy.allowCloudRelay) relayed += 1;
+    }
+    return NeuraDeviceContinuitySnapshot(
+      activeDevices: active,
+      revokedDevices: revoked,
+      cloudRelayDevices: relayed,
+      allowedCategories: Set<NeuraContinuityCategory>.unmodifiable(categories),
+    );
+  }
 
   NeuraDeviceSyncPolicy? policyFor(String deviceId) => _policies[deviceId];
 
