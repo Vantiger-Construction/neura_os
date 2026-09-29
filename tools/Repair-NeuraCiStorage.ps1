@@ -3,6 +3,8 @@
 param(
     [string]$ToolCache = $env:RUNNER_TOOL_CACHE,
     [string]$RunnerTemp = $env:RUNNER_TEMP,
+    [switch]$ClearValidationOutput,
+    [string]$ValidationRunRoot,
     [switch]$ReportOnly
 )
 
@@ -102,6 +104,42 @@ function Test-NeuraUnlinkedPath {
         $current = if ($parent) { $parent.FullName } else { $null }
     }
     return $true
+}
+
+function Clear-NeuraValidationOutput {
+    param(
+        [string]$RunRoot,
+        [string]$RunKey,
+        [switch]$ReportOnly
+    )
+    # Only the finishing job's generated output is eligible. Keep its checkout
+    # and logs for actions/checkout's post step and never touch shared caches.
+    if ([string]::IsNullOrWhiteSpace($RunRoot) -or $RunKey -notmatch '^\d+-\d+$') {
+        Write-Host 'No current validation workspace was selected; nothing to release.'
+        return
+    }
+    $root = [IO.DirectoryInfo]::new([IO.Path]::GetFullPath($RunRoot))
+    if ($root.Name -notin @('state-matrix', 'living-intelligence') -or
+        -not $root.Parent -or $root.Parent.Name -ne $RunKey -or
+        -not $root.Parent.Parent -or $root.Parent.Parent.Name -ne 'neura-ci' -or
+        -not (Test-NeuraUnlinkedPath -Path $root.FullName)) {
+        Write-Warning 'Validation cleanup rejected a foreign or linked workspace.'
+        return
+    }
+    $volume = [IO.Path]::GetPathRoot($root.FullName)
+    $before = ([IO.DriveInfo]::new($volume)).AvailableFreeSpace
+    foreach ($relative in @('workspace/build', 'workspace/.dart_tool',
+            'workspace/android/.gradle', 'workspace/rust/target',
+            'workspace/.packages', 'temp')) {
+        $path = Join-Path $root.FullName $relative
+        if (-not (Test-NeuraUnlinkedPath -Path $path)) { continue }
+        Write-Host "Completed validation output: $path (report-only=$([bool]$ReportOnly))"
+        if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $path }
+    }
+    $after = ([IO.DriveInfo]::new($volume)).AvailableFreeSpace
+    Write-Host ("Validation cleanup volume {0}: before={1:N2} GB; after={2:N2} GB; reclaimed={3:N2} GB" -f
+        $volume, ($before / 1GB), ($after / 1GB),
+        ([Math]::Max([long]0, [long]($after - $before)) / 1GB))
 }
 
 function Remove-NeuraAgedEntry {
@@ -306,6 +344,12 @@ function Invoke-NeuraStorageRecovery {
             $name, ($before[$name] / 1GB), ($drive.AvailableFreeSpace / 1GB),
             ([Math]::Max([long]0, [long]($drive.AvailableFreeSpace - $before[$name])) / 1GB))
     }
+}
+
+if ($ClearValidationOutput) {
+    Clear-NeuraValidationOutput -RunRoot $ValidationRunRoot `
+        -RunKey "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT" -ReportOnly:$ReportOnly
+    return
 }
 
 $packageRoots = @(

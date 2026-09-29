@@ -200,6 +200,56 @@ try {
     Invoke-NeuraRunnerRecovery -RunnerTemp $unexpectedTemp
     Assert-FixtureExists -Path (Join-Path $unexpectedTemp 'keep.bin')
     Write-Host 'PASS: linked ancestors and unexpected runner layouts cannot reach external files.'
+
+    $validationRoot = Join-Path $fixture 'neura-ci/999-1/state-matrix'
+    $validationGenerated = @(
+        'workspace/build/test_cache/compiled.bin',
+        'workspace/.dart_tool/package_config.json',
+        'workspace/android/.gradle/generated.bin',
+        'workspace/rust/target/generated.bin',
+        'workspace/.packages',
+        'temp/flutter-test/output.bin'
+    )
+    $validationRetained = @(
+        'workspace/.git/config', 'workspace/lib/keep.dart',
+        'workspace/pubspec.lock', 'workspace/state-matrix.log',
+        'pub-cache/keep.bin'
+    )
+    foreach ($relative in ($validationGenerated + $validationRetained)) {
+        New-FixtureFile -Path (Join-Path $validationRoot $relative)
+    }
+    Clear-NeuraValidationOutput -RunRoot $validationRoot -RunKey '999-1' -ReportOnly
+    Clear-NeuraValidationOutput -RunRoot $validationRoot -RunKey '1000-1'
+    Clear-NeuraValidationOutput -RunRoot $null -RunKey '999-1'
+    foreach ($relative in $validationGenerated) {
+        Assert-FixtureExists -Path (Join-Path $validationRoot $relative)
+    }
+    # Exercise the real script entry point too; it must not run global recovery.
+    & $scriptPath -ClearValidationOutput -ValidationRunRoot $validationRoot -ToolCache $toolCache
+    foreach ($relative in $validationGenerated) {
+        Assert-FixtureExists -Path (Join-Path $validationRoot $relative) -Expected $false
+    }
+    foreach ($relative in $validationRetained) {
+        Assert-FixtureExists -Path (Join-Path $validationRoot $relative)
+    }
+    Assert-FixtureExists -Path (Join-Path $reportStage 'keep.bin')
+    Write-Host 'PASS: finishing-job cleanup releases only its generated data; source, logs, shared caches, other jobs, and report-only data remain protected.'
+
+    $foreignRoot = Join-Path $fixture 'personal/999-1/state-matrix'
+    New-FixtureFile -Path (Join-Path $foreignRoot 'temp/keep.bin')
+    Clear-NeuraValidationOutput -RunRoot $foreignRoot -RunKey '999-1'
+    Assert-FixtureExists -Path (Join-Path $foreignRoot 'temp/keep.bin')
+    $linkedValidationRoot = Join-Path $fixture 'neura-ci/999-1/living-intelligence'
+    New-Item -ItemType $kind -Path $linkedValidationRoot -Target $foreignRoot | Out-Null
+    $links += $linkedValidationRoot
+    Clear-NeuraValidationOutput -RunRoot $linkedValidationRoot -RunKey '999-1'
+    Assert-FixtureExists -Path (Join-Path $foreignRoot 'temp/keep.bin')
+    $linkedOutput = Join-Path $validationRoot 'workspace/build'
+    New-Item -ItemType $kind -Path $linkedOutput -Target $outside | Out-Null
+    $links += $linkedOutput
+    Clear-NeuraValidationOutput -RunRoot $validationRoot -RunKey '999-1'
+    Assert-FixtureExists -Path (Join-Path $outside 'keep.txt')
+    Write-Host 'PASS: finishing-job cleanup rejects foreign roots and preserves linked output and external targets.'
 } finally {
     $env:GITHUB_RUN_ID = $originalRunId
     $env:GITHUB_RUN_ATTEMPT = $originalRunAttempt
