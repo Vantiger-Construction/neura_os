@@ -112,6 +112,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
 
   void _stopForSafeMode() {
     if (!SafeBoot.instance.safeMode.value) return;
+    final hadVoice = _continuousMode || _listening || _startingListening;
     _voiceSession++;
     _replyUpdates?.dispose();
     _replyUpdates = null;
@@ -119,7 +120,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     NeuraAiService.instance.cancelActiveGeneration();
     _continuousMode = false;
     _listening = false;
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {
+        if (hadVoice) _controller.clear();
+      });
+    }
     unawaited(_voiceInput.stopRecording().catchError((_) => ''));
     unawaited(NeuraTtsService.instance.stop().catchError((_) {}));
   }
@@ -413,6 +418,27 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         _showVoiceNotice(
             'Memories excluded from the next reply. Existing chat messages remain.');
         return;
+      case NeuraVoiceCommand.whereAmI:
+        _showVoiceNotice('You are in ${NeuraShell.of(context).room.title}.');
+        return;
+      case NeuraVoiceCommand.openPenthouse:
+        await _openVoiceRoom(NeuraRoom.penthouse);
+        return;
+      case NeuraVoiceCommand.openReflectionBay:
+        await _openVoiceRoom(NeuraRoom.reflectionBay);
+        return;
+      case NeuraVoiceCommand.openJoyLounge:
+        await _openVoiceRoom(NeuraRoom.joyLounge);
+        return;
+      case NeuraVoiceCommand.openMoodDen:
+        await _openVoiceRoom(NeuraRoom.moodDen);
+        return;
+      case NeuraVoiceCommand.openDreamAtrium:
+        await _openVoiceRoom(NeuraRoom.dreamAtrium);
+        return;
+      case NeuraVoiceCommand.openLegacyVault:
+        await _openVoiceRoom(NeuraRoom.legacyVault);
+        return;
       case NeuraVoiceCommand.openJournal:
       case NeuraVoiceCommand.openMood:
       case NeuraVoiceCommand.openMoodHistory:
@@ -435,6 +461,17 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       case NeuraVoiceCommand.coachMode:
         return;
     }
+  }
+
+  Future<void> _openVoiceRoom(NeuraRoom room) async {
+    if (!mounted || SafeBoot.instance.safeMode.value) return;
+    final shell = NeuraShell.of(context);
+    if (shell.room.id != room.id) await shell.setRoom(room);
+    if (!mounted || SafeBoot.instance.safeMode.value) return;
+    setState(() {
+      _activeAgent = AgentSelectionService.instance.resolveAgent(room);
+    });
+    _showVoiceNotice('${room.title} opened.');
   }
 
   Future<void> _scrollVoiceChat(NeuraVoiceCommand command) async {
