@@ -11,6 +11,7 @@ import '../../reliability/timeline_vault.dart';
 import '../../services/scheduled_backup_settings.dart';
 import '../../startup/neura_bootstrap_log.dart';
 import '../core/app_log.dart';
+import 'companion_health_card.dart';
 
 class DiagnosticsScreen extends StatefulWidget {
   const DiagnosticsScreen({super.key});
@@ -51,11 +52,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         _loading = false;
       });
     } catch (error, stack) {
-      await AppLog.instance.caught(
-        'diagnostics_load_failed',
-        error,
-        stack,
-      );
+      await AppLog.instance.caught('diagnostics_load_failed', error, stack);
       if (!mounted) return;
       setState(() => _loading = false);
     }
@@ -65,9 +62,9 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     try {
       final path = await TimelineVault.instance.exportCopy();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Timeline exported to $path')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Timeline exported to $path')));
     } catch (error, stack) {
       await AppLog.instance.exception(
         'diagnostics_timeline_export_failed',
@@ -115,9 +112,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Crash diagnostics exported to ${paths.join(' · ')}',
-          ),
+          content: Text('Crash diagnostics exported to ${paths.join(' · ')}'),
         ),
       );
     } catch (error, stack) {
@@ -144,9 +139,9 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     final message = SafeBoot.instance.restartRequired.value
         ? 'Safe Mode stays active until you restart Neura.'
         : 'Safe Mode is active for this session.';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _clear() async {
@@ -215,6 +210,8 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
           : ListView(
               padding: const EdgeInsets.all(12),
               children: [
+                const NeuraCompanionHealthCard(),
+                const SizedBox(height: 12),
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.auto_fix_high),
@@ -332,14 +329,16 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                                     : Colors.orange,
                           ),
                           title: Text(module.name),
-                          subtitle: Text([
-                            module.status.name,
-                            if (module.duration != null)
-                              '${module.duration!.inMilliseconds} ms',
-                            if (module.detail != null) module.detail!,
-                            if (module.remedy != null)
-                              'Remedy: ${module.remedy}',
-                          ].join(' · ')),
+                          subtitle: Text(
+                            [
+                              module.status.name,
+                              if (module.duration != null)
+                                '${module.duration!.inMilliseconds} ms',
+                              if (module.detail != null) module.detail!,
+                              if (module.remedy != null)
+                                'Remedy: ${module.remedy}',
+                            ].join(' · '),
+                          ),
                         );
                       }).toList(),
                     );
@@ -385,11 +384,10 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                                     'bootstrap_error',
                               ),
                               subtitle: Text(
-                                const JsonEncoder.withIndent('  ')
-                                    .convert(record),
-                                style: const TextStyle(
-                                  fontFamily: 'monospace',
-                                ),
+                                const JsonEncoder.withIndent(
+                                  '  ',
+                                ).convert(record),
+                                style: const TextStyle(fontFamily: 'monospace'),
                               ),
                             );
                           }),
@@ -405,9 +403,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                               title: Text(_prettyCrashTitle(line)),
                               subtitle: Text(
                                 _prettyCrashDetails(line),
-                                style: const TextStyle(
-                                  fontFamily: 'monospace',
-                                ),
+                                style: const TextStyle(fontFamily: 'monospace'),
                               ),
                             );
                           }),
@@ -483,9 +479,9 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
       final ts = obj['ts'] ?? '';
       final lvl = obj['level'] ?? '';
       final ev = obj['event'] ?? '';
-      final data = const JsonEncoder.withIndent('  ').convert(
-        obj['data'] ?? const <String, Object?>{},
-      );
+      final data = const JsonEncoder.withIndent(
+        '  ',
+      ).convert(obj['data'] ?? const <String, Object?>{});
       return '$ts  [$lvl]  $ev\n$data';
     } catch (_) {
       return '{"type":"corrupt_record"}';

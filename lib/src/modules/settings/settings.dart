@@ -49,10 +49,11 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.api),
             title: const Text('Local app API'),
             subtitle: const Text(
-                'Connect trusted apps with approval for each action'),
-            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-              builder: (_) => const LocalApiScreen(),
-            )),
+              'Connect trusted apps with approval for each action',
+            ),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const LocalApiScreen()),
+            ),
           ),
           if (SupabaseConfig.isConfigured)
             AnimatedBuilder(
@@ -91,8 +92,9 @@ class SettingsScreen extends StatelessWidget {
                     ListTile(
                       leading: const Icon(Icons.account_circle_outlined),
                       title: const Text('Profile & Account'),
-                      subtitle:
-                          const Text('Display name, email, and sign out.'),
+                      subtitle: const Text(
+                        'Display name, email, and sign out.',
+                      ),
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
@@ -125,7 +127,8 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.smart_toy_outlined),
             title: const Text('AI Provider'),
             subtitle: const Text(
-                'Securely connect, replace, or remove the model key.'),
+              'Securely connect, replace, or remove the model key.',
+            ),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
@@ -154,13 +157,13 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.hub_outlined),
             title: const Text('Local Brain Console'),
             subtitle: const Text(
-                'Streaming link, tone, connection health, and diagnostics.'),
+              'Streaming link, tone, connection health, and diagnostics.',
+            ),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => const NeuraConsolePage(
-                    brainUrl: 'ws://127.0.0.1:8787',
-                  ),
+                  builder: (_) =>
+                      const NeuraConsolePage(brainUrl: 'ws://127.0.0.1:8787'),
                 ),
               );
             },
@@ -171,8 +174,9 @@ class SettingsScreen extends StatelessWidget {
             title: const Text('Voice Lab'),
             subtitle: const Text('Test Neura voice + live mic visemes.'),
             onTap: () {
-              Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const VoiceLabScreen()));
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const VoiceLabScreen()));
             },
           ),
           const Divider(),
@@ -182,7 +186,8 @@ class SettingsScreen extends StatelessWidget {
             subtitle: const Text('Switch Deep Work / Reflection / Wind Down.'),
             onTap: () {
               Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const FocusOfficeScreen()));
+                MaterialPageRoute(builder: (_) => const FocusOfficeScreen()),
+              );
             },
           ),
           const Divider(),
@@ -192,10 +197,12 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.lock_outline),
             title: const Text('Privacy & Safety'),
             subtitle: const Text(
-                'Data, backups, and what Neura does (and doesn\'t) do.'),
+              'Data, backups, and what Neura does (and doesn\'t) do.',
+            ),
             onTap: () {
               Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const PrivacyHomeScreen()));
+                MaterialPageRoute(builder: (_) => const PrivacyHomeScreen()),
+              );
             },
           ),
           const Divider(),
@@ -203,10 +210,12 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.psychology_outlined),
             title: const Text('What Neura Remembers'),
             subtitle: const Text(
-                'View, search, or clear memory from past conversations.'),
+              'View, search, or clear memory from past conversations.',
+            ),
             onTap: () {
-              Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const MemoryScreen()));
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const MemoryScreen()));
             },
           ),
           const Divider(),
@@ -214,22 +223,25 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.auto_stories),
             title: const Text('Legacy Vault'),
             subtitle: const Text(
-                'Time capsules, messages, and "future-you" archives.'),
+              'Time capsules, messages, and "future-you" archives.',
+            ),
             onTap: () {
               Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const LegacyHomeScreen()));
+                MaterialPageRoute(builder: (_) => const LegacyHomeScreen()),
+              );
             },
           ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.palette_outlined),
             title: const Text('Themes & Avatars'),
-            subtitle:
-                const Text('Appearance, theme mode, and your Neura avatar.'),
+            subtitle: const Text(
+              'Appearance, theme mode, and your Neura avatar.',
+            ),
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ThemeScreen()),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const ThemeScreen()));
             },
           ),
           const Divider(),
@@ -251,7 +263,8 @@ class SettingsScreen extends StatelessWidget {
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                    builder: (_) => const NeuraVoiceSettingsScreen()),
+                  builder: (_) => const NeuraVoiceSettingsScreen(),
+                ),
               );
             },
           ),
@@ -260,7 +273,8 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.psychology_alt_outlined),
             title: const Text('Neura Coach'),
             subtitle: const Text(
-                'Enable reflections, and browse your Coach Timeline.'),
+              'Enable reflections, and browse your Coach Timeline.',
+            ),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const CoachSettingsScreen()),
@@ -272,11 +286,13 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.tune),
             title: const Text("Neura's Personas"),
             subtitle: const Text(
-                'Which specialist answers, and shared tone — warmth, humor, depth.'),
+              'Which specialist answers, and shared tone — warmth, humor, depth.',
+            ),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                    builder: (_) => const AgentPersonaSettingsScreen()),
+                  builder: (_) => const AgentPersonaSettingsScreen(),
+                ),
               );
             },
           ),
@@ -285,7 +301,8 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.flag_outlined),
             title: const Text('Goals & Values'),
             subtitle: const Text(
-                'What you want more of, and what you refuse to betray.'),
+              'What you want more of, and what you refuse to betray.',
+            ),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const PersonaLabScreen()),
@@ -297,11 +314,13 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.groups_outlined),
             title: const Text('Audience Settings'),
             subtitle: const Text(
-                'Choose who Neura is talking to, for safer tone and depth.'),
+              'Choose who Neura is talking to, for safer tone and depth.',
+            ),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                    builder: (_) => const AudienceSettingsScreen()),
+                  builder: (_) => const AudienceSettingsScreen(),
+                ),
               );
             },
           ),
@@ -310,7 +329,8 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.accessibility_new_outlined),
             title: const Text('Accessibility'),
             subtitle: const Text(
-                'Motion, contrast, and text-size controls, plus Safe Mode.'),
+              'Motion, contrast, and text-size controls, plus Safe Mode.',
+            ),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const AccessibilityScreen()),
@@ -322,7 +342,8 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.bar_chart_outlined),
             title: const Text('Life Snapshot'),
             subtitle: const Text(
-                'A quick on-device snapshot of your mood and habits.'),
+              'A quick on-device snapshot of your mood and habits.',
+            ),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const LifeSnapshotScreen()),
@@ -333,8 +354,9 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.workspace_premium_outlined),
             title: const Text('Premium'),
-            subtitle:
-                const Text('Unlock Neura Premium with a one-time purchase.'),
+            subtitle: const Text(
+              'Unlock Neura Premium with a one-time purchase.',
+            ),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
@@ -346,11 +368,13 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.notifications_outlined),
             title: const Text('Notifications'),
             subtitle: const Text(
-                'Weekly review, Legacy check-ins, and a daily mood nudge.'),
+              'Weekly review, Legacy check-ins, and a daily mood nudge.',
+            ),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                    builder: (_) => const NotificationsSettingsScreen()),
+                  builder: (_) => const NotificationsSettingsScreen(),
+                ),
               );
             },
           ),
@@ -360,21 +384,22 @@ class SettingsScreen extends StatelessWidget {
             title: const Text('Help'),
             subtitle: const Text('Getting started, tips, and troubleshooting.'),
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const HelpScreen()),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const HelpScreen()));
             },
           ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.feedback_outlined),
             title: const Text('Send Feedback'),
-            subtitle:
-                const Text('Report a bug or tell us what\'s on your mind.'),
+            subtitle: const Text(
+              'Report a bug or tell us what\'s on your mind.',
+            ),
             onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const FeedbackScreen()),
-              );
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const FeedbackScreen()));
             },
           ),
         ],
@@ -394,33 +419,105 @@ class _ShellToggles extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Text('Neura OS Shell',
-                  style: Theme.of(context).textTheme.titleMedium),
+              child: Text(
+                'Neura OS Shell',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
             ),
             SwitchListTile(
               value: prefs.ambientFx,
-              onChanged: (v) => ShellPrefsController.instance
-                  .update(prefs.copyWith(ambientFx: v)),
+              onChanged: (v) => ShellPrefsController.instance.update(
+                prefs.copyWith(ambientFx: v),
+              ),
               title: const Text('Ambient FX'),
               subtitle: const Text('Subtle moving glow in the background.'),
               secondary: const Icon(Icons.blur_circular_outlined),
             ),
             SwitchListTile(
               value: prefs.portalFx,
-              onChanged: (v) => ShellPrefsController.instance
-                  .update(prefs.copyWith(portalFx: v)),
+              onChanged: (v) => ShellPrefsController.instance.update(
+                prefs.copyWith(portalFx: v),
+              ),
               title: const Text('Portal Transitions'),
               subtitle: const Text('Soft teleport-style screen transitions.'),
               secondary: const Icon(Icons.blur_on_outlined),
             ),
             SwitchListTile(
               value: prefs.walkingShimmer,
-              onChanged: (v) => ShellPrefsController.instance
-                  .update(prefs.copyWith(walkingShimmer: v)),
+              onChanged: (v) => ShellPrefsController.instance.update(
+                prefs.copyWith(walkingShimmer: v),
+              ),
               title: const Text('Walking Path Shimmer'),
-              subtitle:
-                  const Text('A tiny animated "path" accent in the Rooms Map.'),
+              subtitle: const Text(
+                'A tiny animated "path" accent in the Rooms Map.',
+              ),
               secondary: const Icon(Icons.linear_scale_outlined),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.accessibility_new_outlined),
+              title: const Text('Companion motion'),
+              subtitle: const Text(
+                'Controls Neura\'s breathing, stance, and response motion.',
+              ),
+              trailing: DropdownButton<NeuraCompanionMotion>(
+                value: prefs.companionMotion,
+                onChanged: (value) {
+                  if (value != null) {
+                    ShellPrefsController.instance.update(
+                      prefs.copyWith(companionMotion: value),
+                    );
+                  }
+                },
+                items: [
+                  for (final value in NeuraCompanionMotion.values)
+                    DropdownMenuItem(
+                      value: value,
+                      child: Text(switch (value) {
+                        NeuraCompanionMotion.still => 'Still',
+                        NeuraCompanionMotion.subtle => 'Subtle',
+                        NeuraCompanionMotion.expressive => 'Expressive',
+                      }),
+                    ),
+                ],
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_size_select_large_outlined),
+              title: const Text('Companion size'),
+              subtitle: const Text('Adjust Neura inside her dedicated stage.'),
+              trailing: DropdownButton<NeuraCompanionScale>(
+                value: prefs.companionScale,
+                onChanged: (value) {
+                  if (value != null) {
+                    ShellPrefsController.instance.update(
+                      prefs.copyWith(companionScale: value),
+                    );
+                  }
+                },
+                items: [
+                  for (final value in NeuraCompanionScale.values)
+                    DropdownMenuItem(
+                      value: value,
+                      child: Text(switch (value) {
+                        NeuraCompanionScale.compact => 'Compact',
+                        NeuraCompanionScale.standard => 'Standard',
+                        NeuraCompanionScale.large => 'Large',
+                      }),
+                    ),
+                ],
+              ),
+            ),
+            SwitchListTile(
+              value: prefs.roomActivityHints,
+              onChanged: (value) => ShellPrefsController.instance.update(
+                prefs.copyWith(roomActivityHints: value),
+              ),
+              title: const Text('Room activity suggestions'),
+              subtitle: const Text(
+                'Show local shortcuts that fit the room you are in.',
+              ),
+              secondary: const Icon(Icons.tips_and_updates_outlined),
             ),
           ],
         );

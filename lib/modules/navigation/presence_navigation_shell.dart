@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../neura_shell/models/neura_room.dart';
+import '../../neura_shell/models/neura_room_presence_profile.dart';
+import '../../neura_shell/widgets/neura_room_presence_avatar.dart';
+import '../../services/neura_companion_presence.dart';
+import '../../src/shell/shell_prefs.dart';
+
 enum PresenceLayoutMode { compact, wide }
 
 class PresenceNavigationLayoutPolicy {
@@ -42,12 +48,14 @@ class PresenceShellStatus {
     required this.cloudLabel,
     required this.voiceLabel,
     required this.presenceLabel,
+    this.phase = NeuraPresencePhase.idle,
   });
 
   final bool safeMode;
   final String cloudLabel;
   final String voiceLabel;
   final String presenceLabel;
+  final NeuraPresencePhase phase;
 }
 
 bool presenceCommandMatches(PresenceCommand command, String query) {
@@ -72,6 +80,8 @@ class PresenceNavigationShell extends StatefulWidget {
     required this.now,
     required this.onOpenNeura,
     required this.onOpenDiagnostics,
+    this.room = NeuraRoom.penthouse,
+    this.preferences = ShellPrefs.defaults,
   }) : assert(destinationPages.length == 5);
 
   final int currentIndex;
@@ -82,6 +92,8 @@ class PresenceNavigationShell extends StatefulWidget {
   final Widget now;
   final VoidCallback onOpenNeura;
   final VoidCallback onOpenDiagnostics;
+  final NeuraRoom room;
+  final ShellPrefs preferences;
 
   @override
   State<PresenceNavigationShell> createState() =>
@@ -213,6 +225,10 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
           child: _NeuraStage(
             collapsed: _stageCollapsed,
             status: widget.status,
+            room: widget.room,
+            preferences: widget.preferences,
+            commands: widget.commands,
+            onRunCommand: _runCommand,
             onOpenNeura: widget.onOpenNeura,
             onToggleCollapsed: () =>
                 setState(() => _stageCollapsed = !_stageCollapsed),
@@ -230,6 +246,10 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
           child: _CompactNeuraStage(
             status: widget.status,
+            room: widget.room,
+            preferences: widget.preferences,
+            commands: widget.commands,
+            onRunCommand: _runCommand,
             onOpenNeura: widget.onOpenNeura,
           ),
         ),
@@ -387,12 +407,20 @@ class _NeuraStage extends StatelessWidget {
   const _NeuraStage({
     required this.collapsed,
     required this.status,
+    required this.room,
+    required this.preferences,
+    required this.commands,
+    required this.onRunCommand,
     required this.onOpenNeura,
     required this.onToggleCollapsed,
   });
 
   final bool collapsed;
   final PresenceShellStatus status;
+  final NeuraRoom room;
+  final ShellPrefs preferences;
+  final List<PresenceCommand> commands;
+  final ValueChanged<PresenceCommand> onRunCommand;
   final VoidCallback onOpenNeura;
   final VoidCallback onToggleCollapsed;
 
@@ -402,6 +430,8 @@ class _NeuraStage extends StatelessWidget {
     const stageForeground = Color(0xFFF8F4FF);
     const stageMuted = Color(0xFFC8BEDA);
     final accent = Theme.of(context).colorScheme.primary;
+    final profile = NeuraRoomPresenceProfile.forRoom(room);
+    final activities = _roomActivities(profile, commands);
 
     return Semantics(
       container: true,
@@ -429,7 +459,19 @@ class _NeuraStage extends StatelessWidget {
                     icon: const Icon(Icons.open_in_full_rounded),
                   ),
                   const Spacer(),
-                  _StageAvatar(compact: true, accent: accent),
+                  SizedBox(
+                    width: 60,
+                    height: 72,
+                    child: NeuraRoomPresenceAvatar(
+                      room: room,
+                      phase: status.safeMode
+                          ? NeuraPresencePhase.safeMode
+                          : status.phase,
+                      motion: preferences.companionMotion,
+                      scale: preferences.companionScale,
+                      compact: true,
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   RotatedBox(
                     quarterTurns: 3,
@@ -473,13 +515,67 @@ class _NeuraStage extends StatelessWidget {
                     ),
                     Text(
                       status.presenceLabel,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.copyWith(color: stageMuted),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: stageMuted),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${room.title} · ${profile.stanceLabel}',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.labelSmall?.copyWith(color: accent),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      profile.cue,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.labelSmall?.copyWith(color: stageMuted),
                     ),
                     const SizedBox(height: 8),
-                    Expanded(child: _StageAvatar(accent: accent)),
+                    Expanded(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(24),
+                          gradient: RadialGradient(
+                            center: const Alignment(0, 0.35),
+                            radius: 0.72,
+                            colors: <Color>[
+                              accent.withValues(alpha: 0.24),
+                              const Color(0xFF171023).withValues(alpha: 0),
+                            ],
+                          ),
+                        ),
+                        child: NeuraRoomPresenceAvatar(
+                          room: room,
+                          phase: status.safeMode
+                              ? NeuraPresencePhase.safeMode
+                              : status.phase,
+                          motion: preferences.companionMotion,
+                          scale: preferences.companionScale,
+                        ),
+                      ),
+                    ),
+                    if (preferences.roomActivityHints &&
+                        activities.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 5,
+                        runSpacing: 5,
+                        children: <Widget>[
+                          for (final command in activities.take(3))
+                            ActionChip(
+                              visualDensity: VisualDensity.compact,
+                              avatar: Icon(command.icon, size: 15),
+                              label: Text(command.title),
+                              onPressed: () => onRunCommand(command),
+                            ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 10),
                     FilledButton.icon(
                       onPressed: onOpenNeura,
@@ -490,10 +586,9 @@ class _NeuraStage extends StatelessWidget {
                     Text(
                       status.voiceLabel,
                       textAlign: TextAlign.center,
-                      style: Theme.of(context)
-                          .textTheme
-                          .labelMedium
-                          ?.copyWith(color: stageMuted),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.labelMedium?.copyWith(color: stageMuted),
                     ),
                   ],
                 ),
@@ -503,55 +598,28 @@ class _NeuraStage extends StatelessWidget {
   }
 }
 
-class _StageAvatar extends StatelessWidget {
-  const _StageAvatar({required this.accent, this.compact = false});
-
-  final Color accent;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        shape: compact ? BoxShape.circle : BoxShape.rectangle,
-        borderRadius: compact ? null : BorderRadius.circular(24),
-        gradient: RadialGradient(
-          center: const Alignment(0, 0.35),
-          radius: 0.72,
-          colors: <Color>[
-            accent.withValues(alpha: 0.24),
-            const Color(0xFF171023).withValues(alpha: 0),
-          ],
-        ),
-      ),
-      child: Image.asset(
-        'assets/images/neura_fullbody.png',
-        fit: BoxFit.contain,
-        semanticLabel: 'Neura standing in her dedicated stage',
-        errorBuilder: (context, error, stackTrace) => Center(
-          child: Icon(
-            Icons.auto_awesome_rounded,
-            size: compact ? 34 : 88,
-            color: accent,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _CompactNeuraStage extends StatelessWidget {
   const _CompactNeuraStage({
     required this.status,
+    required this.room,
+    required this.preferences,
+    required this.commands,
+    required this.onRunCommand,
     required this.onOpenNeura,
   });
 
   final PresenceShellStatus status;
+  final NeuraRoom room;
+  final ShellPrefs preferences;
+  final List<PresenceCommand> commands;
+  final ValueChanged<PresenceCommand> onRunCommand;
   final VoidCallback onOpenNeura;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final profile = NeuraRoomPresenceProfile.forRoom(room);
+    final activities = _roomActivities(profile, commands);
     return Semantics(
       container: true,
       label: 'Neura presence panel. ${status.presenceLabel}',
@@ -568,7 +636,15 @@ class _CompactNeuraStage extends StatelessWidget {
             SizedBox(
               width: 60,
               height: 68,
-              child: _StageAvatar(compact: true, accent: scheme.primary),
+              child: NeuraRoomPresenceAvatar(
+                room: room,
+                phase: status.safeMode
+                    ? NeuraPresencePhase.safeMode
+                    : status.phase,
+                motion: preferences.companionMotion,
+                scale: preferences.companionScale,
+                compact: true,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -592,9 +668,23 @@ class _CompactNeuraStage extends StatelessWidget {
                           color: const Color(0xFFC8BEDA),
                         ),
                   ),
+                  Text(
+                    '${room.title} · ${profile.stanceLabel}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelSmall?.copyWith(color: scheme.primary),
+                  ),
                 ],
               ),
             ),
+            if (preferences.roomActivityHints && activities.isNotEmpty)
+              IconButton(
+                tooltip: 'Try ${activities.first.title}',
+                onPressed: () => onRunCommand(activities.first),
+                icon: Icon(activities.first.icon),
+              ),
             const SizedBox(width: 8),
             IconButton.filledTonal(
               tooltip: 'Talk to Neura',
@@ -608,11 +698,21 @@ class _CompactNeuraStage extends StatelessWidget {
   }
 }
 
+List<PresenceCommand> _roomActivities(
+  NeuraRoomPresenceProfile profile,
+  List<PresenceCommand> commands,
+) {
+  final byId = <String, PresenceCommand>{
+    for (final command in commands) command.id: command,
+  };
+  return profile.activityCommandIds
+      .map((id) => byId[id])
+      .whereType<PresenceCommand>()
+      .toList(growable: false);
+}
+
 class _WorkspaceHeader extends StatelessWidget {
-  const _WorkspaceHeader({
-    required this.status,
-    required this.onOpenPalette,
-  });
+  const _WorkspaceHeader({required this.status, required this.onOpenPalette});
 
   final PresenceShellStatus status;
   final VoidCallback onOpenPalette;
@@ -807,10 +907,10 @@ class _PresenceHomeSurface extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       'You’re not alone.',
-                      style:
-                          Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
+                      style: Theme.of(context)
+                          .textTheme
+                          .headlineMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -828,11 +928,7 @@ class _PresenceHomeSurface extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          _HomeSection(
-            title: 'Now',
-            subtitle: 'In this moment',
-            child: now,
-          ),
+          _HomeSection(title: 'Now', subtitle: 'In this moment', child: now),
           const SizedBox(height: 14),
           _HomeSection(
             title: 'Next',
@@ -912,10 +1008,9 @@ class _HomeSection extends StatelessWidget {
         children: <Widget>[
           Text(
             title,
-            style: Theme.of(context)
-                .textTheme
-                .titleLarge
-                ?.copyWith(fontWeight: FontWeight.w700),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
           ),
           Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 12),
@@ -954,10 +1049,9 @@ class _HomeCommandCard extends StatelessWidget {
                   const SizedBox(height: 10),
                   Text(
                     command.title,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                   ),
                   const SizedBox(height: 3),
                   Text(command.subtitle),
