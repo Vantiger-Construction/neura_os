@@ -228,7 +228,7 @@ jobs:
                   return
               }
               $root = [IO.DirectoryInfo]::new([IO.Path]::GetFullPath($RunRoot))
-              if ($root.Name -notin @('state-matrix', 'living-intelligence') -or
+              if ($root.Name -notin @('state-matrix', 'living-intelligence', 'workspace') -or
                   -not $root.Parent -or $root.Parent.Name -ne $RunKey -or
                   -not $root.Parent.Parent -or $root.Parent.Parent.Name -ne 'neura-ci' -or
                   -not (Test-NeuraUnlinkedPath -Path $root.FullName)) {
@@ -237,9 +237,17 @@ jobs:
               }
               $volume = [IO.Path]::GetPathRoot($root.FullName)
               $before = ([IO.DriveInfo]::new($volume)).AvailableFreeSpace
-              foreach ($relative in @('workspace/build', 'workspace/.dart_tool',
-                      'workspace/android/.gradle', 'workspace/rust/target',
-                      'workspace/.packages', 'temp')) {
+              # Windows release validation checks out directly into <run>/workspace.
+              # Release its generated files now; retaining the Git checkout for its post
+              # step must not also retain compiled Dart/Flutter data until aged recovery.
+              $generated = if ($root.Name -eq 'workspace') {
+                  @('build', '.dart_tool', 'android/.gradle', 'rust/target',
+                      '.packages', 'windows/flutter/ephemeral')
+              } else {
+                  @('workspace/build', 'workspace/.dart_tool', 'workspace/android/.gradle',
+                      'workspace/rust/target', 'workspace/.packages', 'temp')
+              }
+              foreach ($relative in $generated) {
                   $path = Join-Path $root.FullName $relative
                   if (-not (Test-NeuraUnlinkedPath -Path $path)) { continue }
                   Write-Host "Completed validation output: $path (report-only=$([bool]$ReportOnly))"
