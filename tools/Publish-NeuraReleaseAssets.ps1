@@ -106,6 +106,66 @@ function Get-Sha256 {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
+function Write-NeuraPackageDeliveryReceipt {
+    param(
+        [Parameter(Mandatory)][string]$PackagePath,
+        [Parameter(Mandatory)][ValidateSet('windows', 'android')][string]$Platform,
+        [Parameter(Mandatory)][string]$RunKey,
+        [Parameter(Mandatory)][object[]]$PublishedAssets
+    )
+
+    # A run-shaped directory and its age do not prove successful delivery.
+    # Stamp only after all three assets have passed download verification.
+    if ($RunKey -notmatch '^\d+-\d+$' -or $PublishedAssets.Count -ne 3) {
+        throw 'A complete verified release is required for a package delivery receipt.'
+    }
+    foreach ($asset in $PublishedAssets) {
+        if ($asset.Sha256 -notmatch '^[0-9a-f]{64}$' -or $asset.Size -le 0) {
+            throw 'A package delivery asset has invalid verification metadata.'
+        }
+    }
+    $extension = if ($Platform -eq 'windows') { '.zip' } else { '.apk' }
+    $entries = @(Get-ChildItem -LiteralPath $PackagePath -Force)
+    $binaries = @($entries | Where-Object { $_.Extension -eq $extension })
+    if ($binaries.Count -ne 1 -or $entries.Count -notin @(2, 3) -or
+        'SHA256SUMS.txt' -notin $entries.Name) {
+        throw 'Unexpected package contents; no delivery receipt was written.'
+    }
+    $files = @(
+        foreach ($entry in $entries) {
+            if ($entry.PSIsContainer -or
+                ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+                $entry.Name -notin @($binaries[0].Name, 'SHA256SUMS.txt', 'build-manifest.json')) {
+                throw 'Unrecognized or linked package entry; no delivery receipt was written.'
+            }
+            [ordered]@{ name = $entry.Name; sha256 = (Get-Sha256 -Path $entry.FullName) }
+        }
+    )
+    $binaryHash = Get-Sha256 -Path $binaries[0].FullName
+    if ($binaryHash -cne $PublishedAssets[0].Sha256 -or
+        $binaries[0].Length -ne $PublishedAssets[0].Size) {
+        throw 'The local package changed after download verification.'
+    }
+    $receipt = [ordered]@{
+        version = 1
+        platform = $Platform
+        run_key = $RunKey
+        files = $files
+    }
+    $receiptPath = Join-Path $PackagePath 'delivery-verified.json'
+    $temporaryPath = Join-Path $PackagePath 'delivery-verified.json.tmp'
+    # Neither a partial write nor an old receipt may authorize recovery.
+    if ((Test-Path -LiteralPath $receiptPath) -or (Test-Path -LiteralPath $temporaryPath)) {
+        throw 'A package delivery receipt already exists; refusing to overwrite it.'
+    }
+    try {
+        $receipt | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $temporaryPath -Encoding UTF8
+        [IO.File]::Move($temporaryPath, $receiptPath)
+    } finally {
+        Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Assert-SourceChecksums {
     param(
         [Parameter(Mandatory)][string]$Root,
@@ -405,8 +465,9 @@ New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $verificationRoot -Force | Out-Null
 try {
     $binaryName = "NeuraCompanion-$platformLabel-$headShort-$runKey$extension"
-    $binaryPath = Join-Path $stagingRoot $binaryName
-    Copy-Item -LiteralPath $binaryFiles[0].FullName -Destination $binaryPath
+    # The API accepts the release name separately from the local path. Upload
+    # the preserved package directly instead of allocating a second large copy.
+    $binaryPath = $binaryFiles[0].FullName
 
     $projectUrl = [Environment]::GetEnvironmentVariable('NEURA_CLIENT_PROJECT_URL')
     $configSha256 = [Environment]::GetEnvironmentVariable('NEURA_CLIENT_CONFIG_SHA256')
@@ -451,6 +512,9 @@ try {
         Publish-ReleaseAsset -Release $release -Path $manifestPath -Name $manifestName -VerificationRoot $verificationRoot
         Publish-ReleaseAsset -Release $release -Path $stagedChecksumsPath -Name $checksumsName -VerificationRoot $verificationRoot
     )
+
+    Write-NeuraPackageDeliveryReceipt -PackagePath $PackagePath -Platform $Platform `
+        -RunKey $runKey -PublishedAssets $published
 
     $summary = @(
         "### Mandatory $platformLabel package delivery",
