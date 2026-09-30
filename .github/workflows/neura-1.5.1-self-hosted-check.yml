@@ -17,6 +17,8 @@ on:
       - 'test/living_intelligence/**'
       - 'test/intelligence/action_loom_fresh_approval_test.dart'
       - 'test/intelligence/fresh_approval_lease_test.dart'
+      - 'tools/Repair-NeuraCiStorage.ps1'
+      - 'tools/Repair-NeuraCiStorage.Tests.ps1'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/neura-1.5.1-self-hosted-check.yml'
@@ -36,7 +38,7 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      - name: Select one bounded non-system workspace volume
+      - name: Select one bounded workspace volume
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-StrictMode -Version Latest
@@ -80,6 +82,411 @@ jobs:
             }
           }
 
+          # BEGIN Neura runner storage recovery (kept in sync with tools/Repair-NeuraCiStorage.ps1)
+          function Test-NeuraOrdinaryDirectory {
+              param([string]$Path)
+              if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+              $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+              return $null -ne $item -and $item.PSIsContainer -and
+                  ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0
+          }
+
+          function Remove-NeuraDerivedTree {
+              param([Parameter(Mandatory)][string]$Path)
+              # Avoid invoking the PowerShell provider for every SDK/cache file. A
+              # large abandoned extraction can otherwise exceed the recovery timeout.
+              # Enumerate one directory at a time and never use recursive deletion:
+              # every entry is checked for reparse points, including nested links.
+              $pending = New-Object System.Collections.Stack
+              $directories = New-Object System.Collections.Stack
+              $pending.Push($Path)
+              while ($pending.Count -gt 0) {
+                  $current = [string]$pending.Pop()
+                  try {
+                      $attributes = [IO.File]::GetAttributes($current)
+                      if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                          Write-Warning "Keeping linked cache entry: $current"
+                          continue
+                      }
+                      if (($attributes -band [IO.FileAttributes]::Directory) -ne 0) {
+                          $children = [IO.Directory]::GetFileSystemEntries($current)
+                          $directories.Push($current)
+                          foreach ($child in $children) { $pending.Push($child) }
+                      } else {
+                          if (($attributes -band [IO.FileAttributes]::ReadOnly) -ne 0) {
+                              [IO.File]::SetAttributes($current,
+                                  ($attributes -band (-bnot [IO.FileAttributes]::ReadOnly)))
+                          }
+                          [IO.File]::Delete($current)
+                      }
+                  } catch [IO.FileNotFoundException] {
+                      continue
+                  } catch [IO.DirectoryNotFoundException] {
+                      continue
+                  } catch {
+                      Write-Warning "Keeping unavailable cache entry ${current}: $($_.Exception.Message)"
+                  }
+              }
+              while ($directories.Count -gt 0) {
+                  $current = [string]$directories.Pop()
+                  try {
+                      $attributes = [IO.File]::GetAttributes($current)
+                      if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
+                      if (($attributes -band [IO.FileAttributes]::ReadOnly) -ne 0) {
+                          [IO.File]::SetAttributes($current,
+                              ($attributes -band (-bnot [IO.FileAttributes]::ReadOnly)))
+                      }
+                      # Non-recursive deletion preserves any skipped or locked child.
+                      [IO.Directory]::Delete($current, $false)
+                  } catch [IO.DirectoryNotFoundException] {
+                      continue
+                  } catch {
+                      Write-Warning "Keeping nonempty or unavailable cache directory ${current}: $($_.Exception.Message)"
+                  }
+              }
+          }
+
+          function Get-NeuraDirectoryBytes {
+              param([Parameter(Mandatory)][string]$Path)
+              [long]$bytes = 0
+              if (-not (Test-NeuraOrdinaryDirectory -Path $Path)) { return $bytes }
+              $pending = New-Object System.Collections.Stack
+              $pending.Push($Path)
+              while ($pending.Count -gt 0) {
+                  try { $entries = [IO.DirectoryInfo]::new([string]$pending.Pop()).GetFileSystemInfos() }
+                  catch { continue }
+                  foreach ($item in $entries) {
+                      if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
+                      if (($item.Attributes -band [IO.FileAttributes]::Directory) -ne 0) { $pending.Push($item.FullName) }
+                      else { $bytes += $item.Length }
+                  }
+              }
+              return $bytes
+          }
+
+          function Test-NeuraUnlinkedPath {
+              param([Parameter(Mandatory)][string]$Path)
+              # Checking only the final directory would still follow a linked parent.
+              $current = [IO.Path]::GetFullPath($Path)
+              while ($current) {
+                  $item = Get-Item -LiteralPath $current -Force -ErrorAction SilentlyContinue
+                  if (-not $item -or
+                      ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
+                  $parent = [IO.Directory]::GetParent($current)
+                  $current = if ($parent) { $parent.FullName } else { $null }
+              }
+              return $true
+          }
+
+          function Clear-NeuraValidationOutput {
+              param(
+                  [string]$RunRoot,
+                  [string]$RunKey,
+                  [switch]$ReportOnly
+              )
+              # Only the finishing job's generated output is eligible. Keep its checkout
+              # and logs for actions/checkout's post step and never touch shared caches.
+              if ([string]::IsNullOrWhiteSpace($RunRoot) -or $RunKey -notmatch '^\d+-\d+$') {
+                  Write-Host 'No current validation workspace was selected; nothing to release.'
+                  return
+              }
+              $root = [IO.DirectoryInfo]::new([IO.Path]::GetFullPath($RunRoot))
+              if ($root.Name -notin @('state-matrix', 'living-intelligence', 'workspace') -or
+                  -not $root.Parent -or $root.Parent.Name -ne $RunKey -or
+                  -not $root.Parent.Parent -or $root.Parent.Parent.Name -ne 'neura-ci' -or
+                  -not (Test-NeuraUnlinkedPath -Path $root.FullName)) {
+                  Write-Warning 'Validation cleanup rejected a foreign or linked workspace.'
+                  return
+              }
+              $volume = [IO.Path]::GetPathRoot($root.FullName)
+              $before = ([IO.DriveInfo]::new($volume)).AvailableFreeSpace
+              # Windows release validation checks out directly into <run>/workspace.
+              # Release its generated files now; retaining the Git checkout for its post
+              # step must not also retain compiled Dart/Flutter data until aged recovery.
+              $generated = if ($root.Name -eq 'workspace') {
+                  @('build', '.dart_tool', 'android/.gradle', 'rust/target',
+                      '.packages', 'windows/flutter/ephemeral')
+              } else {
+                  @('workspace/build', 'workspace/.dart_tool', 'workspace/android/.gradle',
+                      'workspace/rust/target', 'workspace/.packages', 'temp')
+              }
+              foreach ($relative in $generated) {
+                  $path = Join-Path $root.FullName $relative
+                  if (-not (Test-NeuraUnlinkedPath -Path $path)) { continue }
+                  Write-Host "Completed validation output: $path (report-only=$([bool]$ReportOnly))"
+                  if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $path }
+              }
+              $after = ([IO.DriveInfo]::new($volume)).AvailableFreeSpace
+              Write-Host ("Validation cleanup volume {0}: before={1:N2} GB; after={2:N2} GB; reclaimed={3:N2} GB" -f
+                  $volume, ($before / 1GB), ($after / 1GB),
+                  ([Math]::Max([long]0, [long]($after - $before)) / 1GB))
+          }
+
+          function Remove-NeuraAgedEntry {
+              param(
+                  [Parameter(Mandatory)][string]$Path,
+                  [Parameter(Mandatory)][datetime]$Before,
+                  [switch]$ReportOnly
+              )
+              if (-not (Test-NeuraUnlinkedPath -Path $Path)) { return }
+              $item = Get-Item -LiteralPath $Path -Force
+              if ($item.LastWriteTime -ge $Before) { return }
+              $bytes = if ($item.PSIsContainer) { Get-NeuraDirectoryBytes -Path $Path } else { $item.Length }
+              Write-Host ("Aged CI-generated entry: {0} ({1:N2} GB; report-only={2})" -f
+                  $Path, ($bytes / 1GB), [bool]$ReportOnly)
+              if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $Path }
+          }
+
+          function Invoke-NeuraRunnerRecovery {
+              param(
+                  [string]$RunnerTemp,
+                  [switch]$ReportOnly
+              )
+              if ([string]::IsNullOrWhiteSpace($RunnerTemp)) { return }
+              $runnerWork = Split-Path -Parent $RunnerTemp
+              if ((Split-Path -Leaf $RunnerTemp) -ne '_temp' -or
+                  (Split-Path -Leaf $runnerWork) -ne '_work' -or
+                  -not (Test-NeuraUnlinkedPath -Path $RunnerTemp)) {
+                  Write-Warning 'Runner temp layout is absent, unexpected, or linked; leaving it untouched.'
+                  return
+              }
+              # A job has one Runner.Worker. Do not reclaim shared data if another job
+              # or a build/test process could still be using it. Age alone is insufficient.
+              if (@(Get-Process -Name 'Runner.Worker' -ErrorAction SilentlyContinue).Count -gt 1 -or
+                  @(Get-Process -Name java, javaw, dart, flutter_tester, MSBuild, cl, rustc, cargo -ErrorAction SilentlyContinue).Count -gt 0) {
+                  Write-Host 'Keeping aged runner data while another worker or build process is active.'
+                  return
+              }
+              $cutoff = (Get-Date).AddHours(-2)
+              $checkout = Join-Path (Join-Path $runnerWork 'neura_os') 'neura_os'
+              foreach ($root in @($checkout, (Join-Path $checkout 'source'))) {
+                  foreach ($relative in @('build', 'rust/target', '.dart_tool', 'android/.gradle')) {
+                      Remove-NeuraAgedEntry -Path (Join-Path $root $relative) -Before $cutoff -ReportOnly:$ReportOnly
+                  }
+              }
+              # Folders first: a long backlog of tiny step scripts must not prevent
+              # recovery of old extraction/test directories. Keep the 24-entry bound.
+              Get-ChildItem -LiteralPath $RunnerTemp -Force -ErrorAction SilentlyContinue |
+                  Where-Object { $_.LastWriteTime -lt $cutoff } |
+                  Sort-Object @{ Expression = 'PSIsContainer'; Descending = $true }, LastWriteTime |
+                  Select-Object -First 24 |
+                  ForEach-Object {
+                      Remove-NeuraAgedEntry -Path $_.FullName -Before $cutoff -ReportOnly:$ReportOnly
+                  }
+              $diagnostics = Join-Path (Split-Path -Parent $runnerWork) '_diag'
+              if (Test-NeuraUnlinkedPath -Path $diagnostics) {
+                  Get-ChildItem -LiteralPath $diagnostics -File -Force -ErrorAction SilentlyContinue |
+                      Where-Object {
+                          $_.Name -match '^(Runner|Worker)_.*\.log$' -and
+                          $_.LastWriteTime -lt (Get-Date).AddDays(-7)
+                      } |
+                      Sort-Object LastWriteTime |
+                      Select-Object -First 24 |
+                      ForEach-Object {
+                          Remove-NeuraAgedEntry -Path $_.FullName -Before (Get-Date).AddDays(-7) -ReportOnly:$ReportOnly
+                      }
+              }
+          }
+
+          function Test-NeuraPackageDeliveryReceipt {
+              param([string]$Path, [string]$Platform, [string]$RunKey)
+              # Keep legacy/unverified output and any package changed since delivery.
+              # Recovery is offline: only the publisher's completed verification receipt
+              # can authorize removal, and every local file must still match it.
+              try {
+                  if (-not (Test-NeuraUnlinkedPath -Path $Path)) { return $false }
+                  $receiptPath = Join-Path $Path 'delivery-verified.json'
+                  if (-not (Test-NeuraUnlinkedPath -Path $receiptPath)) { return $false }
+                  $receiptFile = Get-Item -LiteralPath $receiptPath -Force
+                  if ($receiptFile.PSIsContainer -or $receiptFile.Length -gt 16384) { return $false }
+                  $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+                  if ($receipt.version -ne 1 -or $receipt.platform -cne $Platform -or
+                      $receipt.run_key -cne $RunKey) { return $false }
+                  $files = @($receipt.files)
+                  if ($files.Count -notin @(2, 3)) { return $false }
+                  $entries = @(Get-ChildItem -LiteralPath $Path -Force)
+                  if ($entries.Count -ne ($files.Count + 1)) { return $false }
+                  $names = @($files | ForEach-Object { [string]$_.name })
+                  if (@($names | Select-Object -Unique).Count -ne $files.Count -or
+                      'SHA256SUMS.txt' -notin $names) { return $false }
+                  $extension = if ($Platform -eq 'windows') { '.zip' } else { '.apk' }
+                  $binaries = @($names | Where-Object { [IO.Path]::GetExtension($_) -eq $extension })
+                  if ($binaries.Count -ne 1) { return $false }
+                  foreach ($file in $files) {
+                      if ($file.name -notmatch '^[a-zA-Z0-9_.-]+$' -or
+                          $file.name -notin @($binaries[0], 'SHA256SUMS.txt', 'build-manifest.json') -or
+                          $file.sha256 -notmatch '^[0-9a-f]{64}$') { return $false }
+                      $candidate = Join-Path $Path $file.name
+                      if (-not (Test-NeuraUnlinkedPath -Path $candidate) -or
+                          -not (Test-Path -LiteralPath $candidate -PathType Leaf)) { return $false }
+                      if ((Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash.ToLowerInvariant() -cne
+                          $file.sha256) { return $false }
+                  }
+                  return $true
+              } catch {
+                  return $false
+              }
+          }
+
+          function Remove-NeuraStalePackageRuns {
+              param(
+                  [Parameter(Mandatory)][string]$Root,
+                  [int]$RetainPerPlatform = 0,
+                  [int]$MaximumRemovals = 24,
+                  [switch]$ReportOnly
+              )
+              if (-not (Test-NeuraOrdinaryDirectory -Path $Root)) { return }
+              $currentRun = if ($env:GITHUB_RUN_ID -and $env:GITHUB_RUN_ATTEMPT) {
+                  "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+              } else { $null }
+              $cutoff = (Get-Date).AddHours(-2)
+              [int]$removed = 0
+              foreach ($platform in @('android', 'windows')) {
+                  $platformRoot = Join-Path $Root $platform
+                  if (-not (Test-NeuraOrdinaryDirectory -Path $platformRoot)) { continue }
+                  $runs = @(
+                      Get-ChildItem -LiteralPath $platformRoot -Directory -Force -ErrorAction SilentlyContinue |
+                          Where-Object {
+                              $_.Name -match '^\d+-\d+$' -and
+                              (Test-NeuraOrdinaryDirectory -Path $_.FullName)
+                          } |
+                          Sort-Object -Property LastWriteTime -Descending
+                  )
+                  $keep = if ($RetainPerPlatform -gt 0) {
+                      @($runs | Select-Object -First $RetainPerPlatform -ExpandProperty Name)
+                  } else { @() }
+                  foreach ($run in ($runs | Sort-Object -Property LastWriteTime)) {
+                      if ($removed -ge $MaximumRemovals) { return }
+                      if ($run.Name -eq $currentRun -or
+                          $run.Name -in $keep -or
+                          $run.LastWriteTime -ge $cutoff) { continue }
+                      if (-not (Test-NeuraPackageDeliveryReceipt -Path $run.FullName -Platform $platform -RunKey $run.Name)) {
+                          Write-Host "Keeping package without a matching verified-delivery receipt: $($run.FullName)"
+                          continue
+                      }
+                      Write-Host ("Stale delivered package: {0} ({1:N2} GB)" -f
+                          $run.FullName, ((Get-NeuraDirectoryBytes -Path $run.FullName) / 1GB))
+                      if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $run.FullName }
+                      $removed++
+                  }
+              }
+          }
+
+          function Invoke-NeuraStorageRecovery {
+              param(
+                  [Parameter(Mandatory)][string]$ToolCache,
+                  [string]$RunnerTemp,
+                  [string[]]$PackageRoots = @(),
+                  [switch]$ReportOnly
+              )
+              $before = @{}
+              foreach ($drive in [IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady -and $_.DriveType -eq 'Fixed' }) {
+                  $before[$drive.Name] = $drive.AvailableFreeSpace
+              }
+              Invoke-NeuraRunnerRecovery -RunnerTemp $RunnerTemp -ReportOnly:$ReportOnly
+              if (-not (Test-NeuraOrdinaryDirectory -Path $ToolCache)) {
+                  Write-Warning 'Runner tool cache is absent or linked; leaving it untouched.'
+                  return
+              }
+
+              $flutter = Join-Path $ToolCache 'flutter'
+              if (Test-NeuraOrdinaryDirectory -Path $flutter) {
+                  foreach ($version in Get-ChildItem -LiteralPath $flutter -Directory -Force) {
+                      if ($version.Name -notmatch '^\d+\.\d+\.\d+$' -or
+                          -not (Test-NeuraOrdinaryDirectory -Path $version.FullName)) { continue }
+                      $stage = Join-Path $version.FullName '.install'
+                      if (-not (Test-NeuraOrdinaryDirectory -Path $stage)) { continue }
+                      if ($ReportOnly) {
+                          Write-Host ("Flutter staging (report only): {0} ({1:N2} GB)" -f
+                              $stage, ((Get-NeuraDirectoryBytes -Path $stage) / 1GB))
+                          continue
+                      }
+                      $lock = $null
+                      try {
+                          # Use the installer's actual version lock. Age alone cannot
+                          # distinguish an abandoned extraction from a live install.
+                          $lockPath = Join-Path $flutter ".$($version.Name).install.lock"
+                          $lock = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate,
+                              [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+                      } catch [IO.IOException] {
+                          Write-Host "Keeping active Flutter staging: $stage"
+                          continue
+                      }
+                      try {
+                          Write-Host ("Abandoned Flutter staging: {0} ({1:N2} GB)" -f
+                              $stage, ((Get-NeuraDirectoryBytes -Path $stage) / 1GB))
+                          if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $stage }
+                      } finally {
+                          if ($lock) { $lock.Dispose() }
+                      }
+                  }
+              }
+
+              # The selected build volume owns all mutable Gradle state. Keep only
+              # reusable wrapper distributions and dependency downloads in the persistent
+              # tool cache; discard every other known Gradle directory when idle.
+              $android = Join-Path $ToolCache 'neura-android'
+              $gradle = Join-Path $android 'gradle-home'
+              $caches = Join-Path $gradle 'caches'
+              if ((Test-NeuraOrdinaryDirectory -Path $android) -and
+                  (Test-NeuraOrdinaryDirectory -Path $gradle)) {
+                  if (@(Get-Process -Name java, javaw -ErrorAction SilentlyContinue).Count -gt 0) {
+                      Write-Host 'Keeping Gradle derived caches while a Java process is running.'
+                  } else {
+                      foreach ($entry in Get-ChildItem -LiteralPath $gradle -Directory -Force) {
+                          if ($entry.Name -in @('wrapper', 'caches') -or
+                              -not (Test-NeuraOrdinaryDirectory -Path $entry.FullName)) { continue }
+                          Write-Host ("Disposable Gradle directory: {0} ({1:N2} GB)" -f
+                              $entry.FullName, ((Get-NeuraDirectoryBytes -Path $entry.FullName) / 1GB))
+                          if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $entry.FullName }
+                      }
+                      if (Test-NeuraOrdinaryDirectory -Path $caches) {
+                          foreach ($entry in Get-ChildItem -LiteralPath $caches -Directory -Force) {
+                              if ($entry.Name -eq 'modules-2' -or
+                                  -not (Test-NeuraOrdinaryDirectory -Path $entry.FullName)) { continue }
+                              Write-Host ("Disposable Gradle cache: {0} ({1:N2} GB)" -f
+                                  $entry.FullName, ((Get-NeuraDirectoryBytes -Path $entry.FullName) / 1GB))
+                              if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $entry.FullName }
+                          }
+                      }
+                  }
+              }
+
+              # Report only sizes inside known CI-owned roots. Never inspect personal
+              # folders or delete installed SDKs, Flutter versions, or dependency jars.
+              foreach ($entry in Get-ChildItem -LiteralPath $ToolCache -Directory -Force) {
+                  Write-Host ("Retained CI tools: {0} = {1:N2} GB" -f
+                      $entry.Name, ((Get-NeuraDirectoryBytes -Path $entry.FullName) / 1GB))
+              }
+              foreach ($packages in $PackageRoots) {
+                  if ([string]::IsNullOrWhiteSpace($packages)) { continue }
+                  Remove-NeuraStalePackageRuns -Root $packages -ReportOnly:$ReportOnly
+                  Write-Host ("Retained Neura packages at {0}: {1:N2} GB" -f
+                      $packages, ((Get-NeuraDirectoryBytes -Path $packages) / 1GB))
+              }
+              foreach ($name in $before.Keys) {
+                  $drive = [IO.DriveInfo]::new($name)
+                  Write-Host ("CI recovery volume {0}: before={1:N2} GB; after={2:N2} GB; reclaimed={3:N2} GB" -f
+                      $name, ($before[$name] / 1GB), ($drive.AvailableFreeSpace / 1GB),
+                      ([Math]::Max([long]0, [long]($drive.AvailableFreeSpace - $before[$name])) / 1GB))
+              }
+          }
+
+          $packageRoots = @(
+              [IO.DriveInfo]::GetDrives() |
+                  Where-Object {
+                      $_.IsReady -and
+                      ($_.DriveType -eq [IO.DriveType]::Fixed -or
+                       $_.DriveType -eq [IO.DriveType]::Removable)
+                  } |
+                  ForEach-Object { Join-Path $_.RootDirectory.FullName 'neura-packages' }
+          )
+          Invoke-NeuraStorageRecovery `
+              -ToolCache $env:RUNNER_TOOL_CACHE `
+              -RunnerTemp $env:RUNNER_TEMP `
+              -PackageRoots $packageRoots
+          # END Neura runner storage recovery
+
           $runnerTemp = $env:RUNNER_TEMP
           $runnerWork = Split-Path -Parent $runnerTemp
           $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
@@ -94,11 +501,6 @@ jobs:
           if (-not $systemDrive) {
             throw "Unable to inspect the system volume $systemRoot."
           }
-          $systemFree = $systemDrive.Free
-          if ($systemFree -lt 0.20GB) {
-            throw "The runner needs at least 0.20 GB on $systemRoot for metadata."
-          }
-
           foreach ($repository in Get-ChildItem -LiteralPath $runnerWork -Directory -ErrorAction SilentlyContinue) {
             if ($repository.Name.StartsWith('_')) { continue }
             $checkout = Join-Path $repository.FullName $repository.Name
@@ -108,11 +510,13 @@ jobs:
 
           $cutoff = (Get-Date).AddHours(-2)
           foreach ($drive in [System.IO.DriveInfo]::GetDrives()) {
-            if (-not $drive.IsReady -or $drive.Name -eq $systemRoot) { continue }
+            if (-not $drive.IsReady) { continue }
             $ownedRoot = Join-Path $drive.RootDirectory.FullName 'neura-ci'
             if (Test-Path -LiteralPath $ownedRoot -PathType Container) {
               Get-ChildItem -LiteralPath $ownedRoot -Directory -Force -ErrorAction SilentlyContinue |
                 Where-Object { $_.LastWriteTime -lt $cutoff } |
+                Sort-Object -Property LastWriteTime |
+                Select-Object -First 12 |
                 ForEach-Object { Remove-LinkOrDirectory -Path $_.FullName }
             }
           }
@@ -123,7 +527,23 @@ jobs:
             Sort-Object -Property AvailableFreeSpace -Descending |
             Select-Object -First 1
           if (-not $volume) {
-            throw 'A writable non-system volume with at least 3 GB free is required.'
+            $systemFallbackMinimum = 8.0GB
+            $systemVolume = [System.IO.DriveInfo]::new($systemRoot)
+            if (-not $systemVolume.IsReady -or
+                $systemVolume.AvailableFreeSpace -lt $systemFallbackMinimum -or
+                -not (Test-NeuraVolume -Drive $systemVolume)) {
+              throw ('Validation requires a writable non-system volume with at least 3 GB free, ' +
+                'or an explicit system-volume fallback with at least 8 GB free.')
+            }
+            $volume = $systemVolume
+            $layout = 'system fallback'
+          } else {
+            $layout = 'non-system'
+          }
+
+          $systemFree = ([System.IO.DriveInfo]::new($systemRoot)).AvailableFreeSpace
+          if ($systemFree -lt 1.0GB) {
+            throw "The runner needs at least 1.0 GB on $systemRoot for metadata."
           }
 
           $runKey = "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
@@ -152,7 +572,7 @@ jobs:
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
           Write-Host "Validation workspace: $sourceLink -> $workspaceTarget"
-          Write-Host "Selected volume: $($volume.Name) ($([Math]::Round($volume.AvailableFreeSpace / 1GB, 2)) GB free)"
+          Write-Host "Selected volume ($layout): $($volume.Name) ($([Math]::Round($volume.AvailableFreeSpace / 1GB, 2)) GB free)"
 
       - name: Check out source
         uses: actions/checkout@v5
@@ -179,6 +599,24 @@ jobs:
           flutter pub get
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Confirm validation headroom
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-StrictMode -Version Latest
+          $runVolume = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($env:NEURA_RUN_ROOT))
+          $systemVolume = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($env:RUNNER_TEMP))
+          $runDrive = [IO.DriveInfo]::new($runVolume)
+          $systemDrive = [IO.DriveInfo]::new($systemVolume)
+          $runMinimum = if ($runVolume -eq $systemVolume) { 4.0GB } else { 2.0GB }
+          Write-Host ("Validation volume {0}: {1:N2} GB free; required {2:N2} GB" -f
+            $runVolume, ($runDrive.AvailableFreeSpace / 1GB), ($runMinimum / 1GB))
+          if ($runDrive.AvailableFreeSpace -lt $runMinimum) {
+            throw 'Validation volume headroom fell below the safe post-restore threshold.'
+          }
+          if ($systemDrive.AvailableFreeSpace -lt 1.0GB) {
+            throw 'The system volume must retain at least 1.0 GB for runner metadata.'
+          }
+
       - name: Prepare canonical source evidence
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
@@ -199,21 +637,48 @@ jobs:
           & git diff --name-only -- pubspec.lock @formatPaths
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Upload canonical source evidence
-        # Diagnostic evidence; exhausted artifact quota must not fail validation.
+      - name: Record diagnostic evidence in run summary
         continue-on-error: true
-        uses: actions/upload-artifact@v6
-        with:
-          name: Neura-1.5.1-canonical-source
-          path: |
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        env:
+          NEURA_REPORT_TITLE: Neura-1.5.1-canonical-source
+          NEURA_REPORT_PATHS: |
             ${{ env.NEURA_SOURCE_ROOT }}\pubspec.lock
             ${{ env.NEURA_SOURCE_ROOT }}\canonical-source.patch
             ${{ env.NEURA_SOURCE_ROOT }}\lib\living_intelligence\cloud_inference_consent.dart
             ${{ env.NEURA_SOURCE_ROOT }}\lib\living_intelligence\compassionate_response_policy.dart
             ${{ env.NEURA_SOURCE_ROOT }}\lib\intelligence\action_loom.dart
             ${{ env.NEURA_SOURCE_ROOT }}\test\living_intelligence\neura_consent_turn_safety_test.dart
-          if-no-files-found: warn
-          retention-days: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $summary = @(
+            "### $env:NEURA_REPORT_TITLE",
+            '',
+            "Tested commit: $env:GITHUB_SHA",
+            '',
+            'Diagnostic excerpts are below. Full command output remains in the job logs; use Download log archive on this run to save it.',
+            ''
+          )
+          $remaining = 200000
+          foreach ($path in ($env:NEURA_REPORT_PATHS -split '\r?\n')) {
+            if ([string]::IsNullOrWhiteSpace($path)) { continue }
+            $summary += "#### $(Split-Path -Leaf $path)"
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              $summary += 'Not produced; check the preceding validation steps.'
+              continue
+            }
+            $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            $summary += "SHA-256: $hash"
+            $excerpt = (Get-Content -LiteralPath $path -Tail 200) -join [Environment]::NewLine
+            $excerpt = $excerpt -replace '\x1b\[[0-?]*[ -/]*[@-~]', ''
+            $excerpt = [Net.WebUtility]::HtmlEncode($excerpt)
+            $limit = [Math]::Min(40000, $remaining)
+            if ($excerpt.Length -gt $limit) { $excerpt = $excerpt.Substring($excerpt.Length - $limit) }
+            $remaining -= $excerpt.Length
+            $summary += @('<pre>', $excerpt, '</pre>', '')
+          }
+          $summary | Out-File -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          Write-Host 'Diagnostic evidence recorded in the run summary.'
 
       - name: Verify canonical generated files are committed
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
@@ -270,3 +735,5 @@ jobs:
               (Test-Path -LiteralPath $env:NEURA_RUN_ROOT)) {
             Remove-Item -LiteralPath $env:NEURA_RUN_ROOT -Recurse -Force -ErrorAction SilentlyContinue
           }
+
+
