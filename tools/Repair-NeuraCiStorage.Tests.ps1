@@ -252,6 +252,60 @@ try {
     Clear-NeuraValidationOutput -RunRoot $validationRoot -RunKey '999-1'
     Assert-FixtureExists -Path (Join-Path $outside 'keep.txt')
     Write-Host 'PASS: finishing-job cleanup rejects foreign roots and preserves linked output and external targets.'
+
+    # Windows release validation uses neura-ci/<run>/workspace directly.
+    # Its build/target junctions are removed separately by the workflow, but
+    # these generated files live in the checkout and previously survived it.
+    $windowsWorkspace = Join-Path $fixture 'neura-ci/999-1/workspace'
+    $windowsGenerated = @(
+        '.dart_tool/flutter_build/kernel_blob.bin',
+        'windows/flutter/ephemeral/flutter_windows.dll',
+        'android/.gradle/generated.bin',
+        '.packages'
+    )
+    $windowsRetained = @(
+        '.git/config', 'lib/keep.dart', 'pubspec.lock',
+        'windows/runner/main.cpp', 'windows/flutter/CMakeLists.txt',
+        'recovery_downloads/windows/recovery.zip', 'validation.log'
+    )
+    foreach ($relative in ($windowsGenerated + $windowsRetained)) {
+        New-FixtureFile -Path (Join-Path $windowsWorkspace $relative)
+    }
+    Clear-NeuraValidationOutput -RunRoot $windowsWorkspace -RunKey '999-1' -ReportOnly
+    Clear-NeuraValidationOutput -RunRoot $windowsWorkspace -RunKey '1000-1'
+    foreach ($relative in $windowsGenerated) {
+        Assert-FixtureExists -Path (Join-Path $windowsWorkspace $relative)
+    }
+    & $scriptPath -ClearValidationOutput -ValidationRunRoot $windowsWorkspace -ToolCache $toolCache
+    foreach ($relative in $windowsGenerated) {
+        Assert-FixtureExists -Path (Join-Path $windowsWorkspace $relative) -Expected $false
+    }
+    foreach ($relative in $windowsRetained) {
+        Assert-FixtureExists -Path (Join-Path $windowsWorkspace $relative)
+    }
+    Assert-FixtureExists -Path (Join-Path $reportStage 'keep.bin')
+    Write-Host 'PASS: Windows cleanup releases checkout-generated caches while preserving source, Git, evidence, recovery packages, and shared caches.'
+
+    $pluginLink = Join-Path $windowsWorkspace 'windows/flutter/ephemeral/.plugin_symlinks/plugin'
+    New-Item -ItemType Directory -Path (Split-Path -Parent $pluginLink) -Force | Out-Null
+    New-Item -ItemType $kind -Path $pluginLink -Target $outside | Out-Null
+    $links += $pluginLink
+    New-FixtureFile -Path (Join-Path $windowsWorkspace 'windows/flutter/ephemeral/generated.bin')
+    Clear-NeuraValidationOutput -RunRoot $windowsWorkspace -RunKey '999-1'
+    Assert-FixtureExists -Path (Join-Path $outside 'keep.txt')
+    Assert-FixtureExists -Path $pluginLink
+    Assert-FixtureExists -Path (Join-Path $windowsWorkspace 'windows/flutter/ephemeral/generated.bin') -Expected $false
+    $foreignWorkspace = Join-Path $fixture 'personal/999-1/workspace'
+    New-FixtureFile -Path (Join-Path $foreignWorkspace '.dart_tool/keep.bin')
+    Clear-NeuraValidationOutput -RunRoot $foreignWorkspace -RunKey '999-1'
+    Assert-FixtureExists -Path (Join-Path $foreignWorkspace '.dart_tool/keep.bin')
+    $linkedWorkspace = Join-Path $fixture 'neura-ci/998-1/workspace'
+    New-Item -ItemType Directory -Path (Split-Path -Parent $linkedWorkspace) -Force | Out-Null
+    New-Item -ItemType $kind -Path $linkedWorkspace -Target $foreignWorkspace | Out-Null
+    $links += $linkedWorkspace
+    Clear-NeuraValidationOutput -RunRoot $linkedWorkspace -RunKey '998-1'
+    Assert-FixtureExists -Path (Join-Path $foreignWorkspace '.dart_tool/keep.bin')
+    Write-Host 'PASS: Windows cleanup preserves plugin link targets and rejects foreign or linked workspaces.'
 } finally {
     $env:GITHUB_RUN_ID = $originalRunId
     $env:GITHUB_RUN_ATTEMPT = $originalRunAttempt
