@@ -363,6 +363,46 @@ jobs:
               }
           }
 
+          function Test-NeuraPackageDeliveryReceipt {
+              param([string]$Path, [string]$Platform, [string]$RunKey)
+              # Keep legacy/unverified output and any package changed since delivery.
+              # Recovery is offline: only the publisher's completed verification receipt
+              # can authorize removal, and every local file must still match it.
+              try {
+                  if (-not (Test-NeuraUnlinkedPath -Path $Path)) { return $false }
+                  $receiptPath = Join-Path $Path 'delivery-verified.json'
+                  if (-not (Test-NeuraUnlinkedPath -Path $receiptPath)) { return $false }
+                  $receiptFile = Get-Item -LiteralPath $receiptPath -Force
+                  if ($receiptFile.PSIsContainer -or $receiptFile.Length -gt 16384) { return $false }
+                  $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+                  if ($receipt.version -ne 1 -or $receipt.platform -cne $Platform -or
+                      $receipt.run_key -cne $RunKey) { return $false }
+                  $files = @($receipt.files)
+                  if ($files.Count -notin @(2, 3)) { return $false }
+                  $entries = @(Get-ChildItem -LiteralPath $Path -Force)
+                  if ($entries.Count -ne ($files.Count + 1)) { return $false }
+                  $names = @($files | ForEach-Object { [string]$_.name })
+                  if (@($names | Select-Object -Unique).Count -ne $files.Count -or
+                      'SHA256SUMS.txt' -notin $names) { return $false }
+                  $extension = if ($Platform -eq 'windows') { '.zip' } else { '.apk' }
+                  $binaries = @($names | Where-Object { [IO.Path]::GetExtension($_) -eq $extension })
+                  if ($binaries.Count -ne 1) { return $false }
+                  foreach ($file in $files) {
+                      if ($file.name -notmatch '^[a-zA-Z0-9_.-]+$' -or
+                          $file.name -notin @($binaries[0], 'SHA256SUMS.txt', 'build-manifest.json') -or
+                          $file.sha256 -notmatch '^[0-9a-f]{64}$') { return $false }
+                      $candidate = Join-Path $Path $file.name
+                      if (-not (Test-NeuraUnlinkedPath -Path $candidate) -or
+                          -not (Test-Path -LiteralPath $candidate -PathType Leaf)) { return $false }
+                      if ((Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash.ToLowerInvariant() -cne
+                          $file.sha256) { return $false }
+                  }
+                  return $true
+              } catch {
+                  return $false
+              }
+          }
+
           function Remove-NeuraStalePackageRuns {
               param(
                   [Parameter(Mandatory)][string]$Root,
@@ -395,6 +435,10 @@ jobs:
                       if ($run.Name -eq $currentRun -or
                           $run.Name -in $keep -or
                           $run.LastWriteTime -ge $cutoff) { continue }
+                      if (-not (Test-NeuraPackageDeliveryReceipt -Path $run.FullName -Platform $platform -RunKey $run.Name)) {
+                          Write-Host "Keeping package without a matching verified-delivery receipt: $($run.FullName)"
+                          continue
+                      }
                       Write-Host ("Stale delivered package: {0} ({1:N2} GB)" -f
                           $run.FullName, ((Get-NeuraDirectoryBytes -Path $run.FullName) / 1GB))
                       if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $run.FullName }
@@ -973,4 +1017,5 @@ jobs:
           if (-not [string]::IsNullOrWhiteSpace($env:NEURA_DART_DEFINE_FILE)) {
             Remove-Item -LiteralPath $env:NEURA_DART_DEFINE_FILE -Force -ErrorAction SilentlyContinue
           }
+
 
