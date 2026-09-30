@@ -6,6 +6,7 @@
 
 #include <memory>
 
+#include "neura_on_device_asr.h"
 #include "neura_speech_recognizer.h"
 #include "neura_window_role.h"
 #include "win32_window.h"
@@ -38,6 +39,11 @@ class FlutterWindow : public Win32Window {
   // Native speech-to-text bridge for the chat mic button (main window only
   // uses it in practice, but it's harmless and idle on sub-windows).
   std::unique_ptr<NeuraSpeechRecognizer> speech_recognizer_;
+
+  // Experimental verified-local ONNX path. It is registered only on the
+  // primary engine and remains unavailable unless both build-time and runtime
+  // opt-ins plus local model files are present.
+  std::unique_ptr<NeuraOnDeviceAsr> on_device_asr_;
 
   int window_id_;
   bool is_mascot_;

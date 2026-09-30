@@ -277,6 +277,11 @@ try {
     Write-Host "`n=== local API PowerShell syntax ===" -ForegroundColor Cyan
     Assert-LocalApiClientScripts -ProjectRoot $Root
 
+    Write-Host "`n=== Windows on-device ASR offline/lifecycle contract ===" `
+        -ForegroundColor Cyan
+    & (Join-Path $Root 'tools\Test-NeuraWindowsOnDeviceAsrContract.ps1') `
+        -Root $Root -RunNativeHarness:$BuildWindows
+
     Invoke-Checked 'dart format check' {
         dart format --output=none --set-exit-if-changed `
             lib `

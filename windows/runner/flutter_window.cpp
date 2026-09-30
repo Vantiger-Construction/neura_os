@@ -62,6 +62,10 @@ bool FlutterWindow::OnCreate() {
 
   speech_recognizer_ =
       std::make_unique<NeuraSpeechRecognizer>(engine->messenger());
+  if (!is_mascot_) {
+    on_device_asr_ =
+        std::make_unique<NeuraOnDeviceAsr>(engine->messenger(), GetHandle());
+  }
   RecordNeuraNativeBreadcrumb("native_channels_registered");
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
@@ -78,10 +82,14 @@ bool FlutterWindow::OnCreate() {
   return true;
 }
 
+
 void FlutterWindow::OnDestroy() {
   // Both custom channel owners retain the engine's BinaryMessenger. Release
   // them before destroying the FlutterViewController/engine.
   window_role_.reset();
+  // This synchronously stops PortAudio, joins the decoder, and discards any
+  // queued segments before the engine or window can disappear.
+  on_device_asr_.reset();
   speech_recognizer_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
@@ -105,6 +113,11 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   switch (message) {
+    case NeuraOnDeviceAsr::kDrainMessage:
+      if (on_device_asr_) {
+        on_device_asr_->DrainPendingSegments();
+      }
+      return 0;
     case WM_FONTCHANGE:
       // A font broadcast can arrive while a window is being torn down.
       if (flutter_controller_ && flutter_controller_->engine()) {
