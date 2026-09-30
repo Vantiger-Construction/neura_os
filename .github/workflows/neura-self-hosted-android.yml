@@ -320,6 +320,46 @@ jobs:
               }
           }
 
+          function Test-NeuraPackageDeliveryReceipt {
+              param([string]$Path, [string]$Platform, [string]$RunKey)
+              # Keep legacy/unverified output and any package changed since delivery.
+              # Recovery is offline: only the publisher's completed verification receipt
+              # can authorize removal, and every local file must still match it.
+              try {
+                  if (-not (Test-NeuraUnlinkedPath -Path $Path)) { return $false }
+                  $receiptPath = Join-Path $Path 'delivery-verified.json'
+                  if (-not (Test-NeuraUnlinkedPath -Path $receiptPath)) { return $false }
+                  $receiptFile = Get-Item -LiteralPath $receiptPath -Force
+                  if ($receiptFile.PSIsContainer -or $receiptFile.Length -gt 16384) { return $false }
+                  $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+                  if ($receipt.version -ne 1 -or $receipt.platform -cne $Platform -or
+                      $receipt.run_key -cne $RunKey) { return $false }
+                  $files = @($receipt.files)
+                  if ($files.Count -notin @(2, 3)) { return $false }
+                  $entries = @(Get-ChildItem -LiteralPath $Path -Force)
+                  if ($entries.Count -ne ($files.Count + 1)) { return $false }
+                  $names = @($files | ForEach-Object { [string]$_.name })
+                  if (@($names | Select-Object -Unique).Count -ne $files.Count -or
+                      'SHA256SUMS.txt' -notin $names) { return $false }
+                  $extension = if ($Platform -eq 'windows') { '.zip' } else { '.apk' }
+                  $binaries = @($names | Where-Object { [IO.Path]::GetExtension($_) -eq $extension })
+                  if ($binaries.Count -ne 1) { return $false }
+                  foreach ($file in $files) {
+                      if ($file.name -notmatch '^[a-zA-Z0-9_.-]+$' -or
+                          $file.name -notin @($binaries[0], 'SHA256SUMS.txt', 'build-manifest.json') -or
+                          $file.sha256 -notmatch '^[0-9a-f]{64}$') { return $false }
+                      $candidate = Join-Path $Path $file.name
+                      if (-not (Test-NeuraUnlinkedPath -Path $candidate) -or
+                          -not (Test-Path -LiteralPath $candidate -PathType Leaf)) { return $false }
+                      if ((Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash.ToLowerInvariant() -cne
+                          $file.sha256) { return $false }
+                  }
+                  return $true
+              } catch {
+                  return $false
+              }
+          }
+
           function Remove-NeuraStalePackageRuns {
               param(
                   [Parameter(Mandatory)][string]$Root,
@@ -352,6 +392,10 @@ jobs:
                       if ($run.Name -eq $currentRun -or
                           $run.Name -in $keep -or
                           $run.LastWriteTime -ge $cutoff) { continue }
+                      if (-not (Test-NeuraPackageDeliveryReceipt -Path $run.FullName -Platform $platform -RunKey $run.Name)) {
+                          Write-Host "Keeping package without a matching verified-delivery receipt: $($run.FullName)"
+                          continue
+                      }
                       Write-Host ("Stale delivered package: {0} ({1:N2} GB)" -f
                           $run.FullName, ((Get-NeuraDirectoryBytes -Path $run.FullName) / 1GB))
                       if (-not $ReportOnly) { Remove-NeuraDerivedTree -Path $run.FullName }
@@ -1038,6 +1082,26 @@ jobs:
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: '& "$env:NEURA_ANDROID_SOURCE_ROOT\tools\Save-NeuraConfiguredPackage.ps1" -SourceRoot $env:NEURA_ANDROID_SOURCE_ROOT -Platform android -BuildVolume $env:NEURA_ANDROID_BUILD_VOLUME'
 
+      - name: Preserve local-only Android package
+        if: steps.client_config.outputs.configured != 'true'
+        id: local_package
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Failed release delivery must survive cleanup of this run's checkout.
+          $verified = Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'recovery_downloads\android'
+          $packagePath = Join-Path $env:NEURA_ANDROID_BUILD_VOLUME "neura-packages\android\$env:NEURA_ANDROID_RUN_KEY"
+          if (Test-Path -LiteralPath $packagePath) { throw 'Recovery package path already exists; refusing to overwrite it.' }
+          $files = @(Get-ChildItem -LiteralPath $verified -File)
+          if ($files.Count -ne 2 -or 'SHA256SUMS.txt' -notin $files.Name -or
+              @($files | Where-Object { $_.Extension -eq '.apk' -and $_.Length -gt 0 }).Count -ne 1) {
+            throw 'Expected the verified APK and its checksum before preservation.'
+          }
+          New-Item -ItemType Directory -Path $packagePath -Force | Out-Null
+          foreach ($file in $files) { Copy-Item -LiteralPath $file.FullName -Destination $packagePath }
+          "package_path=$packagePath" | Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Recoverable local-only Android package: $packagePath"
+
       - name: Release Android intermediates before delivery
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
@@ -1104,14 +1168,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           NEURA_CONFIGURED_PACKAGE_PATH: ${{ steps.configured_package.outputs.package_path }}
+          NEURA_LOCAL_PACKAGE_PATH: ${{ steps.local_package.outputs.package_path }}
           NEURA_RELEASE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           NEURA_RELEASE_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           $packagePath = $env:NEURA_CONFIGURED_PACKAGE_PATH
           if ([string]::IsNullOrWhiteSpace($packagePath)) {
-            $packagePath = Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'recovery_downloads\android'
+            $packagePath = $env:NEURA_LOCAL_PACKAGE_PATH
           }
+          if ([string]::IsNullOrWhiteSpace($packagePath)) { throw 'No recoverable Android package was preserved.' }
           & "$env:NEURA_ANDROID_SOURCE_ROOT\tools\Publish-NeuraReleaseAssets.ps1" `
             -Platform android `
             -PackagePath $packagePath `
