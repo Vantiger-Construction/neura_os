@@ -19,7 +19,8 @@ permissions:
 
 concurrency:
   group: neura-encrypted-memory-foundation-${{ github.ref }}
-  cancel-in-progress: false
+  # Superseded PR validation must not hold the runner queue for newer commits.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   FLUTTER_VERSION: "3.44.7"
