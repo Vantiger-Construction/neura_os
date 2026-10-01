@@ -941,7 +941,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         usedSelectedText: false,
         usedPermittedMemory: false,
         historyIncludedPrivateContext: false,
-        usedImage: false,
+        usedImage: imageAttached,
         savedToLongTermMemory: persistMemory,
       ),
     )..agentCaption = _computeAgentCaption(_activeAgent.id);

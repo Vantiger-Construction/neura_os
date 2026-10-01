@@ -23,4 +23,29 @@ void main() {
     expect(metadata.keys, isNot(contains('text')));
     expect(receipt.memoryLabel, contains('not added'));
   });
+
+  test('on-device image receipt does not claim pixel inspection', () {
+    const receipt = NeuraContextReceipt(
+      route: NeuraReplyRoute.onDevice,
+      roomId: 'focus_hub',
+      usedVisibleHistory: false,
+      usedSelectedText: false,
+      usedPermittedMemory: false,
+      historyIncludedPrivateContext: false,
+      usedImage: true,
+      savedToLongTermMemory: false,
+    );
+
+    expect(
+      receipt.contextLabels,
+      contains('Image attached (pixels not inspected on-device)'),
+    );
+    expect(receipt.contextLabels, isNot(contains('Attached image')));
+
+    final metadata = receipt.toMetadata();
+    expect(metadata['image'], isTrue);
+    expect(metadata.keys, isNot(contains('filename')));
+    expect(metadata.keys, isNot(contains('prompt')));
+    expect(metadata.keys, isNot(contains('text')));
+  });
 }

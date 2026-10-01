@@ -40,7 +40,10 @@ class NeuraContextReceipt {
         if (!usedVisibleHistory) 'Current message only',
         if (usedSelectedText) 'Selected text',
         if (usedPermittedMemory) 'Permitted memories',
-        if (usedImage) 'Attached image',
+        if (usedImage && route == NeuraReplyRoute.onDevice)
+          'Image attached (pixels not inspected on-device)',
+        if (usedImage && route == NeuraReplyRoute.approvedCloud)
+          'Attached image',
         if (historyIncludedPrivateContext) 'Earlier private-context reply',
       ];
 
