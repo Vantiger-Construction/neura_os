@@ -21,6 +21,37 @@ The app no longer applies the legacy Kotlin Android Gradle plugin. Kotlin JVM
 targeting moves to the typed `kotlin.compilerOptions` DSL required by the
 Flutter 3.47 app template.
 
+## October 2 settings-script compilation repair
+
+Android run [36773582194, attempt 3](https://github.com/Vantiger-Construction/neura_os/actions/runs/36773582194/attempts/3),
+job [110842709224](https://github.com/Vantiger-Construction/neura_os/actions/runs/36773582194/job/110842709224),
+passed provisioning, restore, configuration, and headroom, then failed while
+Gradle compiled `settings.gradle.kts` (Settings/TopLevel/stage1). Missing
+`run`, `file`, `require`, `plugins`, and `id` occur before AGP or
+Android plugin evaluation.
+
+The daemon command loads Gradle 9.3.1 through the run-local `wrapper`
+junction into the persistent tool cache. This matches the Windows linked-path
+Kotlin DSL regression reported in
+[Gradle #36483](https://github.com/gradle/gradle/issues/36483); the upstream
+compiler correction is associated with Gradle 9.4. That match is the
+diagnosis to validate on the retained Windows runner, not a claim that a
+Linux syntax probe reproduces the Windows failure.
+
+The narrow workaround stores the distribution ZIP and extracted installation
+at `GRADLE_USER_HOME/wrapper-direct/dists`, a regular run-local directory,
+instead of traversing CI's `wrapper` junction. Flutter 3.47.5, AGP 9.1.0,
+Gradle 9.3.1, Java 17, `android.builtInKotlin=true`, and
+`android.newDsl=false` remain unchanged. Settings/app DSL, dependencies,
+shared downloaded modules, storage floors, release verification, and product
+safety boundaries are unchanged.
+
+Tradeoff: the distribution now consumes run-local space and is downloaded
+again on a fresh run; existing cleanup owns that directory. Keep the Android
+headroom checks. Require a new-head Android build to get past settings
+compilation, then assess any plugin/compilation failure separately. The
+six-package compatibility audit and all package/device gates still apply.
+
 ## Merge gates
 
 The draft must remain unmerged until all of the following are demonstrated on
@@ -63,10 +94,10 @@ guidance](https://developer.android.com/build/migrate-to-built-in-kotlin),
 which treats the external Kotlin Android plugin as incompatible with the new
 DSL.
 
-The self-hosted failure observed for this PR occurs in the non-system-volume
-storage gate before checkout. It is infrastructure evidence only. It does not
-exercise the lockfile, Gradle, AGP, Kotlin, compilation, installation, launch,
-or device behavior and is excluded from every compatibility conclusion below.
+The self-hosted failure observed during the September 27 audit occurred in
+the volume-selection storage gate before checkout. That earlier failure is
+infrastructure evidence only and is excluded from the compatibility conclusions
+below. The separate October 2 settings-compilation failure is recorded above.
 
 | Resolved Android implementation | Selected route | Published Android evidence | AGP 9 / built-in Kotlin status | Risk and smallest correction |
 | --- | --- | --- | --- | --- |
