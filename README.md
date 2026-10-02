@@ -12,6 +12,13 @@ This is the **merged** Neura OS Flutter project with the upgrades/patches you up
 - Settings + Diagnostics
 - **Voice Lab** (offline voice clips + live microphone visemes)
 
+## Neura Engine direction
+
+The [Neura Engine vision and implementation milestones](docs/NEURA_ENGINE_VISION.md)
+describe a dedicated engine for ongoing reflection and learning from approved
+information, with user control over memory and actions. This is a design plan;
+the proposed engine is not yet implemented.
+
 ## Quick start (Windows)
 1. Install Flutter (and Android Studio if you want APK builds)
 2. From this folder, run:

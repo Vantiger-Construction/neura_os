@@ -76,10 +76,9 @@ class NeuraRoom {
     legacyVault,
   ];
 
-  static NeuraRoom fromId(String? id) {
-    for (final r in all) {
-      if (r.id == id) return r;
-    }
-    return penthouse;
-  }
+  static final Map<String, NeuraRoom> _byId = {
+    for (final room in all) room.id: room,
+  };
+
+  static NeuraRoom fromId(String? id) => _byId[id] ?? penthouse;
 }
