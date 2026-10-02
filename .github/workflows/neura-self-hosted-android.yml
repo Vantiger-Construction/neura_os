@@ -12,6 +12,7 @@ on:
       - 'tools/Repair-NeuraCiStorage.ps1'
       - 'tools/Repair-NeuraCiStorage.Tests.ps1'
       - 'tools/Save-NeuraConfiguredPackage.ps1'
+      - 'tools/Enable-NeuraFlutter.ps1'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/neura-self-hosted-android.yml'
@@ -30,6 +31,10 @@ permissions:
 concurrency:
   group: neura-self-hosted-android-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.47.5'
+  FLUTTER_SHA256: '0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8'
 
 jobs:
   android:
@@ -682,7 +687,7 @@ jobs:
           # Retain only checksum-verified tools and Gradle's reusable wrapper and
           # dependency downloads. The committed lockfile is resolved every run.
           $persistentToolRoot = Join-Path $env:RUNNER_TOOL_CACHE 'neura-android'
-          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.44.7'
+          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.47.5'
           $gradleHome = Join-Path $buildRoot 'gradle-home'
           $persistentGradleHome = Join-Path $persistentToolRoot 'gradle-home'
           $persistentGradleWrapper = Join-Path $persistentGradleHome 'wrapper'
@@ -733,18 +738,12 @@ jobs:
             "TMP=$tempRoot"
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Enable pinned Flutter 3.44.7
+      - name: Enable pinned Flutter 3.47.5
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
-          $flutterRoot = Join-Path $env:RUNNER_TOOL_CACHE 'flutter\3.44.7\x64'
-          $flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
-          if (-not (Test-Path -LiteralPath $flutterExe -PathType Leaf)) {
-            throw 'Pinned Flutter 3.44.7 is missing from the runner tool cache.'
-          }
-          (Join-Path $flutterRoot 'bin') |
-            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          & $flutterExe --version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:NEURA_ANDROID_SOURCE_ROOT\tools\Enable-NeuraFlutter.ps1" `
+            -Version $env:FLUTTER_VERSION `
+            -ExpectedSha256 $env:FLUTTER_SHA256
 
       - name: Use verified JDK 17
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
@@ -1287,4 +1286,3 @@ jobs:
           if (-not [string]::IsNullOrWhiteSpace($env:NEURA_DART_DEFINE_FILE)) {
             Remove-Item -LiteralPath $env:NEURA_DART_DEFINE_FILE -Force -ErrorAction SilentlyContinue
           }
-

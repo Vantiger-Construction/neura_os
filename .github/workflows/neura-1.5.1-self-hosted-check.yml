@@ -21,6 +21,7 @@ on:
       - 'tools/Repair-NeuraCiStorage.Tests.ps1'
       - 'pubspec.yaml'
       - 'pubspec.lock'
+      - 'tools/Enable-NeuraFlutter.ps1'
       - '.github/workflows/neura-1.5.1-self-hosted-check.yml'
   workflow_dispatch:
 
@@ -30,6 +31,10 @@ permissions:
 concurrency:
   group: neura-1.5.1-self-hosted-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.47.5'
+  FLUTTER_SHA256: '0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8'
 
 jobs:
   validate:
@@ -552,7 +557,7 @@ jobs:
           $sourceLink = Join-Path $env:GITHUB_WORKSPACE 'source'
           # Reuse immutable package downloads across runs; pub still resolves
           # against the committed lockfile on every validation.
-          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.44.7'
+          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.47.5'
           $tempRoot = Join-Path $runRoot 'temp'
 
           Set-Location -LiteralPath $runnerTemp
@@ -579,18 +584,12 @@ jobs:
         with:
           path: source
 
-      - name: Enable pinned Flutter 3.44.7
+      - name: Enable pinned Flutter 3.47.5
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
-          $flutterRoot = Join-Path $env:RUNNER_TOOL_CACHE 'flutter\3.44.7\x64'
-          $flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
-          if (-not (Test-Path -LiteralPath $flutterExe -PathType Leaf)) {
-            throw 'Pinned Flutter 3.44.7 is missing from the retained runner tool cache.'
-          }
-          (Join-Path $flutterRoot 'bin') |
-            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          & $flutterExe --version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:NEURA_SOURCE_ROOT\tools\Enable-NeuraFlutter.ps1" `
+            -Version $env:FLUTTER_VERSION `
+            -ExpectedSha256 $env:FLUTTER_SHA256
 
       - name: Restore dependencies
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
@@ -735,5 +734,3 @@ jobs:
               (Test-Path -LiteralPath $env:NEURA_RUN_ROOT)) {
             Remove-Item -LiteralPath $env:NEURA_RUN_ROOT -Recurse -Force -ErrorAction SilentlyContinue
           }
-
-
