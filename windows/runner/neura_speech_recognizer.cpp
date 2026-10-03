@@ -35,7 +35,9 @@ void NeuraSpeechRecognizer::HandleMethodCall(
     const flutter::MethodCall<flutter::EncodableValue>& call,
     std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
 #if defined(WINAPI_FAMILY) && (WINAPI_FAMILY == WINAPI_FAMILY_DESKTOP_APP)
-  if (call.method_name() == "start") {
+  if (call.method_name() == "isAvailable") {
+    result->Success(flutter::EncodableValue(true));
+  } else if (call.method_name() == "start") {
     StartListening();
     result->Success(flutter::EncodableValue(true));
   } else if (call.method_name() == "stop") {
@@ -54,6 +56,7 @@ void NeuraSpeechRecognizer::HandleMethodCall(
 using winrt::Windows::Media::SpeechRecognition::SpeechContinuousRecognitionCompletedEventArgs;
 using winrt::Windows::Media::SpeechRecognition::SpeechContinuousRecognitionResultGeneratedEventArgs;
 using winrt::Windows::Media::SpeechRecognition::SpeechRecognitionHypothesisGeneratedEventArgs;
+using winrt::Windows::Media::SpeechRecognition::SpeechRecognitionConfidence;
 using winrt::Windows::Media::SpeechRecognition::SpeechRecognitionResultStatus;
 using winrt::Windows::Media::SpeechRecognition::SpeechRecognitionScenario;
 using winrt::Windows::Media::SpeechRecognition::SpeechRecognitionTopicConstraint;
@@ -72,8 +75,28 @@ winrt::Windows::Foundation::IAsyncAction NeuraSpeechRecognizer::EnsureInitialize
       [this](auto&&, SpeechContinuousRecognitionResultGeneratedEventArgs const& args) {
         auto text = winrt::to_string(args.Result().Text());
         if (!text.empty()) {
+          double confidence = 0.0;
+          switch (args.Result().Confidence()) {
+            case SpeechRecognitionConfidence::High:
+              confidence = 0.9;
+              break;
+            case SpeechRecognitionConfidence::Medium:
+              confidence = 0.65;
+              break;
+            case SpeechRecognitionConfidence::Low:
+              confidence = 0.35;
+              break;
+            case SpeechRecognitionConfidence::Rejected:
+              confidence = 0.0;
+              break;
+          }
+          flutter::EncodableMap payload;
+          payload[flutter::EncodableValue("text")] =
+              flutter::EncodableValue(text);
+          payload[flutter::EncodableValue("confidence")] =
+              flutter::EncodableValue(confidence);
           channel_->InvokeMethod("onFinal",
-              std::make_unique<flutter::EncodableValue>(text));
+              std::make_unique<flutter::EncodableValue>(payload));
         }
       });
 

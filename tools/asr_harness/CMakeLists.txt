@@ -1,0 +1,16 @@
+cmake_minimum_required(VERSION 3.14)
+project(neura_asr_harness LANGUAGES CXX)
+
+# Standalone: no Flutter, PortAudio, Sherpa SDK, model, download, or microphone.
+find_package(Threads REQUIRED)
+add_executable(neura_asr_session_test neura_asr_session_test.cpp)
+target_compile_features(neura_asr_session_test PRIVATE cxx_std_20)
+target_link_libraries(neura_asr_session_test PRIVATE Threads::Threads)
+if(MSVC)
+  target_compile_options(neura_asr_session_test PRIVATE /W4 /WX /EHsc)
+else()
+  target_compile_options(neura_asr_session_test PRIVATE -Wall -Wextra -Werror)
+endif()
+enable_testing()
+add_test(NAME neura_asr_session COMMAND neura_asr_session_test)
+set_tests_properties(neura_asr_session PROPERTIES TIMEOUT 30)
