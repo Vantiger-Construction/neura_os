@@ -23,6 +23,20 @@ enum NeuraVoiceCommand {
       group: NeuraVoiceCommandGroup.modes),
   coachMode('coach mode', 'Use the practical next-step style.',
       group: NeuraVoiceCommandGroup.modes),
+  whereAmI('where am i', 'Show the current Neura room.',
+      group: NeuraVoiceCommandGroup.rooms),
+  openPenthouse('open penthouse', 'Move to the Penthouse.',
+      group: NeuraVoiceCommandGroup.rooms),
+  openReflectionBay('open reflection bay', 'Move to Reflection Bay.',
+      group: NeuraVoiceCommandGroup.rooms),
+  openJoyLounge('open joy lounge', 'Move to the Joy Lounge.',
+      group: NeuraVoiceCommandGroup.rooms),
+  openMoodDen('open mood den', 'Move to the Mood Den.',
+      group: NeuraVoiceCommandGroup.rooms),
+  openDreamAtrium('open dream atrium', 'Move to the Dream Atrium.',
+      group: NeuraVoiceCommandGroup.rooms),
+  openLegacyVault('open legacy vault', 'Move to the Legacy Vault.',
+      group: NeuraVoiceCommandGroup.rooms),
   openJournal('open journal', 'Open local journal prompts.',
       group: NeuraVoiceCommandGroup.screens),
   openMood('open mood check-in', 'Open the mood form; tap Save to record it.',
@@ -78,63 +92,105 @@ enum NeuraVoiceCommand {
     r'^(?:hey\s+)?neura(?:\s*[,!:]\s*|\s+)(.+)$',
     caseSensitive: false,
   );
+  static final _spaces = RegExp(r'\s+');
+  static final _trailingPunctuation = RegExp(r'[.!?]+$');
+
+  // Build the allowlist once. Parsing stays exact and O(1) after
+  // normalization even as more local commands are added.
+  static final Map<String, NeuraVoiceCommand> _commandsByPhrase = {
+    for (final command in values) command.phrase: command,
+    'help': help,
+    'show voice commands': help,
+    'what can i say': help,
+    'stop': stopListening,
+    'end conversation': stopListening,
+    'stop voice': stopListening,
+    'stop talking': stopSpeaking,
+    'cancel reply': stopSpeaking,
+    'mute': muteReplies,
+    'mute yourself': muteReplies,
+    'unmute': unmuteReplies,
+    'unmute yourself': unmuteReplies,
+    'open my journal': openJournal,
+    'open journal prompt': openJournal,
+    'open mood': openMood,
+    'open mood check in': openMood,
+    'mood check in': openMood,
+    'show mood history': openMoodHistory,
+    'open my mood history': openMoodHistory,
+    'show weekly review': openWeeklyReview,
+    'open my weekly review': openWeeklyReview,
+    'open dream calendar': openDreamJournal,
+    'open my dream journal': openDreamJournal,
+    'open focus office': openFocus,
+    'open my quests': openQuests,
+    'show quests': openQuests,
+    'open life timeline': openTimeline,
+    'show my timeline': openTimeline,
+    'open accessibility settings': openAccessibility,
+    'open appearance': openThemes,
+    'open theme settings': openThemes,
+    'open privacy settings': openPrivacy,
+    'open privacy and safety': openPrivacy,
+    'open notification settings': openNotifications,
+    'open getting started': openHelp,
+    'open guided support': guidedSupport,
+    'i need a moment': guidedSupport,
+    'choose a companion': chooseCompanion,
+    'open companion picker': chooseCompanion,
+    'page up': scrollUp,
+    'page down': scrollDown,
+    'go to first message': scrollToTop,
+    'show first message': scrollToTop,
+    'go to latest message': scrollToBottom,
+    'show latest message': scrollToBottom,
+    'remove selected file': removeSelectedContext,
+    'detach selected file': removeSelectedContext,
+    "don't use memories": excludeMemories,
+    'do not use memories': excludeMemories,
+    'no memories for the next reply': excludeMemories,
+    'switch to quiet mode': quietMode,
+    'switch to balanced mode': balancedMode,
+    'switch to companion mode': companionMode,
+    'switch to coach mode': coachMode,
+    'where are we': whereAmI,
+    'what room am i in': whereAmI,
+    'which room am i in': whereAmI,
+    'go home': openPenthouse,
+    'take me home': openPenthouse,
+    'open home': openPenthouse,
+    'open the penthouse': openPenthouse,
+    'go to penthouse': openPenthouse,
+    'go to reflection bay': openReflectionBay,
+    'open reflection': openReflectionBay,
+    'go to joy lounge': openJoyLounge,
+    'open joy': openJoyLounge,
+    'go to mood den': openMoodDen,
+    'go to dream atrium': openDreamAtrium,
+    'open dream room': openDreamAtrium,
+    'go to legacy vault': openLegacyVault,
+    'open legacy': openLegacyVault,
+  };
 
   static NeuraVoiceCommand? parse(String transcript) {
     final normalized =
-        transcript.trim().replaceAll(RegExp(r'\s+'), ' ').replaceAll('’', "'");
+        transcript.trim().replaceAll(_spaces, ' ').replaceAll('’', "'");
     final match = _address.firstMatch(normalized);
     if (match == null) return null;
     var phrase = match.group(1)!.toLowerCase().trim();
-    phrase = phrase.replaceFirst(RegExp(r'[.!?]+$'), '').trim();
+    phrase = phrase.replaceFirst(_trailingPunctuation, '').trim();
     if (phrase.startsWith('please ')) phrase = phrase.substring(7);
     if (phrase.endsWith(' please')) {
       phrase = phrase.substring(0, phrase.length - 7);
     }
-    for (final command in values) {
-      if (phrase == command.phrase) return command;
-    }
-    return switch (phrase) {
-      'help' || 'show voice commands' || 'what can i say' => help,
-      'stop' || 'end conversation' || 'stop voice' => stopListening,
-      'stop talking' || 'cancel reply' => stopSpeaking,
-      'mute' || 'mute yourself' => muteReplies,
-      'unmute' || 'unmute yourself' => unmuteReplies,
-      'open my journal' || 'open journal prompt' => openJournal,
-      'open mood' || 'open mood check in' || 'mood check in' => openMood,
-      'show mood history' || 'open my mood history' => openMoodHistory,
-      'show weekly review' || 'open my weekly review' => openWeeklyReview,
-      'open dream calendar' || 'open my dream journal' => openDreamJournal,
-      'open focus office' => openFocus,
-      'open my quests' || 'show quests' => openQuests,
-      'open life timeline' || 'show my timeline' => openTimeline,
-      'open accessibility settings' => openAccessibility,
-      'open appearance' || 'open theme settings' => openThemes,
-      'open privacy settings' || 'open privacy and safety' => openPrivacy,
-      'open notification settings' => openNotifications,
-      'open getting started' => openHelp,
-      'open guided support' || 'i need a moment' => guidedSupport,
-      'choose a companion' || 'open companion picker' => chooseCompanion,
-      'page up' => scrollUp,
-      'page down' => scrollDown,
-      'go to first message' || 'show first message' => scrollToTop,
-      'go to latest message' || 'show latest message' => scrollToBottom,
-      'remove selected file' || 'detach selected file' => removeSelectedContext,
-      "don't use memories" ||
-      'do not use memories' ||
-      'no memories for the next reply' =>
-        excludeMemories,
-      'switch to quiet mode' => quietMode,
-      'switch to balanced mode' => balancedMode,
-      'switch to companion mode' => companionMode,
-      'switch to coach mode' => coachMode,
-      _ => null,
-    };
+    return _commandsByPhrase[phrase];
   }
 }
 
 enum NeuraVoiceCommandGroup {
   controls('Chat controls'),
   modes('Conversation style'),
+  rooms('Neura rooms'),
   screens('Open a screen'),
   context('Next reply context');
 

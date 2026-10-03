@@ -24,6 +24,12 @@ void main() {
         NeuraVoiceCommand.coachMode);
     expect(NeuraVoiceCommand.parse('Neura open mood check in'),
         NeuraVoiceCommand.openMood);
+    expect(NeuraVoiceCommand.parse('Neura, take me home'),
+        NeuraVoiceCommand.openPenthouse);
+    expect(NeuraVoiceCommand.parse('Hey Neura where are we?'),
+        NeuraVoiceCommand.whereAmI);
+    expect(NeuraVoiceCommand.parse('Neura, open dream room'),
+        NeuraVoiceCommand.openDreamAtrium);
   });
 
   test('recognizes navigation, scrolling, and context aliases exactly', () {
@@ -74,6 +80,35 @@ void main() {
       'Neura, I need',
     ]) {
       expect(NeuraVoiceCommand.parse(partial), isNull, reason: partial);
+    }
+  });
+
+  test('room aliases stay distinct from screen shortcuts and match exactly',
+      () {
+    final examples = {
+      'go home': NeuraVoiceCommand.openPenthouse,
+      'open the penthouse': NeuraVoiceCommand.openPenthouse,
+      'go to reflection bay': NeuraVoiceCommand.openReflectionBay,
+      'open reflection': NeuraVoiceCommand.openReflectionBay,
+      'go to joy lounge': NeuraVoiceCommand.openJoyLounge,
+      'open joy': NeuraVoiceCommand.openJoyLounge,
+      'go to mood den': NeuraVoiceCommand.openMoodDen,
+      'go to dream atrium': NeuraVoiceCommand.openDreamAtrium,
+      'open dream room': NeuraVoiceCommand.openDreamAtrium,
+      'open dream calendar': NeuraVoiceCommand.openDreamJournal,
+      'go to legacy vault': NeuraVoiceCommand.openLegacyVault,
+      'open legacy': NeuraVoiceCommand.openLegacyVault,
+      'where are we': NeuraVoiceCommand.whereAmI,
+      'what room am i in': NeuraVoiceCommand.whereAmI,
+      'which room am i in': NeuraVoiceCommand.whereAmI,
+    };
+    for (final entry in examples.entries) {
+      expect(NeuraVoiceCommand.parse('Hey Neura, ${entry.key} please?'),
+          entry.value,
+          reason: entry.key);
+      expect(NeuraVoiceCommand.parse(entry.key), isNull);
+      expect(NeuraVoiceCommand.parse('Neura, ${entry.key} and send my journal'),
+          isNull);
     }
   });
 
