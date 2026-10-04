@@ -2,15 +2,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/encrypted_memory/encrypted_memory_contracts.dart';
 
 void main() {
-  final issuedAt = DateTime.utc(2026, 8, 30, 17);
+  final issuedAt = DateTime.utc(2026, 9, 25, 12);
+  final scope = EncryptedMemoryAccessScope(
+    ownerId: 'owner-1',
+    deviceId: 'device-1',
+    capsuleId: 'personal',
+    classes: const {EncryptedMemoryClass.explicitPreference},
+    sources: const {EncryptedMemorySource.authenticatedUser},
+    sensitivity: EncryptedMemorySensitivity.personal,
+  );
 
-  group('encrypted memory consent', () {
+  group('encrypted memory consent and retrieval scope', () {
     test('is exact-scope, short-lived, direct, and single-use', () {
       final lease = EncryptedMemoryConsentLease(
         id: 'lease-1',
-        capsuleId: 'personal',
+        scope: scope,
         operations: const {EncryptedMemoryOperation.remember},
-        classes: const {EncryptedMemoryClass.explicitPreference},
         issuedAtUtc: issuedAt,
         expiresAtUtc: issuedAt.add(const Duration(minutes: 5)),
         directUserGesture: true,
@@ -18,48 +25,89 @@ void main() {
 
       expect(
         lease.authorizes(
-          requestedCapsuleId: 'personal',
           operation: EncryptedMemoryOperation.remember,
+          requestedOwnerId: 'owner-1',
+          requestedDeviceId: 'device-1',
+          requestedCapsuleId: 'personal',
           memoryClass: EncryptedMemoryClass.explicitPreference,
+          source: EncryptedMemorySource.authenticatedUser,
+          sensitivity: EncryptedMemorySensitivity.personal,
           nowUtc: issuedAt.add(const Duration(seconds: 1)),
         ),
         isTrue,
       );
       expect(
         lease.authorizes(
-          requestedCapsuleId: 'work',
           operation: EncryptedMemoryOperation.remember,
+          requestedOwnerId: 'owner-1',
+          requestedDeviceId: 'device-2',
+          requestedCapsuleId: 'personal',
           memoryClass: EncryptedMemoryClass.explicitPreference,
+          source: EncryptedMemorySource.authenticatedUser,
+          sensitivity: EncryptedMemorySensitivity.personal,
+          nowUtc: issuedAt.add(const Duration(seconds: 1)),
+        ),
+        isFalse,
+      );
+      expect(
+        lease.authorizes(
+          operation: EncryptedMemoryOperation.remember,
+          requestedOwnerId: 'owner-1',
+          requestedDeviceId: 'device-1',
+          requestedCapsuleId: 'personal',
+          memoryClass: EncryptedMemoryClass.explicitPreference,
+          source: EncryptedMemorySource.authenticatedUser,
+          sensitivity: EncryptedMemorySensitivity.standard,
+          nowUtc: issuedAt.add(const Duration(seconds: 1)),
+        ),
+        isFalse,
+      );
+      expect(
+        lease.authorizes(
+          operation: EncryptedMemoryOperation.remember,
+          requestedOwnerId: 'owner-1',
+          requestedDeviceId: 'device-1',
+          requestedCapsuleId: 'personal',
+          memoryClass: EncryptedMemoryClass.explicitPreference,
+          source: EncryptedMemorySource.authenticatedUser,
+          sensitivity: EncryptedMemorySensitivity.sensitive,
           nowUtc: issuedAt.add(const Duration(seconds: 1)),
         ),
         isFalse,
       );
 
       lease.consumeFor(
-        requestedCapsuleId: 'personal',
         operation: EncryptedMemoryOperation.remember,
+        requestedOwnerId: 'owner-1',
+        requestedDeviceId: 'device-1',
+        requestedCapsuleId: 'personal',
         memoryClass: EncryptedMemoryClass.explicitPreference,
+        source: EncryptedMemorySource.authenticatedUser,
+        sensitivity: EncryptedMemorySensitivity.personal,
         nowUtc: issuedAt.add(const Duration(seconds: 1)),
       );
       expect(lease.isConsumed, isTrue);
       expect(
         lease.authorizes(
-          requestedCapsuleId: 'personal',
           operation: EncryptedMemoryOperation.remember,
+          requestedOwnerId: 'owner-1',
+          requestedDeviceId: 'device-1',
+          requestedCapsuleId: 'personal',
           memoryClass: EncryptedMemoryClass.explicitPreference,
+          source: EncryptedMemorySource.authenticatedUser,
+          sensitivity: EncryptedMemorySensitivity.personal,
           nowUtc: issuedAt.add(const Duration(seconds: 2)),
         ),
         isFalse,
       );
     });
 
-    test('rejects long-lived or non-direct authority', () {
+    test('rejects long-lived and non-direct authority', () {
       expect(
         () => EncryptedMemoryConsentLease(
           id: 'lease-2',
-          capsuleId: 'personal',
+          scope: scope,
           operations: const {EncryptedMemoryOperation.recall},
-          classes: const {EncryptedMemoryClass.boundedContinuityFact},
           issuedAtUtc: issuedAt,
           expiresAtUtc: issuedAt.add(const Duration(hours: 1)),
           directUserGesture: true,
@@ -69,21 +117,101 @@ void main() {
 
       final indirect = EncryptedMemoryConsentLease(
         id: 'lease-3',
-        capsuleId: 'personal',
+        scope: scope,
         operations: const {EncryptedMemoryOperation.recall},
-        classes: const {EncryptedMemoryClass.boundedContinuityFact},
         issuedAtUtc: issuedAt,
         expiresAtUtc: issuedAt.add(const Duration(minutes: 5)),
         directUserGesture: false,
       );
       expect(
         indirect.authorizes(
-          requestedCapsuleId: 'personal',
           operation: EncryptedMemoryOperation.recall,
-          memoryClass: EncryptedMemoryClass.boundedContinuityFact,
+          requestedOwnerId: 'owner-1',
+          requestedDeviceId: 'device-1',
+          requestedCapsuleId: 'personal',
+          memoryClass: EncryptedMemoryClass.explicitPreference,
+          source: EncryptedMemorySource.authenticatedUser,
+          sensitivity: EncryptedMemorySensitivity.personal,
           nowUtc: issuedAt.add(const Duration(seconds: 1)),
         ),
         isFalse,
+      );
+    });
+  });
+
+  group('provenance admission', () {
+    test('model output and voice inference require user review', () {
+      for (final source in const [
+        EncryptedMemorySource.modelOutput,
+        EncryptedMemorySource.voiceInference,
+      ]) {
+        final provenance = EncryptedMemoryProvenance(
+          source: source,
+          sourceId: 'turn-1',
+          authorId: 'local-model',
+          reason: 'candidate_memory',
+          trustTier: EncryptedMemoryTrustTier.inferred,
+          integrityState: EncryptedMemoryIntegrityState.pending,
+          integrityTag: null,
+          observedAtUtc: issuedAt,
+        );
+        expect(provenance.requiresQuarantine, isTrue);
+
+        final reviewed = provenance.reviewed(
+          reviewedAtUtc: issuedAt.add(const Duration(seconds: 10)),
+          verifiedIntegrityTag: 'sha256:0123456789abcdef',
+        );
+        expect(reviewed.requiresQuarantine, isFalse);
+        expect(reviewed.source, source);
+        expect(reviewed.trustTier, EncryptedMemoryTrustTier.userReviewed);
+      }
+    });
+
+    test('verified authenticated input is admitted without quarantine', () {
+      final provenance = EncryptedMemoryProvenance(
+        source: EncryptedMemorySource.authenticatedUser,
+        sourceId: 'gesture-1',
+        authorId: 'owner-1',
+        reason: 'user_tapped_remember',
+        trustTier: EncryptedMemoryTrustTier.authenticatedUser,
+        integrityState: EncryptedMemoryIntegrityState.verified,
+        integrityTag: 'sha256:0123456789abcdef',
+        observedAtUtc: issuedAt,
+      );
+
+      expect(provenance.requiresQuarantine, isFalse);
+    });
+
+    test('reviewed trust requires a review timestamp', () {
+      expect(
+        () => EncryptedMemoryProvenance(
+          source: EncryptedMemorySource.webContent,
+          sourceId: 'page-1',
+          authorId: 'importer',
+          reason: 'explicit_import',
+          trustTier: EncryptedMemoryTrustTier.userReviewed,
+          integrityState: EncryptedMemoryIntegrityState.verified,
+          integrityTag: 'sha256:0123456789abcdef',
+          observedAtUtc: issuedAt,
+        ),
+        throwsA(isA<EncryptedMemoryPolicyViolation>()),
+      );
+    });
+
+    test('review evidence cannot predate the observed source', () {
+      expect(
+        () => EncryptedMemoryProvenance(
+          source: EncryptedMemorySource.webContent,
+          sourceId: 'page-1',
+          authorId: 'reviewer-1',
+          reason: 'explicit_import',
+          trustTier: EncryptedMemoryTrustTier.userReviewed,
+          integrityState: EncryptedMemoryIntegrityState.verified,
+          integrityTag: 'sha256:0123456789abcdef',
+          observedAtUtc: issuedAt,
+          reviewedAtUtc: issuedAt.subtract(const Duration(seconds: 1)),
+        ),
+        throwsA(isA<EncryptedMemoryPolicyViolation>()),
       );
     });
   });

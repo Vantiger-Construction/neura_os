@@ -1,10 +1,17 @@
-/// Policy-only foundation for Neura's future encrypted memory runtime.
+/// Policy-only foundation for Neura's encrypted memory runtime.
 ///
 /// Nothing in this library performs I/O, encryption, background capture,
-/// inference, or execution. Runtime integration remains intentionally absent.
+/// inference, or execution. Every runtime must preserve these fail-closed
+/// scope, consent, provenance, and lifecycle contracts.
 library;
 
-enum EncryptedMemoryOperation { remember, recall, export, wipe }
+enum EncryptedMemoryOperation {
+  remember,
+  recall,
+  reviewQuarantine,
+  export,
+  wipe,
+}
 
 /// The only record classes admitted by the MVP contract.
 ///
@@ -18,13 +25,32 @@ enum EncryptedMemoryClass {
   userApprovedDerivedLabel,
 }
 
-enum EncryptedMemoryKeyState {
-  absent,
-  active,
-  rotating,
-  suspended,
-  destroyed,
+/// Where a candidate memory originated. The source is immutable provenance,
+/// not an assertion that the content is trustworthy.
+enum EncryptedMemorySource {
+  authenticatedUser,
+  localDocument,
+  externalDocument,
+  webContent,
+  modelOutput,
+  voiceInference,
 }
+
+/// Trust is assigned by deterministic policy and explicit review. Model output
+/// and voice inference can never grant themselves a higher tier.
+enum EncryptedMemoryTrustTier {
+  unverified,
+  inferred,
+  verifiedImport,
+  authenticatedUser,
+  userReviewed,
+}
+
+enum EncryptedMemoryIntegrityState { pending, verified, failed }
+
+enum EncryptedMemorySensitivity { standard, personal, sensitive }
+
+enum EncryptedMemoryKeyState { absent, active, rotating, suspended, destroyed }
 
 final class EncryptedMemoryPolicyViolation implements Exception {
   const EncryptedMemoryPolicyViolation(this.code);
@@ -35,24 +61,151 @@ final class EncryptedMemoryPolicyViolation implements Exception {
   String toString() => 'EncryptedMemoryPolicyViolation($code)';
 }
 
+/// Exact retrieval scope enforced before the memory index can return content.
+///
+/// Owner, device, capsule, source, class, and sensitivity are all part of the
+/// lookup key. A caller cannot retrieve a broader set and filter it later.
+final class EncryptedMemoryAccessScope {
+  EncryptedMemoryAccessScope({
+    required this.ownerId,
+    required this.deviceId,
+    required this.capsuleId,
+    required Set<EncryptedMemoryClass> classes,
+    required Set<EncryptedMemorySource> sources,
+    required this.sensitivity,
+  })  : classes = Set.unmodifiable(classes),
+        sources = Set.unmodifiable(sources) {
+    _requireBoundedId(ownerId, 'owner_id');
+    _requireBoundedId(deviceId, 'device_id');
+    _requireBoundedId(capsuleId, 'capsule_id');
+    if (this.classes.length != 1) {
+      throw const EncryptedMemoryPolicyViolation('non_exact_classes');
+    }
+    if (this.sources.length != 1) {
+      throw const EncryptedMemoryPolicyViolation('non_exact_sources');
+    }
+  }
+
+  final String ownerId;
+  final String deviceId;
+  final String capsuleId;
+  final Set<EncryptedMemoryClass> classes;
+  final Set<EncryptedMemorySource> sources;
+  final EncryptedMemorySensitivity sensitivity;
+
+  bool permits({
+    required String requestedOwnerId,
+    required String requestedDeviceId,
+    required String requestedCapsuleId,
+    required EncryptedMemoryClass memoryClass,
+    required EncryptedMemorySource source,
+    required EncryptedMemorySensitivity sensitivity,
+  }) {
+    return requestedOwnerId == ownerId &&
+        requestedDeviceId == deviceId &&
+        requestedCapsuleId == capsuleId &&
+        classes.contains(memoryClass) &&
+        sources.contains(source) &&
+        sensitivity == this.sensitivity;
+  }
+}
+
+/// Immutable origin and integrity metadata carried beside memory content.
+///
+/// [reason] is a bounded, non-secret policy reason such as
+/// "user_tapped_remember"; it must not contain copied prompt or journal text.
+final class EncryptedMemoryProvenance {
+  EncryptedMemoryProvenance({
+    required this.source,
+    required this.sourceId,
+    required this.authorId,
+    required this.reason,
+    required this.trustTier,
+    required this.integrityState,
+    required this.integrityTag,
+    required this.observedAtUtc,
+    this.reviewedAtUtc,
+  }) {
+    _requireBoundedId(sourceId, 'source_id');
+    _requireBoundedId(authorId, 'author_id');
+    _requireBoundedId(reason, 'provenance_reason');
+    if (!observedAtUtc.isUtc ||
+        (reviewedAtUtc != null && !reviewedAtUtc!.isUtc)) {
+      throw const EncryptedMemoryPolicyViolation('provenance_time_not_utc');
+    }
+    if (reviewedAtUtc != null && reviewedAtUtc!.isBefore(observedAtUtc)) {
+      throw const EncryptedMemoryPolicyViolation('review_precedes_observation');
+    }
+    if (integrityState == EncryptedMemoryIntegrityState.verified) {
+      _requireIntegrityTag(integrityTag);
+    } else if (integrityTag != null && integrityTag!.isNotEmpty) {
+      _requireIntegrityTag(integrityTag);
+    }
+    if (trustTier == EncryptedMemoryTrustTier.userReviewed &&
+        reviewedAtUtc == null) {
+      throw const EncryptedMemoryPolicyViolation(
+        'reviewed_trust_without_review',
+      );
+    }
+  }
+
+  final EncryptedMemorySource source;
+  final String sourceId;
+  final String authorId;
+  final String reason;
+  final EncryptedMemoryTrustTier trustTier;
+  final EncryptedMemoryIntegrityState integrityState;
+  final String? integrityTag;
+  final DateTime observedAtUtc;
+  final DateTime? reviewedAtUtc;
+
+  bool get requiresQuarantine {
+    if (integrityState != EncryptedMemoryIntegrityState.verified) return true;
+    if (trustTier == EncryptedMemoryTrustTier.unverified ||
+        trustTier == EncryptedMemoryTrustTier.inferred) {
+      return true;
+    }
+    if (source == EncryptedMemorySource.modelOutput ||
+        source == EncryptedMemorySource.voiceInference ||
+        source == EncryptedMemorySource.webContent) {
+      return trustTier != EncryptedMemoryTrustTier.userReviewed;
+    }
+    return false;
+  }
+
+  EncryptedMemoryProvenance reviewed({
+    required DateTime reviewedAtUtc,
+    required String verifiedIntegrityTag,
+  }) {
+    return EncryptedMemoryProvenance(
+      source: source,
+      sourceId: sourceId,
+      authorId: authorId,
+      reason: reason,
+      trustTier: EncryptedMemoryTrustTier.userReviewed,
+      integrityState: EncryptedMemoryIntegrityState.verified,
+      integrityTag: verifiedIntegrityTag,
+      observedAtUtc: observedAtUtc,
+      reviewedAtUtc: reviewedAtUtc,
+    );
+  }
+}
+
 final class EncryptedMemoryConsentLease {
   EncryptedMemoryConsentLease({
     required this.id,
-    required this.capsuleId,
+    required this.scope,
     required Set<EncryptedMemoryOperation> operations,
-    required Set<EncryptedMemoryClass> classes,
     required this.issuedAtUtc,
     required this.expiresAtUtc,
     required this.directUserGesture,
-  })  : operations = Set.unmodifiable(operations),
-        classes = Set.unmodifiable(classes) {
+  }) : operations = Set.unmodifiable(operations) {
     _requireBoundedId(id, 'lease_id');
-    _requireBoundedId(capsuleId, 'capsule_id');
     if (this.operations.isEmpty) {
       throw const EncryptedMemoryPolicyViolation('empty_operations');
     }
-    if (this.classes.isEmpty) {
-      throw const EncryptedMemoryPolicyViolation('empty_classes');
+    if (!issuedAtUtc.isUtc || !expiresAtUtc.isUtc) {
+      throw const EncryptedMemoryPolicyViolation('lease_time_not_utc');
     }
     if (!expiresAtUtc.isAfter(issuedAtUtc)) {
       throw const EncryptedMemoryPolicyViolation('invalid_expiry');
@@ -63,40 +216,59 @@ final class EncryptedMemoryConsentLease {
   }
 
   final String id;
-  final String capsuleId;
+  final EncryptedMemoryAccessScope scope;
   final Set<EncryptedMemoryOperation> operations;
-  final Set<EncryptedMemoryClass> classes;
   final DateTime issuedAtUtc;
   final DateTime expiresAtUtc;
   final bool directUserGesture;
   bool _consumed = false;
 
   bool authorizes({
-    required String requestedCapsuleId,
     required EncryptedMemoryOperation operation,
+    required String requestedOwnerId,
+    required String requestedDeviceId,
+    required String requestedCapsuleId,
     required EncryptedMemoryClass memoryClass,
+    required EncryptedMemorySource source,
+    required EncryptedMemorySensitivity sensitivity,
     required DateTime nowUtc,
   }) {
     if (_consumed ||
         !directUserGesture ||
-        requestedCapsuleId != capsuleId ||
+        !nowUtc.isUtc ||
         nowUtc.isBefore(issuedAtUtc) ||
-        !nowUtc.isBefore(expiresAtUtc)) {
+        !nowUtc.isBefore(expiresAtUtc) ||
+        !operations.contains(operation)) {
       return false;
     }
-    return operations.contains(operation) && classes.contains(memoryClass);
+    return scope.permits(
+      requestedOwnerId: requestedOwnerId,
+      requestedDeviceId: requestedDeviceId,
+      requestedCapsuleId: requestedCapsuleId,
+      memoryClass: memoryClass,
+      source: source,
+      sensitivity: sensitivity,
+    );
   }
 
   void consumeFor({
-    required String requestedCapsuleId,
     required EncryptedMemoryOperation operation,
+    required String requestedOwnerId,
+    required String requestedDeviceId,
+    required String requestedCapsuleId,
     required EncryptedMemoryClass memoryClass,
+    required EncryptedMemorySource source,
+    required EncryptedMemorySensitivity sensitivity,
     required DateTime nowUtc,
   }) {
     if (!authorizes(
-      requestedCapsuleId: requestedCapsuleId,
       operation: operation,
+      requestedOwnerId: requestedOwnerId,
+      requestedDeviceId: requestedDeviceId,
+      requestedCapsuleId: requestedCapsuleId,
       memoryClass: memoryClass,
+      source: source,
+      sensitivity: sensitivity,
       nowUtc: nowUtc,
     )) {
       throw const EncryptedMemoryPolicyViolation('consent_not_authorized');
@@ -181,7 +353,9 @@ final class EncryptedMemoryExportContract {
         'export_destination_not_user_selected',
       );
     }
-    if (!expiresAtUtc.isAfter(createdAtUtc) ||
+    if (!createdAtUtc.isUtc ||
+        !expiresAtUtc.isUtc ||
+        !expiresAtUtc.isAfter(createdAtUtc) ||
         expiresAtUtc.difference(createdAtUtc) > const Duration(minutes: 15)) {
       throw const EncryptedMemoryPolicyViolation('invalid_export_expiry');
     }
@@ -194,6 +368,7 @@ final class EncryptedMemoryExportContract {
   final bool userSelectedDestination;
 
   bool permitsRecord(String recordId, DateTime nowUtc) =>
+      nowUtc.isUtc &&
       !nowUtc.isBefore(createdAtUtc) &&
       nowUtc.isBefore(expiresAtUtc) &&
       recordIds.contains(recordId);
@@ -231,5 +406,15 @@ void _requireBoundedId(String value, String code) {
       value.trim() != value ||
       value.codeUnits.any((unit) => unit < 0x20 || unit == 0x7f)) {
     throw EncryptedMemoryPolicyViolation(code);
+  }
+}
+
+void _requireIntegrityTag(String? value) {
+  if (value == null ||
+      value.length < 16 ||
+      value.length > 256 ||
+      value.trim() != value ||
+      value.codeUnits.any((unit) => unit < 0x21 || unit == 0x7f)) {
+    throw const EncryptedMemoryPolicyViolation('invalid_integrity_tag');
   }
 }
