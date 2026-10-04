@@ -20,7 +20,7 @@ engine:
 
 | Foundation | Current role | Work still needed |
 | --- | --- | --- |
-| [Rust WebSocket sidecar](../rust/src/bin/neura_api.rs) | Streams a local echo response and reports the model adapter as degraded. | A real local model adapter, authenticated IPC, bounded queues, and engine lifecycle controls. |
+| [Rust WebSocket sidecar](../rust/src/bin/neura_api.rs) | Streams fixed synthetic echo fixtures over authenticated loopback IPC with bounded queues; reports the model adapter as degraded. See the [milestone 1 IPC slice](NEURA_ENGINE_IPC_M1.md). | A real local model adapter, trusted UI session integration, and the remaining engine lifecycle controls before personal sources are admitted. |
 | [Rust orchestrator](../rust/src/orchestrator.rs) | Coordinates existing provider-backed agent work. | A separately reviewed local execution path; existing cloud work must not become unattended reflection. |
 | [Flutter runtime controller](../lib/neura_runtime/neura_runtime_controller.dart) | Coordinates app runtime events and room memory behavior. | Explicit engine status, consent, cancellation, and resource controls. |
 | [Local app API](NEURA_API_SYSTEM_UPGRADES.md#3-local-app-api-v1) | Offers authenticated, visible-session proposals for native review. | Keep this contract intact when integrating an engine. It is distinct from the Rust WebSocket sidecar. |
