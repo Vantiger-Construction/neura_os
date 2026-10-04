@@ -119,7 +119,14 @@ class NeuraModelRequestBudget {
         'The system instructions exceed the safe request budget.',
       );
     }
-    final messages = (jsonDecode(jsonEncode(source.messages)) as List)
+    // Nothing before this suffix can survive the message-count budget. Bound
+    // the deep copy too, so long local transcripts do not all get serialized
+    // before every approval preview.
+    final historyLength = source.messages.length;
+    final historyStart = max(0, historyLength - maxMessages);
+    final messages = (jsonDecode(
+      jsonEncode(source.messages.sublist(historyStart)),
+    ) as List)
         .map((item) => Map<String, dynamic>.from(item as Map))
         .toList(growable: false);
     if (messages.isEmpty) {
@@ -170,7 +177,7 @@ class NeuraModelRequestBudget {
       includesPrivateContext: source.includesPrivateContext,
       maxTokens: source.maxTokens,
       omittedMessageCount:
-          source.omittedMessageCount + messages.length - kept.length,
+          source.omittedMessageCount + historyLength - kept.length,
       transaction: source.transaction,
     );
   }
