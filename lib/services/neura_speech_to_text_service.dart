@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../modules/core/app_log.dart';
 import '../reliability/safe_boot.dart';
+import 'neura_speech_engine.dart';
 
 /// Windows speech-to-text via a native WinRT bridge (see
 /// windows/runner/neura_speech_recognizer.{h,cpp}).
@@ -23,8 +24,9 @@ class NeuraSpeechToTextService {
   // wake-word listener, which needs to share this with the chat screen).
   static final NeuraSpeechToTextService instance = NeuraSpeechToTextService._();
 
-  static const MethodChannel _channel =
-      MethodChannel('neura/speech_recognition');
+  static const MethodChannel _channel = MethodChannel(
+    'neura/speech_recognition',
+  );
 
   final StreamController<String> _transcriptStream =
       StreamController.broadcast();
@@ -37,14 +39,18 @@ class NeuraSpeechToTextService {
   // without requiring the user to tap "stop" themselves.
   final StreamController<String> _finalPhraseStream =
       StreamController.broadcast();
+  final StreamController<NeuraSpeechSegment> _segmentStream =
+      StreamController.broadcast();
 
   String _finalText = '';
   bool _listening = false;
   Completer<String>? _stopCompleter;
   Future<String>? _stopInFlight;
+  DateTime? _lastFinalAtUtc;
 
   Stream<String> get transcriptStream => _transcriptStream.stream;
   Stream<String> get finalPhraseStream => _finalPhraseStream.stream;
+  Stream<NeuraSpeechSegment> get segmentStream => _segmentStream.stream;
   bool get isListening => _listening;
   bool get listeningAllowed => !SafeBoot.instance.safeMode.value;
 
@@ -57,25 +63,57 @@ class NeuraSpeechToTextService {
     switch (call.method) {
       case 'onListening':
         _finalText = '';
+        _lastFinalAtUtc = null;
         break;
       case 'onPartial':
         if (!listeningAllowed) return;
         final hypothesis = call.arguments as String? ?? '';
-        _transcriptStream
-            .add(_finalText.isEmpty ? hypothesis : '$_finalText $hypothesis');
+        _transcriptStream.add(
+          _finalText.isEmpty ? hypothesis : '$_finalText $hypothesis',
+        );
+        _segmentStream.add(
+          NeuraSpeechSegment(
+            engineId: 'windows_winrt',
+            text: hypothesis,
+            isFinal: false,
+            observedAtUtc: DateTime.now().toUtc(),
+          ),
+        );
         break;
       case 'onFinal':
         if (!listeningAllowed) return;
-        final phrase = call.arguments as String? ?? '';
+        final arguments = call.arguments;
+        final phrase = arguments is Map
+            ? arguments['text']?.toString() ?? ''
+            : arguments as String? ?? '';
+        final rawConfidence = arguments is Map ? arguments['confidence'] : null;
+        final confidence = rawConfidence is num
+            ? rawConfidence.toDouble().clamp(0.0, 1.0).toDouble()
+            : null;
         final completedPhrase = phrase.trim();
+        final observedAtUtc = DateTime.now().toUtc();
+        final pauseBefore = _lastFinalAtUtc == null
+            ? Duration.zero
+            : observedAtUtc.difference(_lastFinalAtUtc!);
         if (completedPhrase.isNotEmpty) {
           _finalText = _finalText.isEmpty
               ? completedPhrase
               : '$_finalText $completedPhrase';
+          _lastFinalAtUtc = observedAtUtc;
         }
         _transcriptStream.add(_finalText);
         if (completedPhrase.isNotEmpty) {
           _finalPhraseStream.add(completedPhrase);
+          _segmentStream.add(
+            NeuraSpeechSegment(
+              engineId: 'windows_winrt',
+              text: completedPhrase,
+              isFinal: true,
+              confidence: confidence,
+              pauseBefore: pauseBefore,
+              observedAtUtc: observedAtUtc,
+            ),
+          );
         }
         break;
       case 'onStopped':
@@ -88,6 +126,22 @@ class NeuraSpeechToTextService {
         _transcriptStream.add('Speech-to-text reported an input error.');
         _completePendingStop();
         break;
+    }
+  }
+
+  Future<bool> isAvailable() async {
+    if (!listeningAllowed) return false;
+    try {
+      return await _channel.invokeMethod<bool>('isAvailable') == true;
+    } on MissingPluginException {
+      return false;
+    } catch (error, stack) {
+      await AppLog.instance.caught(
+        'speech_to_text_availability_failed',
+        error,
+        stack,
+      );
+      return false;
     }
   }
 
@@ -116,11 +170,7 @@ class NeuraSpeechToTextService {
       return true;
     } catch (error, stack) {
       _listening = false;
-      await AppLog.instance.caught(
-        'speech_to_text_start_failed',
-        error,
-        stack,
-      );
+      await AppLog.instance.caught('speech_to_text_start_failed', error, stack);
       _transcriptStream.add('Speech-to-text not available on this device.');
       return false;
     }
@@ -147,11 +197,7 @@ class NeuraSpeechToTextService {
     } catch (error, stack) {
       _listening = false;
       _completePendingStop();
-      await AppLog.instance.caught(
-        'speech_to_text_stop_failed',
-        error,
-        stack,
-      );
+      await AppLog.instance.caught('speech_to_text_stop_failed', error, stack);
       if (identical(_stopCompleter, completer)) _stopCompleter = null;
       return _finalText;
     }

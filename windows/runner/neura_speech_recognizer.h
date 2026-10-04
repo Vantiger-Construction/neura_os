@@ -8,8 +8,10 @@
 //
 // Wire protocol (method channel "neura/speech_recognition"):
 //   Dart -> native: "start", "stop"
+//   Dart -> native: "isAvailable"
 //   native -> Dart: "onListening" (no args), "onPartial" (String),
-//                   "onFinal" (String), "onStopped" (no args),
+//                   "onFinal" ({text: String, confidence: double}),
+//                   "onStopped" (no args),
 //                   "onError" (String reason)
 
 // Must come before any other Windows header so WINAPI_FAMILY is defined
