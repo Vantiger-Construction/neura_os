@@ -716,9 +716,12 @@ jobs:
           New-Item -ItemType Junction `
             -Path (Join-Path $gradleHome 'wrapper') `
             -Target $persistentGradleWrapper | Out-Null
-          New-Item -ItemType Junction `
-            -Path (Join-Path $gradleCaches 'modules-2') `
-            -Target $persistentGradleModules | Out-Null
+          # Gradle 9.3.1 Kotlin DSL must load plugin jars from ordinary paths.
+          # Keep downloads run-local too: the modules-2 junction still exposed
+          # Flutter's included Gradle build to the linked-classpath regression.
+          # Existing headroom checks and run-root cleanup cover this directory.
+          New-Item -ItemType Directory `
+            -Path (Join-Path $gradleCaches 'modules-2') -Force | Out-Null
           New-Item -ItemType Junction `
             -Path (Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'build') `
             -Target $outputRoot | Out-Null
