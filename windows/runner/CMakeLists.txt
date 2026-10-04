@@ -31,6 +31,7 @@ add_executable(${BINARY_NAME} WIN32
   "main.cpp"
   "neura_native_diagnostics.cpp"
   "neura_on_device_asr.cpp"
+  "neura_engine_session.cpp"
   "neura_speech_recognizer.cpp"
   "neura_window_role.cpp"
   "utils.cpp"
@@ -130,10 +131,11 @@ endif()
 
 set(NEURA_SWARM_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/../../rust/Cargo.toml")
 set(NEURA_SWARM_DLL "${CMAKE_CURRENT_SOURCE_DIR}/../../rust/target/release/neura_swarm.dll")
+set(NEURA_API_EXE "${CMAKE_CURRENT_SOURCE_DIR}/../../rust/target/release/neura_api.exe")
 
 add_custom_target(neura_swarm_rust ALL
-        COMMAND ${CARGO_EXE} build --release --manifest-path "${NEURA_SWARM_MANIFEST}"
-        BYPRODUCTS "${NEURA_SWARM_DLL}"
+        COMMAND ${CARGO_EXE} build --locked --release --lib --bin neura_api --manifest-path "${NEURA_SWARM_MANIFEST}"
+        BYPRODUCTS "${NEURA_SWARM_DLL}" "${NEURA_API_EXE}"
         COMMENT "Building neura_swarm (Rust)"
         VERBATIM
 )
@@ -143,6 +145,9 @@ add_dependencies(${BINARY_NAME} neura_swarm_rust)
 add_custom_command(TARGET ${BINARY_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${NEURA_SWARM_DLL}"
+                "$<TARGET_FILE_DIR:${BINARY_NAME}>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${NEURA_API_EXE}"
                 "$<TARGET_FILE_DIR:${BINARY_NAME}>"
         COMMENT "Copying neura_swarm.dll next to ${BINARY_NAME}"
 )

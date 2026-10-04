@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "neura_on_device_asr.h"
+#include "neura_engine_session.h"
 #include "neura_speech_recognizer.h"
 #include "neura_window_role.h"
 #include "win32_window.h"
@@ -44,6 +45,7 @@ class FlutterWindow : public Win32Window {
   // primary engine and remains unavailable unless both build-time and runtime
   // opt-ins plus local model files are present.
   std::unique_ptr<NeuraOnDeviceAsr> on_device_asr_;
+  std::unique_ptr<NeuraEngineSession> engine_session_;
 
   int window_id_;
   bool is_mascot_;

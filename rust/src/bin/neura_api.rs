@@ -429,6 +429,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         // Do not let RUST_LOG enable dependency wire/header/body tracing.
         .with_env_filter(tracing_subscriber::EnvFilter::new("neura_api=info"))
+        .with_writer(std::io::stderr)
         .init();
     let address = std::env::var("NEURA_API_ADDR").unwrap_or_else(|_| "127.0.0.1:8787".into());
     // Both settings fail closed. Environment errors never include their values.
@@ -438,6 +439,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let session = Session::new(token)?;
     let listener = bind_local(&address).await?;
     let address = listener.local_addr()?;
+    // Only a trusted child pipe carries this bounded, credential-free startup
+    // receipt. Publish it after binding; a failed bind cannot authenticate the
+    // launcher to an unrelated listener. Ordinary standalone startup is quiet.
+    if std::env::var("NEURA_API_LAUNCHER_READY").as_deref() == Ok("1") {
+        use std::io::Write;
+        writeln!(std::io::stdout(), "NEURA_IPC_READY {address}")?;
+        std::io::stdout().flush()?;
+    }
     info!(%address, "Neura synthetic local brain listening");
     axum::serve(
         listener,

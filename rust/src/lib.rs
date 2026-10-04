@@ -7,5 +7,6 @@
 pub mod agents;
 pub mod anthropic_client;
 pub mod api;
+mod engine_session;
 mod frb_generated;
 pub mod orchestrator;
