@@ -92,7 +92,8 @@ class _NeuraIntelligenceCenterScreenState
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-                content: Text('Could not save intelligence settings.')),
+              content: Text('Could not save intelligence settings.'),
+            ),
           );
         }
       }),
@@ -168,8 +169,8 @@ class _NeuraIntelligenceCenterScreenState
                                     ? 'Safe Mode'
                                     : paused
                                         ? 'Paused'
-                                        : preferences.enabled
-                                            ? 'On-device'
+                                        : preferences.allowsProactiveSuggestions
+                                            ? '${preferences.proactivityLevel.label} · on-device'
                                             : 'Off',
                               ),
                             ),
@@ -220,14 +221,36 @@ class _NeuraIntelligenceCenterScreenState
               Card(
                 child: Column(
                   children: [
-                    SwitchListTile(
-                      value: preferences.enabled,
-                      onChanged: (value) =>
-                          _save(preferences.copyWith(enabled: value)),
-                      secondary: const Icon(Icons.auto_awesome_outlined),
+                    ListTile(
+                      leading: const Icon(Icons.auto_awesome_outlined),
                       title: const Text('Proactive intelligence'),
-                      subtitle: const Text(
-                        'Allow optional, dismissible suggestions on the dashboard.',
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 6),
+                          Text(preferences.proactivityLevel.description),
+                          const SizedBox(height: 10),
+                          SegmentedButton<NeuraProactivityLevel>(
+                            segments: NeuraProactivityLevel.values
+                                .map(
+                                  (level) => ButtonSegment(
+                                    value: level,
+                                    label: Text(level.label),
+                                  ),
+                                )
+                                .toList(growable: false),
+                            selected: {preferences.proactivityLevel},
+                            onSelectionChanged: (selection) {
+                              final level = selection.single;
+                              _save(
+                                preferences.copyWith(
+                                  enabled: level != NeuraProactivityLevel.off,
+                                  proactivityLevel: level,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ),
                     const Divider(height: 1),
@@ -251,38 +274,51 @@ class _NeuraIntelligenceCenterScreenState
                       secondary: const Icon(Icons.receipt_long_outlined),
                       title: const Text('Show “Why?” on suggestions'),
                       subtitle: const Text(
-                          'Expose score, evidence count, and policy reasons.'),
+                        'Expose score, evidence count, and policy reasons.',
+                      ),
                     ),
                     const Divider(height: 1),
                     ListTile(
                       leading: const Icon(Icons.notifications_paused_outlined),
                       title: Text(
-                        'Daily suggestion limit: '
+                        'Personal daily cap: '
                         '${preferences.maxDailySuggestions}',
                       ),
-                      subtitle: Slider(
-                        value: preferences.maxDailySuggestions.toDouble(),
-                        min: 1,
-                        max: 6,
-                        divisions: 5,
-                        label: preferences.maxDailySuggestions.toString(),
-                        onChanged: (value) => _save(
-                          preferences.copyWith(
-                            maxDailySuggestions: value.round(),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Slider(
+                            value: preferences.maxDailySuggestions.toDouble(),
+                            min: 1,
+                            max: 6,
+                            divisions: 5,
+                            label: preferences.maxDailySuggestions.toString(),
+                            onChanged: preferences.allowsProactiveSuggestions
+                                ? (value) => _save(
+                                      preferences.copyWith(
+                                        maxDailySuggestions: value.round(),
+                                      ),
+                                    )
+                                : null,
                           ),
-                        ),
+                          Text(
+                            'The ${preferences.proactivityLevel.label.toLowerCase()} '
+                            'level currently limits this to '
+                            '${preferences.effectiveMaxDailySuggestions} per day.',
+                          ),
+                        ],
                       ),
                     ),
                     const Divider(height: 1),
                     SwitchListTile(
                       value: preferences.quietHoursEnabled,
-                      onChanged: (value) => _save(
-                        preferences.copyWith(quietHoursEnabled: value),
-                      ),
+                      onChanged: (value) =>
+                          _save(preferences.copyWith(quietHoursEnabled: value)),
                       secondary: const Icon(Icons.bedtime_outlined),
                       title: const Text('Quiet hours'),
                       subtitle: const Text(
-                          'Suppress proactive cards during your chosen window.'),
+                        'Suppress proactive cards during your chosen window.',
+                      ),
                     ),
                     if (preferences.quietHoursEnabled)
                       Padding(
@@ -370,7 +406,9 @@ class _NeuraIntelligenceCenterScreenState
                         value: _outcomeFilter,
                         items: [
                           _kAllOutcomes,
-                          ...NeuraSuggestionOutcome.values.map((o) => o.name),
+                          ...NeuraSuggestionOutcome.values.map(
+                            (o) => o.name,
+                          ),
                         ]
                             .map(
                               (name) => DropdownMenuItem(
@@ -433,10 +471,12 @@ class _NeuraIntelligenceCenterScreenState
                   (record) => _ReceiptTile(
                     record: record,
                     highlighted: record.receipt.id == _pinnedReceiptId,
-                    specialistLabel:
-                        _specialistLabel(record.receipt.specialistId),
-                    specialistReputation: _controller
-                        .specialistReputation(record.receipt.specialistId),
+                    specialistLabel: _specialistLabel(
+                      record.receipt.specialistId,
+                    ),
+                    specialistReputation: _controller.specialistReputation(
+                      record.receipt.specialistId,
+                    ),
                   ),
                 ),
               const SizedBox(height: 16),
@@ -508,9 +548,9 @@ class _ReceiptTile extends StatelessWidget {
     final receipt = record.receipt;
     return Card(
       color: highlighted
-          ? Theme.of(context).colorScheme.primaryContainer.withValues(
-                alpha: 0.35,
-              )
+          ? Theme.of(
+              context,
+            ).colorScheme.primaryContainer.withValues(alpha: 0.35)
           : null,
       child: ExpansionTile(
         initiallyExpanded: highlighted,
@@ -528,10 +568,7 @@ class _ReceiptTile extends StatelessWidget {
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         children: [
           if (record.body.isNotEmpty)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(record.body),
-            ),
+            Align(alignment: Alignment.centerLeft, child: Text(record.body)),
           const SizedBox(height: 8),
           ...receipt.reasons.map(
             (reason) => ListTile(

@@ -235,60 +235,65 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
       children: [
         const NeuraAdaptiveIntentStatusCard(),
         const SizedBox(height: 8),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(icon),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        banner.title,
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        banner.body,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: [
-                          TextButton(
-                            onPressed: _dismiss,
-                            child: const Text('Not now'),
-                          ),
-                          TextButton.icon(
-                            onPressed: _briefMe,
-                            icon: const Icon(Icons.graphic_eq, size: 18),
-                            label: const Text('Brief me'),
-                          ),
-                          if (showWhy)
+        Semantics(
+          container: true,
+          liveRegion: false,
+          label: 'Optional Neura suggestion. Dismiss or open when ready.',
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(icon),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          banner.title,
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          banner.body,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
                             TextButton(
-                              onPressed: _showWhy,
-                              child: const Text('Why?'),
+                              onPressed: _dismiss,
+                              child: const Text('Not now'),
                             ),
-                          FilledButton(
-                            onPressed: _act,
-                            child: Text(
-                              banner.receipt.requiresApproval
-                                  ? 'Review'
-                                  : 'Open',
+                            TextButton.icon(
+                              onPressed: _briefMe,
+                              icon: const Icon(Icons.graphic_eq, size: 18),
+                              label: const Text('Brief me'),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                            if (showWhy)
+                              TextButton(
+                                onPressed: _showWhy,
+                                child: const Text('Why?'),
+                              ),
+                            FilledButton(
+                              onPressed: _act,
+                              child: Text(
+                                banner.receipt.requiresApproval
+                                    ? 'Review'
+                                    : 'Open',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
