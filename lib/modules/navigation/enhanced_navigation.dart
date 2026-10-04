@@ -53,6 +53,7 @@ import '../../src/modules/settings/settings.dart';
 import '../chat/neura_chat_screen.dart';
 import '../diagnostics/diagnostics_screen.dart';
 import 'presence_navigation_shell.dart';
+import '../camera_hawk/camera_hawk_screen.dart';
 
 class EnhancedNavigation extends StatefulWidget {
   const EnhancedNavigation({super.key});
@@ -331,6 +332,16 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
   }
 
   List<PresenceCommand> _buildCommandCatalog() => <PresenceCommand>[
+        PresenceCommand(
+          id: 'camera-hawk',
+          title: 'Camera Hawk',
+          subtitle: 'Your private camera center on this Windows PC.',
+          icon: Icons.videocam_outlined,
+          keywords: const <String>['camera', 'security', 'hawk', 'nvr'],
+          onSelected: () => _openRoute(
+            '/camera-hawk', (_) => const CameraHawkScreen(),
+          ),
+        ),
         PresenceCommand(
           id: 'talk',
           title: 'Talk to Neura',
