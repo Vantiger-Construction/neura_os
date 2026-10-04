@@ -128,6 +128,7 @@ jobs:
         run: |
           Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
           flutter test --reporter expanded --timeout 60s `
+            test/neura_link/engine_session_lifecycle_test.dart `
             test/startup/startup_platform_policy_test.dart `
             test/startup/native_speech_safe_mode_test.dart `
             test/startup/neura_error_pipeline_test.dart *>&1 |
