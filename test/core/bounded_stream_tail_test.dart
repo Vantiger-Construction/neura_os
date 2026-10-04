@@ -1,8 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-
-import '../../lib/core/memory/bounded_stream_tail.dart';
+import 'package:neuro_companion/core/memory/bounded_stream_tail.dart';
 
 void main() {
   test('keeps the last matching items in file order', () async {
@@ -68,9 +67,8 @@ void main() {
       limit: 25,
       matches: (int n) => n % 3 == 0,
     );
-    final expected = Iterable<int>.generate(100000)
-        .where((n) => n % 3 == 0)
-        .toList();
+    final expected =
+        Iterable<int>.generate(100000).where((n) => n % 3 == 0).toList();
     expect(result, expected.sublist(expected.length - 25));
   });
   test(
