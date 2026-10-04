@@ -62,6 +62,27 @@ void main() {
     }
   });
 
+  test('guided support aliases reject partial, quoted and compound speech', () {
+    for (final phrase in [
+      'help me through this',
+      'open guided support',
+      'i need a moment',
+    ]) {
+      expect(NeuraVoiceCommand.parse('Neura, $phrase'),
+          NeuraVoiceCommand.guidedSupport);
+      expect(NeuraVoiceCommand.parse('“Neura, $phrase”'), isNull);
+      expect(
+          NeuraVoiceCommand.parse('Neura, $phrase and open journal'), isNull);
+    }
+    for (final partial in [
+      'Neura, help me through',
+      'Neura, open guided',
+      'Neura, I need',
+    ]) {
+      expect(NeuraVoiceCommand.parse(partial), isNull, reason: partial);
+    }
+  });
+
   test('room aliases stay distinct from screen shortcuts and match exactly',
       () {
     final examples = {
