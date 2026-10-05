@@ -339,7 +339,8 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
           icon: Icons.videocam_outlined,
           keywords: const <String>['camera', 'security', 'hawk', 'nvr'],
           onSelected: () => _openRoute(
-            '/camera-hawk', (_) => const CameraHawkScreen(),
+            '/camera-hawk',
+            (_) => const CameraHawkScreen(),
           ),
         ),
         PresenceCommand(
