@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-import '../../lib/modules/camera_hawk/camera_hawk_client.dart';
+import 'package:neuro_companion/modules/camera_hawk/camera_hawk_client.dart';
 
 void main() {
   test('explicit sign-in uses fixed loopback and bearer header only', () async {
@@ -15,10 +15,12 @@ void main() {
         expect(r.url.host, '127.0.0.1');
         expect(r.url.port, 8799);
         expect(r.followRedirects, isFalse);
-        if (r.url.path.endsWith('/login'))
+        if (r.url.path.endsWith('/login')) {
           return http.Response('{"access_token":"session-secret"}', 200);
-        if (r.url.path.endsWith('/logout'))
+        }
+        if (r.url.path.endsWith('/logout')) {
           return http.Response('{"ok":true}', 200);
+        }
         return http.Response(
           '[{"name":"Door","location":"Entry","enabled":true,"rtsp_url":"secret","password_ref":"vault"}]',
           200,
@@ -61,8 +63,9 @@ void main() {
     final response = Completer<http.Response>();
     final client = CameraHawkClient(
       transport: MockClient((r) async {
-        if (r.url.path.endsWith('/login'))
+        if (r.url.path.endsWith('/login')) {
           return http.Response('{"access_token":"secret"}', 200);
+        }
         if (r.url.path.endsWith('/logout')) return http.Response('{}', 200);
         return response.future;
       }),
@@ -111,8 +114,9 @@ void main() {
   test('offline logout still discards local authorization', () async {
     final client = CameraHawkClient(
       transport: MockClient((r) async {
-        if (r.url.path.endsWith('/login'))
+        if (r.url.path.endsWith('/login')) {
           return http.Response('{"access_token":"secret"}', 200);
+        }
         throw StateError('offline');
       }),
     );

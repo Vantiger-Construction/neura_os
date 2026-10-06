@@ -74,8 +74,9 @@ class _CameraHawkScreenState extends State<CameraHawkScreen>
     final password = _password.text;
     _password.clear();
     try {
-      if (!_client.connected)
+      if (!_client.connected) {
         await _client.signIn(_username.text.trim(), password);
+      }
       final cameras = await _client.cameras();
       if (mounted && _allowed && generation == _generation) {
         setState(() => _cameras = cameras);
@@ -99,11 +100,13 @@ class _CameraHawkScreenState extends State<CameraHawkScreen>
         CameraHawkClient.dashboardUri,
         mode: LaunchMode.externalApplication,
       );
-      if (!opened && mounted)
+      if (!opened && mounted) {
         setState(() => _message = 'Could not open the camera dashboard.');
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(() => _message = 'Could not open the camera dashboard.');
+      }
     }
   }
 

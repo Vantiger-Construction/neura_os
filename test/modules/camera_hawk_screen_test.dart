@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import '../../lib/modules/camera_hawk/camera_hawk_client.dart';
-import '../../lib/modules/camera_hawk/camera_hawk_screen.dart';
-import '../../lib/reliability/safe_boot.dart';
+import 'package:neuro_companion/modules/camera_hawk/camera_hawk_client.dart';
+import 'package:neuro_companion/modules/camera_hawk/camera_hawk_screen.dart';
+import 'package:neuro_companion/reliability/safe_boot.dart';
 
 void main() {
   setUp(() {
@@ -24,8 +24,9 @@ void main() {
         (tester) async {
       var logouts = 0;
       final client = CameraHawkClient(transport: MockClient((r) async {
-        if (r.url.path.endsWith('/login'))
+        if (r.url.path.endsWith('/login')) {
           return http.Response('{"access_token":"secret"}', 200);
+        }
         if (r.url.path.endsWith('/logout')) {
           logouts++;
           return http.Response('{"ok":true}', 200);
