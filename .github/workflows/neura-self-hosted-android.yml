@@ -684,8 +684,8 @@ jobs:
           $androidUserHome = Join-Path $buildRoot 'android-user'
           $tempRoot = Join-Path $buildRoot 'temp'
           # Transform/build caches are run-local on the selected build volume.
-          # Retain only checksum-verified tools and Gradle's reusable wrapper and
-          # dependency downloads. The committed lockfile is resolved every run.
+          # Retain only checksum-verified tools and Gradle's reusable wrapper.
+          # Dependency downloads are run-local; resolve the lockfile every run.
           $persistentToolRoot = Join-Path $env:RUNNER_TOOL_CACHE 'neura-android'
           $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.47.5'
           $gradleHome = Join-Path $buildRoot 'gradle-home'
@@ -731,7 +731,6 @@ jobs:
             "NEURA_ANDROID_TOOL_ROOT=$toolRoot",
             "NEURA_ANDROID_GRADLE_ROOT=$gradleHome",
             "NEURA_ANDROID_GRADLE_WRAPPER_LINK=$(Join-Path $gradleHome 'wrapper')",
-            "NEURA_ANDROID_GRADLE_MODULES_LINK=$(Join-Path $gradleCaches 'modules-2')",
             "NEURA_ANDROID_SDK_ROOT=$sdkRoot",
             "NEURA_ANDROID_JDK_ROOT=$jdkRoot",
             "PUB_CACHE=$pubCache",
@@ -1131,8 +1130,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Could not unlink the Android build output.' }
           }
           foreach ($cacheLinkPath in @(
-            $env:NEURA_ANDROID_GRADLE_WRAPPER_LINK,
-            $env:NEURA_ANDROID_GRADLE_MODULES_LINK
+            $env:NEURA_ANDROID_GRADLE_WRAPPER_LINK
           )) {
             if ([string]::IsNullOrWhiteSpace($cacheLinkPath)) { continue }
             $cacheLink = Get-Item -LiteralPath $cacheLinkPath -Force -ErrorAction SilentlyContinue
@@ -1143,7 +1141,9 @@ jobs:
             & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$cacheLinkPath"
             if ($LASTEXITCODE -ne 0) { throw "Could not unlink Gradle cache path $cacheLinkPath." }
           }
-          # Use the tested walker so nested links cannot delete external data.
+          # The ordinary, run-local modules-2 directory is removed with the
+          # build root. Use the tested walker so nested links cannot delete
+          # external data.
           $helper = Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'tools\Repair-NeuraCiStorage.ps1'
           $tokens = $null
           $errors = $null
@@ -1238,8 +1238,7 @@ jobs:
             }
           }
           foreach ($cacheLinkPath in @(
-            $env:NEURA_ANDROID_GRADLE_WRAPPER_LINK,
-            $env:NEURA_ANDROID_GRADLE_MODULES_LINK
+            $env:NEURA_ANDROID_GRADLE_WRAPPER_LINK
           )) {
             if ([string]::IsNullOrWhiteSpace($cacheLinkPath)) { continue }
             $cacheLink = Get-Item -LiteralPath $cacheLinkPath -Force -ErrorAction SilentlyContinue
@@ -1289,3 +1288,4 @@ jobs:
           if (-not [string]::IsNullOrWhiteSpace($env:NEURA_DART_DEFINE_FILE)) {
             Remove-Item -LiteralPath $env:NEURA_DART_DEFINE_FILE -Force -ErrorAction SilentlyContinue
           }
+
