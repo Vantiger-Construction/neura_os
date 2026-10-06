@@ -208,7 +208,7 @@ lib/living_intelligence/
 The Neura 1.5 workflow requires:
 
 1. no committed merge markers;
-2. dependency restore with Flutter 3.44.7;
+2. dependency restore with Flutter 3.47.5;
 3. canonical Dart formatting;
 4. fatal-info analysis;
 5. all Living Intelligence tests;

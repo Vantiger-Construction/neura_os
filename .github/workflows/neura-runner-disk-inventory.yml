@@ -64,8 +64,8 @@ jobs:
             Write-Host 'No Java runtime is on PATH.'
           }
 
-          Write-Host '=== Flutter 3.44.7 Android diagnosis ==='
-          $flutterExe = Join-Path $env:RUNNER_TOOL_CACHE 'flutter\3.44.7\x64\bin\flutter.bat'
+          Write-Host '=== Flutter 3.47.5 Android diagnosis ==='
+          $flutterExe = Join-Path $env:RUNNER_TOOL_CACHE 'flutter\3.47.5\x64\bin\flutter.bat'
           if (Test-Path -LiteralPath $flutterExe -PathType Leaf) {
             & $flutterExe doctor -v 2>&1 | ForEach-Object { Write-Host $_ }
             Write-Host ("flutter doctor exit code: {0}" -f $LASTEXITCODE)
