@@ -30,7 +30,8 @@ void main() {
         await body(tester);
       } finally {
         await tester.pumpWidget(const SizedBox.shrink());
-        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        tester.binding
+            .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
         // Restore before testWidgets checks its foundation invariants.
         debugDefaultTargetPlatformOverride = previousPlatform;
       }
