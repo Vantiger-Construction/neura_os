@@ -1,0 +1,47 @@
+// Built-in Kotlin migration of share_plus 7.2.2; package sources unchanged.
+group 'dev.fluttercommunity.plus.share'
+version '1.0-SNAPSHOT'
+
+ext.kotlin_version = '1.7.22'
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    // Match the verified CI platform; resolved AndroidX AARs require API 34+.
+    compileSdkVersion 36
+
+    namespace 'dev.fluttercommunity.plus.share'
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    defaultConfig {
+        minSdkVersion 19
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    lintOptions {
+        disable 'InvalidPackage'
+    }
+
+    dependencies {
+        implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+        implementation 'androidx.core:core-ktx:1.10.1'
+        implementation 'androidx.annotation:annotation:1.7.0'
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8
+    }
+}
