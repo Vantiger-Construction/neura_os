@@ -9,18 +9,36 @@ import 'package:neuro_companion/reliability/safe_boot.dart';
 
 void main() {
   setUp(() {
-    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     SafeBoot.instance.safeMode.value = false;
     SafeBoot.instance.restartRequired.value = false;
   });
   tearDown(() {
-    debugDefaultTargetPlatformOverride = null;
     SafeBoot.instance.safeMode.value = false;
     SafeBoot.instance.restartRequired.value = false;
   });
 
+  void windowsTest(
+    String description,
+    Future<void> Function(WidgetTester) body,
+  ) {
+    testWidgets(description, (tester) async {
+      final previousPlatform = debugDefaultTargetPlatformOverride;
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      // The viewer requires a foreground session, including in the test binding.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      try {
+        await body(tester);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        // Restore before testWidgets checks its foundation invariants.
+        debugDefaultTargetPlatformOverride = previousPlatform;
+      }
+    });
+  }
+
   for (final boundary in ['safe-mode', 'recovery', 'background', 'closure']) {
-    testWidgets('$boundary clears and revokes the viewer session',
+    windowsTest('$boundary clears and revokes the viewer session',
         (tester) async {
       var logouts = 0;
       final client = CameraHawkClient(transport: MockClient((r) async {
@@ -66,7 +84,7 @@ void main() {
     });
   }
 
-  testWidgets('Safe Mode blocks sign-in and dashboard handoff', (tester) async {
+  windowsTest('Safe Mode blocks sign-in and dashboard handoff', (tester) async {
     SafeBoot.instance.safeMode.value = true;
     var calls = 0;
     final client = CameraHawkClient(transport: MockClient((_) async {
