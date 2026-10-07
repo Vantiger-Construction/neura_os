@@ -867,6 +867,8 @@ jobs:
           Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
           cargo test --manifest-path rust/Cargo.toml --locked --bin neura_api
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --manifest-path rust/Cargo.toml --locked --test engine_session_lifecycle
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Locate or install NuGet
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'

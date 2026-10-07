@@ -1,14 +1,16 @@
 # Neura Engine milestone 1: synthetic IPC slice
 
-This slice hardens the Rust WebSocket sidecar only. It does not complete
-milestone 1, enable reflection, install a model, or admit personal sources.
+The IPC foundation hardens the Rust WebSocket sidecar. The next integration
+slice adds a trusted Windows launcher and a synthetic-only Console session.
+Neither slice completes milestone 1, enables reflection, installs a model,
+or admits personal sources.
 The adapter remains the degraded local echo provider.
 
 ## Explicit session startup
 
 The sidecar exits without a valid `NEURA_API_SESSION_TOKEN`. An explicit trusted
-native launcher must generate a fresh cryptographically random 32-byte value,
-encode it as 64 hexadecimal characters, and pass it in the child environment
+native launcher generates a fresh cryptographically random 32-byte value,
+encodes it as 64 hexadecimal characters, and passes it in the child environment
 for each launch. Keep the credential in RAM; never put it in a URL, command-line
 argument, checked-in configuration, log, or persistent setting. Clear the
 launcher's copy on session closure. This prototype relies on the launcher for
@@ -32,6 +34,25 @@ The server does not expose a token-creation or token-inspection endpoint.
   authenticated client can revoke the shared session; it is not an action or
   model permission. Stop the process and launch with a fresh credential to
   create a new session.
+
+The Windows launcher lives in `rust/src/engine_session.rs` and
+`rust/src/engine_process.rs`, inside the already-bundled native library. It uses
+the OS CSPRNG through `getrandom` for each launch and retains a zeroizing token
+holder in native RAM. Flutter never receives the credential. Windows startup
+passes a restricted Unicode child environment containing only the new token,
+`NEURA_API_ADDR=127.0.0.1:0`, `NEURA_API_LAUNCHER_READY=1`, and the OS-derived
+`SystemRoot`. It does not inherit provider keys, address overrides or old tokens.
+The executable is always `neura_api.exe` next to the app; neither paths nor
+arguments can be supplied by the Console. The Windows build bundles this
+executable alongside `neura_swarm.dll`.
+
+The child starts suspended, is assigned to a kill-on-close job, and resumes
+only after successful ownership setup. Only its stdout pipe and null standard
+input/error handles are inherited. The child reports a bounded, credential-free
+`NEURA_IPC_READY 127.0.0.1:<port>` receipt after successfully binding its ephemeral
+port. The native client reads that pipe before authenticating; it never probes
+the old fixed port or guesses readiness from a log. Startup failure, malformed
+receipts and missing binaries fail closed without automatic restart or fallback.
 
 No credential or input content is emitted by sidecar diagnostics. Logging is
 limited to this binary's operational info/warnings; `RUST_LOG` cannot turn on
@@ -63,15 +84,56 @@ Session revocation does the same for all clients. Output already transmitted
 before cancellation is observed cannot be retracted. These operations do not
 flush a cancelled queue or emit a queued final completion.
 
-The existing Flutter Console/BrainLink does not supply session authentication
-or the fixture protocol and cannot use this hardened sidecar. There is no
-automatic credential plumbing into production chat in this slice. Neura's
-primary chat, distinct local app API, voice controls, Safe Mode and native
-approval paths are unchanged. Before any UI integration admits personal inputs,
-the launcher must tie revocation and shutdown to screen closure, backgrounding,
-Safe Mode and recovery, and implement the vision's remaining lifecycle/consent
-controls. No microphone, background cloud, personal-data ingestion, memory
-admission, action dispatch, or external action path is added.
+The Windows Console now uses `EngineSession` and the native
+`neura/engine_synthetic_session` method channel instead of the old free-form
+BrainLink/ConversationController and Dart process supervisor. Opening it stays
+idle. Its explicit **Start synthetic check** creates a fresh native session,
+sends `hello`, runs only the fixed `synthetic_input` hello fixture, and checks
+diagnostics for `synthetic-only` and the degraded echo adapter. The client accepts
+at most 16 fixture response frames of at most 4 KiB each, checks the fixed hello
+completion, then drops the socket and response data. Only a status enum reaches
+Flutter; no fixture text is spoken, admitted to memory, or dispatched as an action.
+The old generic BrainLink remains separate and receives no session credential.
+
+| Argument-free operation | Effect |
+| --- | --- |
+| `startSynthetic` | Explicit foreground Windows start; fixed hello/diagnostics only. |
+| `syntheticStatus` | Returns only `stopped`, `starting`, `ready`, `error`, `unavailable`, or `blocked`. |
+| `stopSynthetic` | Invalidates the session, attempts authenticated revocation, and terminates/reaps the owned child. |
+| `blockSynthetic` | Same teardown with a process-lifetime Safe Mode/recovery latch. |
+
+Channel arguments and unknown methods are rejected; native status/exception
+payloads are never rendered or logged by Flutter. There is no arbitrary input,
+URL, executable, credential inspection, room, voice, source, memory, cloud,
+reflection, or action method. Android, other desktop platforms and browsers
+report unavailable and do not launch or fall back.
+
+Screen disposal, every non-resumed Flutter lifecycle state, Safe Mode and fatal
+recovery invalidate pending start/status replies before requesting teardown.
+Safe Mode and recovery remain latched even if their UI notifier later clears.
+The primary Windows window independently stops before plugins handle
+deactivation, minimization, hiding, suspension and closure; its native channel
+owner stops before the Flutter engine is destroyed. Returning to the foreground
+never resumes work. A new session always requires an explicit Start, and a Safe
+Mode/recovery block requires restarting the app. The worker and readiness reader
+are owned and joined before restart, so an old generation cannot publish into a
+new one or detach its child.
+
+Readiness and the entire hello/diagnostics probe each have a three-second
+deadline and cancellation interrupts both. Revocation uses direct numeric
+loopback HTTP, no proxy, no redirects and a 250 ms deadline. If readiness is not
+yet known or revocation cannot be confirmed, process/job termination invalidates
+the credential anyway. The native owner zeroizes its token and Windows
+environment buffers on teardown; OS and HTTP-library transient allocations are
+not a claim of complete memory erasure or protection from a same-user debugger.
+Dependency tracing is disabled on the dedicated native session thread, child
+stderr is discarded, and stdout is used only for the bounded readiness receipt.
+
+This session plumbing does not integrate production chat or complete the
+vision's remaining lifecycle/consent controls. No microphone, background cloud,
+personal-data ingestion, memory admission, action dispatch, external action, or
+reflection path is added. Local journaling and existing approval/memory scopes
+remain separate.
 
 ## Resource and failure contract
 
@@ -96,6 +158,8 @@ Run:
 
 ```text
 cargo test --manifest-path rust/Cargo.toml --locked --bin neura_api
+cargo test --manifest-path rust/Cargo.toml --locked --test engine_session_lifecycle
+flutter test test/neura_link/engine_session_lifecycle_test.dart
 rustfmt --edition 2021 --check rust/src/bin/neura_api.rs rust/src/ipc_tests.rs
 ```
 
@@ -108,9 +172,28 @@ OS socket-buffer sizes. Local Runner runs the focused suite using its existing
 bounded Rust workspace and retained toolchain; storage floors, build pins,
 release delivery and cleanup gates remain intact.
 
+The native lifecycle suite launches real synthetic sidecars and checks fresh
+credentials, bounded readiness parsing, real hello/diagnostics, confirmed
+revocation, child termination, early cancellation, foreground teardown,
+latched safety/recovery, restart invalidation, missing-binary behavior and
+credential-free pipe/tracing output. Flutter tests check screen removal,
+all background states, Safe Mode/recovery during pending startup, stale replies,
+unsupported platforms, exception/status redaction and argument-free operations.
+Local Runner runs the native suite; State Matrix includes the Flutter suite.
+
 Supported Windows device/lifecycle evidence and the rest of milestone 1 are
 still required before reflection or personal sources can be enabled. Echo tests
-do not establish model quality, production Safe Mode integration, Android
+do not establish model quality, supported-device Safe Mode behavior, Android
 lifecycle behavior, or real-model/device validation.
+
+Before promotion, collect supported Windows evidence for bundle/DLL loading,
+explicit startup while offline, screen close/back, deactivation/minimization,
+hide/suspend, Safe Mode and recovery during both startup and idle, and app exit.
+Each stop must leave no owned sidecar, late completion or automatic restart.
+After an ordinary stop, verify a new explicit start works; after safety/recovery,
+verify it stays blocked until app restart. Record content-free outcomes only,
+not tokens, wire captures, personal input or environment dumps. Repository CI
+and actual Windows checks are still required; cross-compilation is not device
+lifecycle evidence. Reflection and personal-source admission remain disabled.
 
 See [the engine vision](NEURA_ENGINE_VISION.md) for the full requirements.

@@ -888,6 +888,7 @@ dependencies = [
  "axum",
  "flutter_rust_bridge",
  "futures-util",
+ "getrandom 0.2.17",
  "once_cell",
  "reqwest",
  "serde",
@@ -898,6 +899,8 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "windows-sys 0.61.2",
+ "zeroize",
 ]
 
 [[package]]
