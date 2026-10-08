@@ -18,4 +18,6 @@ Open Neura's command palette and search for **Camera Hawk**. Start the existing 
 
 ## Validation
 
-Seven HTTP/session tests passed under standalone Dart package:test using the same test bodies committed with flutter_test. Client/test analysis passed. Flutter widget lifecycle tests are included for Safe Mode, recovery, backgrounding, closure and blocked handoff; execution is pending repository CI. Windows sign-in, installed dashboard launch, real media/video, service account interoperability and Camera Hawk's existing certification gates remain unverified.
+On October 8, 2026, all 12 focused Camera Hawk Flutter tests (seven HTTP/session tests and five widget tests) passed with Flutter 3.47.5 in an isolated Linux test package using the committed production source and a Windows platform override. The widget tests run the mock HTTP lifecycle in the real async zone: settling frames alone left sign-in waiting for streamed response completion. Backgrounding is checked for immediate authorization removal, then resumed to render the cleared UI and verify access stays revoked.
+
+Full refreshed-branch Windows/Android CI and package delivery remain separate checks. Windows sign-in, installed dashboard launch, real media/video, service account interoperability and Camera Hawk's existing certification gates remain unverified.

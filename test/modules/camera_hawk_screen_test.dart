@@ -27,7 +27,9 @@ void main() {
       // The viewer requires a foreground session, including in the test binding.
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       try {
-        await body(tester);
+        // Mock HTTP stream completion needs the real async zone; settling
+        // frames alone does not wait for the viewer session to finish.
+        await tester.runAsync(() => body(tester));
       } finally {
         await tester.pumpWidget(const SizedBox.shrink());
         tester.binding
@@ -71,6 +73,11 @@ void main() {
         case 'background':
           tester.binding
               .handleAppLifecycleStateChanged(AppLifecycleState.paused);
+          expect(client.connected, isFalse);
+          // Pausing disables frames. Resume to inspect the cleared UI and
+          // verify that returning to the foreground does not restore access.
+          tester.binding
+              .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
           break;
         case 'closure':
           await tester.pumpWidget(const SizedBox.shrink());
