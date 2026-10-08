@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:path_provider/path_provider.dart';
 
 import 'memory_crypto.dart';
+import 'bounded_stream_tail.dart';
 
 /// Local-first encrypted memory graph.
 ///
@@ -151,17 +152,19 @@ class MemoryGraphService {
   }
 
   Future<List<Map<String, dynamic>>> recentNodes({int limit = 25}) async {
-    if (_writesSuspended) return [];
+    if (_writesSuspended || limit <= 0) return [];
     final generation = _dataGeneration;
     final crypto = await _ensureCrypto();
     if (!_isCurrent(generation)) return [];
     final f = await _nodesFile(createDirectory: false);
     if (!_isCurrent(generation) || !await f.exists()) return [];
 
-    final lines = await f.readAsLines();
+    final tail = await boundedStreamTail(
+      f.openRead().transform(utf8.decoder).transform(const LineSplitter()),
+      limit: limit,
+      isCurrent: () => _isCurrent(generation),
+    );
     if (!_isCurrent(generation)) return [];
-    final tail =
-        lines.length <= limit ? lines : lines.sublist(lines.length - limit);
     final out = <Map<String, dynamic>>[];
 
     for (final line in tail) {
@@ -196,31 +199,31 @@ class MemoryGraphService {
     DateTime cutoff, {
     int limit = 200,
   }) async {
-    if (_writesSuspended) return [];
+    if (_writesSuspended || limit <= 0) return [];
     final generation = _dataGeneration;
     final crypto = await _ensureCrypto();
     if (!_isCurrent(generation)) return [];
     final f = await _nodesFile(createDirectory: false);
     if (!_isCurrent(generation) || !await f.exists()) return [];
 
-    final lines = await f.readAsLines();
+    final tail = await boundedStreamTail(
+      f.openRead().transform(utf8.decoder).transform(const LineSplitter()),
+      limit: limit,
+      isCurrent: () => _isCurrent(generation),
+      matches: (line) {
+        if (line.trim().isEmpty) return false;
+        try {
+          final m = jsonDecode(line) as Map<String, dynamic>;
+          final ts = DateTime.tryParse(m['ts'] as String? ?? '');
+          return !(ts == null || !ts.isBefore(cutoff));
+        } catch (_) {
+          // Skip corrupt lines.
+          return false;
+        }
+      },
+    );
     if (!_isCurrent(generation)) return [];
-    final matched = <String>[];
-    for (final line in lines) {
-      if (line.trim().isEmpty) continue;
-      try {
-        final m = jsonDecode(line) as Map<String, dynamic>;
-        final ts = DateTime.tryParse(m['ts'] as String? ?? '');
-        if (ts == null || !ts.isBefore(cutoff)) continue;
-        matched.add(line);
-      } catch (_) {
-        // Skip corrupt lines.
-      }
-    }
 
-    final tail = matched.length <= limit
-        ? matched
-        : matched.sublist(matched.length - limit);
     final out = <Map<String, dynamic>>[];
     for (final line in tail) {
       try {
@@ -250,31 +253,31 @@ class MemoryGraphService {
     DateTime end, {
     int limit = 500,
   }) async {
-    if (_writesSuspended) return [];
+    if (_writesSuspended || limit <= 0) return [];
     final generation = _dataGeneration;
     final crypto = await _ensureCrypto();
     if (!_isCurrent(generation)) return [];
     final f = await _nodesFile(createDirectory: false);
     if (!_isCurrent(generation) || !await f.exists()) return [];
 
-    final lines = await f.readAsLines();
+    final tail = await boundedStreamTail(
+      f.openRead().transform(utf8.decoder).transform(const LineSplitter()),
+      limit: limit,
+      isCurrent: () => _isCurrent(generation),
+      matches: (line) {
+        if (line.trim().isEmpty) return false;
+        try {
+          final m = jsonDecode(line) as Map<String, dynamic>;
+          final ts = DateTime.tryParse(m['ts'] as String? ?? '');
+          return !(ts == null || ts.isBefore(start) || !ts.isBefore(end));
+        } catch (_) {
+          // Skip corrupt lines.
+          return false;
+        }
+      },
+    );
     if (!_isCurrent(generation)) return [];
-    final matched = <String>[];
-    for (final line in lines) {
-      if (line.trim().isEmpty) continue;
-      try {
-        final m = jsonDecode(line) as Map<String, dynamic>;
-        final ts = DateTime.tryParse(m['ts'] as String? ?? '');
-        if (ts == null || ts.isBefore(start) || !ts.isBefore(end)) continue;
-        matched.add(line);
-      } catch (_) {
-        // Skip corrupt lines.
-      }
-    }
 
-    final tail = matched.length <= limit
-        ? matched
-        : matched.sublist(matched.length - limit);
     final out = <Map<String, dynamic>>[];
     for (final line in tail) {
       try {

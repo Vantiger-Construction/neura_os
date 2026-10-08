@@ -1,0 +1,300 @@
+[CmdletBinding()]
+param(
+  [Parameter(Mandatory)]
+  [ValidatePattern('^\d+\.\d+\.\d+$')]
+  [string]$Version,
+
+  [Parameter(Mandatory)]
+  [ValidatePattern('^[A-Fa-f0-9]{64}$')]
+  [string]$ExpectedSha256
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($env:RUNNER_TOOL_CACHE)) {
+  throw 'RUNNER_TOOL_CACHE is unavailable; the pinned Flutter SDK cannot be installed safely.'
+}
+
+$cacheParent = Join-Path $env:RUNNER_TOOL_CACHE 'flutter'
+$cacheVersionRoot = Join-Path $cacheParent $Version
+$flutterRoot = Join-Path $cacheVersionRoot 'x64'
+$flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
+$backupRoot = "$flutterRoot.previous"
+$backupExe = Join-Path $backupRoot 'bin\flutter.bat'
+$lockPath = Join-Path $cacheParent ".$Version.install.lock"
+$expectedHash = $ExpectedSha256.ToLowerInvariant()
+
+function Test-NeuraFlutterSdk {
+  param(
+    [Parameter(Mandatory)][string]$Executable,
+    [Parameter(Mandatory)][string]$ExpectedVersion
+  )
+
+  if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) {
+    return $false
+  }
+
+  # Windows PowerShell 5.1 turns redirected native stderr into error records.
+  # Flutter writes bootstrap progress there even when the command succeeds.
+  # Judge this probe by its exit code and version, then restore strict handling.
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $output = @(& $Executable --version 2>&1)
+    $probeExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+
+  return $probeExitCode -eq 0 -and
+    ($output -join [Environment]::NewLine) -match
+      "(?m)^Flutter $([regex]::Escape($ExpectedVersion))(?:\s|$)"
+}
+
+function Get-NeuraFlutterArchive {
+  param(
+    [Parameter(Mandatory)][string]$Uri,
+    [Parameter(Mandatory)][string]$Destination
+  )
+
+  $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    $downloadExitCode = 0
+    try {
+      Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
+      if ($curl) {
+        & $curl.Source `
+          --fail `
+          --location `
+          --retry 2 `
+          --retry-delay 5 `
+          --connect-timeout 30 `
+          --max-time 1800 `
+          --output $Destination `
+          $Uri
+        $downloadExitCode = $LASTEXITCODE
+        if ($downloadExitCode -ne 0) {
+          throw "curl.exe exited with code $downloadExitCode."
+        }
+      } else {
+        Invoke-WebRequest `
+          -UseBasicParsing `
+          -Uri $Uri `
+          -OutFile $Destination `
+          -TimeoutSec 1800
+      }
+      return
+    } catch {
+      Write-Warning (
+        "Flutter download {0}/3 failed: {1}" -f
+        $attempt,
+        $_.Exception.Message
+      )
+      # Retrying a local write failure cannot recover disk space. Remove the
+      # partial archive immediately and leave network failures retryable.
+      Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
+      if ($downloadExitCode -eq 23 -or $attempt -eq 3) {
+        throw
+      }
+      Start-Sleep -Seconds (10 * $attempt)
+    }
+  }
+}
+
+function Assert-NeuraFlutterInstallSpace {
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [Parameter(Mandatory)][long]$MinimumBytes
+  )
+
+  $volumeRoot = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($Path))
+  $drive = [System.IO.DriveInfo]::new($volumeRoot)
+  if (-not $drive.IsReady -or $drive.AvailableFreeSpace -lt $MinimumBytes) {
+    throw ("Flutter installation needs {0:N2} GB free on cache volume {1}; only {2:N2} GB is available." -f
+      ($MinimumBytes / 1GB), $volumeRoot, ($drive.AvailableFreeSpace / 1GB))
+  }
+}
+
+function Get-NeuraFlutterExpandedBytes {
+  param([Parameter(Mandatory)][string]$ArchivePath)
+
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  $archive = [System.IO.Compression.ZipFile]::OpenRead($ArchivePath)
+  try {
+    [long]$total = 0
+    foreach ($entry in $archive.Entries) { $total += $entry.Length }
+    return $total
+  } finally {
+    $archive.Dispose()
+  }
+}
+
+function Install-NeuraFlutterStagedSdk {
+  param(
+    [Parameter(Mandatory)][string]$StagedRoot,
+    [Parameter(Mandatory)][string]$Destination,
+    [Parameter(Mandatory)][string]$ExpectedVersion
+  )
+
+  $stagedExe = Join-Path $StagedRoot 'bin\flutter.bat'
+  if (-not (Test-NeuraFlutterSdk -Executable $stagedExe -ExpectedVersion $ExpectedVersion)) {
+    throw "The staged Flutter $ExpectedVersion SDK failed its health probe."
+  }
+
+  # Move-Item cannot create the missing <version> parent on a cold cache.
+  New-Item -ItemType Directory -Path (Split-Path -Parent $Destination) -Force | Out-Null
+  $previous = "$Destination.previous"
+  Remove-Item -LiteralPath $previous -Recurse -Force -ErrorAction SilentlyContinue
+  $hadPrevious = Test-Path -LiteralPath $Destination
+  if ($hadPrevious) {
+    Move-Item -LiteralPath $Destination -Destination $previous
+  }
+  try {
+    Move-Item -LiteralPath $StagedRoot -Destination $Destination
+    $installedExe = Join-Path $Destination 'bin\flutter.bat'
+    if (-not (Test-NeuraFlutterSdk -Executable $installedExe -ExpectedVersion $ExpectedVersion)) {
+      throw "The installed Flutter $ExpectedVersion SDK failed its health probe."
+    }
+  } catch {
+    Remove-Item -LiteralPath $Destination -Recurse -Force -ErrorAction SilentlyContinue
+    if ($hadPrevious) {
+      Move-Item -LiteralPath $previous -Destination $Destination
+    }
+    throw
+  }
+  Remove-Item -LiteralPath $previous -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# This helper also runs before checkout in packaging workflows; direct SDK
+# users (for example, memory tests) need the same abandoned-install recovery.
+& (Join-Path $PSScriptRoot 'Repair-NeuraCiStorage.ps1') -ToolCache $env:RUNNER_TOOL_CACHE
+
+New-Item -ItemType Directory -Path $cacheParent -Force | Out-Null
+$lock = $null
+$lockDeadline = [DateTime]::UtcNow.AddMinutes(30)
+while (-not $lock) {
+  try {
+    $lock = [System.IO.File]::Open(
+      $lockPath,
+      [System.IO.FileMode]::OpenOrCreate,
+      [System.IO.FileAccess]::ReadWrite,
+      [System.IO.FileShare]::None
+    )
+  } catch [System.IO.IOException] {
+    if ([DateTime]::UtcNow -ge $lockDeadline) {
+      throw "Timed out waiting for another Flutter $Version cache install to finish."
+    }
+    Start-Sleep -Seconds 5
+  }
+}
+
+try {
+  if (-not (Test-NeuraFlutterSdk -Executable $flutterExe -ExpectedVersion $Version) -and
+      (Test-NeuraFlutterSdk -Executable $backupExe -ExpectedVersion $Version)) {
+    Write-Warning "Recovering the previous healthy Flutter $Version cache."
+    Remove-Item -LiteralPath $flutterRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Move-Item -LiteralPath $backupRoot -Destination $flutterRoot
+  }
+
+  if (-not (Test-NeuraFlutterSdk -Executable $flutterExe -ExpectedVersion $Version)) {
+    Write-Warning (
+      "Retained Flutter $Version is missing or unhealthy; " +
+      'installing a checksum-verified replacement.'
+    )
+
+    $releaseIndexUri =
+      'https://storage.googleapis.com/flutter_infra_release/releases/releases_windows.json'
+    $releaseIndex = Invoke-RestMethod -UseBasicParsing -Uri $releaseIndexUri
+    $release = $releaseIndex.releases |
+      Where-Object {
+        $_.version -eq $Version -and
+        $_.channel -eq 'stable' -and
+        $_.dart_sdk_arch -eq 'x64'
+      } |
+      Select-Object -First 1
+    if (-not $release) {
+      throw "Flutter $Version x64 is absent from the official stable release index."
+    }
+
+    $indexHash = ([string]$release.sha256).Trim().ToLowerInvariant()
+    if ($indexHash -ne $expectedHash) {
+      throw (
+        "Flutter $Version release-index SHA-256 does not match the repository pin. " +
+        "Expected $expectedHash; found $indexHash."
+      )
+    }
+
+    $archiveUri =
+      $releaseIndex.base_url.TrimEnd('/') + '/' + $release.archive
+    # Stage beside the retained SDK, under the same version lock. A test
+    # workspace may have only 2.5 GB free; it is not an SDK install volume.
+    # Keeping staging here also makes promotion a same-volume directory move.
+    $repairRoot = Join-Path $cacheVersionRoot '.install'
+    $archivePath = Join-Path $repairRoot 'flutter.zip'
+    $extractRoot = Join-Path $repairRoot 'extract'
+    $stagedFlutter = Join-Path $extractRoot 'flutter'
+
+    Remove-Item -LiteralPath $repairRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Assert-NeuraFlutterInstallSpace -Path $cacheVersionRoot -MinimumBytes 8GB
+    New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
+
+    try {
+      Get-NeuraFlutterArchive -Uri $archiveUri -Destination $archivePath
+
+      $actualHash =
+        (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+      if ($actualHash -ne $expectedHash) {
+        throw (
+          "Flutter $Version archive SHA-256 verification failed. " +
+          "Expected $expectedHash; found $actualHash."
+        )
+      }
+
+      $expandedBytes = Get-NeuraFlutterExpandedBytes -ArchivePath $archivePath
+      Assert-NeuraFlutterInstallSpace -Path $cacheVersionRoot -MinimumBytes ($expandedBytes + 2GB)
+
+      $tar = Get-Command tar.exe -ErrorAction SilentlyContinue
+      if ($tar) {
+        & $tar.Source -xf $archivePath -C $extractRoot
+        if ($LASTEXITCODE -ne 0) {
+          throw "tar.exe failed to extract Flutter with exit code $LASTEXITCODE."
+        }
+      } else {
+        Expand-Archive -LiteralPath $archivePath -DestinationPath $extractRoot
+      }
+
+      # The checksum-verified archive is no longer needed after extraction.
+      # Release it before the health probe bootstraps Flutter and Dart.
+      Remove-Item -LiteralPath $archivePath -Force
+
+      Install-NeuraFlutterStagedSdk -StagedRoot $stagedFlutter `
+        -Destination $flutterRoot -ExpectedVersion $Version
+    } finally {
+      Remove-Item -LiteralPath $repairRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+  }
+
+  if (-not (Test-NeuraFlutterSdk -Executable $flutterExe -ExpectedVersion $Version)) {
+    throw "Flutter $Version remains unavailable after cache provisioning."
+  }
+  Remove-Item -LiteralPath $backupRoot -Recurse -Force -ErrorAction SilentlyContinue
+
+  $flutterBin = Join-Path $flutterRoot 'bin'
+  if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_PATH)) {
+    $flutterBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+  }
+  & $flutterExe config --no-analytics
+  if ($LASTEXITCODE -ne 0) {
+    throw "Flutter configuration failed with exit code $LASTEXITCODE."
+  }
+  & $flutterExe --version
+  if ($LASTEXITCODE -ne 0) {
+    throw "Flutter verification failed with exit code $LASTEXITCODE."
+  }
+} finally {
+  if ($lock) {
+    $lock.Dispose()
+  }
+  Remove-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue
+}

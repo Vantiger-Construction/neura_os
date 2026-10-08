@@ -12,6 +12,7 @@ on:
       - 'tools/Repair-NeuraCiStorage.ps1'
       - 'tools/Repair-NeuraCiStorage.Tests.ps1'
       - 'tools/Save-NeuraConfiguredPackage.ps1'
+      - 'tools/Enable-NeuraFlutter.ps1'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/neura-self-hosted-android.yml'
@@ -30,6 +31,10 @@ permissions:
 concurrency:
   group: neura-self-hosted-android-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.47.5'
+  FLUTTER_SHA256: '0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8'
 
 jobs:
   android:
@@ -679,10 +684,10 @@ jobs:
           $androidUserHome = Join-Path $buildRoot 'android-user'
           $tempRoot = Join-Path $buildRoot 'temp'
           # Transform/build caches are run-local on the selected build volume.
-          # Retain only checksum-verified tools and Gradle's reusable wrapper and
-          # dependency downloads. The committed lockfile is resolved every run.
+          # Retain only checksum-verified tools and Gradle's reusable wrapper.
+          # Dependency downloads are run-local; resolve the lockfile every run.
           $persistentToolRoot = Join-Path $env:RUNNER_TOOL_CACHE 'neura-android'
-          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.44.7'
+          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.47.5'
           $gradleHome = Join-Path $buildRoot 'gradle-home'
           $persistentGradleHome = Join-Path $persistentToolRoot 'gradle-home'
           $persistentGradleWrapper = Join-Path $persistentGradleHome 'wrapper'
@@ -711,9 +716,12 @@ jobs:
           New-Item -ItemType Junction `
             -Path (Join-Path $gradleHome 'wrapper') `
             -Target $persistentGradleWrapper | Out-Null
-          New-Item -ItemType Junction `
-            -Path (Join-Path $gradleCaches 'modules-2') `
-            -Target $persistentGradleModules | Out-Null
+          # Gradle 9.3.1 Kotlin DSL must load plugin jars from ordinary paths.
+          # Keep downloads run-local too: the modules-2 junction still exposed
+          # Flutter's included Gradle build to the linked-classpath regression.
+          # Existing headroom checks and run-root cleanup cover this directory.
+          New-Item -ItemType Directory `
+            -Path (Join-Path $gradleCaches 'modules-2') -Force | Out-Null
           New-Item -ItemType Junction `
             -Path (Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'build') `
             -Target $outputRoot | Out-Null
@@ -723,7 +731,6 @@ jobs:
             "NEURA_ANDROID_TOOL_ROOT=$toolRoot",
             "NEURA_ANDROID_GRADLE_ROOT=$gradleHome",
             "NEURA_ANDROID_GRADLE_WRAPPER_LINK=$(Join-Path $gradleHome 'wrapper')",
-            "NEURA_ANDROID_GRADLE_MODULES_LINK=$(Join-Path $gradleCaches 'modules-2')",
             "NEURA_ANDROID_SDK_ROOT=$sdkRoot",
             "NEURA_ANDROID_JDK_ROOT=$jdkRoot",
             "PUB_CACHE=$pubCache",
@@ -733,18 +740,12 @@ jobs:
             "TMP=$tempRoot"
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Enable pinned Flutter 3.44.7
+      - name: Enable pinned Flutter 3.47.5
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
-          $flutterRoot = Join-Path $env:RUNNER_TOOL_CACHE 'flutter\3.44.7\x64'
-          $flutterExe = Join-Path $flutterRoot 'bin\flutter.bat'
-          if (-not (Test-Path -LiteralPath $flutterExe -PathType Leaf)) {
-            throw 'Pinned Flutter 3.44.7 is missing from the runner tool cache.'
-          }
-          (Join-Path $flutterRoot 'bin') |
-            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          & $flutterExe --version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:NEURA_ANDROID_SOURCE_ROOT\tools\Enable-NeuraFlutter.ps1" `
+            -Version $env:FLUTTER_VERSION `
+            -ExpectedSha256 $env:FLUTTER_SHA256
 
       - name: Use verified JDK 17
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
@@ -1129,8 +1130,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Could not unlink the Android build output.' }
           }
           foreach ($cacheLinkPath in @(
-            $env:NEURA_ANDROID_GRADLE_WRAPPER_LINK,
-            $env:NEURA_ANDROID_GRADLE_MODULES_LINK
+            $env:NEURA_ANDROID_GRADLE_WRAPPER_LINK
           )) {
             if ([string]::IsNullOrWhiteSpace($cacheLinkPath)) { continue }
             $cacheLink = Get-Item -LiteralPath $cacheLinkPath -Force -ErrorAction SilentlyContinue
@@ -1141,7 +1141,9 @@ jobs:
             & "$env:SystemRoot\System32\cmd.exe" /d /c rmdir "$cacheLinkPath"
             if ($LASTEXITCODE -ne 0) { throw "Could not unlink Gradle cache path $cacheLinkPath." }
           }
-          # Use the tested walker so nested links cannot delete external data.
+          # The ordinary, run-local modules-2 directory is removed with the
+          # build root. Use the tested walker so nested links cannot delete
+          # external data.
           $helper = Join-Path $env:NEURA_ANDROID_SOURCE_ROOT 'tools\Repair-NeuraCiStorage.ps1'
           $tokens = $null
           $errors = $null
@@ -1236,8 +1238,7 @@ jobs:
             }
           }
           foreach ($cacheLinkPath in @(
-            $env:NEURA_ANDROID_GRADLE_WRAPPER_LINK,
-            $env:NEURA_ANDROID_GRADLE_MODULES_LINK
+            $env:NEURA_ANDROID_GRADLE_WRAPPER_LINK
           )) {
             if ([string]::IsNullOrWhiteSpace($cacheLinkPath)) { continue }
             $cacheLink = Get-Item -LiteralPath $cacheLinkPath -Force -ErrorAction SilentlyContinue

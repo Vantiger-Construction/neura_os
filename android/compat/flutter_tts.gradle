@@ -1,0 +1,55 @@
+// Built-in Kotlin migration of flutter_tts 4.2.5; package sources unchanged.
+def args = ["-Xlint:deprecation"]
+
+group 'com.eyedeadevelopment.fluttertts'
+version '1.0-SNAPSHOT'
+
+ext.kotlin_version = '2.2.20'
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+project.getTasks().withType(JavaCompile).configureEach {
+    options.compilerArgs.addAll(args)
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    compileSdk 36
+    if (project.android.hasProperty("namespace")) {
+        namespace 'com.eyedeadevelopment.fluttertts'
+    }
+
+    defaultConfig {
+        minSdkVersion 24
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    lintOptions {
+        disable 'InvalidPackage'
+        disable 'GradleDependency'
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+}
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+}
+repositories {
+    mavenCentral()
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
+    }
+}

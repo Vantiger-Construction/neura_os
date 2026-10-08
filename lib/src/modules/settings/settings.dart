@@ -155,16 +155,13 @@ class SettingsScreen extends StatelessWidget {
           const Divider(),
           ListTile(
             leading: const Icon(Icons.hub_outlined),
-            title: const Text('Local Brain Console'),
+            title: const Text('Neura Engine Console'),
             subtitle: const Text(
-              'Streaming link, tone, connection health, and diagnostics.',
+              'Windows synthetic hello and local diagnostics.',
             ),
             onTap: () {
               Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      const NeuraConsolePage(brainUrl: 'ws://127.0.0.1:8787'),
-                ),
+                MaterialPageRoute(builder: (_) => const NeuraConsolePage()),
               );
             },
           ),

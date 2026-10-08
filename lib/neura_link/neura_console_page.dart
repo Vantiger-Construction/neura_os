@@ -1,63 +1,83 @@
 import 'package:flutter/material.dart';
-import 'brain_link.dart';
-import 'conversation_controller.dart';
-import 'sidecar_manager.dart';
-import 'widgets/diagnostics_panel.dart';
-import 'widgets/streaming_chat_view.dart';
+
+import 'engine_session.dart';
 
 class NeuraConsolePage extends StatefulWidget {
-  const NeuraConsolePage(
-      {super.key,
-      required this.brainUrl,
-      this.sidecarExePath,
-      this.onDispatchIntent});
-  final String brainUrl;
-  final String? sidecarExePath;
-  final ValueChanged<Map<String, dynamic>>? onDispatchIntent;
+  const NeuraConsolePage({super.key});
+
   @override
   State<NeuraConsolePage> createState() => _NeuraConsolePageState();
 }
 
 class _NeuraConsolePageState extends State<NeuraConsolePage> {
-  late final BrainLink link;
-  late final ConversationController controller;
-  SidecarManager? sidecar;
+  late final EngineSession session;
+
   @override
   void initState() {
     super.initState();
-    if (widget.sidecarExePath case final path?) {
-      sidecar = SidecarManager(executablePath: path)..start();
-    }
-    link = BrainLink(url: widget.brainUrl)..start();
-    controller = ConversationController(
-        link: link, onDispatchIntent: widget.onDispatchIntent);
+    session = EngineSession();
   }
 
   @override
   void dispose() {
-    controller.dispose();
-    link.dispose();
-    sidecar?.dispose();
+    session.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Neura Console'), actions: [
-          StreamBuilder<BrainConnectionState>(
-              stream: link.states,
-              builder: (context, snapshot) => Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Icon(Icons.circle,
-                        size: 12,
-                        color: link.isConnected ? Colors.green : Colors.red),
-                  ))
-        ]),
-        body: Column(children: [
-          Expanded(child: StreamingChatView(controller: controller)),
-          ExpansionTile(
-              title: const Text('Diagnostics'),
-              children: [DiagnosticsPanel(controller: controller)])
-        ]),
+        appBar: AppBar(title: const Text('Neura Engine Console')),
+        body: ListenableBuilder(
+          listenable: session,
+          builder: (context, _) => ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              const Text(
+                'Synthetic session',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'On Windows, Start checks a fixed hello and local diagnostics. '
+                'The model adapter remains the local echo prototype.',
+              ),
+              const SizedBox(height: 16),
+              Text(switch (session.state) {
+                EngineSessionState.stopped =>
+                  'Stopped. Start creates a fresh session.',
+                EngineSessionState.starting =>
+                  'Checking synthetic hello and diagnostics…',
+                EngineSessionState.ready =>
+                  'Hello verified. Diagnostics verified. Echo adapter: degraded.',
+                EngineSessionState.error =>
+                  'The synthetic session failed and was stopped.',
+                EngineSessionState.unavailable =>
+                  'The Windows synthetic sidecar is unavailable.',
+                EngineSessionState.blocked =>
+                  'Session blocked by Safe Mode, recovery, or window lifecycle.',
+              }),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  FilledButton(
+                    onPressed: session.canStart ? session.start : null,
+                    child: const Text('Start synthetic check'),
+                  ),
+                  OutlinedButton(
+                    onPressed: session.stop,
+                    child: const Text('Stop'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Closing this screen, leaving the foreground, Safe Mode, or '
+                'recovery ends the session. Start is always an explicit choice.',
+              ),
+            ],
+          ),
+        ),
       );
 }
