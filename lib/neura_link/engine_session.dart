@@ -8,9 +8,11 @@ import '../reliability/safe_boot.dart';
 import '../startup/neura_error_pipeline.dart';
 
 enum EngineSessionState {
-  stopped,
+  disabled,
   starting,
-  ready,
+  idle,
+  working,
+  paused,
   error,
   unavailable,
   blocked,
@@ -43,21 +45,35 @@ class EngineSession extends ChangeNotifier with WidgetsBindingObserver {
   final ValueListenable<bool> _safeMode;
   final ValueListenable<NeuraFatalError?> _recovery;
   final bool _supported;
-  EngineSessionState _state = EngineSessionState.stopped;
+  EngineSessionState _state = EngineSessionState.disabled;
   Timer? _pollTimer;
   int _generation = 0;
   bool _foreground = true;
   bool _blocked = false;
   bool _disposed = false;
+  bool _pausing = false;
 
   EngineSessionState get state => _state;
   bool get canStart =>
       !_disposed &&
       !_blocked &&
       _foreground &&
-      _state != EngineSessionState.starting &&
-      _state != EngineSessionState.ready &&
-      _state != EngineSessionState.blocked;
+      (_state == EngineSessionState.disabled ||
+          _state == EngineSessionState.error ||
+          _state == EngineSessionState.unavailable);
+  bool get canPause =>
+      !_disposed &&
+      !_blocked &&
+      _foreground &&
+      (_state == EngineSessionState.starting ||
+          _state == EngineSessionState.working ||
+          _state == EngineSessionState.idle);
+  bool get canResume =>
+      !_disposed &&
+      !_blocked &&
+      _foreground &&
+      !_pausing &&
+      _state == EngineSessionState.paused;
 
   Future<void> start() async {
     if (!canStart) return;
@@ -70,16 +86,45 @@ class EngineSession extends ChangeNotifier with WidgetsBindingObserver {
     await _requestState('startSynthetic', generation);
   }
 
+  Future<void> pause() async {
+    if (!canPause) return;
+    final generation = ++_generation;
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _pausing = true;
+    _update(EngineSessionState.paused);
+    await _requestState('pauseSynthetic', generation);
+    if (!_disposed && generation == _generation) {
+      _pausing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> resume() async {
+    if (!canResume) return;
+    final generation = ++_generation;
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _update(EngineSessionState.starting);
+    await _requestState('resumeSynthetic', generation);
+  }
+
+  bool _isCurrent(int generation) =>
+      !_disposed && generation == _generation && _foreground && !_blocked;
+
   Future<void> _requestState(String method, int generation) async {
+    if (!_isCurrent(generation)) return;
     EngineSessionState next;
     try {
       final label = await _channel
           .invokeMethod<String>(method)
           .timeout(const Duration(seconds: 5));
       next = switch (label) {
-        'stopped' => EngineSessionState.stopped,
+        'disabled' => EngineSessionState.disabled,
         'starting' => EngineSessionState.starting,
-        'ready' => EngineSessionState.ready,
+        'idle' => EngineSessionState.idle,
+        'working' => EngineSessionState.working,
+        'paused' => EngineSessionState.paused,
         'blocked' => EngineSessionState.blocked,
         'unavailable' => EngineSessionState.unavailable,
         _ => EngineSessionState.error,
@@ -88,10 +133,11 @@ class EngineSession extends ChangeNotifier with WidgetsBindingObserver {
       // Never render, log, export or persist exception or native payload text.
       next = EngineSessionState.error;
     }
-    if (_disposed || generation != _generation || !_foreground || _blocked) {
-      return;
-    }
+    if (!_isCurrent(generation)) return;
     _update(next);
+    // Listeners can synchronously pause, stop, dispose or enter safety mode.
+    // Recheck before scheduling a poll or stopping a replacement generation.
+    if (!_isCurrent(generation)) return;
     if (next == EngineSessionState.error ||
         next == EngineSessionState.unavailable) {
       await stop();
@@ -101,9 +147,15 @@ class EngineSession extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     if (next == EngineSessionState.starting ||
-        next == EngineSessionState.ready) {
+        next == EngineSessionState.working ||
+        next == EngineSessionState.idle ||
+        next == EngineSessionState.paused) {
       _pollTimer?.cancel();
-      _pollTimer = Timer(const Duration(seconds: 1), () {
+      final delay = next == EngineSessionState.starting ||
+              next == EngineSessionState.working
+          ? const Duration(milliseconds: 100)
+          : const Duration(seconds: 1);
+      _pollTimer = Timer(delay, () {
         unawaited(_requestState('syntheticStatus', generation));
       });
     }
@@ -120,7 +172,10 @@ class EngineSession extends ChangeNotifier with WidgetsBindingObserver {
     ++_generation;
     _pollTimer?.cancel();
     _pollTimer = null;
-    _update(_blocked ? EngineSessionState.blocked : EngineSessionState.stopped);
+    _pausing = false;
+    _update(
+      _blocked ? EngineSessionState.blocked : EngineSessionState.disabled,
+    );
     if (!_supported) return;
     try {
       await _channel.invokeMethod<String>(method);

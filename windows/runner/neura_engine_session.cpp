@@ -15,11 +15,13 @@ T Lookup(HMODULE library, const char* name) {
 
 const char* StateName(int state) {
   switch (state) {
-    case 0: return "stopped";
+    case 0: return "disabled";
     case 1: return "starting";
-    case 2: return "ready";
+    case 2: return "idle";
     case 4: return "unavailable";
     case 5: return "blocked";
+    case 6: return "working";
+    case 7: return "paused";
     default: return "error";
   }
 }
@@ -40,14 +42,17 @@ NeuraEngineSession::NeuraEngineSession(flutter::BinaryMessenger* messenger,
     const auto& method = call.method_name();
     if (method == "stopSynthetic") {
       if (stop_) stop_();
-      result->Success(flutter::EncodableValue("stopped"));
+      result->Success(flutter::EncodableValue(blocked_ ? "blocked" : "disabled"));
     } else if (method == "blockSynthetic") {
       // Latch even before the DLL has been loaded. Safe Mode/recovery cannot
       // be reversed by reopening the Console or returning to the foreground.
       blocked_ = true;
       if (block_) block_();
       result->Success(flutter::EncodableValue("blocked"));
-    } else if (method == "startSynthetic") {
+    } else if (method == "pauseSynthetic") {
+      result->Success(flutter::EncodableValue(
+          blocked_ ? "blocked" : (pause_ ? StateName(pause_()) : "disabled")));
+    } else if (method == "startSynthetic" || method == "resumeSynthetic") {
       if (blocked_) {
         result->Success(flutter::EncodableValue("blocked"));
         return;
@@ -59,10 +64,11 @@ NeuraEngineSession::NeuraEngineSession(flutter::BinaryMessenger* messenger,
       const bool visible = IsWindowVisible(window_) && !IsIconic(window_) &&
                            GetForegroundWindow() == window_;
       foreground_(visible ? 1 : 0);
-      result->Success(flutter::EncodableValue(StateName(start_())));
+      result->Success(flutter::EncodableValue(
+          StateName(method == "startSynthetic" ? start_() : resume_())));
     } else if (method == "syntheticStatus") {
       result->Success(flutter::EncodableValue(
-          blocked_ ? "blocked" : (status_ ? StateName(status_()) : "stopped")));
+          blocked_ ? "blocked" : (status_ ? StateName(status_()) : "disabled")));
     } else {
       result->NotImplemented();
     }
@@ -82,14 +88,18 @@ bool NeuraEngineSession::Load() {
       LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
   if (!library_) return false;
   start_ = Lookup<StateFunction>(library_, "neura_engine_start_synthetic");
+  pause_ = Lookup<StateFunction>(library_, "neura_engine_pause_synthetic");
+  resume_ = Lookup<StateFunction>(library_, "neura_engine_resume_synthetic");
   status_ = Lookup<StateFunction>(library_, "neura_engine_synthetic_status");
   stop_ = Lookup<StopFunction>(library_, "neura_engine_stop_synthetic");
   block_ = Lookup<StopFunction>(library_, "neura_engine_block_synthetic");
   foreground_ = Lookup<ForegroundFunction>(library_, "neura_engine_synthetic_foreground");
-  if (start_ && status_ && stop_ && block_ && foreground_) return true;
+  if (start_ && pause_ && resume_ && status_ && stop_ && block_ && foreground_) return true;
   FreeLibrary(library_);
   library_ = nullptr;
   start_ = nullptr;
+  pause_ = nullptr;
+  resume_ = nullptr;
   status_ = nullptr;
   stop_ = nullptr;
   block_ = nullptr;
