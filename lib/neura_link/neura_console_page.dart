@@ -43,12 +43,16 @@ class _NeuraConsolePageState extends State<NeuraConsolePage> {
               ),
               const SizedBox(height: 16),
               Text(switch (session.state) {
-                EngineSessionState.stopped =>
-                  'Stopped. Start creates a fresh session.',
+                EngineSessionState.disabled =>
+                  'Disabled. Start creates a fresh session.',
                 EngineSessionState.starting =>
+                  'Starting the local synthetic session…',
+                EngineSessionState.working =>
                   'Checking synthetic hello and diagnostics…',
-                EngineSessionState.ready =>
-                  'Hello verified. Diagnostics verified. Echo adapter: degraded.',
+                EngineSessionState.idle =>
+                  'Idle. Hello and diagnostics verified. Echo adapter: degraded.',
+                EngineSessionState.paused =>
+                  'Paused. Pending work was discarded. Resume starts a fresh check.',
                 EngineSessionState.error =>
                   'The synthetic session failed and was stopped.',
                 EngineSessionState.unavailable =>
@@ -66,12 +70,25 @@ class _NeuraConsolePageState extends State<NeuraConsolePage> {
                     child: const Text('Start synthetic check'),
                   ),
                   OutlinedButton(
+                    onPressed: session.canPause ? session.pause : null,
+                    child: const Text('Pause'),
+                  ),
+                  OutlinedButton(
+                    onPressed: session.canResume ? session.resume : null,
+                    child: const Text('Resume'),
+                  ),
+                  OutlinedButton(
                     onPressed: session.stop,
                     child: const Text('Stop'),
                   ),
                 ],
               ),
               const SizedBox(height: 24),
+              const Text(
+                'One fixed check runs at a time with no waiting queue. '
+                'Time or response limits pause the session. Idle runs no checks.',
+              ),
+              const SizedBox(height: 12),
               const Text(
                 'Closing this screen, leaving the foreground, Safe Mode, or '
                 'recovery ends the session. Start is always an explicit choice.',
