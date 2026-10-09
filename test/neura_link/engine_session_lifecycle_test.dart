@@ -29,10 +29,11 @@ void main() {
     ) async {
       calls.add(call);
       return switch (call.method) {
-        'startSynthetic' => 'starting',
-        'syntheticStatus' => 'ready',
+        'startSynthetic' || 'resumeSynthetic' => 'starting',
+        'pauseSynthetic' => 'paused',
+        'syntheticStatus' => 'idle',
         'blockSynthetic' => 'blocked',
-        _ => 'stopped',
+        _ => 'disabled',
       };
     });
   });
@@ -54,17 +55,229 @@ void main() {
     await session.start();
     expect(session.state, EngineSessionState.starting);
     await tester.pump(const Duration(seconds: 1));
-    expect(session.state, EngineSessionState.ready);
+    expect(session.state, EngineSessionState.idle);
     expect(calls.map((call) => call.method), [
       'startSynthetic',
       'syntheticStatus',
     ]);
     expect(calls.every((call) => call.arguments == null), isTrue);
     await session.stop();
-    expect(session.state, EngineSessionState.stopped);
+    expect(session.state, EngineSessionState.disabled);
     session.dispose();
     await tester.pump();
   });
+
+  testWidgets('working and idle are distinct and pause needs explicit resume', (
+    tester,
+  ) async {
+    var status = 'working';
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      calls.add(call);
+      return switch (call.method) {
+        'startSynthetic' || 'resumeSynthetic' => 'starting',
+        'pauseSynthetic' => 'paused',
+        'syntheticStatus' => status,
+        _ => 'disabled',
+      };
+    });
+    final session = create();
+    expect(session.state, EngineSessionState.disabled);
+    await session.start();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(session.state, EngineSessionState.working);
+    expect(session.canPause, isTrue);
+    expect(session.canStart, isFalse);
+    status = 'idle';
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(session.state, EngineSessionState.idle);
+    await session.pause();
+    expect(session.state, EngineSessionState.paused);
+    expect(session.canResume, isTrue);
+    expect(session.canStart, isFalse);
+    status = 'paused';
+    await tester.pump(const Duration(seconds: 2));
+    expect(calls.where((call) => call.method == 'resumeSynthetic'), isEmpty);
+    await session.start();
+    expect(
+      calls.where((call) => call.method == 'startSynthetic'),
+      hasLength(1),
+    );
+    await session.resume();
+    expect(session.state, EngineSessionState.starting);
+    expect(calls.last.method, 'resumeSynthetic');
+    expect(calls.every((call) => call.arguments == null), isTrue);
+    session.dispose();
+    await tester.pump();
+  });
+
+  testWidgets(
+      'safety change during notification prevents stale start or resume', (
+    tester,
+  ) async {
+    for (final operation in ['start', 'resume']) {
+      safe.value = false;
+      final session = create();
+      if (operation == 'resume') {
+        await session.start();
+        await session.pause();
+      }
+      calls.clear();
+      session.addListener(() {
+        if (session.state == EngineSessionState.starting) safe.value = true;
+      });
+      if (operation == 'start') {
+        await session.start();
+      } else {
+        await session.resume();
+      }
+      await tester.pump();
+      expect(session.state, EngineSessionState.blocked);
+      expect(calls.map((call) => call.method), ['blockSynthetic']);
+      session.dispose();
+      await tester.pump();
+    }
+  });
+
+  testWidgets('pause invalidates pending startup and status replies', (
+    tester,
+  ) async {
+    for (final pending in ['startSynthetic', 'syntheticStatus']) {
+      final lateReply = Completer<String>();
+      binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        call,
+      ) async {
+        calls.add(call);
+        if (call.method == pending) return lateReply.future;
+        return switch (call.method) {
+          'pauseSynthetic' => 'paused',
+          'startSynthetic' || 'resumeSynthetic' => 'starting',
+          _ => 'disabled',
+        };
+      });
+      final session = create();
+      final starting = session.start();
+      await tester.pump();
+      if (pending == 'syntheticStatus') {
+        await starting;
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await session.pause();
+      expect(session.state, EngineSessionState.paused);
+      await session.resume();
+      lateReply.complete('idle');
+      await starting;
+      await tester.pump();
+      expect(session.state, EngineSessionState.starting);
+      session.dispose();
+      await tester.pump();
+    }
+  });
+
+  testWidgets('late pause cannot overwrite a stop and replacement session', (
+    tester,
+  ) async {
+    final lateReply = Completer<String>();
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      calls.add(call);
+      if (call.method == 'pauseSynthetic') return lateReply.future;
+      return call.method == 'startSynthetic' ? 'starting' : 'disabled';
+    });
+    final session = create();
+    await session.start();
+    final pausing = session.pause();
+    await tester.pump();
+    expect(session.canResume, isFalse);
+    await session.resume();
+    expect(calls.where((call) => call.method == 'resumeSynthetic'), isEmpty);
+    await session.stop();
+    await session.start();
+    lateReply.complete('paused');
+    await pausing;
+    expect(session.state, EngineSessionState.starting);
+    session.dispose();
+    await tester.pump();
+  });
+
+  testWidgets(
+    'resource pause has no automatic retry and foreground loss disables resume',
+    (tester) async {
+      binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        call,
+      ) async {
+        calls.add(call);
+        return call.method == 'startSynthetic' ? 'starting' : 'paused';
+      });
+      final session = create();
+      await session.start();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(session.state, EngineSessionState.paused);
+      expect(session.canResume, isTrue);
+      await tester.pump(const Duration(seconds: 2));
+      expect(calls.where((call) => call.method == 'resumeSynthetic'), isEmpty);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pump();
+      expect(session.state, EngineSessionState.disabled);
+      expect(session.canResume, isFalse);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await session.resume();
+      expect(session.state, EngineSessionState.disabled);
+      expect(calls.where((call) => call.method == 'resumeSynthetic'), isEmpty);
+      session.dispose();
+      await tester.pump();
+    },
+  );
+
+  for (final reason in ['Safe Mode', 'recovery']) {
+    testWidgets('$reason blocks paused work and rejects a late resume', (
+      tester,
+    ) async {
+      final lateReply = Completer<String>();
+      binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        call,
+      ) async {
+        calls.add(call);
+        return switch (call.method) {
+          'startSynthetic' => 'working',
+          'pauseSynthetic' => 'paused',
+          'resumeSynthetic' => lateReply.future,
+          _ => 'blocked',
+        };
+      });
+      final session = create();
+      await session.start();
+      await session.pause();
+      final resuming = session.resume();
+      await tester.pump();
+      if (reason == 'Safe Mode') {
+        safe.value = true;
+      } else {
+        recovery.value = const NeuraFatalError(
+          source: 'test',
+          phase: 'runtime',
+        );
+      }
+      await tester.pump();
+      expect(calls.last.method, 'blockSynthetic');
+      lateReply.complete('idle');
+      await resuming;
+      expect(session.state, EngineSessionState.blocked);
+      expect(session.canResume, isFalse);
+      safe.value = false;
+      recovery.value = null;
+      await session.resume();
+      await session.start();
+      expect(
+        calls.where((call) => call.method == 'resumeSynthetic'),
+        hasLength(1),
+      );
+      session.dispose();
+      await tester.pump();
+    });
+  }
 
   for (final state in AppLifecycleState.values.where(
     (state) => state != AppLifecycleState.resumed,
@@ -76,12 +289,12 @@ void main() {
       await session.start();
       binding.handleAppLifecycleStateChanged(state);
       await tester.pump();
-      expect(session.state, EngineSessionState.stopped);
+      expect(session.state, EngineSessionState.disabled);
       expect(session.canStart, isFalse);
       expect(calls.last.method, 'stopSynthetic');
       binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pump(const Duration(seconds: 2));
-      expect(session.state, EngineSessionState.stopped);
+      expect(session.state, EngineSessionState.disabled);
       expect(
         calls.where((call) => call.method == 'startSynthetic'),
         hasLength(1),
@@ -97,7 +310,7 @@ void main() {
   }
 
   for (final reason in ['Safe Mode', 'recovery']) {
-    testWidgets('$reason blocks startup and discards a late ready response', (
+    testWidgets('$reason blocks startup and discards a late idle response', (
       tester,
     ) async {
       final lateReply = Completer<String>();
@@ -122,7 +335,7 @@ void main() {
       await tester.pump();
       expect(session.state, EngineSessionState.blocked);
       expect(calls.last.method, 'blockSynthetic');
-      lateReply.complete('ready');
+      lateReply.complete('idle');
       await starting;
       expect(session.state, EngineSessionState.blocked);
       safe.value = false;
@@ -145,16 +358,16 @@ void main() {
       call,
     ) async {
       calls.add(call);
-      return call.method == 'startSynthetic' ? lateReply.future : 'stopped';
+      return call.method == 'startSynthetic' ? lateReply.future : 'disabled';
     });
     final session = create();
     final starting = session.start();
     await tester.pump();
     session.dispose();
     await tester.pump();
-    lateReply.complete('ready');
+    lateReply.complete('idle');
     await starting;
-    expect(session.state, EngineSessionState.stopped);
+    expect(session.state, EngineSessionState.disabled);
     expect(calls.last.method, 'stopSynthetic');
     await tester.pump(const Duration(seconds: 2));
     expect(calls.where((call) => call.method == 'syntheticStatus'), isEmpty);
@@ -169,14 +382,14 @@ void main() {
       ) async {
         calls.add(call);
         if (call.method == 'syntheticStatus') return lateReply.future;
-        return call.method == 'startSynthetic' ? 'starting' : 'stopped';
+        return call.method == 'startSynthetic' ? 'starting' : 'disabled';
       });
       final session = create();
       await session.start();
       await tester.pump(const Duration(seconds: 1));
       await session.stop();
       await session.start();
-      lateReply.complete('ready');
+      lateReply.complete('idle');
       await tester.pump();
       expect(session.state, EngineSessionState.starting);
       session.dispose();
@@ -228,7 +441,7 @@ void main() {
             }
             return credential;
           }
-          return 'stopped';
+          return 'disabled';
         });
         final session = create();
         await session.start();
@@ -243,7 +456,7 @@ void main() {
   }
 
   testWidgets(
-    'Console is idle on open, has no personal input, and stops on removal',
+    'Console is disabled on open, has no personal input, and stops on removal',
     (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.windows;
       await tester.pumpWidget(const MaterialApp(home: NeuraConsolePage()));
@@ -254,10 +467,21 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       expect(
         find.text(
-          'Hello verified. Diagnostics verified. Echo adapter: degraded.',
+          'Idle. Hello and diagnostics verified. Echo adapter: degraded.',
         ),
         findsOneWidget,
       );
+      await tester.tap(find.text('Pause'));
+      await tester.pump();
+      expect(calls.last.method, 'pauseSynthetic');
+      expect(
+        find.text(
+            'Paused. Pending work was discarded. Resume starts a fresh check.'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Resume'));
+      await tester.pump();
+      expect(calls.last.method, 'resumeSynthetic');
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
       expect(calls.last.method, 'stopSynthetic');

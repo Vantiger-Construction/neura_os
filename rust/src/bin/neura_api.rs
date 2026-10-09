@@ -424,7 +424,8 @@ fn now_iso8601() -> String {
         .to_string()
 }
 
-#[tokio::main]
+// Fixed async echo fixtures need one scheduler thread, independent of CPU count.
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         // Do not let RUST_LOG enable dependency wire/header/body tracing.

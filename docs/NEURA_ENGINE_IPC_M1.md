@@ -1,9 +1,10 @@
 # Neura Engine milestone 1: synthetic IPC slice
 
-The IPC foundation hardens the Rust WebSocket sidecar. The next integration
-slice adds a trusted Windows launcher and a synthetic-only Console session.
-Neither slice completes milestone 1, enables reflection, installs a model,
-or admits personal sources.
+The IPC foundation hardens the Rust WebSocket sidecar. The Windows integration
+adds a trusted launcher, a synthetic-only Console session, and explicit
+pause/resume with generation-guarded, bounded execution.
+These slices do not complete milestone 1, enable reflection, install a model,
+or admit personal sources.
 The adapter remains the degraded local echo provider.
 
 ## Explicit session startup
@@ -87,7 +88,7 @@ flush a cancelled queue or emit a queued final completion.
 The Windows Console now uses `EngineSession` and the native
 `neura/engine_synthetic_session` method channel instead of the old free-form
 BrainLink/ConversationController and Dart process supervisor. Opening it stays
-idle. Its explicit **Start synthetic check** creates a fresh native session,
+disabled. Its explicit **Start synthetic check** creates a fresh native session,
 sends `hello`, runs only the fixed `synthetic_input` hello fixture, and checks
 diagnostics for `synthetic-only` and the degraded echo adapter. The client accepts
 at most 16 fixture response frames of at most 4 KiB each, checks the fixed hello
@@ -98,9 +99,25 @@ The old generic BrainLink remains separate and receives no session credential.
 | Argument-free operation | Effect |
 | --- | --- |
 | `startSynthetic` | Explicit foreground Windows start; fixed hello/diagnostics only. |
-| `syntheticStatus` | Returns only `stopped`, `starting`, `ready`, `error`, `unavailable`, or `blocked`. |
-| `stopSynthetic` | Invalidates the session, attempts authenticated revocation, and terminates/reaps the owned child. |
+| `syntheticStatus` | Returns only `disabled`, `starting`, `working`, `idle`, `paused`, `error`, `unavailable`, or `blocked`. |
+| `pauseSynthetic` | Invalidates pending work, revokes/terminates the child, and retains `paused`. |
+| `resumeSynthetic` | Explicit foreground resume from `paused`; joins the previous owner and creates a fresh session/check. |
+| `stopSynthetic` | Invalidates the session, attempts authenticated revocation, and terminates/reaps the owned child; returns to `disabled` unless safety-blocked. |
 | `blockSynthetic` | Same teardown with a process-lifetime Safe Mode/recovery latch. |
+
+`starting` covers bounded child readiness; `working` covers the fixed
+hello/diagnostics probe; `idle` means the check completed and no work is queued
+or scheduled. `paused` admits no work and retains no child after teardown.
+Pause cancels instead of suspending a live computation. Resume uses a new
+credential and generation, with no continuation or replay of cancelled work.
+Start cannot bypass Pause; after Stop or foreground loss, Resume does nothing
+and a new explicit Start is required. Safe Mode/recovery still requires app restart.
+
+The native integer contract retains slots 0/1/2/3/4/5 for
+disabled/starting/idle/error/unavailable/blocked and adds 6/7 for working/paused.
+The old `stopped`/`ready` labels are replaced by `disabled`/`idle` in the bundled
+DLL, Windows bridge, and Flutter controller together. The bridge requires both
+new pause/resume exports; an older DLL fails closed as unavailable.
 
 Channel arguments and unknown methods are rejected; native status/exception
 payloads are never rendered or logged by Flutter. There is no arbitrary input,
@@ -109,18 +126,25 @@ reflection, or action method. Android, other desktop platforms and browsers
 report unavailable and do not launch or fall back.
 
 Screen disposal, every non-resumed Flutter lifecycle state, Safe Mode and fatal
-recovery invalidate pending start/status replies before requesting teardown.
+recovery invalidate pending start/status/pause/resume replies before teardown.
 Safe Mode and recovery remain latched even if their UI notifier later clears.
 The primary Windows window independently stops before plugins handle
 deactivation, minimization, hiding, suspension and closure; its native channel
 owner stops before the Flutter engine is destroyed. Returning to the foreground
-never resumes work. A new session always requires an explicit Start, and a Safe
+never resumes work. A new session requires explicit Start or Resume, and a Safe
 Mode/recovery block requires restarting the app. The worker and readiness reader
-are owned and joined before restart, so an old generation cannot publish into a
-new one or detach its child.
+are owned and joined before restart. Native state transitions check and publish
+the session generation under one lock. Pause, Stop, safety blocking and budget
+exhaustion invalidate that generation before teardown; neither a late success
+nor a late error can overwrite it or a replacement session. Flutter separately
+invalidates pending replies. Status polling is serial, every 100 ms while
+starting/working and every second while idle/paused; it never submits work.
 
 Readiness and the entire hello/diagnostics probe each have a three-second
-deadline and cancellation interrupts both. Revocation uses direct numeric
+deadline and cancellation interrupts both. Time, fixture-frame or transport-size
+exhaustion pauses the session, discards results and tears down the child without
+retry or fallback. Malformed protocol/diagnostics and launch failures remain
+errors. Revocation uses direct numeric
 loopback HTTP, no proxy, no redirects and a 250 ms deadline. If readiness is not
 yet known or revocation cannot be confirmed, process/job termination invalidates
 the credential anyway. The native owner zeroizes its token and Windows
@@ -139,6 +163,10 @@ remain separate.
 
 | Limit | Behavior |
 | --- | --- |
+| One native worker and one fixed probe; no waiting queue | Duplicate Start/Resume cannot queue work; idle never repeats the probe. |
+| One sidecar Tokio scheduler thread | Fixed async echo work does not create a worker pool proportional to host CPU count. |
+| 3-second readiness, then 3-second whole probe | Deadline exhaustion invalidates the generation, pauses and tears down the session. |
+| 16 fixture responses; 4 KiB per response/frame | Missing completion at the count limit or oversized transport output pauses and tears down the session. Only one decoded response is retained at a time. |
 | 4 authenticated WebSocket clients | A fifth upgrade receives HTTP 429; permits are released when connections end. |
 | 4 KiB per inbound WebSocket message/frame | Oversized input closes the connection. |
 | 32 outbound messages, each at most 4 KiB | Full, closed, or oversized output fails closed, disconnects the client, cancels generation, and drops pending messages. No producer waits for capacity. |
@@ -147,7 +175,10 @@ remain separate.
 
 The application queue budget is at most 128 KiB per client, plus one in-flight
 message and the transport buffer; four clients bound application queues to
-512 KiB. These are prototype guardrails, not a measured Windows hardware budget.
+512 KiB. The native client also limits its transport write buffer to 8 KiB.
+These are prototype guardrails, not a measured Windows hardware budget or OS
+CPU/memory/battery quotas. Supported-hardware measurements and further resource
+controls remain required before reflection or personal sources are enabled.
 Both writer and generation handles abort on owner drop; ordinary teardown also
 awaits their cancellation. No connection task is intentionally detached and no
 queue, token or result is persisted or replayed.
@@ -161,6 +192,7 @@ cargo test --manifest-path rust/Cargo.toml --locked --bin neura_api
 cargo test --manifest-path rust/Cargo.toml --locked --test engine_session_lifecycle
 flutter test test/neura_link/engine_session_lifecycle_test.dart
 rustfmt --edition 2021 --check rust/src/bin/neura_api.rs rust/src/ipc_tests.rs
+rustfmt --edition 2021 --check rust/src/engine_session.rs rust/tests/engine_session_lifecycle.rs
 ```
 
 The focused suite exercises actual loopback HTTP/WebSocket authorization,
@@ -181,6 +213,14 @@ all background states, Safe Mode/recovery during pending startup, stale replies,
 unsupported platforms, exception/status redaction and argument-free operations.
 Local Runner runs the native suite; State Matrix includes the Flutter suite.
 
+The same suites cover disabled/working/idle transitions, Pause during startup
+and active work, explicit Resume, duplicate requests with no queue, generation
+rejection of stale completions/errors/exhaustion, resource-triggered Pause,
+and foreground/safety teardown from working and paused states. Controlled
+loopback peers exercise the production three-second deadline, 16-response cap,
+4 KiB transport cap and distinct malformed-response errors. Flutter also checks
+late pause/resume replies and keeps Resume disabled until Pause completes.
+
 Supported Windows device/lifecycle evidence and the rest of milestone 1 are
 still required before reflection or personal sources can be enabled. Echo tests
 do not establish model quality, supported-device Safe Mode behavior, Android
@@ -189,6 +229,9 @@ lifecycle behavior, or real-model/device validation.
 Before promotion, collect supported Windows evidence for bundle/DLL loading,
 explicit startup while offline, screen close/back, deactivation/minimization,
 hide/suspend, Safe Mode and recovery during both startup and idle, and app exit.
+Also test Pause during working and idle, Resume with a fresh check, Stop while
+paused, and deactivation/Safe Mode/recovery during Resume. Budget exhaustion must
+stay paused until explicit Resume or Stop; record the supported-device timing.
 Each stop must leave no owned sidecar, late completion or automatic restart.
 After an ordinary stop, verify a new explicit start works; after safety/recovery,
 verify it stays blocked until app restart. Record content-free outcomes only,

@@ -24,6 +24,8 @@ class NeuraEngineSession {
   HWND window_;
   HMODULE library_ = nullptr;
   StateFunction start_ = nullptr;
+  StateFunction pause_ = nullptr;
+  StateFunction resume_ = nullptr;
   StateFunction status_ = nullptr;
   StopFunction stop_ = nullptr;
   StopFunction block_ = nullptr;
