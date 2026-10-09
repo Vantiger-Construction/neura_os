@@ -54,17 +54,23 @@ function Find-VcRuntimeFile([string]$Name) {
 
     $runtimeFiles = New-Object System.Collections.Generic.List[System.IO.FileInfo]
     foreach ($programRoot in $programRoots) {
-        foreach ($pattern in @(
-            (Join-Path $programRoot "Microsoft Visual Studio\2022\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT\$Name"),
-            (Join-Path $programRoot "Microsoft Visual Studio\2019\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT\$Name")
-        )) {
-            Get-ChildItem -Path $pattern -File -ErrorAction SilentlyContinue |
-                ForEach-Object { $runtimeFiles.Add($_) }
-        }
+        # Any Visual Studio layout: 2019/2022 use year folders, 2026+ uses
+        # major-version folders (e.g. "18"), as on current windows-latest.
+        $pattern = Join-Path $programRoot "Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT\$Name"
+        Get-ChildItem -Path $pattern -File -ErrorAction SilentlyContinue |
+            ForEach-Object { $runtimeFiles.Add($_) }
     }
     $selected = $runtimeFiles | Sort-Object -Property FullName -Descending |
         Select-Object -First 1
     if ($selected) { return $selected.FullName }
+
+    # Fall back to the system-installed x64 VC++ runtime.
+    if (-not [string]::IsNullOrWhiteSpace($env:SystemRoot)) {
+        $systemCopy = Join-Path $env:SystemRoot "System32\$Name"
+        if (Test-Path -LiteralPath $systemCopy -PathType Leaf) {
+            return $systemCopy
+        }
+    }
     return $null
 }
 
