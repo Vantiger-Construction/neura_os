@@ -60,17 +60,18 @@ function Find-VcRuntimeFile([string]$Name) {
         Get-ChildItem -Path $pattern -File -ErrorAction SilentlyContinue |
             ForEach-Object { $runtimeFiles.Add($_) }
     }
-    $selected = $runtimeFiles | Sort-Object -Property FullName -Descending |
-        Select-Object -First 1
+    # Path order is not version order (for example, "2022" sorts above "18").
+    $selected = $runtimeFiles | Sort-Object -Property @(
+        @{ Expression = { $_.VersionInfo.FileMajorPart } },
+        @{ Expression = { $_.VersionInfo.FileMinorPart } },
+        @{ Expression = { $_.VersionInfo.FileBuildPart } },
+        @{ Expression = { $_.VersionInfo.FilePrivatePart } },
+        'FullName'
+    ) -Descending | Select-Object -First 1
     if ($selected) { return $selected.FullName }
 
-    # Fall back to the system-installed x64 VC++ runtime.
-    if (-not [string]::IsNullOrWhiteSpace($env:SystemRoot)) {
-        $systemCopy = Join-Path $env:SystemRoot "System32\$Name"
-        if (Test-Path -LiteralPath $systemCopy -PathType Leaf) {
-            return $systemCopy
-        }
-    }
+    # Fail closed when a licensed Visual Studio redist source is unavailable.
+    # System32 does not establish redistributable provenance or toolset compatibility.
     return $null
 }
 
@@ -89,6 +90,7 @@ function Ensure-AppLocalVcRuntime([string]$ReleaseRoot) {
                     "in a Visual Studio VC Redist directory: $runtimeName"
                 )
             }
+            Good "Bundling $runtimeName from $source"
             Copy-Item -LiteralPath $source -Destination $destination -Force
         }
     }
@@ -288,8 +290,7 @@ try {
 setlocal
 set "HERE=%~dp0"
 pushd "%HERE%" >nul 2>&1 || exit /b 1
-start "Neura Local Brain" /min "%HERE%neura_api.exe"
-timeout /t 2 /nobreak >nul
+rem Neura owns engine credentials, startup, and lifecycle teardown.
 start "Neura Companion" "%HERE%__NEURA_EXECUTABLE__%"
 popd
 endlocal
