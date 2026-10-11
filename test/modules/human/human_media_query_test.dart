@@ -80,6 +80,9 @@ class _NonlinearTextScaler extends TextScaler {
   const _NonlinearTextScaler();
 
   @override
+  double get textScaleFactor => scale(14) / 14;
+
+  @override
   double scale(double fontSize) {
     return fontSize * (fontSize < 20 ? 1.2 : 1.6);
   }

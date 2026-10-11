@@ -30,6 +30,9 @@ class _HumanPreferenceTextScaler extends TextScaler {
   final double userScale;
 
   @override
+  double get textScaleFactor => scale(14) / 14;
+
+  @override
   double scale(double fontSize) {
     final min = fontSize * 0.85;
     final max = fontSize * 4.0;

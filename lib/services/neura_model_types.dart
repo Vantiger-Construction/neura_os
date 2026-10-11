@@ -16,12 +16,12 @@ final class NeuraModelProfile {
   final bool defaultForProvider;
 
   Map<String, Object?> toJson() => {
-    'provider': provider.name,
-    'model': model,
-    'reasoning_effort': reasoningEffort,
-    'display_name': displayName,
-    'default_for_provider': defaultForProvider,
-  };
+        'provider': provider.name,
+        'model': model,
+        'reasoning_effort': reasoningEffort,
+        'display_name': displayName,
+        'default_for_provider': defaultForProvider,
+      };
 }
 
 const kNeuraOpenAiDefaultProfile = NeuraModelProfile(
@@ -74,19 +74,19 @@ abstract final class NeuraModelProfiles {
 
   static List<NeuraModelProfile> comparisonProfilesFor(
     NeuraModelProvider provider,
-  ) => allApproved
-      .where((profile) => profile.provider == provider)
-      .toList(growable: false);
+  ) =>
+      allApproved
+          .where((profile) => profile.provider == provider)
+          .toList(growable: false);
 }
 
 /// The one place the Anthropic model is chosen, shared by the streaming and
 /// non-streaming transports.
-const String kNeuraAnthropicModel = kNeuraAnthropicDefaultProfile.model;
+const String kNeuraAnthropicModel = 'claude-opus-5';
 
 /// Opus 5 thinks adaptively by default. Chat is spoken aloud, so keep the
 /// wait before the first word short; raise this for deeper replies.
-const String kNeuraAnthropicEffort =
-    kNeuraAnthropicDefaultProfile.reasoningEffort;
+const String kNeuraAnthropicEffort = 'medium';
 
 extension NeuraModelProviderLabel on NeuraModelProvider {
   String get label {

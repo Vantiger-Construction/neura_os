@@ -34,25 +34,26 @@ void main() {
   }
 
   EncryptedMemoryAccessScope scope() => EncryptedMemoryAccessScope(
-    ownerId: 'owner-1',
-    deviceId: 'device-1',
-    capsuleId: 'personal',
-    classes: const {EncryptedMemoryClass.explicitPreference},
-    sources: const {EncryptedMemorySource.authenticatedUser},
-    sensitivity: EncryptedMemorySensitivity.personal,
-  );
+        ownerId: 'owner-1',
+        deviceId: 'device-1',
+        capsuleId: 'personal',
+        classes: const {EncryptedMemoryClass.explicitPreference},
+        sources: const {EncryptedMemorySource.authenticatedUser},
+        sensitivity: EncryptedMemorySensitivity.personal,
+      );
 
   EncryptedMemoryConsentLease lease(
     String id,
     EncryptedMemoryOperation operation,
-  ) => EncryptedMemoryConsentLease(
-    id: id,
-    scope: scope(),
-    operations: {operation},
-    issuedAtUtc: issuedAt,
-    expiresAtUtc: issuedAt.add(const Duration(minutes: 5)),
-    directUserGesture: true,
-  );
+  ) =>
+      EncryptedMemoryConsentLease(
+        id: id,
+        scope: scope(),
+        operations: {operation},
+        issuedAtUtc: issuedAt,
+        expiresAtUtc: issuedAt.add(const Duration(minutes: 5)),
+        directUserGesture: true,
+      );
 
   EncryptedMemorySessionRecord record({
     String value = 'Prefers concise text.',
@@ -127,6 +128,69 @@ void main() {
         lease('recall-1', EncryptedMemoryOperation.recall),
       )?.value,
       'Prefers concise text.',
+    );
+  });
+
+  test('successive durable writes use distinct ciphertext envelopes', () async {
+    final subject = adapter();
+    await subject.remember(
+      lease: lease('remember-1', EncryptedMemoryOperation.remember),
+      safetyContext: context,
+      record: record(),
+      expectedKeyGeneration: keys.generation,
+      nowUtc: issuedAt.add(const Duration(seconds: 1)),
+    );
+    final firstBlob = NeuraPrefsCache.prefs.getString(
+      EncryptedMemoryDurableScopedAdapter.defaultStorageKey,
+    )!;
+
+    await subject.correct(
+      lease: lease('correct-1', EncryptedMemoryOperation.correct),
+      safetyContext: context,
+      recordId: 'record-1',
+      ownerId: 'owner-1',
+      deviceId: 'device-1',
+      capsuleId: 'personal',
+      memoryClass: EncryptedMemoryClass.explicitPreference,
+      source: EncryptedMemorySource.authenticatedUser,
+      sensitivity: EncryptedMemorySensitivity.personal,
+      expectedKeyGeneration: keys.generation,
+      nowUtc: issuedAt.add(const Duration(seconds: 2)),
+      replacementValue: 'Prefers detailed text.',
+    );
+    final secondBlob = NeuraPrefsCache.prefs.getString(
+      EncryptedMemoryDurableScopedAdapter.defaultStorageKey,
+    )!;
+
+    expect(firstBlob, isNot(secondBlob));
+    expect(secondBlob, isNot(contains('Prefers detailed text.')));
+  });
+
+  test('restart fails closed when the key generation changed', () async {
+    final first = adapter();
+    await first.remember(
+      lease: lease('remember-1', EncryptedMemoryOperation.remember),
+      safetyContext: context,
+      record: record(),
+      expectedKeyGeneration: keys.generation,
+      nowUtc: issuedAt.add(const Duration(seconds: 1)),
+    );
+    keys
+      ..beginRotation()
+      ..commitVerifiedRotation();
+
+    await expectLater(
+      adapter().restore(
+        safetyContext: context,
+        expectedKeyGeneration: keys.generation,
+      ),
+      throwsA(
+        isA<EncryptedMemoryPolicyViolation>().having(
+          (error) => error.code,
+          'code',
+          'record_key_generation_mismatch',
+        ),
+      ),
     );
   });
 
@@ -264,19 +328,26 @@ void main() {
 }
 
 final class _FakeDurableCrypto implements EncryptedMemoryDurableCrypto {
+  int _nonce = 0;
+
   @override
   Future<Map<String, dynamic>> decryptJson(String blob) async {
     if (!blob.startsWith('cipher:')) {
       throw const FormatException('plaintext durable memory rejected');
     }
-    return jsonDecode(
-          utf8.decode(base64Decode(blob.substring('cipher:'.length))),
-        )
+    final envelope =
+        jsonDecode(utf8.decode(base64Decode(blob.substring('cipher:'.length))))
+            as Map<String, dynamic>;
+    return jsonDecode(utf8.decode(base64Decode(envelope['payload'] as String)))
         as Map<String, dynamic>;
   }
 
   @override
   Future<String> encryptJson(Map<String, dynamic> json) async {
-    return 'cipher:${base64Encode(utf8.encode(jsonEncode(json)))}';
+    final envelope = {
+      'nonce': 'nonce-${++_nonce}',
+      'payload': base64Encode(utf8.encode(jsonEncode(json))),
+    };
+    return 'cipher:${base64Encode(utf8.encode(jsonEncode(envelope)))}';
   }
 }

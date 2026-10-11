@@ -8,15 +8,25 @@ import '../services/neura_companion_presence.dart';
 import '../services/voice_journal_service.dart';
 
 class VoiceJournalScreen extends StatefulWidget {
-  const VoiceJournalScreen({super.key});
+  const VoiceJournalScreen({
+    super.key,
+    LocalJournalStore? journalStore,
+    VoiceJournalService? service,
+  })  : _journalStore = journalStore,
+        _service = service;
+
+  final LocalJournalStore? _journalStore;
+  final VoiceJournalService? _service;
 
   @override
   State<VoiceJournalScreen> createState() => _VoiceJournalScreenState();
 }
 
 class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
-  final VoiceJournalService _service = VoiceJournalService();
-  final LocalJournalStore _journalStore = LocalJournalStore();
+  late final VoiceJournalService _service =
+      widget._service ?? VoiceJournalService();
+  late final LocalJournalStore _journalStore =
+      widget._journalStore ?? LocalJournalStore();
   final TextEditingController _controller = TextEditingController();
   StreamSubscription<String>? _sub;
 
@@ -117,8 +127,8 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
         final statusColor = safeMode
             ? colors.error
             : presence.microphoneActive
-            ? colors.primary
-            : colors.secondary;
+                ? colors.primary
+                : colors.secondary;
         return Scaffold(
           appBar: AppBar(title: const Text('Voice Journal')),
           body: Padding(
@@ -136,8 +146,8 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
                           safeMode
                               ? Icons.shield_outlined
                               : presence.microphoneActive
-                              ? Icons.graphic_eq
-                              : Icons.favorite_outline,
+                                  ? Icons.graphic_eq
+                                  : Icons.favorite_outline,
                           color: statusColor,
                         ),
                         const SizedBox(width: 12),
@@ -209,8 +219,7 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
                 ),
                 const SizedBox(height: 12),
                 FilledButton.icon(
-                  onPressed:
-                      safeMode ||
+                  onPressed: safeMode ||
                           _recording ||
                           _saving ||
                           _controller.text.trim().isEmpty
