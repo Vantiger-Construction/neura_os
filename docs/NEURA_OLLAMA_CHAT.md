@@ -8,7 +8,7 @@ older installed Neura build will not show this option.
 
 ## Laptop setup
 
-Install and open Ollama, then run in PowerShell while online:
+Install and open the current Ollama release, then run in PowerShell while online:
 
 ```powershell
 ollama pull qwen3:4b-instruct
@@ -36,11 +36,15 @@ this change. This version returns the complete reply rather than token deltas.
   browser, web search or tool execution is implemented in this adapter.
 - The model is fixed to `qwen3:4b-instruct`. A metadata preflight rejects remote
   model tags and non-Qwen3/4.0B/Q4_K_M models before conversation submission.
+  Inference uses Ollama's explicit `:local` source suffix to reject remote
+  aliases at execution time. Older daemons lacking this syntax must be updated;
+  this adapter does not fall back to an unspecified model source.
   The separately installed daemon and its model files must be trusted. Metadata
   checks are not cryptographic model verification or an OS security sandbox.
 - Files, images, recalled personal memories and earlier private-source replies
   are rejected. Start a fresh chat if previous turns used such sources. Ollama
-  turns are not automatically written to Neura's long-term memory.
+  turns are not automatically written to Neura's long-term memory. Stored mood
+  is excluded from the model prompt; local safety screening may still use it.
 - Input and reply guardrails remain in the main chat path. Prompt rules do not
   prove clinical suitability; no diagnosis or medication advice is intended.
 - Retention is at most eight recent turns and 1,500 UTF-8 content bytes, trimming

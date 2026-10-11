@@ -23,12 +23,13 @@ class NeuraPromptBuilder {
   Future<NeuraResponseStyle> resolveStyle({
     String agentId = AgentPersonaCatalog.generalId,
     NeuraAudience? audience,
+    bool includeCurrentMood = true,
   }) async {
     await _personaService.load();
-    await _moodState.load();
+    if (includeCurrentMood) await _moodState.load();
 
     final persona = _personaService.current;
-    final mood = _moodState.currentMood;
+    final mood = includeCurrentMood ? _moodState.currentMood : 'neutral';
     final agent = AgentPersonaCatalog.byId(agentId);
 
     return _adapter.computeStyle(
@@ -56,9 +57,14 @@ class NeuraPromptBuilder {
     NeuraAudience? audience,
     String? module,
     bool includePersistentMemory = true,
+    bool includeCurrentMood = true,
     NeuraConversationMode conversationMode = NeuraConversationMode.balanced,
   }) async {
-    final style = await resolveStyle(agentId: agentId, audience: audience);
+    final style = await resolveStyle(
+      agentId: agentId,
+      audience: audience,
+      includeCurrentMood: includeCurrentMood,
+    );
     final profileSnippet =
         includePersistentMemory ? await _buildProfileSnippet() : '';
     final memorySnippet =

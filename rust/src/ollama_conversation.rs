@@ -11,6 +11,9 @@ use tokio::sync::watch;
 use zeroize::Zeroizing;
 
 const MODEL: &str = "qwen3:4b-instruct";
+// Current Ollama's explicit source suffix rejects remote aliases at request
+// execution time, including a tag replacement after metadata preflight.
+const LOCAL_MODEL: &str = "qwen3:4b-instruct:local";
 const ENDPOINT: &str = "http://127.0.0.1:11434";
 const MAX_REQUEST: usize = 16_384;
 const MAX_RESPONSE: usize = 32_768;
@@ -79,7 +82,7 @@ fn prepare(raw: &[u8]) -> Result<Value, ()> {
     let mut messages = vec![json!({"role":"system", "content": request.system})];
     messages.extend(retained.into_iter().map(|t| json!(t)));
     Ok(
-        json!({"model": MODEL, "messages": messages, "stream": false,
+        json!({"model": LOCAL_MODEL, "messages": messages, "stream": false,
         "keep_alive": 0, "options": {"num_ctx":2048,"num_predict":256,
         "num_thread":2,"temperature":0.6}}),
     )
@@ -138,7 +141,9 @@ async fn inference(endpoint: &str, payload: Value) -> Result<String, ()> {
     )
     .await?;
     let message = &response["message"];
-    if response["done"] != true
+    if response.get("remote_host").is_some()
+        || response.get("remote_model").is_some()
+        || response["done"] != true
         || message["role"] != "assistant"
         || message
             .get("tool_calls")
@@ -345,7 +350,7 @@ mod tests {
             br#"{"system":"Neura charter","messages":[{"role":"user","content":"Hello"}]}"#,
         )
         .unwrap();
-        assert_eq!(payload["model"], MODEL);
+        assert_eq!(payload["model"], LOCAL_MODEL);
         assert_eq!(payload["messages"][0]["content"], "Neura charter");
         assert_eq!(payload["options"]["num_ctx"], 2048);
         assert_eq!(payload["keep_alive"], 0);
@@ -396,13 +401,33 @@ mod tests {
         neura_ollama_cancel(98);
         let mut buffer = [0u8; 8];
         // SAFETY: buffer is live and its advertised capacity is its size.
-        assert_eq!(unsafe { neura_ollama_poll(98, buffer.as_mut_ptr(), buffer.len()) }, -2);
-        assert!(session().lock().unwrap().state.lock().unwrap().reply.is_some());
+        assert_eq!(
+            unsafe { neura_ollama_poll(98, buffer.as_mut_ptr(), buffer.len()) },
+            -2
+        );
+        assert!(session()
+            .lock()
+            .unwrap()
+            .state
+            .lock()
+            .unwrap()
+            .reply
+            .is_some());
         neura_ollama_cancel(99);
         // SAFETY: buffer is live and its advertised capacity is its size.
-        assert_eq!(unsafe { neura_ollama_poll(99, buffer.as_mut_ptr(), buffer.len()) }, -2);
+        assert_eq!(
+            unsafe { neura_ollama_poll(99, buffer.as_mut_ptr(), buffer.len()) },
+            -2
+        );
         assert_eq!(buffer, [0; 8]);
-        assert!(session().lock().unwrap().state.lock().unwrap().reply.is_none());
+        assert!(session()
+            .lock()
+            .unwrap()
+            .state
+            .lock()
+            .unwrap()
+            .reply
+            .is_none());
     }
 
     fn local_info() -> Value {
@@ -430,7 +455,7 @@ mod tests {
                 "/api/chat",
                 post(move |Json(request): Json<Value>| async move {
                     counter.fetch_add(1, Ordering::SeqCst);
-                    assert_eq!(request["model"], MODEL);
+                    assert_eq!(request["model"], LOCAL_MODEL);
                     assert_eq!(request["keep_alive"], 0);
                     assert!(request.get("tools").is_none());
                     Json(answer)

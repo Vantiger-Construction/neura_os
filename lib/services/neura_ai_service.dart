@@ -173,6 +173,7 @@ class NeuraAiService {
         audience: audience,
         module: roomId,
         includePersistentMemory: useMemory,
+        includeCurrentMood: !localOllama,
         conversationMode: conversationMode,
       );
       cancel.throwIfCancelled();
