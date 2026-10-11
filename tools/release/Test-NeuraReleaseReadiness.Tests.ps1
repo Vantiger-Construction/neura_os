@@ -38,6 +38,11 @@ try {
       -not $rollback.rollbackPayloadVerified) {
     throw 'Rollback rehearsal did not prove all required states.'
   }
+  $manifest = Get-Content -LiteralPath (Join-Path $output 'RELEASE_MANIFEST.json') -Raw |
+    ConvertFrom-Json
+  if (-not $manifest.userInitiatedInstallOnly) {
+    throw 'Release manifest must preserve user-initiated install policy.'
+  }
 
   $broken = Join-Path $root 'broken'
   New-Item -ItemType Directory -Path $broken | Out-Null
