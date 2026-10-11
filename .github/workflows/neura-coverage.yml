@@ -1,0 +1,156 @@
+name: Neura test coverage
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - 'assets/**'
+      - 'rust/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'tools/coverage/**'
+      - 'docs/TEST_COVERAGE.md'
+      - '.github/workflows/neura-coverage.yml'
+  push:
+    branches: [Neura]
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - 'assets/**'
+      - 'rust/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'tools/coverage/**'
+      - 'docs/TEST_COVERAGE.md'
+      - '.github/workflows/neura-coverage.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-coverage-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  FLUTTER_VERSION: '3.47.5'
+  # Same compiler used by the current hosted Rust adapter validation.
+  RUST_VERSION: '1.99.0'
+
+jobs:
+  flutter:
+    name: Flutter line coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Use Python for dependency-free reports
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Validate report accuracy and failure handling
+        run: python -m unittest discover -s tools/coverage -p 'test_*.py' -v
+      - name: Use the existing Flutter version
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Restore locked Flutter dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Run the complete Flutter suite once with coverage
+        id: tests
+        run: |
+          mkdir -p coverage/flutter
+          flutter test --no-pub --concurrency 2 --timeout 2m \
+            --coverage --coverage-path=coverage/flutter/raw.lcov.info
+      - name: Render measured Flutter coverage
+        if: ${{ !cancelled() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure') }}
+        env:
+          COVERAGE_TEST_OUTCOME: ${{ steps.tests.outcome }}
+        run: |
+          python tools/coverage/report.py --language flutter --label 'Flutter (Linux)' \
+            --lcov coverage/flutter/raw.lcov.info --output coverage/flutter \
+            --commit "$GITHUB_SHA" --test-outcome "$COVERAGE_TEST_OUTCOME"
+      - name: Preserve Flutter coverage reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: neura-flutter-coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: coverage/flutter/
+          if-no-files-found: error
+          retention-days: 14
+
+  rust:
+    name: Rust line coverage (${{ matrix.os }})
+    strategy:
+      # A Windows failure must not discard the independently useful Linux report.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    # Hosted runners keep instrumented builds off the constrained Windows laptop.
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_DEV_DEBUG: '1'
+      CARGO_PROFILE_TEST_DEBUG: '1'
+      COVERAGE_REPORT_DIR: coverage/rust-${{ matrix.os }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Use Python for dependency-free reports
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Validate report accuracy and failure handling
+        run: python -m unittest discover -s tools/coverage -p 'test_*.py' -v
+      - name: Install matching compiler coverage tools
+        run: |
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/neura-coverage-target" >> "$GITHUB_ENV"
+          rustup toolchain install "$RUST_VERSION" --profile minimal --component llvm-tools-preview
+          rustup default "$RUST_VERSION"
+          rustc --version
+          cargo --version
+      - name: Install pinned prebuilt cargo-llvm-cov
+        # taiki-e/install-action v2.87.27; checksum/attestation verification stays enabled.
+        uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe
+        with:
+          tool: cargo-llvm-cov@0.9.1
+      - name: Run all existing Rust targets once with instrumentation
+        id: tests
+        run: |
+          cargo llvm-cov clean --manifest-path rust/Cargo.toml --workspace
+          cargo llvm-cov --manifest-path rust/Cargo.toml --locked --all-targets \
+            --no-report -- --test-threads=2
+      - name: Export and render measured Rust coverage without rerunning tests
+        if: ${{ !cancelled() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure') }}
+        env:
+          COVERAGE_TEST_OUTCOME: ${{ steps.tests.outcome }}
+        run: |
+          mkdir -p "$COVERAGE_REPORT_DIR"
+          cargo llvm-cov report --manifest-path rust/Cargo.toml --lcov \
+            --output-path "$COVERAGE_REPORT_DIR/raw.lcov.info"
+          python tools/coverage/report.py --language rust --label "Rust ($RUNNER_OS)" \
+            --lcov "$COVERAGE_REPORT_DIR/raw.lcov.info" --output "$COVERAGE_REPORT_DIR" \
+            --commit "$GITHUB_SHA" --test-outcome "$COVERAGE_TEST_OUTCOME"
+      - name: Preserve Rust coverage reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: neura-rust-coverage-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.COVERAGE_REPORT_DIR }}/
+          if-no-files-found: error
+          retention-days: 14
