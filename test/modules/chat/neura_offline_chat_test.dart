@@ -170,6 +170,21 @@ void main() {
     },
   );
 
+  testWidgets(
+      'offline editor enforces byte bounds before retaining pasted text',
+      (tester) async {
+    await pumpChat(tester);
+    await chooseOffline(tester);
+    for (final text in ['🧠' * 513, 'x${'\u0301' * 3000}', 'x' * 2049]) {
+      await tester.enterText(find.byType(TextField), text);
+      await tester.pump();
+      expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          isEmpty);
+    }
+    expect(calls.any((c) => c.method == 'send'), isFalse);
+    await close(tester);
+  });
+
   testWidgets('local error keeps offline selected and never uses a fallback', (
     tester,
   ) async {

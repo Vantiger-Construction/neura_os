@@ -1633,7 +1633,18 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                       enabled: true,
                       enableIMEPersonalizedLearning: !_localSelected,
                       inputFormatters: _localSelected
-                          ? [LengthLimitingTextInputFormatter(2048)]
+                          ? [
+                              TextInputFormatter.withFunction(
+                                  (oldValue, newValue) {
+                                // Check code units first to avoid encoding an
+                                // unbounded paste or combining-character cluster.
+                                if (newValue.text.length > 2048 ||
+                                    utf8.encode(newValue.text).length > 2048) {
+                                  return oldValue;
+                                }
+                                return newValue;
+                              })
+                            ]
                           : null,
                       onSubmitted: (_) => _send(),
                       decoration: InputDecoration(

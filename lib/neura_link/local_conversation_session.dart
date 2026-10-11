@@ -136,9 +136,12 @@ class LocalConversationSession extends ChangeNotifier
     }
   }
 
-  Future<String?> reply(String text) async {
-    if (!canSend || text.trim().isEmpty || utf8.encode(text).length > 2048) {
-      return null;
+  Future<String?> reply(String text) {
+    if (!canSend ||
+        text.length > 2048 ||
+        text.trim().isEmpty ||
+        utf8.encode(text).length > 2048) {
+      return Future<String?>.value();
     }
     final epoch = ++_epoch;
     _pollTimer?.cancel();
@@ -151,6 +154,11 @@ class LocalConversationSession extends ChangeNotifier
       const Duration(seconds: 120),
       () => unawaited(_fail(epoch, LocalConversationState.error)),
     );
+    unawaited(_submit(epoch, text));
+    return completer.future;
+  }
+
+  Future<void> _submit(int epoch, String text) async {
     try {
       final accepted = await _call<bool>('send', argument: text, epoch: epoch);
       if (_current(epoch)) {
@@ -163,7 +171,6 @@ class LocalConversationSession extends ChangeNotifier
     } catch (_) {
       await _fail(epoch, LocalConversationState.error);
     }
-    return completer.future;
   }
 
   void _schedulePoll(int epoch) {
