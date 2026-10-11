@@ -6,9 +6,7 @@ import 'package:neuro_companion/modules/human/human_prefs.dart';
 
 void main() {
   test('combines Neura and operating-system text scaling', () {
-    final source = const MediaQueryData(
-      textScaler: TextScaler.linear(1.25),
-    );
+    final source = const MediaQueryData(textScaler: TextScaler.linear(1.25));
 
     final result = applyHumanAccessibilityPreferences(
       source,
@@ -33,14 +31,56 @@ void main() {
     expect(result.accessibleNavigation, isTrue);
   });
 
-  test('applies Neura reduced motion when the operating system is animated',
-      () {
+  test(
+    'applies Neura reduced motion when the operating system is animated',
+    () {
+      final result = applyHumanAccessibilityPreferences(
+        const MediaQueryData(),
+        HumanPrefs.defaults.copyWith(reducedMotion: true),
+      );
+
+      expect(result.disableAnimations, isTrue);
+      expect(result.accessibleNavigation, isTrue);
+    },
+  );
+
+  test('preserves nonlinear operating-system text scaling', () {
+    final source = const MediaQueryData(textScaler: _NonlinearTextScaler());
+
     final result = applyHumanAccessibilityPreferences(
-      const MediaQueryData(),
-      HumanPrefs.defaults.copyWith(reducedMotion: true),
+      source,
+      HumanPrefs.defaults.copyWith(textScale: 1.5),
     );
 
-    expect(result.disableAnimations, isTrue);
-    expect(result.accessibleNavigation, isTrue);
+    expect(result.textScaler.scale(12), closeTo(21.6, 0.001));
+    expect(result.textScaler.scale(24), closeTo(57.6, 0.001));
   });
+
+  test('keeps screen-reader navigation even without reduced motion', () {
+    final result = applyHumanAccessibilityPreferences(
+      const MediaQueryData(accessibleNavigation: true),
+      HumanPrefs.defaults,
+    );
+
+    expect(result.accessibleNavigation, isTrue);
+    expect(result.disableAnimations, isFalse);
+  });
+
+  test('clamps very large combined text scaling', () {
+    final result = applyHumanAccessibilityPreferences(
+      const MediaQueryData(textScaler: TextScaler.linear(3)),
+      HumanPrefs.defaults.copyWith(textScale: 2),
+    );
+
+    expect(result.textScaler.scale(16), 64);
+  });
+}
+
+class _NonlinearTextScaler extends TextScaler {
+  const _NonlinearTextScaler();
+
+  @override
+  double scale(double fontSize) {
+    return fontSize * (fontSize < 20 ? 1.2 : 1.6);
+  }
 }

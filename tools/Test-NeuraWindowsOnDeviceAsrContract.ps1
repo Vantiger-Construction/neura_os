@@ -28,6 +28,7 @@ $headerPath = Join-Path $runnerRoot 'neura_on_device_asr.h'
 $cmakePath = Join-Path $runnerRoot 'CMakeLists.txt'
 $windowPath = Join-Path $runnerRoot 'flutter_window.cpp'
 $dartPath = Join-Path $Root 'lib\services\neura_onnx_int4_speech_engine.dart'
+$dartConfigPath = Join-Path $Root 'lib\services\neura_on_device_asr_config.dart'
 
 foreach ($requiredPath in @(
     $sourcePath,
@@ -35,7 +36,8 @@ foreach ($requiredPath in @(
     $headerPath,
     $cmakePath,
     $windowPath,
-    $dartPath
+    $dartPath,
+    $dartConfigPath
 )) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw "Windows on-device ASR contract file is missing: $requiredPath"
@@ -48,6 +50,7 @@ $header = Get-Content -LiteralPath $headerPath -Raw
 $cmake = Get-Content -LiteralPath $cmakePath -Raw
 $window = Get-Content -LiteralPath $windowPath -Raw
 $dart = Get-Content -LiteralPath $dartPath -Raw
+$dartConfig = Get-Content -LiteralPath $dartConfigPath -Raw
 
 if ($cmake -notmatch '(?s)option\s*\(\s*NEURA_ENABLE_WINDOWS_ON_DEVICE_ASR.*?\sOFF\s*\)') {
     throw 'The native ONNX backend must remain disabled in default builds.'
@@ -103,6 +106,10 @@ Require-Literal $header 'kDrainMessage' `
     'Native segments are not marshalled back to the Flutter window thread.'
 Require-Literal $dart 'experimental: true' `
     'The ONNX engine must remain outside default production selection.'
+Require-Literal $dartConfig 'zipformer-en-2023-06-26-int8' `
+    'The operator-supplied ASR model profile contract is missing.'
+Require-Literal $dartConfig 'networkRequired' `
+    'The ASR package manifest must explicitly fail closed on network-required packages.'
 
 Require-Literal $source 'IsPlainLocalPath' `
     'Model paths must reject reparse points before opening model files.'

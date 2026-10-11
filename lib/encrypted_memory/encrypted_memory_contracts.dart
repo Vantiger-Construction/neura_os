@@ -8,6 +8,8 @@ library;
 enum EncryptedMemoryOperation {
   remember,
   recall,
+  correct,
+  forget,
   reviewQuarantine,
   export,
   wipe,
@@ -73,8 +75,8 @@ final class EncryptedMemoryAccessScope {
     required Set<EncryptedMemoryClass> classes,
     required Set<EncryptedMemorySource> sources,
     required this.sensitivity,
-  })  : classes = Set.unmodifiable(classes),
-        sources = Set.unmodifiable(sources) {
+  }) : classes = Set.unmodifiable(classes),
+       sources = Set.unmodifiable(sources) {
     _requireBoundedId(ownerId, 'owner_id');
     _requireBoundedId(deviceId, 'device_id');
     _requireBoundedId(capsuleId, 'capsule_id');

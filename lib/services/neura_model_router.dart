@@ -18,6 +18,7 @@ import 'neura_model_types.dart';
 class NeuraCloudRequestPreview {
   final NeuraModelProvider provider;
   final NeuraCloudTransactionEnvelope transaction;
+  final NeuraModelProfile modelProfile;
   final String purpose;
   final int messageCount;
   final int characterCount;
@@ -29,6 +30,7 @@ class NeuraCloudRequestPreview {
   const NeuraCloudRequestPreview({
     required this.provider,
     required this.transaction,
+    required this.modelProfile,
     required this.purpose,
     required this.messageCount,
     required this.characterCount,
@@ -47,8 +49,8 @@ class NeuraCloudRequestPreview {
   bool get privateCacheProhibited => transaction.privateCacheProhibited;
 }
 
-typedef NeuraCloudApprovalHandler = Future<bool> Function(
-    NeuraCloudRequestPreview preview);
+typedef NeuraCloudApprovalHandler =
+    Future<bool> Function(NeuraCloudRequestPreview preview);
 
 class NeuraModelRequest {
   final String systemPrompt;
@@ -79,6 +81,7 @@ class NeuraModelRequest {
     return NeuraCloudRequestPreview(
       provider: provider,
       transaction: transaction,
+      modelProfile: NeuraModelProfiles.defaultFor(provider),
       purpose: purpose,
       messageCount: messages.length,
       characterCount: encoded.length + systemPrompt.length,
@@ -124,11 +127,10 @@ class NeuraModelRequestBudget {
     // before every approval preview.
     final historyLength = source.messages.length;
     final historyStart = max(0, historyLength - maxMessages);
-    final messages = (jsonDecode(
-      jsonEncode(source.messages.sublist(historyStart)),
-    ) as List)
-        .map((item) => Map<String, dynamic>.from(item as Map))
-        .toList(growable: false);
+    final messages =
+        (jsonDecode(jsonEncode(source.messages.sublist(historyStart))) as List)
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList(growable: false);
     if (messages.isEmpty) {
       return NeuraModelRequest(
         systemPrompt: source.systemPrompt,
@@ -246,7 +248,7 @@ String _previewText(String systemPrompt, List<Map<String, dynamic>> messages) {
           block['type'] == 'image'
               ? '[Attached image]'
               : (block['text'] ?? block['content'] ?? '[Action request]')
-                  .toString(),
+                    .toString(),
         );
       }
     }
@@ -271,12 +273,19 @@ abstract interface class NeuraModelTransport {
 }
 
 class NeuraOpenAiTransport implements NeuraModelTransport {
-  NeuraOpenAiTransport({http.Client? client})
-      : _client = client ?? http.Client();
+  NeuraOpenAiTransport({
+    http.Client? client,
+    NeuraModelProfile profile = kNeuraOpenAiDefaultProfile,
+  }) : _client = client ?? http.Client(),
+       _profile = profile {
+    if (profile.provider != NeuraModelProvider.openAi) {
+      throw ArgumentError('OpenAI transport requires an OpenAI profile.');
+    }
+  }
 
   static const _endpoint = 'https://api.openai.com/v1/responses';
-  static const _model = 'gpt-5.6-luna';
   final http.Client _client;
+  final NeuraModelProfile _profile;
 
   @override
   NeuraModelProvider get provider => NeuraModelProvider.openAi;
@@ -308,11 +317,11 @@ class NeuraOpenAiTransport implements NeuraModelTransport {
             ...transaction.requestHeaders(),
           },
           body: jsonEncode({
-            'model': _model,
+            'model': _profile.model,
             'store': false,
             'input': input,
             'max_output_tokens': request.maxTokens,
-            'reasoning': {'effort': 'low'},
+            'reasoning': {'effort': _profile.reasoningEffort},
           }),
         )
         .timeout(const Duration(seconds: 30));
@@ -368,7 +377,7 @@ class NeuraOpenAiTransport implements NeuraModelTransport {
 
 class NeuraAnthropicTransport implements NeuraModelTransport {
   NeuraAnthropicTransport({http.Client? client})
-      : _client = client ?? http.Client();
+    : _client = client ?? http.Client();
 
   static const _endpoint = 'https://api.anthropic.com/v1/messages';
   final http.Client _client;
@@ -456,20 +465,21 @@ class NeuraSecureModelRouter {
     NeuraLlmDiagnostics? diagnostics,
     NeuraCloudTransactionFactory? transactionFactory,
     NeuraCloudAuditTrail? auditTrail,
-  })  : _credentials = credentials ?? NeuraModelCredentials.instance,
-        _constitutionOverride = constitution,
-        _now = now ?? DateTime.now,
-        _sleep = sleep ?? _defaultSleep,
-        _random = random ?? Random(),
-        _diagnostics = diagnostics ?? NeuraLlmDiagnostics.instance,
-        _transactionFactory =
-            transactionFactory ?? NeuraCloudTransactionFactory(),
-        _auditTrail = auditTrail ?? NeuraCloudAuditTrail() {
+  }) : _credentials = credentials ?? NeuraModelCredentials.instance,
+       _constitutionOverride = constitution,
+       _now = now ?? DateTime.now,
+       _sleep = sleep ?? _defaultSleep,
+       _random = random ?? Random(),
+       _diagnostics = diagnostics ?? NeuraLlmDiagnostics.instance,
+       _transactionFactory =
+           transactionFactory ?? NeuraCloudTransactionFactory(),
+       _auditTrail = auditTrail ?? NeuraCloudAuditTrail() {
     final availableTransports =
         transports ?? [NeuraOpenAiTransport(), NeuraAnthropicTransport()];
     _streamTransports = {
-      for (final transport in streamTransports ??
-          NeuraModelProvider.values.map(NeuraModelStreamTransport.new))
+      for (final transport
+          in streamTransports ??
+              NeuraModelProvider.values.map(NeuraModelStreamTransport.new))
         transport.provider: transport,
     };
     _transports = {
@@ -493,12 +503,12 @@ class NeuraSecureModelRouter {
   late final Map<NeuraModelProvider, NeuraModelTransport> _transports;
 
   late final Map<NeuraModelProvider, NeuraModelStreamTransport>
-      _streamTransports;
+  _streamTransports;
 
   Map<String, Object?> get providerHealthSnapshot => {
-        for (final entry in _circuits.entries)
-          entry.key.name: entry.value.snapshot(_now()),
-      };
+    for (final entry in _circuits.entries)
+      entry.key.name: entry.value.snapshot(_now()),
+  };
 
   List<Map<String, Object?>> get cloudAuditSnapshot =>
       _auditTrail.events.map((event) => event.toJson()).toList(growable: false);
@@ -932,8 +942,8 @@ class _NeuraProviderCircuit {
   }
 
   Map<String, Object?> snapshot(DateTime now) => {
-        'state': isOpen(now) ? 'open' : 'closed',
-        'consecutive_transient_failures': consecutiveTransientFailures,
-        'retry_at': openUntil?.toUtc().toIso8601String(),
-      };
+    'state': isOpen(now) ? 'open' : 'closed',
+    'consecutive_transient_failures': consecutiveTransientFailures,
+    'retry_at': openUntil?.toUtc().toIso8601String(),
+  };
 }

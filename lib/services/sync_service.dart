@@ -10,6 +10,7 @@ import '../reliability/safe_boot.dart';
 import '../startup/neura_prefs_cache.dart';
 import 'auth_service.dart';
 import 'conflict_resolution_service.dart';
+import 'local_journal_store.dart';
 import 'sync_conflict_log.dart';
 import 'sync_recovery.dart';
 
@@ -62,10 +63,10 @@ class SyncService {
   String? get _currentUserId =>
       _testUser != null ? _testUser!() : _supabase.auth.currentUser?.id;
 
-  static const _kLocalKey = 'journal_entries';
   static const _kTable = 'journal_entries';
 
   SupabaseClient get _supabase => Supabase.instance.client;
+  final _localJournal = LocalJournalStore();
   final _conflict = ConflictResolutionService();
 
   static final _singleFlight = SyncSingleFlight();
@@ -267,25 +268,12 @@ class SyncService {
 
   Future<List<JournalEntry>> _loadLocal() async {
     if (_testLoad != null) return _testLoad!();
-    final prefs = NeuraPrefsCache.prefs;
-    final raw = prefs.getStringList(_kLocalKey) ?? [];
-    return raw
-        .map(
-          (encoded) => JournalEntry.fromMap(
-            jsonDecode(encoded) as Map<String, dynamic>,
-          ),
-        )
-        .toList();
+    return _localJournal.loadEntries();
   }
 
   Future<void> _saveLocal(List<JournalEntry> entries) async {
     if (_testSave != null) return _testSave!(entries);
-    final prefs = NeuraPrefsCache.prefs;
-    final saved = await prefs.setStringList(
-      _kLocalKey,
-      entries.map((entry) => jsonEncode(entry.toMap())).toList(),
-    );
-    if (!saved) throw StateError('Local journal save could not be confirmed.');
+    await _localJournal.saveEntries(entries);
   }
 }
 
