@@ -3,22 +3,38 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../reliability/safe_boot.dart';
+import '../services/local_journal_store.dart';
 import '../services/neura_companion_presence.dart';
 import '../services/voice_journal_service.dart';
 
 class VoiceJournalScreen extends StatefulWidget {
-  const VoiceJournalScreen({super.key});
+  const VoiceJournalScreen({
+    super.key,
+    LocalJournalStore? journalStore,
+    VoiceJournalService? service,
+  })  : _journalStore = journalStore,
+        _service = service;
+
+  final LocalJournalStore? _journalStore;
+  final VoiceJournalService? _service;
 
   @override
   State<VoiceJournalScreen> createState() => _VoiceJournalScreenState();
 }
 
 class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
-  final VoiceJournalService _service = VoiceJournalService();
+  late final VoiceJournalService _service =
+      widget._service ?? VoiceJournalService();
+  late final LocalJournalStore _journalStore =
+      widget._journalStore ?? LocalJournalStore();
+  final TextEditingController _controller = TextEditingController();
   StreamSubscription<String>? _sub;
 
   bool _recording = false;
   String _transcript = '';
+  String _draftId = _newDraftId();
+  bool _saving = false;
+  String? _saveStatus;
 
   @override
   void initState() {
@@ -28,7 +44,11 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
     _sub = _service.transcriptStream.listen((text) {
       if (!mounted) return;
-      setState(() => _transcript = text);
+      setState(() {
+        _transcript = text;
+        _controller.text = text;
+        _saveStatus = null;
+      });
     });
   }
 
@@ -50,17 +70,49 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
     SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
     _sub?.cancel();
     unawaited(_service.dispose());
+    _controller.dispose();
     super.dispose();
   }
 
   Future<void> _toggleRecording() async {
     if (SafeBoot.instance.safeMode.value) return;
     if (!_recording) {
+      if (_controller.text.trim().isEmpty || _saveStatus != null) {
+        _draftId = _newDraftId();
+      }
       await _service.startRecording();
     } else {
       final text = await _service.stopRecording();
       if (!mounted) return;
-      setState(() => _transcript = text);
+      setState(() {
+        _transcript = text;
+        _controller.text = text;
+      });
+    }
+  }
+
+  Future<void> _saveTranscript() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty || _saving) return;
+    setState(() {
+      _saving = true;
+      _saveStatus = null;
+    });
+    try {
+      await _journalStore.upsertEntry(
+        id: _draftId,
+        content: text,
+        isVoice: true,
+      );
+      if (!mounted) return;
+      setState(() => _saveStatus = 'Saved to your local journal.');
+    } catch (_) {
+      if (!mounted) return;
+      setState(
+        () => _saveStatus = 'Could not save. Your transcript is still here.',
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -150,15 +202,41 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
                     ),
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.all(16),
-                      child: Text(
-                        _transcript.isEmpty
-                            ? 'No local transcript yet.'
-                            : _transcript,
-                        style: Theme.of(context).textTheme.bodyLarge,
+                      child: TextField(
+                        controller: _controller,
+                        minLines: 8,
+                        maxLines: null,
+                        decoration: InputDecoration(
+                          hintText: _transcript.isEmpty
+                              ? 'No local transcript yet.'
+                              : null,
+                          border: InputBorder.none,
+                        ),
+                        onChanged: (_) => setState(() => _saveStatus = null),
                       ),
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: safeMode ||
+                          _recording ||
+                          _saving ||
+                          _controller.text.trim().isEmpty
+                      ? null
+                      : _saveTranscript,
+                  icon: _saving
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_outlined),
+                  label: Text(_saving ? 'Saving' : 'Save to journal'),
+                ),
+                if (_saveStatus != null) ...[
+                  const SizedBox(height: 8),
+                  Text(_saveStatus!, textAlign: TextAlign.center),
+                ],
               ],
             ),
           ),
@@ -166,4 +244,7 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
       },
     );
   }
+
+  static String _newDraftId() =>
+      'voice_journal_${DateTime.now().toUtc().toIso8601String()}';
 }

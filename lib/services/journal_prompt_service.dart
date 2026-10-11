@@ -1,4 +1,4 @@
-﻿class JournalPromptService {
+class JournalPromptService {
   static const _morning = [
     'What intention do you want to carry into today?',
     'Name three things you are grateful for this morning.',
@@ -38,16 +38,26 @@
 
   /// Fetches a prompt based on [mood] and time of day.
   Future<String> fetchPrompt({String mood = '', DateTime? time}) async {
-    final hour = (time ?? DateTime.now()).hour;
+    final selectedTime = time ?? DateTime.now();
+    final hour = selectedTime.hour;
     if (mood.isNotEmpty) {
       final moodPrompts = _byMood[mood.toLowerCase()];
       if (moodPrompts != null && moodPrompts.isNotEmpty) {
-        final idx = DateTime.now().millisecondsSinceEpoch % moodPrompts.length;
+        final idx = _stableIndex(selectedTime, moodPrompts.length);
         return moodPrompts[idx];
       }
     }
     final pool = hour < 12 ? _morning : _evening;
-    final idx = DateTime.now().millisecondsSinceEpoch % pool.length;
+    final idx = _stableIndex(selectedTime, pool.length);
     return pool[idx];
+  }
+
+  int _stableIndex(DateTime time, int length) {
+    final daySeed = DateTime(
+      time.year,
+      time.month,
+      time.day,
+    ).millisecondsSinceEpoch;
+    return (daySeed ~/ Duration.millisecondsPerDay + time.hour) % length;
   }
 }

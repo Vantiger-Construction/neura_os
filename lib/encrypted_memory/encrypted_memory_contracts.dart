@@ -8,6 +8,8 @@ library;
 enum EncryptedMemoryOperation {
   remember,
   recall,
+  correct,
+  forget,
   reviewQuarantine,
   export,
   wipe,
