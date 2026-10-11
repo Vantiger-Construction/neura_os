@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,7 +18,9 @@ void main() {
 
   Future<String> reply(NeuraGenerationCancel cancel) => chat.reply(
         system: 'Neura charter',
-        messages: [{'role': 'user', 'content': 'Hello'}],
+        messages: [
+          {'role': 'user', 'content': 'Hello'}
+        ],
         cancel: cancel,
       );
 
@@ -28,7 +29,8 @@ void main() {
     safe = ValueNotifier(false);
     recovery = ValueNotifier(null);
     calls = [];
-    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,
+        (call) async {
       calls.add(call);
       return switch (call.method) {
         'beginOllama' => 1,
@@ -45,38 +47,56 @@ void main() {
     recovery.dispose();
   });
 
-  testWidgets('explicit local chat forwards only charter and visible text', (tester) async {
+  testWidgets('explicit local chat forwards only charter and visible text',
+      (tester) async {
     expect(calls, isEmpty);
     expect(await reply(NeuraGenerationCancel('one')), "Hi, I'm Neura.");
-    final request = jsonDecode(calls.first.arguments as String) as Map<String, dynamic>;
+    final request =
+        jsonDecode(calls.first.arguments as String) as Map<String, dynamic>;
     expect(request.keys.toSet(), {'system', 'messages'});
     expect(request['system'], 'Neura charter');
-    expect(calls.map((c) => c.method), ['beginOllama', 'pollOllama', 'cancelOllama']);
+    expect(calls.map((c) => c.method),
+        ['beginOllama', 'pollOllama', 'cancelOllama']);
   });
 
   for (final reason in ['cancel', 'background', 'safe', 'dispose']) {
-    testWidgets('$reason discards a late native start and cancels its id', (tester) async {
+    testWidgets('$reason discards a late native start and cancels its id',
+        (tester) async {
       final lateStart = Completer<int>();
-      binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+      binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,
+          (call) async {
         calls.add(call);
         if (call.method == 'beginOllama') return lateStart.future;
         return null;
       });
       final cancel = NeuraGenerationCancel(reason);
       final result = reply(cancel);
-      final expected = expectLater(result, throwsA(isA<NeuraGenerationCancelled>()));
+      final expected =
+          expectLater(result, throwsA(isA<NeuraGenerationCancelled>()));
       await tester.pump();
       switch (reason) {
-        case 'cancel': cancel.cancel(); break;
-        case 'background': binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive); break;
-        case 'safe': safe.value = true; break;
-        case 'dispose': chat.dispose(); break;
+        case 'cancel':
+          cancel.cancel();
+          break;
+        case 'background':
+          binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+          break;
+        case 'safe':
+          safe.value = true;
+          break;
+        case 'dispose':
+          chat.dispose();
+          break;
       }
       lateStart.complete(42);
       await tester.pump();
       await expected;
       expect(calls.where((c) => c.method == 'pollOllama'), isEmpty);
-      expect(calls.where((c) => c.method == 'cancelOllama').every((c) => c.arguments == 42), isTrue);
+      expect(
+          calls
+              .where((c) => c.method == 'cancelOllama')
+              .every((c) => c.arguments == 42),
+          isTrue);
       expect(calls.where((c) => c.method == 'cancelOllama'), isNotEmpty);
     });
   }
@@ -90,15 +110,44 @@ void main() {
     expect(calls.where((c) => c.method == 'blockOllama'), hasLength(1));
   });
 
-  testWidgets('failed local inference reports a fixed error with no cloud call', (tester) async {
-    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+  testWidgets('cancellation suppresses an already pending native reply',
+      (tester) async {
+    final lateReply = Completer<String>();
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,
+        (call) async {
+      calls.add(call);
+      if (call.method == 'beginOllama') return 9;
+      if (call.method == 'pollOllama') return lateReply.future;
+      return null;
+    });
+    final cancel = NeuraGenerationCancel('late-poll');
+    final result = reply(cancel);
+    final expected =
+        expectLater(result, throwsA(isA<NeuraGenerationCancelled>()));
+    await tester.pump();
+    expect(calls.where((c) => c.method == 'pollOllama'), hasLength(1));
+    cancel.cancel();
+    lateReply.complete('Stale answer');
+    await tester.pump();
+    await expected;
+    expect(calls.where((c) => c.method == 'cancelOllama'), isNotEmpty);
+  });
+
+  testWidgets('failed local inference reports a fixed error with no cloud call',
+      (tester) async {
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,
+        (call) async {
       calls.add(call);
       throw PlatformException(code: 'failed', message: 'private daemon error');
     });
-    await expectLater(reply(NeuraGenerationCancel('three')), throwsA(
-      predicate((e) => e is StateError && e.toString().contains('No cloud request') &&
-          !e.toString().contains('private daemon error')),
-    ));
+    await expectLater(
+        reply(NeuraGenerationCancel('three')),
+        throwsA(
+          predicate((e) =>
+              e is StateError &&
+              e.toString().contains('No cloud request') &&
+              !e.toString().contains('private daemon error')),
+        ));
     expect(calls.map((c) => c.method), ['beginOllama']);
   });
 }

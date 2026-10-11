@@ -12,7 +12,8 @@ import 'neura_generation_cancel.dart';
 /// Windows native owner forwards text to Rust; no Dart HTTP or cloud fallback.
 class NeuraOllamaChat with WidgetsBindingObserver {
   NeuraOllamaChat({
-    MethodChannel channel = const MethodChannel('neura/engine_synthetic_session'),
+    MethodChannel channel =
+        const MethodChannel('neura/engine_synthetic_session'),
     ValueListenable<bool>? safeMode,
     ValueListenable<NeuraFatalError?>? recovery,
     bool? supported,

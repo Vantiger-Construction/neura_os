@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui';
 
 import 'package:uuid/uuid.dart';
@@ -138,9 +139,12 @@ class NeuraAiService {
       throw StateError('Configure the AI provider key in Settings.');
     }
     if (localOllama &&
-        (selectedContext != null || includePermittedMemory ||
-            historyIncludesPrivateContext || history.any((t) => t.imageBase64 != null))) {
-      throw StateError('Offline Ollama currently supports visible text chat only.');
+        (selectedContext != null ||
+            includePermittedMemory ||
+            historyIncludesPrivateContext ||
+            history.any((t) => t.imageBase64 != null))) {
+      throw StateError(
+          'Offline Ollama currently supports visible text chat only.');
     }
 
     final id = generationId ?? const Uuid().v4();
@@ -176,9 +180,20 @@ class NeuraAiService {
         // No tools, approved sources, memory, swarm review or cloud routing.
         // The standard charter, room framing, audience and input guardrails
         // still apply. Offline chat never falls through to the cloud router.
-        final recent = history.length > 8 ? history.sublist(history.length - 8) : history;
+        final recent = history.length > 8
+            ? history.sublist(history.length - 8)
+            : List<NeuraChatTurn>.of(history);
+        // Trim older whole turns before crossing the platform channel; Rust
+        // independently revalidates the same byte/count caps.
+        while (recent.length > 1 &&
+            recent.fold<int>(
+                    0, (sum, turn) => sum + utf8.encode(turn.text).length) >
+                1500) {
+          recent.removeAt(0);
+        }
         final text = await (_ollama ??= NeuraOllamaChat()).reply(
-          system: '$systemPrompt\n\nYou are running offline. Do not claim web access, '
+          system:
+              '$systemPrompt\n\nYou are running offline. Do not claim web access, '
               'saved memories or completed actions. Offer everyday support; do not '
               'diagnose or advise medication changes. No tools are available.',
           messages: recent.map((t) => t.toJson()).toList(),
@@ -568,4 +583,3 @@ class NeuraGuardrailBlocked implements Exception {
   @override
   String toString() => 'NeuraGuardrailBlocked: $guardrailMessage';
 }
-

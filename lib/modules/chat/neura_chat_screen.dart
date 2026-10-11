@@ -711,8 +711,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final hasImage = imageBase64 != null;
     if (text.isEmpty && !hasImage) return;
     final localOllama = _localOllama;
-    if (localOllama && (hasImage || _selectedContext != null || _includeMemory || _privateContextUsed)) {
-      _showVoiceNotice('Offline Ollama supports text only. Open a fresh chat without personal sources.');
+    if (localOllama &&
+        (hasImage ||
+            _selectedContext != null ||
+            _includeMemory ||
+            _privateContextUsed)) {
+      _showVoiceNotice(
+          'Offline Ollama supports text only. Open a fresh chat without personal sources.');
       return;
     }
     if ((_selectedContext != null || _includeMemory) &&
@@ -742,9 +747,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     // reset. Keep their privacy restrictions for the lifetime of this chat.
     _privateContextUsed =
         _privateContextUsed || selectedContext != null || includeMemory;
-    final persistMemory = !localOllama && policy.persistMemory && !_privateContextUsed;
+    final persistMemory =
+        !localOllama && policy.persistMemory && !_privateContextUsed;
     final cloudContextReceipt = NeuraContextReceipt(
-      route: localOllama ? NeuraReplyRoute.onDevice : NeuraReplyRoute.approvedCloud,
+      route: localOllama
+          ? NeuraReplyRoute.onDevice
+          : NeuraReplyRoute.approvedCloud,
       roomId: room.id,
       usedVisibleHistory: true,
       usedSelectedText: selectedContext != null,
@@ -924,7 +932,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
 
       if (localOllama) {
         setState(() {
-          botLine.text = 'Offline reply unavailable. Check that Ollama is open and '
+          botLine.text =
+              'Offline reply unavailable. Check that Ollama is open and '
               'qwen3:4b-instruct is installed. No cloud request was made.';
           botLine.interrupted = true;
         });
@@ -1251,7 +1260,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         actions: [
           if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
             PopupMenuButton<bool>(
-              tooltip: _localOllama ? 'Offline Ollama' : 'Approved cloud / basic local reply',
+              tooltip: _localOllama
+                  ? 'Offline Ollama'
+                  : 'Approved cloud / basic local reply',
               icon: Icon(_localOllama ? Icons.computer : Icons.cloud_outlined),
               onSelected: (local) async {
                 await _interruptActiveReply();
@@ -1267,7 +1278,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
               },
               itemBuilder: (_) => const [
                 PopupMenuItem(value: true, child: Text('Offline Ollama')),
-                PopupMenuItem(value: false, child: Text('Approved cloud / basic local reply')),
+                PopupMenuItem(
+                    value: false,
+                    child: Text('Approved cloud / basic local reply')),
               ],
             ),
           PopupMenuButton<NeuraConversationMode>(
@@ -1322,7 +1335,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
           if (_localOllama)
             const Padding(
               padding: EdgeInsets.all(8),
-              child: Text('Offline Ollama · Text only · No cloud fallback · Not saved to memory'),
+              child: Text(
+                  'Offline Ollama · Text only · No cloud fallback · Not saved to memory'),
             ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -1447,7 +1461,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
               'Private rooms stay private. Review the cloud preview before sending.',
             ),
             value: _includeMemory,
-            onChanged: _localOllama || _busy ||
+            onChanged: _localOllama ||
+                    _busy ||
                     !NeuraChatPolicy.forRoom(
                       NeuraShell.of(context).room.id,
                     ).persistMemory
@@ -1573,4 +1588,3 @@ class _ChatLine {
         contextReceipt: contextReceipt,
       );
 }
-
