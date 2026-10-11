@@ -142,6 +142,17 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     });
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final current = ModalRoute.of(context)?.isCurrent ?? true;
+    // ModalRoute registers this dependency when another route covers chat,
+    // even while the Windows application itself remains in the foreground.
+    if (_localSelected && !current) {
+      unawaited(_localSession.stop());
+    }
+  }
+
   Future<void> _startLocalChat() async {
     if (!_localSession.canStart) return;
     final approved = await showDialog<bool>(
@@ -240,7 +251,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         ? '${SupportResources.forLocale(Localizations.localeOf(context).toLanguageTag())}'
             '${playbook == null ? '' : '\n\n${CrisisPlaybookSurface.format(playbook)}'}'
         : await _localSession.reply(text);
-    if (!mounted || !_localSelected || serial != _localSerial) return;
+    if (!mounted ||
+        !_localSelected ||
+        serial != _localSerial ||
+        !(ModalRoute.of(context)?.isCurrent ?? true)) return;
     setState(() {
       _busy = false;
       if (reply != null) _localLines.add(_ChatLine.bot(reply));
@@ -1385,11 +1399,17 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(_activeAgent.icon, size: 20),
+              Icon(
+                  _localSelected
+                      ? Icons.chat_bubble_outline
+                      : _activeAgent.icon,
+                  size: 20),
               const SizedBox(width: 8),
-              Text(_activeAgent.displayName),
+              Text(_localSelected
+                  ? 'Neura (offline)'
+                  : _activeAgent.displayName),
               const SizedBox(width: 4),
-              const Icon(Icons.expand_more, size: 20),
+              if (!_localSelected) const Icon(Icons.expand_more, size: 20),
             ],
           ),
         ),

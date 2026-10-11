@@ -66,7 +66,7 @@ then performs local HTTP directly, with proxies/redirects disabled and tracing
 suppressed. Text does not pass through PowerShell output, arguments, or files.
 
 Stop, pause through Stop, background/inactive/hidden/detached states, minimization,
-focus loss, power suspend, Safe Mode, recovery, screen disposal, host closure and
+focus loss, covering the chat route, power suspend, Safe Mode, recovery, screen disposal, host closure and
 host process death end ownership. Foreground return never starts a model.
 Safe Mode/recovery latch the running native host against new local grants;
 restart normally after resolving those states. Revocation invalidates result
@@ -105,6 +105,9 @@ The manual guided-support screen remains available and stops local ownership
 before navigation.
 
 Ending the session removes its visible transcript and drops Rust/Dart references.
+Each local turn/session uses a fresh editor state so an earlier undo history
+cannot restore a previous route's draft. The editor rejects text over 2 KiB
+before retaining it and disables IME personalized learning for local entry.
 Rust zeroization is best effort; Dart strings, GC copies, OS paging, screenshots
 and crash dumps are not secure erasure. A Windows job supplies process ownership,
 not a security sandbox. Personal sources remain outside this preview.

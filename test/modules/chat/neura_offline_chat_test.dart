@@ -237,6 +237,27 @@ void main() {
     },
   );
 
+  testWidgets('covering chat stops the session without restarting after return',
+      (tester) async {
+    await pumpChat(tester);
+    await chooseOffline(tester);
+    snapshot = {'state': 'idle', 'text': 'visible local reply'};
+    await send(tester, 'private session words');
+    final navigator =
+        Navigator.of(tester.element(find.byType(NeuraChatScreen)));
+    unawaited(navigator.push<void>(MaterialPageRoute<void>(
+      builder: (_) => const Scaffold(body: Text('Another screen')),
+    )));
+    await tester.pumpAndSettle();
+    expect(calls.last.method, 'stop');
+    navigator.pop();
+    await tester.pumpAndSettle();
+    expect(find.text('private session words'), findsNothing);
+    expect(find.text('visible local reply'), findsNothing);
+    expect(calls.where((c) => c.method == 'start').length, 1);
+    await close(tester);
+  });
+
   testWidgets('visible offline history stays within eight messages', (
     tester,
   ) async {
