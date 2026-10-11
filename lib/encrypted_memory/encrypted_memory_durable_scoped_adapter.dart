@@ -34,9 +34,8 @@ final class EncryptedMemoryDurableScopedAdapter {
     required this.keyLifecycle,
     Future<EncryptedMemoryDurableCrypto> Function()? loadCrypto,
     this.storageKey = defaultStorageKey,
-  }) : _loadCrypto =
-           loadCrypto ??
-           (() async => MemoryCryptoDurableAdapter(await MemoryCrypto.demo()));
+  }) : _loadCrypto = loadCrypto ??
+            (() async => MemoryCryptoDurableAdapter(await MemoryCrypto.demo()));
 
   static const defaultStorageKey = 'neura.encrypted_memory.scoped.v1';
 
@@ -393,15 +392,16 @@ final class EncryptedMemoryDurableScopedAdapter {
     EncryptedMemorySource source,
     EncryptedMemorySensitivity sensitivity,
     int expectedKeyGeneration,
-  ) => record.matchesScope(
-    requestedOwnerId: ownerId,
-    requestedDeviceId: deviceId,
-    requestedCapsuleId: capsuleId,
-    requestedClass: memoryClass,
-    requestedSource: source,
-    requestedSensitivity: sensitivity,
-    expectedKeyGeneration: expectedKeyGeneration,
-  );
+  ) =>
+      record.matchesScope(
+        requestedOwnerId: ownerId,
+        requestedDeviceId: deviceId,
+        requestedCapsuleId: capsuleId,
+        requestedClass: memoryClass,
+        requestedSource: source,
+        requestedSensitivity: sensitivity,
+        expectedKeyGeneration: expectedKeyGeneration,
+      );
 
   Future<void> _persist() async {
     if (_records.isEmpty && _quarantine.isEmpty) {
@@ -469,17 +469,17 @@ final class EncryptedMemoryDurableScopedAdapter {
 }
 
 Map<String, dynamic> _recordToJson(EncryptedMemorySessionRecord record) => {
-  'id': record.id,
-  'ownerId': record.ownerId,
-  'deviceId': record.deviceId,
-  'capsuleId': record.capsuleId,
-  'memoryClass': record.memoryClass.name,
-  'sensitivity': record.sensitivity.name,
-  'provenance': _provenanceToJson(record.provenance),
-  'value': record.value,
-  'createdAtUtc': record.createdAtUtc.toIso8601String(),
-  'keyGeneration': record.keyGeneration,
-};
+      'id': record.id,
+      'ownerId': record.ownerId,
+      'deviceId': record.deviceId,
+      'capsuleId': record.capsuleId,
+      'memoryClass': record.memoryClass.name,
+      'sensitivity': record.sensitivity.name,
+      'provenance': _provenanceToJson(record.provenance),
+      'value': record.value,
+      'createdAtUtc': record.createdAtUtc.toIso8601String(),
+      'keyGeneration': record.keyGeneration,
+    };
 
 Map<String, dynamic> _provenanceToJson(EncryptedMemoryProvenance provenance) =>
     {
