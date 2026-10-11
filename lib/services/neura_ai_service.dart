@@ -29,6 +29,7 @@ import 'neura_model_stream.dart';
 import 'neura_selected_context.dart';
 import 'neura_model_types.dart';
 import 'neura_provider_credentials.dart';
+import 'neura_ollama_chat.dart';
 
 typedef NeuraToolCommandHandler = FutureOr<bool> Function(
     NeuraToolCommand command);
@@ -88,6 +89,7 @@ class NeuraAiService {
   final NeuraSecureModelRouter _modelRouter = NeuraSecureModelRouter();
   NeuraGenerationCancel? _activeCancel;
   String? _activeGenerationId;
+  NeuraOllamaChat? _ollama;
 
   bool get isConfigured {
     if (NeuraProviderCredentials.instance.hasKey) return true;
@@ -129,10 +131,16 @@ class NeuraAiService {
     bool includePermittedMemory = false,
     bool historyIncludesPrivateContext = false,
     NeuraConversationMode conversationMode = NeuraConversationMode.balanced,
+    bool localOllama = false,
   }) async* {
     _throwIfCloudBlocked();
-    if (!isConfigured) {
+    if (!localOllama && !isConfigured) {
       throw StateError('Configure the AI provider key in Settings.');
+    }
+    if (localOllama &&
+        (selectedContext != null || includePermittedMemory ||
+            historyIncludesPrivateContext || history.any((t) => t.imageBase64 != null))) {
+      throw StateError('Offline Ollama currently supports visible text chat only.');
     }
 
     final id = generationId ?? const Uuid().v4();
@@ -164,6 +172,26 @@ class NeuraAiService {
         conversationMode: conversationMode,
       );
       cancel.throwIfCancelled();
+      if (localOllama) {
+        // No tools, approved sources, memory, swarm review or cloud routing.
+        // The standard charter, room framing, audience and input guardrails
+        // still apply. Offline chat never falls through to the cloud router.
+        final recent = history.length > 8 ? history.sublist(history.length - 8) : history;
+        final text = await (_ollama ??= NeuraOllamaChat()).reply(
+          system: '$systemPrompt\n\nYou are running offline. Do not claim web access, '
+              'saved memories or completed actions. Offer everyday support; do not '
+              'diagnose or advise medication changes. No tools are available.',
+          messages: recent.map((t) => t.toJson()).toList(),
+          cancel: cancel,
+        );
+        cancel.throwIfCancelled();
+        final postBlocked = await _checkGuardrails([
+          NeuraChatTurn(isUser: true, text: text),
+        ]);
+        cancel.throwIfCancelled();
+        yield postBlocked ?? text;
+        return;
+      }
       final messages = history.map((t) => t.toJson()).toList();
       if (selectedContext != null) {
         messages.add({'role': 'user', 'content': selectedContext.toMessage()});
@@ -540,3 +568,4 @@ class NeuraGuardrailBlocked implements Exception {
   @override
   String toString() => 'NeuraGuardrailBlocked: $guardrailMessage';
 }
+

@@ -5,9 +5,11 @@
 #include <windows.h>
 
 #include <memory>
+#include <cstdint>
 
-// Fixed synthetic operations only. Credentials, paths, endpoints and response
-// contents never cross this channel. Only the primary Windows engine owns it.
+// Primary Windows owner for the fixed synthetic protocol and the separate,
+// explicitly selected text-only Ollama request path. Endpoints and credentials
+// are never accepted from Dart.
 class NeuraEngineSession {
  public:
   NeuraEngineSession(flutter::BinaryMessenger* messenger, HWND window);
@@ -20,6 +22,9 @@ class NeuraEngineSession {
   using StateFunction = int (*)();
   using StopFunction = void (*)();
   using ForegroundFunction = void (*)(int);
+  using OllamaBegin = int64_t (*)(const unsigned char*, size_t);
+  using OllamaPoll = int (*)(int64_t, unsigned char*, size_t);
+  using OllamaCancel = void (*)(int64_t);
   bool Load();
   HWND window_;
   HMODULE library_ = nullptr;
@@ -31,5 +36,12 @@ class NeuraEngineSession {
   StopFunction block_ = nullptr;
   ForegroundFunction foreground_ = nullptr;
   bool blocked_ = false;
+  OllamaBegin ollama_begin_ = nullptr;
+  OllamaPoll ollama_poll_ = nullptr;
+  OllamaCancel ollama_cancel_ = nullptr;
+  ForegroundFunction ollama_foreground_ = nullptr;
+  StopFunction ollama_block_ = nullptr;
+  StopFunction ollama_shutdown_ = nullptr;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> channel_;
 };
+

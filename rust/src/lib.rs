@@ -8,5 +8,7 @@ pub mod agents;
 pub mod anthropic_client;
 pub mod api;
 mod engine_session;
+mod ollama_conversation;
 mod frb_generated;
 pub mod orchestrator;
+

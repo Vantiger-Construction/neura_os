@@ -1,0 +1,66 @@
+name: Neura Ollama Chat
+
+on:
+  pull_request:
+    branches: [Neura, codex/neura-companion-behavior-20261011]
+    paths:
+      - 'rust/**'
+      - 'lib/services/neura_ollama_chat.dart'
+      - 'lib/services/neura_ai_service.dart'
+      - 'lib/modules/chat/neura_chat_screen.dart'
+      - 'windows/runner/neura_engine_session.*'
+      - 'test/services/neura_ollama_chat_test.dart'
+      - '.github/workflows/neura-ollama-chat.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-ollama-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Enable stable Rust and Clippy
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup default stable
+      - name: Test all Rust targets
+        run: cargo test --manifest-path rust/Cargo.toml --locked --all-targets
+      - name: Rust formatting patch
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          rustfmt --edition 2021 rust/src/ollama_conversation.rs
+          git diff -- rust/src/ollama_conversation.rs
+      - name: Strict Clippy
+        run: cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Format adapter sources for validation
+        run: |
+          dart format lib/services/neura_ollama_chat.dart lib/services/neura_ai_service.dart lib/modules/chat/neura_chat_screen.dart test/services/neura_ollama_chat_test.dart
+          git diff -- lib/services/neura_ollama_chat.dart lib/services/neura_ai_service.dart lib/modules/chat/neura_chat_screen.dart test/services/neura_ollama_chat_test.dart
+      - name: Analyze integration
+        run: flutter analyze --no-pub lib/services/neura_ollama_chat.dart lib/services/neura_ai_service.dart lib/modules/chat/neura_chat_screen.dart test/services/neura_ollama_chat_test.dart
+      - name: Test adapter and existing lifecycle boundaries
+        run: flutter test --no-pub test/services/neura_ollama_chat_test.dart test/neura_link/engine_session_lifecycle_test.dart test/services/neura_generation_cancel_test.dart test/persona/neura_character_charter_test.dart
