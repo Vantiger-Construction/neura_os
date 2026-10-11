@@ -254,7 +254,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     if (!mounted ||
         !_localSelected ||
         serial != _localSerial ||
-        !(ModalRoute.of(context)?.isCurrent ?? true)) return;
+        !(ModalRoute.of(context)?.isCurrent ?? true)) {
+      return;
+    }
     setState(() {
       _busy = false;
       if (reply != null) _localLines.add(_ChatLine.bot(reply));
