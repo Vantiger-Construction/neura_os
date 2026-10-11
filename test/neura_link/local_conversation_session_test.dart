@@ -86,6 +86,7 @@ void main() {
             .every((c) => c.arguments == null),
         isTrue,
       );
+      await session.stop();
     },
   );
 
@@ -107,6 +108,7 @@ void main() {
     expect(await session.reply('🧠' * 513), isNull);
     expect(await session.reply(' '), isNull);
     expect(calls.map((c) => c.method), ['start']);
+    await session.stop();
   });
 
   testWidgets('one turn at a time; Stop cancels without queuing a second', (
@@ -290,6 +292,7 @@ void main() {
     await stopping;
     await session.start();
     expect(calls.where((c) => c.method == 'start').length, 2);
+    await session.stop();
   });
 
   testWidgets('unconfirmed teardown blocks replacement grants', (tester) async {

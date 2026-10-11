@@ -125,7 +125,13 @@ void main() {
         'Talk freely (hands-free)',
       ]) {
         expect(
-          tester.widget<IconButton>(find.byTooltip(tooltip)).onPressed,
+          tester
+              .widget<IconButton>(
+                find.byWidgetPredicate(
+                  (widget) => widget is IconButton && widget.tooltip == tooltip,
+                ),
+              )
+              .onPressed,
           isNull,
         );
       }
