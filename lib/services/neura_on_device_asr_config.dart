@@ -109,7 +109,7 @@ abstract final class NeuraOnDeviceAsrProfiles {
   static const all = [int4Candidate, zipformerEn20230626Int8];
 
   static NeuraOnDeviceAsrProfile byId(String id) => all.firstWhere(
-    (profile) => profile.id == id,
-    orElse: () => throw const FormatException('Unknown ASR profile.'),
-  );
+        (profile) => profile.id == id,
+        orElse: () => throw const FormatException('Unknown ASR profile.'),
+      );
 }

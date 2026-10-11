@@ -26,16 +26,16 @@ class AvailableUpdate {
 /// at build time; otherwise update checks are inert.
 class UpdateCheckService {
   UpdateCheckService._({http.Client? client})
-    : _client = client ?? http.Client(),
-      _configuredCurrentTag = _currentTag,
-      _configuredManifestUrl = _manifestUrl;
+      : _client = client ?? http.Client(),
+        _configuredCurrentTag = _currentTag,
+        _configuredManifestUrl = _manifestUrl;
   UpdateCheckService.forTesting({
     required http.Client client,
     String currentTag = '',
     String manifestUrl = '',
-  }) : _client = client,
-       _configuredCurrentTag = currentTag,
-       _configuredManifestUrl = manifestUrl;
+  })  : _client = client,
+        _configuredCurrentTag = currentTag,
+        _configuredManifestUrl = manifestUrl;
 
   static final UpdateCheckService instance = UpdateCheckService._();
 
@@ -56,15 +56,13 @@ class UpdateCheckService {
       return null;
     }
     try {
-      final response = await _client
-          .get(
-            Uri.parse(_configuredManifestUrl),
-            headers: {
-              'Accept': 'application/json',
-              'Cache-Control': 'no-cache',
-            },
-          )
-          .timeout(const Duration(seconds: 10));
+      final response = await _client.get(
+        Uri.parse(_configuredManifestUrl),
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache',
+        },
+      ).timeout(const Duration(seconds: 10));
       if (response.statusCode != 200) return null;
 
       final json = jsonDecode(response.body) as Map<String, dynamic>;

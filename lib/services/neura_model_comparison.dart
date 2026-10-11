@@ -1,14 +1,13 @@
 import 'neura_model_router.dart';
 import 'neura_model_types.dart';
 
-typedef NeuraSyntheticModelRunner =
-    Future<NeuraSyntheticModelResult> Function(
-      NeuraModelProfile profile,
-      NeuraModelRequest request,
-    );
+typedef NeuraSyntheticModelRunner = Future<NeuraSyntheticModelResult> Function(
+  NeuraModelProfile profile,
+  NeuraModelRequest request,
+);
 
-typedef NeuraSyntheticModelApproval =
-    Future<bool> Function(NeuraModelProfile profile, NeuraModelRequest request);
+typedef NeuraSyntheticModelApproval = Future<bool> Function(
+    NeuraModelProfile profile, NeuraModelRequest request);
 
 final class NeuraSyntheticModelResult {
   const NeuraSyntheticModelResult({

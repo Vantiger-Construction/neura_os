@@ -8,9 +8,9 @@ class JournalPromptScreen extends StatefulWidget {
     JournalPromptService? promptService,
     LocalJournalStore? journalStore,
     DateTime Function()? now,
-  }) : _promptService = promptService,
-       _journalStore = journalStore,
-       _now = now;
+  })  : _promptService = promptService,
+        _journalStore = journalStore,
+        _now = now;
 
   final JournalPromptService? _promptService;
   final LocalJournalStore? _journalStore;

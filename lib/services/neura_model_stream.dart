@@ -109,8 +109,8 @@ class NeuraModelStreamTransport {
     this.provider, {
     http.Client Function()? clientFactory,
     NeuraModelProfile? profile,
-  }) : _clientFactory = clientFactory ?? http.Client.new,
-       profile = profile ?? NeuraModelProfiles.defaultFor(provider) {
+  })  : _clientFactory = clientFactory ?? http.Client.new,
+        profile = profile ?? NeuraModelProfiles.defaultFor(provider) {
     if (this.profile.provider != provider) {
       throw ArgumentError('Stream transport profile/provider mismatch.');
     }
@@ -192,9 +192,8 @@ class NeuraModelStreamTransport {
         switch (block['type']) {
           case 'text':
             parts.add({
-              'type': message['role'] == 'assistant'
-                  ? 'output_text'
-                  : 'input_text',
+              'type':
+                  message['role'] == 'assistant' ? 'output_text' : 'input_text',
               'text': block['text'],
             });
             break;
