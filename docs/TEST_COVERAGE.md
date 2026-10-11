@@ -25,6 +25,13 @@ bridge code, external packages, test directories, and `rust/src/ipc_tests.rs`
 are excluded from the production summary. The original LCOV is retained so these
 choices can be audited. No authored production module is excluded by name.
 
+Rust export disables cargo-llvm-cov's default filename filters: their `tests/`
+rule would also drop production lifecycle modules included by integration tests
+through `#[path = "../src/..."]`. The reporter normalizes these paths and merges
+them with library mappings before selecting repository-owned production files.
+The raw Rust LCOV can include external/test mappings; only the scoped summary
+counts Neura production lines.
+
 Flutter may omit libraries that the tests never import. Rust can omit code not
 compiled for the current platform. The report lists these **unmeasured files**
 separately: their executable-line counts and coverage are unknown. The displayed

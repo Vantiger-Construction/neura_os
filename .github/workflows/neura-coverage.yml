@@ -141,7 +141,9 @@ jobs:
           COVERAGE_TEST_OUTCOME: ${{ steps.tests.outcome }}
         run: |
           mkdir -p "$COVERAGE_REPORT_DIR"
-          cargo llvm-cov report --manifest-path rust/Cargo.toml --lcov \
+          # The default tests/ filter also drops #[path = "../src/..."] lifecycle
+          # mappings. Scope normalized production paths in our reporter instead.
+          cargo llvm-cov report --manifest-path rust/Cargo.toml --lcov --no-default-ignore-filename-regex \
             --output-path "$COVERAGE_REPORT_DIR/raw.lcov.info"
           python tools/coverage/report.py --language rust --label "Rust ($RUNNER_OS)" \
             --lcov "$COVERAGE_REPORT_DIR/raw.lcov.info" --output "$COVERAGE_REPORT_DIR" \

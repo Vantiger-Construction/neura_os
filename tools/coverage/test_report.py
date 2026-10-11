@@ -32,6 +32,15 @@ class CoverageReportTest(unittest.TestCase):
             "DA:12,4\r\nend_of_record\r\n", "D:/a/neura/neura", "rust")
         self.assertEqual(result, {"rust/src/engine_session.rs": {12: 4}})
 
+    def test_integration_source_aliases_merge_into_the_production_module(self):
+        result = parse_lcov(
+            "SF:/repo/rust/src/engine_session.rs\nDA:12,0\nend_of_record\n"
+            "SF:/repo/rust/tests/../src/engine_session.rs\nDA:12,4\nend_of_record\n",
+            "/repo", "rust")
+        self.assertEqual(result, {"rust/src/engine_session.rs": {12: 4}})
+        self.assertEqual(source_path("D:\\repo\\rust\\tests\\..\\src\\engine_process.rs",
+                                     "d:/repo", "rust"), "rust/src/engine_process.rs")
+
     def test_sources_outside_checkout_and_parent_traversal_are_excluded(self):
         for path in ("/repo-other/lib/a.dart", "/external/lib/a.dart",
                      "lib/../test/a.dart", "../lib/a.dart"):

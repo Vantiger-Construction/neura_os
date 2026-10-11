@@ -7,12 +7,15 @@ import html
 import json
 import os
 from pathlib import Path, PurePosixPath
+import posixpath
 import re
 
 
 def source_path(value: str, root: str, language: str) -> str | None:
-    value = value.replace("\\", "/")
-    root = root.replace("\\", "/").rstrip("/") + "/"
+    # #[path = "../src/..."] integration modules have a tests/../src path
+    # in LLVM. Normalize before scoping and merging with the library mapping.
+    value = posixpath.normpath(value.replace("\\", "/"))
+    root = posixpath.normpath(root.replace("\\", "/")).rstrip("/") + "/"
     if re.match(r"^(?:[A-Za-z]:/|/)", value):
         # MSVC/LLVM can use a different drive-letter case than Python.
         windows = bool(re.match(r"^[A-Za-z]:/", root))
