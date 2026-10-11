@@ -1,0 +1,49 @@
+name: Neura Offline Text Adapter
+
+on:
+  pull_request:
+    branches:
+      - Neura
+      - agent/neura-rustls-security-refresh-2026-10-10
+    paths:
+      - 'rust/**'
+      - 'tools/*NeuraLocalConversation*'
+      - 'docs/NEURA_OFFLINE_CONVERSATION.md'
+      - '.github/workflows/neura-offline-text-adapter.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-offline-text-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust adapter (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Enable stable Rust and Clippy
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup default stable
+          cargo --version
+          rustc --version
+      - name: Test all Rust targets with the committed lockfile
+        shell: bash
+        run: cargo test --manifest-path rust/Cargo.toml --locked --all-targets
+      - name: Strict Clippy
+        shell: bash
+        run: cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Check Windows preflight policy and launcher syntax
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: '& .\tools\Test-NeuraLocalConversationPolicy.ps1'
