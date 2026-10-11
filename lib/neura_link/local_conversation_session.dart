@@ -27,16 +27,14 @@ class LocalConversationSession extends ChangeNotifier
     ValueListenable<bool>? safeMode,
     ValueListenable<NeuraFatalError?>? recovery,
     bool? supported,
-  }) : _channel = channel,
-       _safeMode = safeMode ?? SafeBoot.instance.safeMode,
-       _recovery = recovery ?? NeuraErrorPipeline.instance.fatalError,
-       supported =
-           supported ??
-           (!kIsWeb &&
-               defaultTargetPlatform == TargetPlatform.windows &&
-               const bool.fromEnvironment('NEURA_ENABLE_OFFLINE_TEXT')) {
-    _foreground =
-        WidgetsBinding.instance.lifecycleState == null ||
+  })  : _channel = channel,
+        _safeMode = safeMode ?? SafeBoot.instance.safeMode,
+        _recovery = recovery ?? NeuraErrorPipeline.instance.fatalError,
+        supported = supported ??
+            (!kIsWeb &&
+                defaultTargetPlatform == TargetPlatform.windows &&
+                const bool.fromEnvironment('NEURA_ENABLE_OFFLINE_TEXT')) {
+    _foreground = WidgetsBinding.instance.lifecycleState == null ||
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     _safeMode.addListener(_onSafety);
@@ -85,8 +83,8 @@ class LocalConversationSession extends ChangeNotifier
     final result = _channelTail.then(
       (_) => _current(epoch)
           ? _channel
-                .invokeMethod<T>(method, argument)
-                .timeout(const Duration(seconds: 5))
+              .invokeMethod<T>(method, argument)
+              .timeout(const Duration(seconds: 5))
           : Future<T?>.value(),
     );
     _channelTail = result.then<void>(
@@ -102,14 +100,14 @@ class LocalConversationSession extends ChangeNotifier
   }
 
   static LocalConversationState _decode(Object? name) => switch (name) {
-    'disabled' => LocalConversationState.disabled,
-    'starting' => LocalConversationState.starting,
-    'idle' => LocalConversationState.idle,
-    'working' => LocalConversationState.working,
-    'unavailable' => LocalConversationState.unavailable,
-    'blocked' => LocalConversationState.blocked,
-    _ => LocalConversationState.error,
-  };
+        'disabled' => LocalConversationState.disabled,
+        'starting' => LocalConversationState.starting,
+        'idle' => LocalConversationState.idle,
+        'working' => LocalConversationState.working,
+        'unavailable' => LocalConversationState.unavailable,
+        'blocked' => LocalConversationState.blocked,
+        _ => LocalConversationState.error,
+      };
 
   Future<void> start() async {
     if (!canStart) return;

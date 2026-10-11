@@ -234,12 +234,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     // typed message and reviewed static resources. No mood/history lookup,
     // storm-event write, or model inference enters this support path.
     final scan = CrisisTextScan.of(text);
-    final playbook = scan.crisis
-        ? CrisisPlaybookSurface.select(scan, text)
-        : null;
+    final playbook =
+        scan.crisis ? CrisisPlaybookSurface.select(scan, text) : null;
     final reply = scan.crisis
         ? '${SupportResources.forLocale(Localizations.localeOf(context).toLanguageTag())}'
-              '${playbook == null ? '' : '\n\n${CrisisPlaybookSurface.format(playbook)}'}'
+            '${playbook == null ? '' : '\n\n${CrisisPlaybookSurface.format(playbook)}'}'
         : await _localSession.reply(text);
     if (!mounted || !_localSelected || serial != _localSerial) return;
     setState(() {
@@ -660,9 +659,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       NeuraVoiceCommand.scrollToTop => current.minScrollExtent,
       NeuraVoiceCommand.scrollToBottom => current.maxScrollExtent,
       _ => current.pixels.clamp(
-        current.minScrollExtent,
-        current.maxScrollExtent,
-      ),
+          current.minScrollExtent,
+          current.maxScrollExtent,
+        ),
     };
     if ((current.pixels - settled).abs() > 0.1) {
       _scrollController.jumpTo(settled);
@@ -907,9 +906,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       usedImage: hasImage,
       savedToLongTermMemory: persistMemory,
     );
-    final displayText = text.isEmpty && hasImage
-        ? 'What do you see in this photo?'
-        : text;
+    final displayText =
+        text.isEmpty && hasImage ? 'What do you see in this photo?' : text;
     final generationId =
         '${DateTime.now().microsecondsSinceEpoch}-${_generationSerial++}';
 
@@ -975,14 +973,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     });
     _scrollToEnd();
 
-    final useStreamSpeech =
-        _speechEnabled &&
+    final useStreamSpeech = _speechEnabled &&
         NeuraTtsService.instance.replySpeechMode ==
             NeuraReplySpeechMode.streamed;
     final speech = ReplySpeechQueue(
-      speak: (text) => NeuraTtsService.instance
-          .speak(text)
-          .timeout(
+      speak: (text) => NeuraTtsService.instance.speak(text).timeout(
             const Duration(seconds: 45),
             onTimeout: () => NeuraTtsService.instance.stop(),
           ),
@@ -1025,8 +1020,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
             : Future.value(false),
         requestCloudApproval: (preview) =>
             mounted && _activeReplyId == generationId
-            ? showNeuraCloudRequestPreview(context, preview)
-            : Future.value(false),
+                ? showNeuraCloudRequestPreview(context, preview)
+                : Future.value(false),
       )) {
         if (!mounted || _activeReplyId != generationId) return;
         updates.add(delta);
@@ -1210,8 +1205,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       case NeuraChatPolicy.getMoodHistory:
         final approved = await _confirmToolAction(
           title: 'Share mood scores once?',
-          message:
-              'Neura wants to send recent mood dates and 0–10 scores to '
+          message: 'Neura wants to send recent mood dates and 0–10 scores to '
               'the configured AI provider for this reply. Your mood notes '
               'will not be shared.',
           approveLabel: 'Share once',
@@ -1232,7 +1226,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
           message: note.trim().isEmpty
               ? 'Save mood $mood/10 to your encrypted local history?'
               : 'Save mood $mood/10 with the note “$note” to your encrypted '
-                    'local history?',
+                  'local history?',
           approveLabel: 'Save locally',
         );
         if (!approved) return false;
@@ -1248,8 +1242,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         if (target.id != roomId) return false;
         final approved = await _confirmToolAction(
           title: 'Open ${target.title}?',
-          message:
-              'Neura suggested changing rooms. The app will navigate '
+          message: 'Neura suggested changing rooms. The app will navigate '
               'only if you approve this request.',
           approveLabel: 'Open room',
         );
@@ -1290,8 +1283,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     if (!mounted) return false;
     final generation = _activeReplyId;
     final room = NeuraShell.of(context).room.id;
-    final approved =
-        await showDialog<bool>(
+    final approved = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: Text(title),
@@ -1458,8 +1450,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
             tooltip: !replySpeechAvailable
                 ? 'Reply speech is off in Voice settings'
                 : replySpeechActive
-                ? 'Mute Neura'
-                : 'Unmute Neura',
+                    ? 'Mute Neura'
+                    : 'Unmute Neura',
             onPressed: _localSelected ? null : _toggleSpeech,
             icon: Icon(
               !_localSelected && replySpeechActive
@@ -1509,9 +1501,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
               itemCount: visibleLines.length,
               itemBuilder: (context, i) {
                 final line = visibleLines[i];
-                final align = line.isUser
-                    ? Alignment.centerRight
-                    : Alignment.centerLeft;
+                final align =
+                    line.isUser ? Alignment.centerRight : Alignment.centerLeft;
                 final color = line.isUser
                     ? Colors.blueGrey.shade700
                     : Colors.grey.shade900;
@@ -1530,7 +1521,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                           padding: const EdgeInsets.only(left: 4, bottom: 2),
                           child: Text(
                             agentCaption,
-                            style: Theme.of(context).textTheme.labelSmall
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
                                 ?.copyWith(color: Colors.white70),
                           ),
                         ),
@@ -1606,9 +1599,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
           if (_selectedContext != null)
             InputChip(
               label: Text('Next reply: ${_selectedContext!.name}'),
-              onDeleted: _busy
-                  ? null
-                  : () => setState(() => _selectedContext = null),
+              onDeleted:
+                  _busy ? null : () => setState(() => _selectedContext = null),
             ),
           CheckboxListTile(
             dense: true,
@@ -1617,8 +1609,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
               'Private rooms stay private. Review the cloud preview before sending.',
             ),
             value: _includeMemory,
-            onChanged:
-                _localSelected ||
+            onChanged: _localSelected ||
                     _busy ||
                     !NeuraChatPolicy.forRoom(NeuraShell.of(context).room.id)
                         .persistMemory
@@ -1633,8 +1624,14 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                 children: [
                   Expanded(
                     child: TextField(
+                      // A fresh editor state drops the previous route/turn's
+                      // undo stack as well as its visible draft.
+                      key: ValueKey(
+                        _localSelected ? 'offline-$_localSerial' : 'standard',
+                      ),
                       controller: _controller,
                       enabled: true,
+                      enableIMEPersonalizedLearning: !_localSelected,
                       inputFormatters: _localSelected
                           ? [LengthLimitingTextInputFormatter(2048)]
                           : null,
@@ -1643,10 +1640,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                         hintText: _listening
                             ? 'Listening…'
                             : (_busy
-                                  ? 'Type to interrupt Neura…'
-                                  : (_continuousMode
-                                        ? 'Getting ready to listen…'
-                                        : 'Talk to Neura…')),
+                                ? 'Type to interrupt Neura…'
+                                : (_continuousMode
+                                    ? 'Getting ready to listen…'
+                                    : 'Talk to Neura…')),
                         border: const OutlineInputBorder(),
                       ),
                     ),
@@ -1654,28 +1651,26 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                   const SizedBox(width: 8),
                   IconButton(
                     tooltip: 'Select text for the next reply',
-                    onPressed: _localSelected || _busy
-                        ? null
-                        : _pickTextContext,
+                    onPressed:
+                        _localSelected || _busy ? null : _pickTextContext,
                     icon: const Icon(Icons.attach_file),
                   ),
                   IconButton(
                     tooltip: 'Attach a photo',
-                    onPressed: _localSelected || _busy
-                        ? null
-                        : _pickAndSendImage,
+                    onPressed:
+                        _localSelected || _busy ? null : _pickAndSendImage,
                     icon: const Icon(Icons.image_outlined),
                   ),
                   IconButton(
                     tooltip: _listening
                         ? 'Done — send it'
                         : (_busy
-                              ? 'Interrupt and talk'
-                              : 'Talk freely (hands-free)'),
+                            ? 'Interrupt and talk'
+                            : 'Talk freely (hands-free)'),
                     onPressed:
                         _localSelected || SafeBoot.instance.safeMode.value
-                        ? null
-                        : _beginVoiceBargeIn,
+                            ? null
+                            : _beginVoiceBargeIn,
                     icon: Icon(
                       _listening ? Icons.mic : Icons.mic_none,
                       color: _listening ? Colors.redAccent : null,
@@ -1683,9 +1678,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                   ),
                   IconButton(
                     tooltip: _busy ? 'Interrupt and send' : 'Send',
-                    onPressed: _localSelected && !_localSession.canSend
-                        ? null
-                        : _send,
+                    onPressed:
+                        _localSelected && !_localSession.canSend ? null : _send,
                     icon: const Icon(Icons.send),
                   ),
                 ],
@@ -1731,24 +1725,26 @@ class _ChatLine {
     String? utteranceId,
     String? imageBase64,
     String? imageMediaType,
-  }) => _ChatLine(
-    true,
-    t,
-    utteranceId: utteranceId,
-    imageBase64: imageBase64,
-    imageMediaType: imageMediaType,
-  );
+  }) =>
+      _ChatLine(
+        true,
+        t,
+        utteranceId: utteranceId,
+        imageBase64: imageBase64,
+        imageMediaType: imageMediaType,
+      );
 
   factory _ChatLine.bot(
     String t, {
     String? agentId,
     String? utteranceId,
     NeuraContextReceipt? contextReceipt,
-  }) => _ChatLine(
-    false,
-    t,
-    agentId: agentId,
-    utteranceId: utteranceId,
-    contextReceipt: contextReceipt,
-  );
+  }) =>
+      _ChatLine(
+        false,
+        t,
+        agentId: agentId,
+        utteranceId: utteranceId,
+        contextReceipt: contextReceipt,
+      );
 }
