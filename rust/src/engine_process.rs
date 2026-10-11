@@ -1,8 +1,26 @@
 //! Owned child environment and process handles. Only Windows is exposed by the
 //! production C ABI; the portable backend exists to exercise real child tests.
 
+use std::path::PathBuf;
+
+/// Trusted native launch plan, never populated from Flutter text or a URL.
+pub(crate) struct SpawnSpec {
+    pub executable: PathBuf,
+    pub arguments: Vec<String>,
+    pub environment: Vec<(String, String)>,
+}
+impl Drop for SpawnSpec {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        for (_, value) in &mut self.environment {
+            value.zeroize();
+        }
+    }
+}
+
 #[cfg(not(windows))]
 pub(crate) mod platform {
+    use super::SpawnSpec;
     use std::{
         path::Path,
         process::{Child, ChildStdout, Command, Stdio},
@@ -28,6 +46,19 @@ pub(crate) mod platform {
         let pipe = child.stdout.take().ok_or(())?;
         Ok((ChildProcess { child }, pipe))
     }
+    pub(crate) fn spawn_spec(spec: &SpawnSpec) -> Result<(ChildProcess, ChildStdout), ()> {
+        let mut child = Command::new(&spec.executable)
+            .args(&spec.arguments)
+            .env_clear()
+            .envs(spec.environment.iter().map(|(k, v)| (k, v)))
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|_| ())?;
+        let pipe = child.stdout.take().ok_or(())?;
+        Ok((ChildProcess { child }, pipe))
+    }
     impl ChildProcess {
         pub(crate) fn is_running(&mut self) -> bool {
             matches!(self.child.try_wait(), Ok(None))
@@ -46,6 +77,7 @@ pub(crate) mod platform {
 
 #[cfg(windows)]
 mod platform {
+    use super::SpawnSpec;
     use std::{
         ffi::c_void,
         fs::File,
@@ -181,6 +213,51 @@ mod platform {
     }
 
     pub(crate) fn spawn(executable: &Path, token: &str) -> Result<(ChildProcess, File), ()> {
+        spawn_spec(&SpawnSpec {
+            executable: executable.to_owned(),
+            arguments: Vec::new(),
+            environment: vec![
+                ("NEURA_API_ADDR".into(), "127.0.0.1:0".into()),
+                ("NEURA_API_LAUNCHER_READY".into(), "1".into()),
+                ("NEURA_API_SESSION_TOKEN".into(), token.into()),
+            ],
+        })
+    }
+
+    fn quote_argument(value: &str) -> String {
+        let mut quoted = String::from("\"");
+        let mut slashes = 0;
+        for character in value.chars() {
+            if character == '\\' {
+                slashes += 1;
+                continue;
+            }
+            quoted.extend(std::iter::repeat_n(
+                '\\',
+                if character == '"' {
+                    2 * slashes + 1
+                } else {
+                    slashes
+                },
+            ));
+            quoted.push(character);
+            slashes = 0;
+        }
+        quoted.extend(std::iter::repeat_n('\\', 2 * slashes));
+        quoted.push('"');
+        quoted
+    }
+
+    pub(crate) fn spawn_spec(spec: &SpawnSpec) -> Result<(ChildProcess, File), ()> {
+        let executable = &spec.executable;
+        if spec.arguments.iter().any(|a| a.contains('\0'))
+            || spec
+                .environment
+                .iter()
+                .any(|(k, v)| k.contains(['\0', '=']) || v.contains('\0'))
+        {
+            return Err(());
+        }
         unsafe {
             let security = SECURITY_ATTRIBUTES {
                 nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
@@ -238,17 +315,29 @@ mod platform {
             let system_root = String::from_utf16(&windows_directory[..count]).map_err(|_| ())?;
             // Allowlist only runtime necessities. Inherited provider keys, URL
             // overrides, RUST_LOG and old session credentials cannot enter.
-            let environment = Zeroizing::new(format!("NEURA_API_ADDR=127.0.0.1:0\0NEURA_API_LAUNCHER_READY=1\0NEURA_API_SESSION_TOKEN={token}\0SystemRoot={system_root}\0\0"));
+            let mut entries = Zeroizing::new(spec.environment.clone());
+            entries.push(("SystemRoot".into(), system_root));
+            entries.sort_by_key(|(key, _)| key.to_ascii_lowercase());
+            let mut environment = Zeroizing::new(String::new());
+            for (key, value) in entries.iter() {
+                environment.push_str(key);
+                environment.push('=');
+                environment.push_str(value);
+                environment.push('\0');
+            }
+            environment.push('\0');
             let environment = Zeroizing::new(environment.encode_utf16().collect::<Vec<u16>>());
             let application: Vec<u16> = executable
                 .as_os_str()
                 .encode_wide()
                 .chain(Some(0))
                 .collect();
-            let mut command: Vec<u16> = format!("\"{}\"", executable.display())
-                .encode_utf16()
-                .chain(Some(0))
-                .collect();
+            let mut command_line = quote_argument(&executable.to_string_lossy());
+            for argument in &spec.arguments {
+                command_line.push(' ');
+                command_line.push_str(&quote_argument(argument));
+            }
+            let mut command: Vec<u16> = command_line.encode_utf16().chain(Some(0)).collect();
             let directory: Vec<u16> = executable
                 .parent()
                 .ok_or(())?
@@ -291,4 +380,4 @@ mod platform {
     }
 }
 
-pub(crate) use platform::{spawn, ChildProcess};
+pub(crate) use platform::{spawn, spawn_spec, ChildProcess};

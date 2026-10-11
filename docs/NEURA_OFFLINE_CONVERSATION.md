@@ -1,5 +1,10 @@
 # Offline text conversation on a small Windows laptop
 
+The original terminal harness below remains available. The separately gated
+[Windows in-app preview](NEURA_OFFLINE_CHAT_PREVIEW.md) now connects typed chat
+to this adapter with native process ownership and app lifecycle revocation.
+Neither path has measured real-model performance or conversation quality yet.
+
 This opt-in developer prototype connects Neura's Rust crate to a free local
 language model. It is a separate terminal conversation, **not yet the Flutter
 chat provider**. It does not start with Neura, replace the synthetic Engine
