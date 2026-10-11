@@ -5,7 +5,8 @@ import 'package:neuro_companion/persona/services/neura_prompt_builder.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 
 void main() {
-  test('offline prompt excludes stored mood while retaining Neura identity', () async {
+  test('offline prompt excludes stored mood while retaining Neura identity',
+      () async {
     SharedPreferences.setMockInitialValues({});
     await NeuraPrefsCache.init();
     await MoodStateService.instance.setMood('anxious');

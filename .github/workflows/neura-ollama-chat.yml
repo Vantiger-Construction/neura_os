@@ -39,12 +39,11 @@ jobs:
           rustup default stable
       - name: Test all Rust targets
         run: cargo test --manifest-path rust/Cargo.toml --locked --all-targets
-      - name: Rust formatting patch
+      - name: Check Rust adapter formatting
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
-          rustfmt --edition 2021 rust/src/ollama_conversation.rs
-          git diff -- rust/src/ollama_conversation.rs
+          rustfmt --edition 2021 --check rust/src/ollama_conversation.rs
       - name: Strict Clippy
         run: cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
   flutter:
@@ -58,10 +57,9 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - name: Format adapter sources for validation
+      - name: Check canonical Dart formatting
         run: |
-          dart format lib/services/neura_ollama_chat.dart lib/services/neura_ai_service.dart lib/modules/chat/neura_chat_screen.dart lib/persona/services/neura_prompt_builder.dart test/services/neura_ollama_chat_test.dart test/persona/neura_offline_prompt_test.dart
-          git diff -- lib/services/neura_ollama_chat.dart lib/services/neura_ai_service.dart lib/modules/chat/neura_chat_screen.dart lib/persona/services/neura_prompt_builder.dart test/services/neura_ollama_chat_test.dart test/persona/neura_offline_prompt_test.dart
+          dart format --output=none --set-exit-if-changed lib/services/neura_ollama_chat.dart lib/services/neura_ai_service.dart lib/modules/chat/neura_chat_screen.dart lib/persona/services/neura_prompt_builder.dart test/services/neura_ollama_chat_test.dart test/persona/neura_offline_prompt_test.dart
       - name: Analyze integration
         run: flutter analyze --no-pub lib/services/neura_ollama_chat.dart lib/services/neura_ai_service.dart lib/modules/chat/neura_chat_screen.dart lib/persona/services/neura_prompt_builder.dart test/services/neura_ollama_chat_test.dart test/persona/neura_offline_prompt_test.dart
       - name: Test adapter and existing lifecycle boundaries
