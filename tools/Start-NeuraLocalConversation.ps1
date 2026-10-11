@@ -4,7 +4,8 @@ param(
     [string]$ModelsDirectory,
     [string]$ChatExecutablePath,
     [switch]$AllowSessionText,
-    [switch]$PreflightOnly
+    [switch]$PreflightOnly,
+    [switch]$NativeOwner
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -20,16 +21,28 @@ if ($PreflightOnly) { $profile; return }
 if (-not $AllowSessionText) {
     throw 'Use -AllowSessionText to permit only the text you type in this terminal for this session.'
 }
+if ($NativeOwner) {
+    # Only the primary Windows native owner supplies these values, through its
+    # cleared child environment. This mode has no terminal or arbitrary paths.
+    if ($env:NEURA_LOCAL_SESSION_TOKEN -cnotmatch '^[0-9a-f]{64}$' -or
+        $env:NEURA_LOCAL_APP_WINDOW -notmatch '^[1-9][0-9]*$' -or
+        [string]::IsNullOrWhiteSpace($env:NEURA_LOCAL_ASSETS_ROOT) -or
+        [string]::IsNullOrWhiteSpace($env:NEURA_LOCAL_RUNTIME_ROOT)) {
+        throw 'A native-owned foreground session is required.'
+    }
+    $LlamaArchivePath = Join-Path $env:NEURA_LOCAL_ASSETS_ROOT 'llama-b11429-bin-win-cpu-x64.zip'
+    $ModelsDirectory = Join-Path $env:NEURA_LOCAL_ASSETS_ROOT 'models'
+}
 if ([string]::IsNullOrWhiteSpace($LlamaArchivePath) -or [string]::IsNullOrWhiteSpace($ModelsDirectory)) {
     throw 'Provide the local runtime archive and models directory from docs/NEURA_OFFLINE_CONVERSATION.md.'
 }
-if ([string]::IsNullOrWhiteSpace($ChatExecutablePath)) {
+if (-not $NativeOwner -and [string]::IsNullOrWhiteSpace($ChatExecutablePath)) {
     $ChatExecutablePath = Join-Path $PSScriptRoot '..\rust\target\release\neura_local_chat.exe'
 }
-if (-not (Test-Path -LiteralPath $ChatExecutablePath -PathType Leaf)) {
+if (-not $NativeOwner -and -not (Test-Path -LiteralPath $ChatExecutablePath -PathType Leaf)) {
     throw 'Build neura_local_chat with Cargo before starting this prototype.'
 }
-$ChatExecutablePath = (Resolve-Path -LiteralPath $ChatExecutablePath).ProviderPath
+if (-not $NativeOwner) { $ChatExecutablePath = (Resolve-Path -LiteralPath $ChatExecutablePath).ProviderPath }
 $modelPath = Join-Path $ModelsDirectory $profile.FileName
 Assert-NeuraLocalConversationHash -Path $modelPath -Expected $profile.Sha256
 $modelPath = (Resolve-Path -LiteralPath $modelPath).ProviderPath
@@ -41,7 +54,11 @@ if (-not ('NeuraLocalConversationJob' -as [type])) {
 }
 $foreground = [NeuraLocalConversationJob]::GetForegroundWindow()
 if ($foreground -eq [IntPtr]::Zero) { throw 'Start this prototype from a foreground terminal.' }
+if ($NativeOwner -and $foreground.ToInt64() -ne [Int64]$env:NEURA_LOCAL_APP_WINDOW) {
+    throw 'The Neura window must be in the foreground.'
+}
 $runtimeRoot = Join-Path ([IO.Path]::GetTempPath()) ('neura-local-runtime-' + [Guid]::NewGuid().ToString('N'))
+if ($NativeOwner) { $runtimeRoot = $env:NEURA_LOCAL_RUNTIME_ROOT }
 $server = $null
 $chat = $null
 $job = $null
@@ -53,9 +70,13 @@ try {
     Expand-Archive -LiteralPath $LlamaArchivePath -DestinationPath $runtimeRoot
     $executables = @(Get-ChildItem -LiteralPath $runtimeRoot -Filter 'llama-server.exe' -Recurse -File)
     if ($executables.Count -ne 1) { throw 'The reviewed archive must contain exactly one llama-server.exe.' }
-    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
-    $rng.GetBytes($bytes)
-    $token = ([BitConverter]::ToString($bytes)).Replace('-', '').ToLowerInvariant()
+    if ($NativeOwner) {
+        $token = $env:NEURA_LOCAL_SESSION_TOKEN
+    } else {
+        $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+        $rng.GetBytes($bytes)
+        $token = ([BitConverter]::ToString($bytes)).Replace('-', '').ToLowerInvariant()
+    }
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $listener.Start()
     try { $port = $listener.LocalEndpoint.Port } finally { $listener.Stop() }
@@ -99,7 +120,7 @@ try {
     $http.Timeout = [TimeSpan]::FromSeconds(2)
     $deadline = [DateTime]::UtcNow.AddSeconds(120)
     $ready = $false
-    Write-Host "Loading $($profile.Model). Conversation stays in this terminal session."
+    if (-not $NativeOwner) { Write-Host "Loading $($profile.Model). Conversation stays in this terminal session." }
     while ([DateTime]::UtcNow -lt $deadline) {
         if ($server.HasExited) { throw 'The local model runtime exited before readiness.' }
         if ([NeuraLocalConversationJob]::GetForegroundWindow() -ne $foreground) {
@@ -118,6 +139,18 @@ try {
         Start-Sleep -Milliseconds 100
     }
     if (-not $ready) { throw 'Local model readiness timed out. No conversation was sent.' }
+    if ($NativeOwner) {
+        # The DLL reads only this bounded control receipt; typed text and
+        # model output never pass through PowerShell or its stdout/stderr.
+        [Console]::Out.Write("NEURA_IPC_READY 127.0.0.1:$port`n")
+        [Console]::Out.Flush()
+        while (-not $server.WaitForExit(100)) {
+            if ([NeuraLocalConversationJob]::GetForegroundWindow() -ne $foreground) {
+                throw 'Native local session left the foreground.'
+            }
+        }
+        throw 'The local model runtime stopped.'
+    }
     $chatInfo = [Diagnostics.ProcessStartInfo]::new()
     $chatInfo.FileName = $ChatExecutablePath
     $chatInfo.UseShellExecute = $false

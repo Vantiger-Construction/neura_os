@@ -20,6 +20,26 @@ fn executable() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_neura_api"))
 }
 
+#[test]
+fn generic_native_plan_owns_and_reaps_a_real_child() {
+    let token = fresh_token().unwrap();
+    let spec = process::SpawnSpec {
+        executable: executable(),
+        arguments: Vec::new(),
+        environment: vec![
+            ("NEURA_API_ADDR".into(), "127.0.0.1:0".into()),
+            ("NEURA_API_LAUNCHER_READY".into(), "1".into()),
+            ("NEURA_API_SESSION_TOKEN".into(), token.to_string()),
+        ],
+    };
+    let (mut child, pipe) = process::spawn_spec(&spec).unwrap();
+    let address = read_ready(pipe).unwrap();
+    assert!(child.is_running());
+    child.terminate();
+    assert!(!child.is_running());
+    assert!(TcpStream::connect_timeout(&address, Duration::from_millis(500)).is_err());
+}
+
 fn wait_idle(launcher: &Launcher) {
     let deadline = Instant::now() + Duration::from_secs(6);
     while matches!(launcher.status(), STARTING | WORKING) && Instant::now() < deadline {

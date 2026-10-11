@@ -10,4 +10,5 @@ pub mod api;
 mod engine_session;
 mod frb_generated;
 pub mod local_conversation;
+mod local_session;
 pub mod orchestrator;
