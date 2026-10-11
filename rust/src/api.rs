@@ -95,20 +95,6 @@ pub async fn review_and_extract(
     SwarmOutcome::from(outcome)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn empty_init_clears_the_process_credential() {
-        init("sk-ant-test-process-secret".to_owned());
-        assert!(API_KEY.lock().unwrap().is_some());
-
-        init("   ".to_owned());
-        assert!(API_KEY.lock().unwrap().is_none());
-    }
-}
-
 /// FFI-friendly mirror of [`crate::orchestrator::AgentResults`] -- kept as a
 /// separate type (rather than exposing the internal one directly) so the
 /// Rust-internal orchestrator/agent modules stay free to evolve without
@@ -143,3 +129,18 @@ impl From<orchestrator::AgentResults> for SwarmOutcome {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_init_clears_the_process_credential() {
+        init("sk-ant-test-process-secret".to_owned());
+        assert!(API_KEY.lock().unwrap().is_some());
+
+        init("   ".to_owned());
+        assert!(API_KEY.lock().unwrap().is_none());
+    }
+}
+
