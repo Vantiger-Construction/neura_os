@@ -25,3 +25,10 @@ tools/neura_dart_repair/installer/output/
 /dist/DriveRebuild_build_*.log
 /dist/NeuraCompanion_GoogleDriveRebuild_*
 /dist/NeuraCompanion_Setup_*
+
+# Test coverage reports and local instrumentation output
+/coverage/
+/rust/target/
+*.profraw
+*.profdata
+__pycache__/
