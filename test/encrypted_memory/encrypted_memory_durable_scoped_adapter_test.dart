@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,7 @@ import 'package:neuro_companion/encrypted_memory/encrypted_memory_session_adapte
 import 'package:neuro_companion/living_intelligence/neura_safety_policy.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 void main() {
   final issuedAt = DateTime.utc(2026, 10, 11, 12);
@@ -311,9 +313,9 @@ void main() {
       contract: const EncryptedMemoryWipeContract(
         stopWritersFirst: true,
         deleteCiphertext: true,
-        destroyKey: true,
+        destroyKey: false,
         verifyCiphertextDeletion: true,
-        verifyKeyDeletion: true,
+        verifyKeyDeletion: false,
       ),
     );
 
@@ -325,9 +327,237 @@ void main() {
       isFalse,
     );
   });
+
+  test('scoped wipe rejects shared-key destruction claims', () async {
+    final subject = adapter();
+    await subject.remember(
+      lease: lease('remember-1', EncryptedMemoryOperation.remember),
+      safetyContext: context,
+      record: record(),
+      expectedKeyGeneration: keys.generation,
+      nowUtc: issuedAt.add(const Duration(seconds: 1)),
+    );
+
+    await expectLater(
+      subject.wipeScope(
+        lease: lease('wipe-1', EncryptedMemoryOperation.wipe),
+        safetyContext: context,
+        ownerId: 'owner-1',
+        deviceId: 'device-1',
+        capsuleId: 'personal',
+        memoryClass: EncryptedMemoryClass.explicitPreference,
+        source: EncryptedMemorySource.authenticatedUser,
+        sensitivity: EncryptedMemorySensitivity.personal,
+        expectedKeyGeneration: keys.generation,
+        nowUtc: issuedAt.add(const Duration(seconds: 2)),
+        contract: const EncryptedMemoryWipeContract(
+          stopWritersFirst: true,
+          deleteCiphertext: true,
+          destroyKey: true,
+          verifyCiphertextDeletion: true,
+          verifyKeyDeletion: true,
+        ),
+      ),
+      throwsA(
+        isA<EncryptedMemoryPolicyViolation>().having(
+          (error) => error.code,
+          'code',
+          'scoped_wipe_cannot_destroy_shared_key',
+        ),
+      ),
+    );
+    expect(subject.recordCount, 1);
+  });
+
+  test('delayed remember cannot resurrect after queued forget and restart',
+      () async {
+    final delayedCrypto = _BlockingDurableCrypto();
+    final subject = EncryptedMemoryDurableScopedAdapter(
+      safetyPolicy: NeuraLivingSafetyPolicy(safeModeReader: () => false),
+      keyLifecycle: keys,
+      loadCrypto: () async => delayedCrypto,
+    );
+
+    final remember = subject.remember(
+      lease: lease('remember-1', EncryptedMemoryOperation.remember),
+      safetyContext: context,
+      record: record(),
+      expectedKeyGeneration: keys.generation,
+      nowUtc: issuedAt.add(const Duration(seconds: 1)),
+    );
+    await delayedCrypto.waitForFirstEncrypt();
+    final forget = subject.forget(
+      lease: lease('forget-1', EncryptedMemoryOperation.forget),
+      safetyContext: context,
+      recordId: 'record-1',
+      ownerId: 'owner-1',
+      deviceId: 'device-1',
+      capsuleId: 'personal',
+      memoryClass: EncryptedMemoryClass.explicitPreference,
+      source: EncryptedMemorySource.authenticatedUser,
+      sensitivity: EncryptedMemorySensitivity.personal,
+      expectedKeyGeneration: keys.generation,
+      nowUtc: issuedAt.add(const Duration(seconds: 2)),
+    );
+    delayedCrypto.releaseFirstEncrypt();
+
+    await remember;
+    expect(await forget, isTrue);
+    final restarted = EncryptedMemoryDurableScopedAdapter(
+      safetyPolicy: NeuraLivingSafetyPolicy(safeModeReader: () => false),
+      keyLifecycle: keys,
+      loadCrypto: () async => delayedCrypto,
+    );
+    await restarted.restore(
+      safetyContext: context,
+      expectedKeyGeneration: keys.generation,
+    );
+    expect(
+      recall(restarted, lease('recall-1', EncryptedMemoryOperation.recall)),
+      isNull,
+    );
+  });
+
+  test('failed durable remove rolls back memory and leaves restart restorable',
+      () async {
+    final subject = adapter();
+    await subject.remember(
+      lease: lease('remember-1', EncryptedMemoryOperation.remember),
+      safetyContext: context,
+      record: record(),
+      expectedKeyGeneration: keys.generation,
+      nowUtc: issuedAt.add(const Duration(seconds: 1)),
+    );
+    final blob = NeuraPrefsCache.prefs.getString(
+      EncryptedMemoryDurableScopedAdapter.defaultStorageKey,
+    )!;
+    final original = SharedPreferencesStorePlatform.instance;
+    final platform = _RemoveFailingPreferencesStore({
+      'flutter.${EncryptedMemoryDurableScopedAdapter.defaultStorageKey}': blob,
+    });
+    SharedPreferencesStorePlatform.instance = platform;
+    await NeuraPrefsCache.prefs.reload();
+    try {
+      await expectLater(
+        subject.forget(
+          lease: lease('forget-1', EncryptedMemoryOperation.forget),
+          safetyContext: context,
+          recordId: 'record-1',
+          ownerId: 'owner-1',
+          deviceId: 'device-1',
+          capsuleId: 'personal',
+          memoryClass: EncryptedMemoryClass.explicitPreference,
+          source: EncryptedMemorySource.authenticatedUser,
+          sensitivity: EncryptedMemorySensitivity.personal,
+          expectedKeyGeneration: keys.generation,
+          nowUtc: issuedAt.add(const Duration(seconds: 2)),
+        ),
+        throwsA(
+          isA<EncryptedMemoryPolicyViolation>().having(
+            (error) => error.code,
+            'code',
+            'durable_remove_failed',
+          ),
+        ),
+      );
+      expect(subject.recordCount, 1);
+      final restarted = adapter();
+      await restarted.restore(
+        safetyContext: context,
+        expectedKeyGeneration: keys.generation,
+      );
+      expect(restarted.recordCount, 1);
+    } finally {
+      SharedPreferencesStorePlatform.instance = original;
+      SharedPreferences.setMockInitialValues({});
+      await NeuraPrefsCache.prefs.reload();
+    }
+  });
+
+  test('invalid quarantine release keeps the candidate for later review',
+      () async {
+    final subject = adapter();
+    EncryptedMemoryConsentLease modelOutputLease(
+      String id,
+      EncryptedMemoryOperation operation,
+    ) =>
+        EncryptedMemoryConsentLease(
+          id: id,
+          scope: EncryptedMemoryAccessScope(
+            ownerId: 'owner-1',
+            deviceId: 'device-1',
+            capsuleId: 'personal',
+            classes: const {EncryptedMemoryClass.explicitPreference},
+            sources: const {EncryptedMemorySource.modelOutput},
+            sensitivity: EncryptedMemorySensitivity.personal,
+          ),
+          operations: {operation},
+          issuedAtUtc: issuedAt,
+          expiresAtUtc: issuedAt.add(const Duration(minutes: 5)),
+          directUserGesture: true,
+        );
+    final quarantined = EncryptedMemorySessionRecord(
+      id: 'record-1',
+      ownerId: 'owner-1',
+      deviceId: 'device-1',
+      capsuleId: 'personal',
+      memoryClass: EncryptedMemoryClass.explicitPreference,
+      sensitivity: EncryptedMemorySensitivity.personal,
+      provenance: EncryptedMemoryProvenance(
+        source: EncryptedMemorySource.modelOutput,
+        sourceId: 'source-1',
+        authorId: 'owner-1',
+        reason: 'model_candidate',
+        trustTier: EncryptedMemoryTrustTier.inferred,
+        integrityState: EncryptedMemoryIntegrityState.pending,
+        integrityTag: null,
+        observedAtUtc: issuedAt,
+      ),
+      value: 'Candidate preference.',
+      createdAtUtc: issuedAt,
+      keyGeneration: keys.generation,
+    );
+    await subject.remember(
+      lease: modelOutputLease('remember-1', EncryptedMemoryOperation.remember),
+      safetyContext: context,
+      record: quarantined,
+      expectedKeyGeneration: keys.generation,
+      nowUtc: issuedAt.add(const Duration(seconds: 1)),
+    );
+    expect(subject.quarantinedRecordCount, 1);
+
+    await expectLater(
+      subject.reviewQuarantined(
+        lease: modelOutputLease(
+          'review-1',
+          EncryptedMemoryOperation.reviewQuarantine,
+        ),
+        safetyContext: context,
+        recordId: 'record-1',
+        ownerId: 'owner-1',
+        deviceId: 'device-1',
+        capsuleId: 'personal',
+        memoryClass: EncryptedMemoryClass.explicitPreference,
+        source: EncryptedMemorySource.modelOutput,
+        sensitivity: EncryptedMemorySensitivity.personal,
+        expectedKeyGeneration: keys.generation,
+        nowUtc: issuedAt.add(const Duration(seconds: 2)),
+        disposition: EncryptedMemoryQuarantineDisposition.release,
+        verifiedIntegrityTag: 'bad',
+      ),
+      throwsA(
+        isA<EncryptedMemoryPolicyViolation>().having(
+          (error) => error.code,
+          'code',
+          'invalid_integrity_tag',
+        ),
+      ),
+    );
+    expect(subject.quarantinedRecordCount, 1);
+  });
 }
 
-final class _FakeDurableCrypto implements EncryptedMemoryDurableCrypto {
+class _FakeDurableCrypto implements EncryptedMemoryDurableCrypto {
   int _nonce = 0;
 
   @override
@@ -349,5 +579,56 @@ final class _FakeDurableCrypto implements EncryptedMemoryDurableCrypto {
       'payload': base64Encode(utf8.encode(jsonEncode(json))),
     };
     return 'cipher:${base64Encode(utf8.encode(jsonEncode(envelope)))}';
+  }
+}
+
+final class _BlockingDurableCrypto extends _FakeDurableCrypto {
+  final _started = Completer<void>();
+  final _release = Completer<void>();
+  bool _blocked = false;
+
+  Future<void> waitForFirstEncrypt() => _started.future;
+
+  void releaseFirstEncrypt() {
+    if (!_release.isCompleted) _release.complete();
+  }
+
+  @override
+  Future<String> encryptJson(Map<String, dynamic> json) async {
+    if (!_blocked) {
+      _blocked = true;
+      _started.complete();
+      await _release.future;
+    }
+    return super.encryptJson(json);
+  }
+}
+
+final class _RemoveFailingPreferencesStore
+    extends SharedPreferencesStorePlatform {
+  _RemoveFailingPreferencesStore(Map<String, Object> seed)
+      : data = Map<String, Object>.from(seed);
+
+  final Map<String, Object> data;
+
+  @override
+  bool get isMock => true;
+
+  @override
+  Future<bool> clear() async {
+    data.clear();
+    return true;
+  }
+
+  @override
+  Future<Map<String, Object>> getAll() async => Map<String, Object>.from(data);
+
+  @override
+  Future<bool> remove(String key) async => false;
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    data[key] = value;
+    return true;
   }
 }

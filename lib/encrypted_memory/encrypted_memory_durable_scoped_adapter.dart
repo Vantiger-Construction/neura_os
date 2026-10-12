@@ -45,6 +45,7 @@ final class EncryptedMemoryDurableScopedAdapter {
   final String storageKey;
   final Map<String, EncryptedMemorySessionRecord> _records = {};
   final Map<String, EncryptedMemorySessionRecord> _quarantine = {};
+  Future<void> _mutationTail = Future<void>.value();
 
   int get recordCount => _records.length;
   int get quarantinedRecordCount => _quarantine.length;
@@ -53,6 +54,7 @@ final class EncryptedMemoryDurableScopedAdapter {
     required NeuraSafetyContext safetyContext,
     required int expectedKeyGeneration,
   }) async {
+    await _mutationTail;
     _requireAvailable(safetyContext, expectedKeyGeneration);
     final blob = NeuraPrefsCache.prefs.getString(storageKey);
     _records.clear();
@@ -80,26 +82,28 @@ final class EncryptedMemoryDurableScopedAdapter {
     required EncryptedMemorySessionRecord record,
     required int expectedKeyGeneration,
     required DateTime nowUtc,
-  }) async {
-    _requireAvailable(safetyContext, expectedKeyGeneration);
-    _requireUtc(nowUtc);
-    _requireRestorable(record, expectedKeyGeneration);
-    if (_records.containsKey(record.id) || _quarantine.containsKey(record.id)) {
-      throw const EncryptedMemoryPolicyViolation('record_already_exists');
-    }
-    _consumeForRecord(
-      lease: lease,
-      operation: EncryptedMemoryOperation.remember,
-      record: record,
-      nowUtc: nowUtc,
-    );
-    if (record.provenance.requiresQuarantine) {
-      _quarantine[record.id] = record;
-    } else {
-      _records[record.id] = record;
-    }
-    await _persist();
-  }
+  }) =>
+      _serializedMutation(() async {
+        _requireAvailable(safetyContext, expectedKeyGeneration);
+        _requireUtc(nowUtc);
+        _requireRestorable(record, expectedKeyGeneration);
+        if (_records.containsKey(record.id) ||
+            _quarantine.containsKey(record.id)) {
+          throw const EncryptedMemoryPolicyViolation('record_already_exists');
+        }
+        _consumeForRecord(
+          lease: lease,
+          operation: EncryptedMemoryOperation.remember,
+          record: record,
+          nowUtc: nowUtc,
+        );
+        if (record.provenance.requiresQuarantine) {
+          _quarantine[record.id] = record;
+        } else {
+          _records[record.id] = record;
+        }
+        await _persist(expectedKeyGeneration);
+      });
 
   EncryptedMemorySessionRecord? recall({
     required EncryptedMemoryConsentLease lease,
@@ -156,48 +160,49 @@ final class EncryptedMemoryDurableScopedAdapter {
     required int expectedKeyGeneration,
     required DateTime nowUtc,
     required String replacementValue,
-  }) async {
-    _requireAvailable(safetyContext, expectedKeyGeneration);
-    _requireUtc(nowUtc);
-    lease.consumeFor(
-      operation: EncryptedMemoryOperation.correct,
-      requestedOwnerId: ownerId,
-      requestedDeviceId: deviceId,
-      requestedCapsuleId: capsuleId,
-      memoryClass: memoryClass,
-      source: source,
-      sensitivity: sensitivity,
-      nowUtc: nowUtc,
-    );
-    final record = _records[recordId];
-    if (record == null ||
-        !_matches(
-          record,
-          ownerId,
-          deviceId,
-          capsuleId,
-          memoryClass,
-          source,
-          sensitivity,
-          expectedKeyGeneration,
-        )) {
-      return false;
-    }
-    _records[recordId] = EncryptedMemorySessionRecord(
-      id: record.id,
-      ownerId: record.ownerId,
-      deviceId: record.deviceId,
-      capsuleId: record.capsuleId,
-      memoryClass: record.memoryClass,
-      sensitivity: record.sensitivity,
-      provenance: record.provenance,
-      value: replacementValue,
-      createdAtUtc: record.createdAtUtc,
-      keyGeneration: record.keyGeneration,
-    );
-    await _persist();
-    return true;
-  }
+  }) =>
+      _serializedMutation(() async {
+        _requireAvailable(safetyContext, expectedKeyGeneration);
+        _requireUtc(nowUtc);
+        lease.consumeFor(
+          operation: EncryptedMemoryOperation.correct,
+          requestedOwnerId: ownerId,
+          requestedDeviceId: deviceId,
+          requestedCapsuleId: capsuleId,
+          memoryClass: memoryClass,
+          source: source,
+          sensitivity: sensitivity,
+          nowUtc: nowUtc,
+        );
+        final record = _records[recordId];
+        if (record == null ||
+            !_matches(
+              record,
+              ownerId,
+              deviceId,
+              capsuleId,
+              memoryClass,
+              source,
+              sensitivity,
+              expectedKeyGeneration,
+            )) {
+          return false;
+        }
+        _records[recordId] = EncryptedMemorySessionRecord(
+          id: record.id,
+          ownerId: record.ownerId,
+          deviceId: record.deviceId,
+          capsuleId: record.capsuleId,
+          memoryClass: record.memoryClass,
+          sensitivity: record.sensitivity,
+          provenance: record.provenance,
+          value: replacementValue,
+          createdAtUtc: record.createdAtUtc,
+          keyGeneration: record.keyGeneration,
+        );
+        await _persist(expectedKeyGeneration);
+        return true;
+      });
 
   Future<bool> forget({
     required EncryptedMemoryConsentLease lease,
@@ -211,32 +216,33 @@ final class EncryptedMemoryDurableScopedAdapter {
     required EncryptedMemorySensitivity sensitivity,
     required int expectedKeyGeneration,
     required DateTime nowUtc,
-  }) async {
-    _requireAvailable(safetyContext, expectedKeyGeneration);
-    _requireUtc(nowUtc);
-    lease.consumeFor(
-      operation: EncryptedMemoryOperation.forget,
-      requestedOwnerId: ownerId,
-      requestedDeviceId: deviceId,
-      requestedCapsuleId: capsuleId,
-      memoryClass: memoryClass,
-      source: source,
-      sensitivity: sensitivity,
-      nowUtc: nowUtc,
-    );
-    final removed = _removeMatching(
-      recordId,
-      ownerId,
-      deviceId,
-      capsuleId,
-      memoryClass,
-      source,
-      sensitivity,
-      expectedKeyGeneration,
-    );
-    if (removed) await _persist();
-    return removed;
-  }
+  }) =>
+      _serializedMutation(() async {
+        _requireAvailable(safetyContext, expectedKeyGeneration);
+        _requireUtc(nowUtc);
+        lease.consumeFor(
+          operation: EncryptedMemoryOperation.forget,
+          requestedOwnerId: ownerId,
+          requestedDeviceId: deviceId,
+          requestedCapsuleId: capsuleId,
+          memoryClass: memoryClass,
+          source: source,
+          sensitivity: sensitivity,
+          nowUtc: nowUtc,
+        );
+        final removed = _removeMatching(
+          recordId,
+          ownerId,
+          deviceId,
+          capsuleId,
+          memoryClass,
+          source,
+          sensitivity,
+          expectedKeyGeneration,
+        );
+        if (removed) await _persist(expectedKeyGeneration);
+        return removed;
+      });
 
   Future<void> wipeScope({
     required EncryptedMemoryConsentLease lease,
@@ -250,46 +256,47 @@ final class EncryptedMemoryDurableScopedAdapter {
     required int expectedKeyGeneration,
     required DateTime nowUtc,
     required EncryptedMemoryWipeContract contract,
-  }) async {
-    contract.validate();
-    _requireAvailable(safetyContext, expectedKeyGeneration);
-    _requireUtc(nowUtc);
-    lease.consumeFor(
-      operation: EncryptedMemoryOperation.wipe,
-      requestedOwnerId: ownerId,
-      requestedDeviceId: deviceId,
-      requestedCapsuleId: capsuleId,
-      memoryClass: memoryClass,
-      source: source,
-      sensitivity: sensitivity,
-      nowUtc: nowUtc,
-    );
-    _records.removeWhere(
-      (_, record) => _matches(
-        record,
-        ownerId,
-        deviceId,
-        capsuleId,
-        memoryClass,
-        source,
-        sensitivity,
-        expectedKeyGeneration,
-      ),
-    );
-    _quarantine.removeWhere(
-      (_, record) => _matches(
-        record,
-        ownerId,
-        deviceId,
-        capsuleId,
-        memoryClass,
-        source,
-        sensitivity,
-        expectedKeyGeneration,
-      ),
-    );
-    await _persist();
-  }
+  }) =>
+      _serializedMutation(() async {
+        contract.validateScopedCiphertextOnly();
+        _requireAvailable(safetyContext, expectedKeyGeneration);
+        _requireUtc(nowUtc);
+        lease.consumeFor(
+          operation: EncryptedMemoryOperation.wipe,
+          requestedOwnerId: ownerId,
+          requestedDeviceId: deviceId,
+          requestedCapsuleId: capsuleId,
+          memoryClass: memoryClass,
+          source: source,
+          sensitivity: sensitivity,
+          nowUtc: nowUtc,
+        );
+        _records.removeWhere(
+          (_, record) => _matches(
+            record,
+            ownerId,
+            deviceId,
+            capsuleId,
+            memoryClass,
+            source,
+            sensitivity,
+            expectedKeyGeneration,
+          ),
+        );
+        _quarantine.removeWhere(
+          (_, record) => _matches(
+            record,
+            ownerId,
+            deviceId,
+            capsuleId,
+            memoryClass,
+            source,
+            sensitivity,
+            expectedKeyGeneration,
+          ),
+        );
+        await _persist(expectedKeyGeneration);
+      });
 
   Future<bool> reviewQuarantined({
     required EncryptedMemoryConsentLease lease,
@@ -305,54 +312,57 @@ final class EncryptedMemoryDurableScopedAdapter {
     required DateTime nowUtc,
     required EncryptedMemoryQuarantineDisposition disposition,
     String? verifiedIntegrityTag,
-  }) async {
-    _requireAvailable(safetyContext, expectedKeyGeneration);
-    _requireUtc(nowUtc);
-    lease.consumeFor(
-      operation: EncryptedMemoryOperation.reviewQuarantine,
-      requestedOwnerId: ownerId,
-      requestedDeviceId: deviceId,
-      requestedCapsuleId: capsuleId,
-      memoryClass: memoryClass,
-      source: source,
-      sensitivity: sensitivity,
-      nowUtc: nowUtc,
-    );
-    final record = _quarantine[recordId];
-    if (record == null ||
-        !_matches(
-          record,
-          ownerId,
-          deviceId,
-          capsuleId,
-          memoryClass,
-          source,
-          sensitivity,
-          expectedKeyGeneration,
-        )) {
-      return false;
-    }
-    _quarantine.remove(recordId);
-    if (disposition == EncryptedMemoryQuarantineDisposition.release) {
-      if (verifiedIntegrityTag == null) {
-        throw const EncryptedMemoryPolicyViolation(
-          'verified_integrity_tag_required',
+  }) =>
+      _serializedMutation(() async {
+        _requireAvailable(safetyContext, expectedKeyGeneration);
+        _requireUtc(nowUtc);
+        lease.consumeFor(
+          operation: EncryptedMemoryOperation.reviewQuarantine,
+          requestedOwnerId: ownerId,
+          requestedDeviceId: deviceId,
+          requestedCapsuleId: capsuleId,
+          memoryClass: memoryClass,
+          source: source,
+          sensitivity: sensitivity,
+          nowUtc: nowUtc,
         );
-      }
-      final reviewed = record.reviewed(
-        reviewedAtUtc: nowUtc,
-        verifiedIntegrityTag: verifiedIntegrityTag,
-      );
-      if (reviewed.provenance.requiresQuarantine) {
-        throw const EncryptedMemoryPolicyViolation(
-          'quarantine_release_not_verified',
-        );
-      }
-      _records[recordId] = reviewed;
-    }
-    await _persist();
-    return true;
-  }
+        final record = _quarantine[recordId];
+        if (record == null ||
+            !_matches(
+              record,
+              ownerId,
+              deviceId,
+              capsuleId,
+              memoryClass,
+              source,
+              sensitivity,
+              expectedKeyGeneration,
+            )) {
+          return false;
+        }
+        if (disposition == EncryptedMemoryQuarantineDisposition.release) {
+          if (verifiedIntegrityTag == null) {
+            throw const EncryptedMemoryPolicyViolation(
+              'verified_integrity_tag_required',
+            );
+          }
+          final reviewed = record.reviewed(
+            reviewedAtUtc: nowUtc,
+            verifiedIntegrityTag: verifiedIntegrityTag,
+          );
+          if (reviewed.provenance.requiresQuarantine) {
+            throw const EncryptedMemoryPolicyViolation(
+              'quarantine_release_not_verified',
+            );
+          }
+          _quarantine.remove(recordId);
+          _records[recordId] = reviewed;
+        } else {
+          _quarantine.remove(recordId);
+        }
+        await _persist(expectedKeyGeneration);
+        return true;
+      });
 
   bool _removeMatching(
     String recordId,
@@ -403,9 +413,50 @@ final class EncryptedMemoryDurableScopedAdapter {
         expectedKeyGeneration: expectedKeyGeneration,
       );
 
-  Future<void> _persist() async {
+  Future<T> _serializedMutation<T>(Future<T> Function() action) {
+    final previous = _mutationTail;
+    final result = previous.then((_) async {
+      final recordsBefore = Map<String, EncryptedMemorySessionRecord>.of(
+        _records,
+      );
+      final quarantineBefore = Map<String, EncryptedMemorySessionRecord>.of(
+        _quarantine,
+      );
+      try {
+        return await action();
+      } catch (error, stackTrace) {
+        _records
+          ..clear()
+          ..addAll(recordsBefore);
+        _quarantine
+          ..clear()
+          ..addAll(quarantineBefore);
+        Error.throwWithStackTrace(error, stackTrace);
+      }
+    });
+    _mutationTail = result.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {},
+    );
+    return result;
+  }
+
+  Future<void> _persist(int expectedKeyGeneration) async {
+    keyLifecycle.requireUsableGeneration(expectedKeyGeneration);
     if (_records.isEmpty && _quarantine.isEmpty) {
-      await NeuraPrefsCache.prefs.remove(storageKey);
+      try {
+        final removed = await NeuraPrefsCache.prefs.remove(storageKey);
+        await NeuraPrefsCache.prefs.reload();
+        if (!removed || NeuraPrefsCache.prefs.containsKey(storageKey)) {
+          throw const EncryptedMemoryPolicyViolation('durable_remove_failed');
+        }
+        keyLifecycle.requireUsableGeneration(expectedKeyGeneration);
+      } catch (error, stackTrace) {
+        try {
+          await NeuraPrefsCache.prefs.reload();
+        } catch (_) {}
+        Error.throwWithStackTrace(error, stackTrace);
+      }
       return;
     }
     final clear = {
@@ -414,9 +465,19 @@ final class EncryptedMemoryDurableScopedAdapter {
       'quarantine': _quarantine.values.map(_recordToJson).toList(),
     };
     final blob = await (await _loadCrypto()).encryptJson(clear);
-    final saved = await NeuraPrefsCache.prefs.setString(storageKey, blob);
-    if (!saved) {
-      throw const EncryptedMemoryPolicyViolation('durable_write_failed');
+    keyLifecycle.requireUsableGeneration(expectedKeyGeneration);
+    try {
+      final saved = await NeuraPrefsCache.prefs.setString(storageKey, blob);
+      await NeuraPrefsCache.prefs.reload();
+      if (!saved || NeuraPrefsCache.prefs.getString(storageKey) != blob) {
+        throw const EncryptedMemoryPolicyViolation('durable_write_failed');
+      }
+      keyLifecycle.requireUsableGeneration(expectedKeyGeneration);
+    } catch (error, stackTrace) {
+      try {
+        await NeuraPrefsCache.prefs.reload();
+      } catch (_) {}
+      Error.throwWithStackTrace(error, stackTrace);
     }
   }
 

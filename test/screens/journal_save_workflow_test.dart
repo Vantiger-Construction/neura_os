@@ -69,6 +69,112 @@ void main() {
   );
 
   testWidgets(
+    'saved prompt response reopens with original prompt after time changes',
+    (tester) async {
+      final store = LocalJournalStore(
+        now: () => DateTime.utc(2026, 10, 11, 9),
+      );
+      var now = DateTime(2026, 10, 11, 9);
+
+      await tester.pumpWidget(
+        _largeTextApp(
+          JournalPromptScreen(
+            promptService: _TimePromptService(),
+            journalStore: store,
+            now: () => now,
+            entryIdFactory: (_) => 'journal_prompt_user_a',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Morning prompt'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'Morning response.');
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Save response'),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('Save response'));
+      await tester.pumpAndSettle();
+
+      now = DateTime(2026, 10, 11, 21);
+      await tester.pumpWidget(
+        _largeTextApp(
+          JournalPromptScreen(
+            promptService: _TimePromptService(),
+            journalStore: store,
+            now: () => now,
+            entryIdFactory: (_) => 'journal_prompt_user_a_new',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Morning prompt'), findsOneWidget);
+      expect(find.text('Evening prompt'), findsNothing);
+      expect(find.text('Morning response.'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'Updated response.');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save response'));
+      await tester.pumpAndSettle();
+
+      final saved = await store.findById('journal_prompt_user_a');
+      expect(saved, isNotNull);
+      expect(saved!.content, contains('Morning prompt'));
+      expect(saved.content, isNot(contains('Evening prompt')));
+      expect(saved.content, contains('Updated response.'));
+    },
+  );
+
+  testWidgets(
+    'prompt history can reopen a prior-day saved response',
+    (tester) async {
+      final store = LocalJournalStore(
+        now: () => DateTime.utc(2026, 10, 11, 9),
+      );
+      await store.upsertEntry(
+        id: 'journal_prompt_prior_day',
+        timestamp: DateTime(2026, 10, 10, 9),
+        moodTag: LocalJournalStore.journalPromptMoodTag(
+          DateTime(2026, 10, 10, 9),
+        ),
+        content: 'Prompt:\nPrior prompt\n\nResponse:\nPrior response.',
+      );
+
+      await tester.pumpWidget(
+        _largeTextApp(
+          JournalPromptScreen(
+            promptService: _FixedPromptService('Today prompt'),
+            journalStore: store,
+            now: () => DateTime(2026, 10, 11, 9),
+            entryIdFactory: (_) => 'journal_prompt_today',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final priorPromptButton = find.ancestor(
+        of: find.textContaining('Prior prompt'),
+        matching: find.byType(OutlinedButton),
+      );
+      await tester.scrollUntilVisible(
+        priorPromptButton,
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -120));
+      await tester.pumpAndSettle();
+      await tester.tap(priorPromptButton);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Prior prompt', skipOffstage: false), findsOneWidget);
+      expect(find.text('Prior response.', skipOffstage: false), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'voice save failure keeps editable transcript under nonlinear large text',
     (tester) async {
       final store = _FailingJournalStore();
@@ -105,6 +211,50 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'voice history reopens a saved transcript from the local journal',
+    (tester) async {
+      final store = LocalJournalStore();
+      await store.upsertEntry(
+        id: 'voice_saved_1',
+        content: 'Earlier voice note.',
+        isVoice: true,
+      );
+
+      await tester.pumpWidget(
+        _largeTextApp(
+          VoiceJournalScreen(
+            journalStore: store,
+            service: _FakeVoiceJournalService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.textContaining('Earlier voice note'),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(
+        find.ancestor(
+          of: find.textContaining('Earlier voice note'),
+          matching: find.byType(OutlinedButton),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Earlier voice note.', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Saved transcript reopened.', skipOffstage: false),
+        findsOneWidget,
+      );
+    },
+  );
 }
 
 Widget _largeTextApp(Widget home) {
@@ -134,6 +284,13 @@ class _FixedPromptService extends JournalPromptService {
   @override
   Future<String> fetchPrompt({String mood = '', DateTime? time}) async {
     return prompt;
+  }
+}
+
+class _TimePromptService extends JournalPromptService {
+  @override
+  Future<String> fetchPrompt({String mood = '', DateTime? time}) async {
+    return (time?.hour ?? 0) < 12 ? 'Morning prompt' : 'Evening prompt';
   }
 }
 

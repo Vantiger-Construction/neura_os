@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/journal_entry.dart';
 import '../startup/neura_prefs_cache.dart';
@@ -14,8 +15,26 @@ class LocalJournalStore {
 
   @visibleForTesting
   static const storageKey = 'journal_entries';
+  static final _uuid = Uuid();
 
   final DateTime Function() _now;
+
+  static String newEntryId(String prefix) {
+    final cleanPrefix = prefix.trim();
+    if (cleanPrefix.isEmpty ||
+        cleanPrefix.codeUnits.any((unit) => unit < 0x21 || unit == 0x7f)) {
+      throw ArgumentError('Journal entry id prefixes must be printable.');
+    }
+    return '${cleanPrefix}_${_uuid.v4()}';
+  }
+
+  static String datePart(DateTime time) {
+    final local = DateTime(time.year, time.month, time.day);
+    return local.toIso8601String().substring(0, 10);
+  }
+
+  static String journalPromptMoodTag(DateTime time) =>
+      'journal_prompt:${datePart(time)}';
 
   Future<List<JournalEntry>> loadEntries() async {
     final raw = NeuraPrefsCache.prefs.getStringList(storageKey) ?? const [];
@@ -30,11 +49,26 @@ class LocalJournalStore {
   Future<void> saveEntries(List<JournalEntry> entries) async {
     final sorted = entries.toList()
       ..sort((left, right) => right.timestamp.compareTo(left.timestamp));
-    final saved = await NeuraPrefsCache.prefs.setStringList(
-      storageKey,
-      sorted.map((entry) => jsonEncode(entry.toMap())).toList(),
-    );
-    if (!saved) throw StateError('Local journal save could not be confirmed.');
+    final encoded = sorted.map((entry) => jsonEncode(entry.toMap())).toList();
+    try {
+      final saved = await NeuraPrefsCache.prefs.setStringList(
+        storageKey,
+        encoded,
+      );
+      if (!saved) {
+        throw StateError('Local journal save could not be confirmed.');
+      }
+      await NeuraPrefsCache.prefs.reload();
+      final committed = NeuraPrefsCache.prefs.getStringList(storageKey);
+      if (!listEquals(committed, encoded)) {
+        throw StateError('Local journal save did not reach durable storage.');
+      }
+    } catch (error, stackTrace) {
+      try {
+        await NeuraPrefsCache.prefs.reload();
+      } catch (_) {}
+      Error.throwWithStackTrace(error, stackTrace);
+    }
   }
 
   Future<JournalEntry?> findById(String id) async {
@@ -42,6 +76,27 @@ class LocalJournalStore {
       if (entry.id == id) return entry;
     }
     return null;
+  }
+
+  Future<JournalEntry?> findLatestByMoodTag(String moodTag) async {
+    final entries = await loadEntries();
+    for (final entry in entries) {
+      if (entry.moodTag == moodTag) return entry;
+    }
+    return null;
+  }
+
+  Future<List<JournalEntry>> findAll({
+    String? moodTagPrefix,
+    bool? isVoice,
+  }) async {
+    return (await loadEntries()).where((entry) {
+      if (isVoice != null && entry.isVoice != isVoice) return false;
+      if (moodTagPrefix != null && !entry.moodTag.startsWith(moodTagPrefix)) {
+        return false;
+      }
+      return true;
+    }).toList(growable: false);
   }
 
   Future<JournalEntry> upsertEntry({
@@ -54,20 +109,30 @@ class LocalJournalStore {
     if (id.trim().isEmpty || content.trim().isEmpty) {
       throw ArgumentError('Journal entries require an id and content.');
     }
-    final entries = await loadEntries();
-    final index = entries.indexWhere((entry) => entry.id == id);
+    var entries = await loadEntries();
+    var index = entries.indexWhere((entry) => entry.id == id);
     final existing = index == -1 ? null : entries[index];
     if (existing != null &&
         existing.content == content &&
         existing.moodTag == moodTag &&
         existing.isVoice == isVoice) {
-      return existing;
+      await NeuraPrefsCache.prefs.reload();
+      entries = await loadEntries();
+      index = entries.indexWhere((entry) => entry.id == id);
+      final committed = index == -1 ? null : entries[index];
+      if (committed != null &&
+          committed.content == content &&
+          committed.moodTag == moodTag &&
+          committed.isVoice == isVoice) {
+        return committed;
+      }
     }
 
     final now = _now().toUtc();
+    final current = index == -1 ? null : entries[index];
     final next = JournalEntry(
       id: id,
-      timestamp: existing?.timestamp ?? timestamp ?? now,
+      timestamp: current?.timestamp ?? timestamp ?? now,
       updatedAt: now,
       content: content,
       moodTag: moodTag,

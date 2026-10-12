@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../models/journal_entry.dart';
 import '../reliability/safe_boot.dart';
 import '../services/local_journal_store.dart';
 import '../services/neura_companion_presence.dart';
@@ -32,9 +33,14 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
 
   bool _recording = false;
   String _transcript = '';
-  String _draftId = _newDraftId();
+  String _draftId = LocalJournalStore.newEntryId('voice_journal');
+  String _savedTranscript = '';
+  List<JournalEntry> _history = const [];
+  int _draftRevision = 0;
   bool _saving = false;
   String? _saveStatus;
+
+  bool get _hasUnsavedDraft => _controller.text.trim() != _savedTranscript;
 
   @override
   void initState() {
@@ -47,9 +53,11 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
       setState(() {
         _transcript = text;
         _controller.text = text;
+        _draftRevision++;
         _saveStatus = null;
       });
     });
+    unawaited(_refreshHistory());
   }
 
   void _onRecordingChanged() {
@@ -78,7 +86,8 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
     if (SafeBoot.instance.safeMode.value) return;
     if (!_recording) {
       if (_controller.text.trim().isEmpty || _saveStatus != null) {
-        _draftId = _newDraftId();
+        _draftId = LocalJournalStore.newEntryId('voice_journal');
+        _savedTranscript = '';
       }
       await _service.startRecording();
     } else {
@@ -87,25 +96,45 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
       setState(() {
         _transcript = text;
         _controller.text = text;
+        _draftRevision++;
       });
     }
+  }
+
+  Future<void> _refreshHistory() async {
+    final history = await _journalStore.findAll(isVoice: true);
+    if (!mounted) return;
+    setState(() => _history = history);
   }
 
   Future<void> _saveTranscript() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _saving) return;
+    final savedRevision = _draftRevision;
+    final draftId = _draftId;
     setState(() {
       _saving = true;
       _saveStatus = null;
     });
     try {
       await _journalStore.upsertEntry(
-        id: _draftId,
+        id: draftId,
         content: text,
         isVoice: true,
       );
       if (!mounted) return;
-      setState(() => _saveStatus = 'Saved to your local journal.');
+      final history = await _journalStore.findAll(isVoice: true);
+      if (!mounted) return;
+      setState(() {
+        _history = history;
+        if (_draftRevision == savedRevision &&
+            _controller.text.trim() == text) {
+          _savedTranscript = text;
+          _saveStatus = 'Saved to your local journal.';
+        } else {
+          _saveStatus = 'Saved earlier transcript. Unsaved edits remain.';
+        }
+      });
     } catch (_) {
       if (!mounted) return;
       setState(
@@ -114,6 +143,51 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<void> _openSavedTranscript(JournalEntry entry) async {
+    if (_hasUnsavedDraft && !await _confirmDiscardDraft()) return;
+    _controller.text = entry.content;
+    if (!mounted) return;
+    setState(() {
+      _draftId = entry.id;
+      _transcript = entry.content;
+      _savedTranscript = entry.content;
+      _draftRevision++;
+      _saveStatus = 'Saved transcript reopened.';
+    });
+  }
+
+  void _discardDraft() {
+    _controller.text = _savedTranscript;
+    setState(() {
+      _transcript = _savedTranscript;
+      _draftRevision++;
+      _saveStatus =
+          _savedTranscript.isEmpty ? null : 'Saved transcript reopened.';
+    });
+  }
+
+  Future<bool> _confirmDiscardDraft() async {
+    if (!_hasUnsavedDraft) return true;
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Discard unsaved transcript?'),
+        content: const Text('Your current transcript has not been saved.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep editing'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    return discard ?? false;
   }
 
   @override
@@ -129,12 +203,18 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
             : presence.microphoneActive
                 ? colors.primary
                 : colors.secondary;
-        return Scaffold(
-          appBar: AppBar(title: const Text('Voice Journal')),
-          body: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+        return PopScope(
+          canPop: !_hasUnsavedDraft && !_saving,
+          onPopInvokedWithResult: (didPop, _) async {
+            if (didPop) return;
+            if (await _confirmDiscardDraft() && mounted) {
+              Navigator.of(context).pop();
+            }
+          },
+          child: Scaffold(
+            appBar: AppBar(title: const Text('Voice Journal')),
+            body: ListView(
+              padding: const EdgeInsets.all(16),
               children: [
                 Card(
                   color: statusColor.withValues(alpha: 0.1),
@@ -194,29 +274,56 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 const SizedBox(height: 8),
-                Expanded(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: colors.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
-                      child: TextField(
-                        controller: _controller,
-                        minLines: 8,
-                        maxLines: null,
-                        decoration: InputDecoration(
-                          hintText: _transcript.isEmpty
-                              ? 'No local transcript yet.'
-                              : null,
-                          border: InputBorder.none,
-                        ),
-                        onChanged: (_) => setState(() => _saveStatus = null),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colors.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: TextField(
+                      controller: _controller,
+                      enabled: !_saving,
+                      minLines: 8,
+                      maxLines: null,
+                      decoration: InputDecoration(
+                        hintText: _transcript.isEmpty
+                            ? 'No local transcript yet.'
+                            : null,
+                        border: InputBorder.none,
                       ),
+                      onChanged: (value) => setState(() {
+                        _transcript = value;
+                        _draftRevision++;
+                        _saveStatus = null;
+                      }),
                     ),
                   ),
                 ),
+                if (_history.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    'Saved transcripts',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  for (final entry in _history.take(8))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: OutlinedButton.icon(
+                        onPressed:
+                            _saving ? null : () => _openSavedTranscript(entry),
+                        icon: const Icon(Icons.history_outlined),
+                        label: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            _historyLabel(entry),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
                 const SizedBox(height: 12),
                 FilledButton.icon(
                   onPressed: safeMode ||
@@ -233,6 +340,14 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
                       : const Icon(Icons.save_outlined),
                   label: Text(_saving ? 'Saving' : 'Save to journal'),
                 ),
+                if (_hasUnsavedDraft) ...[
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: _saving ? null : _discardDraft,
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Discard draft'),
+                  ),
+                ],
                 if (_saveStatus != null) ...[
                   const SizedBox(height: 8),
                   Text(_saveStatus!, textAlign: TextAlign.center),
@@ -245,6 +360,10 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
     );
   }
 
-  static String _newDraftId() =>
-      'voice_journal_${DateTime.now().toUtc().toIso8601String()}';
+  static String _historyLabel(JournalEntry entry) {
+    final date = LocalJournalStore.datePart(entry.timestamp);
+    final excerpt = entry.content.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (excerpt.isEmpty) return date;
+    return '$date - ${excerpt.length > 48 ? '${excerpt.substring(0, 48)}...' : excerpt}';
+  }
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -914,6 +915,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final room = NeuraShell.of(context).room;
     final conversationMode = _conversationMode;
     final policy = NeuraChatPolicy.forRoom(room.id);
+    final localOllama = _localOllama;
     final selectedContext = _selectedContext;
     final includeMemory = _includeMemory && policy.persistMemory;
     final historyIncludedPrivateContext = _privateContextUsed;
@@ -1714,23 +1716,23 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                       controller: _controller,
                       inputFormatters: _localOllama
                           ? const [NeuraOllamaTextInputFormatter()]
-                          : null,
+                          : _localSelected
+                              ? [
+                                  TextInputFormatter.withFunction(
+                                      (oldValue, newValue) {
+                                    // Check code units first to avoid encoding an
+                                    // unbounded paste or combining-character cluster.
+                                    if (newValue.text.length > 2048 ||
+                                        utf8.encode(newValue.text).length >
+                                            2048) {
+                                      return oldValue;
+                                    }
+                                    return newValue;
+                                  })
+                                ]
+                              : null,
                       enabled: true,
                       enableIMEPersonalizedLearning: !_localSelected,
-                      inputFormatters: _localSelected
-                          ? [
-                              TextInputFormatter.withFunction(
-                                  (oldValue, newValue) {
-                                // Check code units first to avoid encoding an
-                                // unbounded paste or combining-character cluster.
-                                if (newValue.text.length > 2048 ||
-                                    utf8.encode(newValue.text).length > 2048) {
-                                  return oldValue;
-                                }
-                                return newValue;
-                              })
-                            ]
-                          : null,
                       onSubmitted: (_) => _send(),
                       decoration: InputDecoration(
                         hintText: _listening

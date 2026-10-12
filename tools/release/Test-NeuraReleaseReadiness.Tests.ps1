@@ -19,7 +19,12 @@ function New-TestPayload([string]$Path, [string]$Marker) {
 try {
   New-TestPayload $current 'new'
   New-TestPayload $previous 'old'
-  & $verifier -ArtifactRoot $current -PreviousArtifactRoot $previous -OutputRoot $output
+  & $verifier `
+    -ArtifactRoot $current `
+    -PreviousArtifactRoot $previous `
+    -OutputRoot $output `
+    -LatestTag 'beta-win64-2026-10-11' `
+    -HtmlUrl 'https://example.com/neura/releases/beta-win64-2026-10-11'
 
   foreach ($required in @(
     'RELEASE_MANIFEST.json',
@@ -42,6 +47,11 @@ try {
     ConvertFrom-Json
   if (-not $manifest.userInitiatedInstallOnly) {
     throw 'Release manifest must preserve user-initiated install policy.'
+  }
+  if ($manifest.latestTag -ne 'beta-win64-2026-10-11' -or
+      $manifest.htmlUrl -ne 'https://example.com/neura/releases/beta-win64-2026-10-11' -or
+      -not ($manifest.artifactSha256 -match '^[0-9a-f]{64}$')) {
+    throw 'Release manifest is not compatible with the update-check client schema.'
   }
 
   $broken = Join-Path $root 'broken'
