@@ -27,6 +27,7 @@ import '../../services/neura_chat_policy.dart';
 import '../../services/neura_context_receipt.dart';
 import '../../services/neura_generation_cancel.dart';
 import '../../services/neura_llm_diagnostics.dart';
+import '../../services/neura_ollama_chat.dart';
 import '../../services/neura_reply_batch.dart';
 import '../../services/neura_speech_to_text_service.dart';
 import '../../services/neura_tone_runtime.dart';
@@ -67,6 +68,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   final List<_ChatLine> _localLines = [];
   NeuraConversationMode _conversationMode = NeuraConversationMode.balanced;
   bool _busy = false;
+  bool _localOllama = false;
   NeuraSelectedContext? _selectedContext;
   bool _includeMemory = false;
   bool _privateContextUsed = false;
@@ -799,6 +801,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       _activeReplyId = null;
       _activeBotLine = null;
       _busy = false;
+      if (_localOllama) _trimOllamaVisibleHistory();
     });
   }
 
@@ -876,6 +879,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     }
   }
 
+  void _trimOllamaVisibleHistory() {
+    final first = NeuraOllamaChat.firstRetainedVisibleMessage(
+      _lines.skip(1).map((line) => line.text).toList(),
+    );
+    if (first > 0) _lines.removeRange(1, first + 1);
+  }
+
   Future<void> _send({String? imageBase64, String? imageMediaType}) async {
     final text = _controller.text.trim();
     final hasImage = imageBase64 != null;
@@ -911,9 +921,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     // reset. Keep their privacy restrictions for the lifetime of this chat.
     _privateContextUsed =
         _privateContextUsed || selectedContext != null || includeMemory;
-    final persistMemory = policy.persistMemory && !_privateContextUsed;
+    final persistMemory =
+        !localOllama && policy.persistMemory && !_privateContextUsed;
     final cloudContextReceipt = NeuraContextReceipt(
-      route: NeuraReplyRoute.approvedCloud,
+      route: localOllama
+          ? NeuraReplyRoute.onDevice
+          : NeuraReplyRoute.approvedCloud,
       roomId: room.id,
       usedVisibleHistory: true,
       usedSelectedText: selectedContext != null,
@@ -936,6 +949,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
           imageMediaType: imageMediaType,
         ),
       );
+      if (localOllama) _trimOllamaVisibleHistory();
       _controller.clear();
       _selectedContext = null;
       _includeMemory = false;
@@ -948,7 +962,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       'has_image': hasImage,
       'utterance_id': generationId,
       'room': room.id,
-      'persist': policy.persistMemory,
+      'persist': persistMemory,
     });
     unawaited(
       _remember(isUser: true, text: displayText, persistMemory: persistMemory),
@@ -967,7 +981,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         )
         .toList();
 
-    if (!NeuraAiService.instance.isConfigured) {
+    if (!localOllama && !NeuraAiService.instance.isConfigured) {
       await _fallbackToLocalReply(
         displayText,
         generationId: generationId,
@@ -1027,6 +1041,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         agentId: _activeAgent.id,
         roomId: room.id,
         conversationMode: conversationMode,
+        localOllama: localOllama,
         generationId: generationId,
         selectedContext: selectedContext,
         includePermittedMemory: includeMemory,
@@ -1090,6 +1105,15 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       );
       if (!mounted || _activeReplyId != generationId) return;
 
+      if (localOllama) {
+        setState(() {
+          botLine.text =
+              'Offline reply unavailable. Check that Ollama is open and '
+              'qwen3:4b-instruct is installed. No cloud request was made.';
+          botLine.interrupted = true;
+        });
+        return;
+      }
       if (botLine.text.isEmpty) {
         setState(() => _lines.remove(botLine));
         await _fallbackToLocalReply(
@@ -1112,6 +1136,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
           _busy = false;
           _activeReplyId = null;
           _activeBotLine = null;
+          if (localOllama) _trimOllamaVisibleHistory();
         });
       }
     }
@@ -1416,6 +1441,41 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
           ),
         ),
         actions: [
+          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+            PopupMenuButton<bool>(
+              tooltip: _localOllama
+                  ? 'Offline Ollama'
+                  : 'Approved cloud / basic local reply',
+              icon: Icon(_localOllama ? Icons.computer : Icons.cloud_outlined),
+              onSelected: (local) async {
+                await _interruptActiveReply();
+                if (!mounted) return;
+                setState(() {
+                  _localOllama = local;
+                  _selectedContext = null;
+                  _includeMemory = false;
+                  if (local) {
+                    _controller.clear();
+                    _trimOllamaVisibleHistory();
+                  }
+                });
+                _showVoiceNotice(local
+                    ? 'Offline Ollama selected. Text chat stays local; memory and actions are off.'
+                    : 'Cloud replies require approval.');
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: true, child: Text('Offline Ollama')),
+                PopupMenuItem(
+                    value: false,
+                    child: Text('Approved cloud / basic local reply')),
+              ],
+            ),
+          if (_localOllama && _busy)
+            IconButton(
+              tooltip: 'Stop offline reply',
+              onPressed: _interruptActiveReply,
+              icon: const Icon(Icons.stop_circle_outlined),
+            ),
           PopupMenuButton<NeuraConversationMode>(
             tooltip: 'Conversation mode: ${_conversationMode.label}',
             icon: const Icon(Icons.tune),
@@ -1652,6 +1712,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                         _localSelected ? 'offline-$_localSerial' : 'standard',
                       ),
                       controller: _controller,
+                      inputFormatters: _localOllama
+                          ? const [NeuraOllamaTextInputFormatter()]
+                          : null,
                       enabled: true,
                       enableIMEPersonalizedLearning: !_localSelected,
                       inputFormatters: _localSelected
