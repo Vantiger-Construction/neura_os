@@ -1,0 +1,137 @@
+name: Neura Ollama Chat
+
+on:
+  pull_request:
+    branches: [Neura, codex/neura-companion-behavior-20261011]
+    paths:
+      - 'rust/**'
+      - 'lib/services/neura_ollama_chat.dart'
+      - 'lib/services/neura_ai_service.dart'
+      - 'lib/persona/services/neura_prompt_builder.dart'
+      - 'lib/modules/chat/neura_chat_screen.dart'
+      - 'windows/runner/neura_engine_session.*'
+      - 'test/services/neura_ollama_chat_test.dart'
+      - 'test/persona/neura_offline_prompt_test.dart'
+      - 'lib/persona/models/neura_character_charter.dart'
+      - 'docs/NEURA_OLLAMA_CHAT.md'
+      - 'BUILD_ALL_NEURA_UPGRADES.ps1'
+      - 'tools/verify_ollama_preview.py'
+      - '.github/workflows/neura-ollama-chat.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-ollama-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Enable stable Rust and Clippy
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup default stable
+      - name: Test all Rust targets
+        run: cargo test --manifest-path rust/Cargo.toml --locked --all-targets
+      - name: Check Rust adapter formatting
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          rustfmt --edition 2021 --check rust/src/ollama_conversation.rs
+      - name: Strict Clippy
+        run: cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Check canonical Dart formatting
+        run: |
+          dart format --output=none --set-exit-if-changed lib/services/neura_ollama_chat.dart lib/services/neura_ai_service.dart lib/modules/chat/neura_chat_screen.dart lib/persona/services/neura_prompt_builder.dart test/services/neura_ollama_chat_test.dart test/persona/neura_offline_prompt_test.dart
+      - name: Analyze integration
+        run: flutter analyze --no-pub lib/services/neura_ollama_chat.dart lib/services/neura_ai_service.dart lib/modules/chat/neura_chat_screen.dart lib/persona/services/neura_prompt_builder.dart test/services/neura_ollama_chat_test.dart test/persona/neura_offline_prompt_test.dart
+      - name: Test adapter and existing lifecycle boundaries
+        run: flutter test --no-pub test/services/neura_ollama_chat_test.dart test/neura_link/engine_session_lifecycle_test.dart test/services/neura_generation_cancel_test.dart test/persona/neura_character_charter_test.dart test/persona/neura_prompt_builder_test.dart test/persona/neura_offline_prompt_test.dart
+
+  windows-preview:
+    name: Build and verify Windows Ollama preview
+    needs: [rust, flutter]
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      PREVIEW_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Build portable Windows app and run all tests
+        shell: pwsh
+        run: |
+          flutter config --enable-windows-desktop
+          if ($LASTEXITCODE -ne 0) { throw 'Windows desktop configuration failed' }
+          # The preceding jobs enforce formatting without rewriting the head.
+          & .\BUILD_ALL_NEURA_UPGRADES.ps1 -Root $env:GITHUB_WORKSPACE -SkipFormatting
+          git diff --exit-code -- lib rust/src rust/Cargo.lock pubspec.lock windows/runner
+          if ($LASTEXITCODE -ne 0) { throw 'Build modified reviewed source or lockfiles' }
+      - name: Include setup guide and label the draft preview
+        shell: pwsh
+        run: |
+          $packages = @(Get-ChildItem dist -Directory -Filter 'Neura_Companion_*')
+          if ($packages.Count -ne 1) { throw 'Expected exactly one preview directory' }
+          $package = $packages[0]
+          Copy-Item docs\NEURA_OLLAMA_CHAT.md $package.FullName
+          @"
+          Neura Companion - Offline Ollama Windows preview
+          Draft PR #127; source $env:PREVIEW_HEAD; run $env:GITHUB_RUN_ID.
+          This is an unsigned portable review build, not a production installer.
+          Extract the whole ZIP into its own folder; keep the app folder intact.
+          Read NEURA_OLLAMA_CHAT.md, then launch app\START_NEURA.bat.
+          Install/manage Ollama and qwen3:4b-instruct separately.
+          In Neura chat choose Offline Ollama explicitly. No cloud fallback.
+          Actual model inference, laptop RAM/latency and app interaction are unverified.
+          "@ | Set-Content (Join-Path $package.FullName 'PREVIEW_README.txt') -Encoding UTF8
+          $original = "$($package.FullName).zip"
+          Remove-Item -LiteralPath $original
+          $name = 'Neura-Ollama-Preview-' + $env:PREVIEW_HEAD.Substring(0, 12) + '.zip'
+          Compress-Archive -Path (Join-Path $package.FullName '*') -DestinationPath (Join-Path dist $name)
+      - name: Verify extracted launch, Rust exports, payload and checksums
+        shell: pwsh
+        run: |
+          python tools/verify_ollama_preview.py --dist dist --head $env:PREVIEW_HEAD --run-id $env:GITHUB_RUN_ID
+          if ($LASTEXITCODE -ne 0) { throw 'Preview verification failed' }
+      - name: Upload reviewed preview with verification receipts
+        uses: actions/upload-artifact@v6
+        with:
+          name: neura-ollama-windows-${{ env.PREVIEW_HEAD }}
+          path: |
+            dist/Neura-Ollama-Preview-*.zip
+            dist/OLLAMA_PREVIEW_MANIFEST.json
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
