@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/encrypted_memory/encrypted_memory_contracts.dart';
 import 'package:neuro_companion/encrypted_memory/encrypted_memory_durable_scoped_adapter.dart';
@@ -8,9 +9,16 @@ import 'package:neuro_companion/encrypted_memory/encrypted_memory_session_adapte
 import 'package:neuro_companion/living_intelligence/neura_safety_policy.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+// Tests install fake SharedPreferences platform stores directly.
+// ignore: depend_on_referenced_packages
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 void main() {
+  final binding = TestWidgetsFlutterBinding.ensureInitialized();
+  const secureChannel = MethodChannel(
+    'plugins.it_nomads.com/flutter_secure_storage',
+  );
+  final secureValues = <String, String>{};
   final issuedAt = DateTime.utc(2026, 10, 11, 12);
   const context = NeuraSafetyContext(directUserGesture: true);
   late _FakeDurableCrypto crypto;
@@ -20,9 +28,34 @@ void main() {
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     await NeuraPrefsCache.init();
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(secureChannel, (
+      call,
+    ) async {
+      final args = call.arguments as Map;
+      final key = args['key'] as String;
+      switch (call.method) {
+        case 'read':
+          return secureValues[key];
+        case 'write':
+          secureValues[key] = args['value'] as String;
+          return null;
+        case 'delete':
+          secureValues.remove(key);
+          return null;
+      }
+      throw StateError('Unexpected secure storage operation: ${call.method}');
+    });
+  });
+
+  tearDownAll(() {
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      secureChannel,
+      null,
+    );
   });
 
   setUp(() async {
+    secureValues.clear();
     await NeuraPrefsCache.prefs.clear();
     EncryptedMemoryDurableScopedAdapter.debugResetStorageRegistryForTesting();
     crypto = _FakeDurableCrypto();
@@ -135,6 +168,165 @@ void main() {
         lease('recall-1', EncryptedMemoryOperation.recall),
       )?.value,
       'Prefers concise text.',
+    );
+  });
+
+  test(
+    'default crypto authority restores and can write after empty durable state',
+    () async {
+      final subject = EncryptedMemoryDurableScopedAdapter(
+        safetyPolicy: safety,
+        keyLifecycle: keys,
+      );
+      await subject.remember(
+        lease: lease('remember-1', EncryptedMemoryOperation.remember),
+        safetyContext: context,
+        record: record(),
+        expectedKeyGeneration: keys.generation,
+        nowUtc: issuedAt.add(const Duration(seconds: 1)),
+      );
+
+      final restarted = EncryptedMemoryDurableScopedAdapter(
+        safetyPolicy: safety,
+        keyLifecycle: keys,
+      );
+      await restarted.restore(
+        safetyContext: context,
+        expectedKeyGeneration: keys.generation,
+      );
+      expect(
+        recall(
+          restarted,
+          lease('recall-1', EncryptedMemoryOperation.recall),
+        )?.value,
+        'Prefers concise text.',
+      );
+
+      expect(
+        await restarted.forget(
+          lease: lease('forget-1', EncryptedMemoryOperation.forget),
+          safetyContext: context,
+          recordId: 'record-1',
+          ownerId: 'owner-1',
+          deviceId: 'device-1',
+          capsuleId: 'personal',
+          memoryClass: EncryptedMemoryClass.explicitPreference,
+          source: EncryptedMemorySource.authenticatedUser,
+          sensitivity: EncryptedMemorySensitivity.personal,
+          expectedKeyGeneration: keys.generation,
+          nowUtc: issuedAt.add(const Duration(seconds: 2)),
+        ),
+        isTrue,
+      );
+      expect(
+        NeuraPrefsCache.prefs.containsKey(
+          EncryptedMemoryDurableScopedAdapter.defaultStorageKey,
+        ),
+        isFalse,
+      );
+
+      await restarted.remember(
+        lease: lease('remember-2', EncryptedMemoryOperation.remember),
+        safetyContext: context,
+        record: record(id: 'record-2', value: 'Prefers evening walks.'),
+        expectedKeyGeneration: keys.generation,
+        nowUtc: issuedAt.add(const Duration(seconds: 3)),
+      );
+      final afterEmptyRestart = EncryptedMemoryDurableScopedAdapter(
+        safetyPolicy: safety,
+        keyLifecycle: keys,
+      );
+      await afterEmptyRestart.restore(
+        safetyContext: context,
+        expectedKeyGeneration: keys.generation,
+      );
+      expect(
+        recall(
+          afterEmptyRestart,
+          lease('recall-2', EncryptedMemoryOperation.recall),
+          recordId: 'record-2',
+        )?.value,
+        'Prefers evening walks.',
+      );
+    },
+  );
+
+  test('fresh crypto wrappers with the same authority token can continue',
+      () async {
+    final inner = _FakeDurableCrypto();
+    final authority = Object();
+    EncryptedMemoryDurableCrypto freshWrapper() =>
+        _FreshWrapperDurableCrypto(inner, authority);
+    final subject = EncryptedMemoryDurableScopedAdapter(
+      safetyPolicy: safety,
+      keyLifecycle: keys,
+      loadCrypto: () async => freshWrapper(),
+    );
+    await subject.remember(
+      lease: lease('remember-1', EncryptedMemoryOperation.remember),
+      safetyContext: context,
+      record: record(),
+      expectedKeyGeneration: keys.generation,
+      nowUtc: issuedAt.add(const Duration(seconds: 1)),
+    );
+
+    final restarted = EncryptedMemoryDurableScopedAdapter(
+      safetyPolicy: safety,
+      keyLifecycle: keys,
+      loadCrypto: () async => freshWrapper(),
+    );
+    await restarted.restore(
+      safetyContext: context,
+      expectedKeyGeneration: keys.generation,
+    );
+    expect(
+      recall(
+        restarted,
+        lease('recall-1', EncryptedMemoryOperation.recall),
+      )?.value,
+      'Prefers concise text.',
+    );
+
+    expect(
+      await restarted.forget(
+        lease: lease('forget-1', EncryptedMemoryOperation.forget),
+        safetyContext: context,
+        recordId: 'record-1',
+        ownerId: 'owner-1',
+        deviceId: 'device-1',
+        capsuleId: 'personal',
+        memoryClass: EncryptedMemoryClass.explicitPreference,
+        source: EncryptedMemorySource.authenticatedUser,
+        sensitivity: EncryptedMemorySensitivity.personal,
+        expectedKeyGeneration: keys.generation,
+        nowUtc: issuedAt.add(const Duration(seconds: 2)),
+      ),
+      isTrue,
+    );
+    await restarted.remember(
+      lease: lease('remember-2', EncryptedMemoryOperation.remember),
+      safetyContext: context,
+      record: record(id: 'record-2', value: 'Prefers evening walks.'),
+      expectedKeyGeneration: keys.generation,
+      nowUtc: issuedAt.add(const Duration(seconds: 3)),
+    );
+
+    final secondRestart = EncryptedMemoryDurableScopedAdapter(
+      safetyPolicy: safety,
+      keyLifecycle: keys,
+      loadCrypto: () async => freshWrapper(),
+    );
+    await secondRestart.restore(
+      safetyContext: context,
+      expectedKeyGeneration: keys.generation,
+    );
+    expect(
+      recall(
+        secondRestart,
+        lease('recall-2', EncryptedMemoryOperation.recall),
+        recordId: 'record-2',
+      )?.value,
+      'Prefers evening walks.',
     );
   });
 
@@ -998,6 +1190,9 @@ class _FakeDurableCrypto implements EncryptedMemoryDurableCrypto {
   int _nonce = 0;
 
   @override
+  Object get authorityToken => this;
+
+  @override
   Future<Map<String, dynamic>> decryptJson(String blob) async {
     if (!blob.startsWith('cipher:')) {
       throw const FormatException('plaintext durable memory rejected');
@@ -1017,6 +1212,23 @@ class _FakeDurableCrypto implements EncryptedMemoryDurableCrypto {
     };
     return 'cipher:${base64Encode(utf8.encode(jsonEncode(envelope)))}';
   }
+}
+
+final class _FreshWrapperDurableCrypto implements EncryptedMemoryDurableCrypto {
+  const _FreshWrapperDurableCrypto(this.inner, this.authorityToken);
+
+  final _FakeDurableCrypto inner;
+
+  @override
+  final Object authorityToken;
+
+  @override
+  Future<Map<String, dynamic>> decryptJson(String blob) =>
+      inner.decryptJson(blob);
+
+  @override
+  Future<String> encryptJson(Map<String, dynamic> json) =>
+      inner.encryptJson(json);
 }
 
 final class _BlockingDurableCrypto extends _FakeDurableCrypto {
@@ -1064,6 +1276,9 @@ final class _BlockingDecryptDurableCrypto extends _FakeDurableCrypto {
 }
 
 final class _ThrowingDurableCrypto implements EncryptedMemoryDurableCrypto {
+  @override
+  Object get authorityToken => this;
+
   @override
   Future<Map<String, dynamic>> decryptJson(String blob) async {
     throw StateError('synthetic wrong crypto');

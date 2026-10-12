@@ -27,6 +27,8 @@ class VoiceJournalService {
   final StreamController<NeuraSpeechSegment> _pluginSegmentStream =
       StreamController<NeuraSpeechSegment>.broadcast();
   final ValueNotifier<bool> _recording = ValueNotifier(false);
+  StreamController<String>? _nativeTranscriptStream;
+  StreamSubscription<String>? _nativeTranscriptSubscription;
 
   bool get _usesNativeWindows =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
@@ -41,7 +43,7 @@ class VoiceJournalService {
   DateTime? _lastPluginFinalAtUtc;
 
   Stream<String> get transcriptStream => _usesNativeWindows
-      ? _native.transcriptStream
+      ? _nativeTranscriptController().stream
       : _pluginTranscriptStream.stream;
   Stream<NeuraSpeechSegment> get segmentStream =>
       _usesNativeWindows ? _native.segmentStream : _pluginSegmentStream.stream;
@@ -52,6 +54,36 @@ class VoiceJournalService {
       _usesNativeWindows ? _native.isListening : _pluginListening;
 
   bool get listeningAllowed => !SafeBoot.instance.safeMode.value;
+
+  StreamController<String> _nativeTranscriptController() {
+    final existing = _nativeTranscriptStream;
+    if (existing != null) return existing;
+
+    late final StreamController<String> controller;
+    controller = StreamController<String>.broadcast(
+      onListen: () {
+        _nativeTranscriptSubscription ??= _native.transcriptStream.listen(
+          (text) {
+            if (_isSpeechStatusMessage(text) && !_native.isListening) {
+              _markRecordingStopped();
+            }
+            controller.add(text);
+          },
+          onError: controller.addError,
+          onDone: () {
+            unawaited(controller.close());
+          },
+        );
+      },
+      onCancel: () async {
+        if (controller.hasListener) return;
+        await _nativeTranscriptSubscription?.cancel();
+        _nativeTranscriptSubscription = null;
+      },
+    );
+    _nativeTranscriptStream = controller;
+    return controller;
+  }
 
   Future<bool> startRecording() async {
     if (_disposed || !listeningAllowed) return false;
@@ -232,7 +264,12 @@ class VoiceJournalService {
       _pluginListening = false;
       await _stt.cancel();
     }
+    await _nativeTranscriptSubscription?.cancel();
     await _pluginTranscriptStream.close();
     await _pluginSegmentStream.close();
+    await _nativeTranscriptStream?.close();
   }
+
+  static bool _isSpeechStatusMessage(String text) =>
+      text.startsWith('Microphone ') || text.startsWith('Speech-to-text ');
 }

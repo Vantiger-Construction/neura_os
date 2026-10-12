@@ -420,6 +420,166 @@ void main() {
   );
 
   testWidgets(
+    'voice runtime error keeps draft text and unlocks capture controls',
+    (tester) async {
+      final service = _FakeVoiceJournalService();
+      await tester.pumpWidget(
+        _largeTextApp(VoiceJournalScreen(service: service)),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Start listening'));
+      await tester.pumpAndSettle();
+      service.emit('draft before runtime error');
+      await tester.pumpAndSettle();
+      service.emitRuntimeError();
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.textContaining('Speech-to-text reported'),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.text('draft before runtime error', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Speech-to-text reported', skipOffstage: false),
+        findsOneWidget,
+      );
+      await tester.scrollUntilVisible(
+        find.text('Save to journal'),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final saveButton = find.ancestor(
+        of: find.text('Save to journal'),
+        matching: find.byType(FilledButton),
+      );
+      expect(tester.widget<FilledButton>(saveButton).onPressed, isNotNull);
+      expect(find.text('Start listening', skipOffstage: false), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'voice start transition locks history and ignores premature transcript',
+    (tester) async {
+      final store = LocalJournalStore();
+      final startCompleter = Completer<bool>();
+      final service = _FakeVoiceJournalService(
+        startCompleter: startCompleter,
+      );
+      await store.upsertEntry(
+        id: 'voice_saved_1',
+        content: 'Earlier voice note.',
+        isVoice: true,
+      );
+
+      await tester.pumpWidget(
+        _largeTextApp(
+          VoiceJournalScreen(
+            journalStore: store,
+            service: service,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Start listening'));
+      await tester.pump();
+      service.emit('premature transcript');
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(
+        find.text('premature transcript', skipOffstage: false),
+        findsNothing,
+      );
+      await tester.scrollUntilVisible(
+        find.textContaining('Earlier voice note'),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final historyButton = find.ancestor(
+        of: find.textContaining('Earlier voice note'),
+        matching: find.byType(OutlinedButton),
+      );
+      expect(tester.widget<OutlinedButton>(historyButton).onPressed, isNull);
+
+      startCompleter.complete(true);
+      await tester.pumpAndSettle();
+      service.emit('live after start');
+      await tester.pumpAndSettle();
+      expect(
+        find.text('live after start', skipOffstage: false),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'voice stop transition locks history until final transcript settles',
+    (tester) async {
+      final store = LocalJournalStore();
+      final stopCompleter = Completer<String>();
+      final service = _FakeVoiceJournalService(
+        stopCompleter: stopCompleter,
+        clearRecordingBeforeStopCompletes: true,
+      );
+      await store.upsertEntry(
+        id: 'voice_saved_1',
+        content: 'Earlier voice note.',
+        isVoice: true,
+      );
+
+      await tester.pumpWidget(
+        _largeTextApp(
+          VoiceJournalScreen(
+            journalStore: store,
+            service: service,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Start listening'));
+      await tester.pumpAndSettle();
+      service.emit('live draft before stop');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Stop listening'));
+      await tester.pump();
+      await tester.scrollUntilVisible(
+        find.textContaining('Earlier voice note'),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final historyButton = find.ancestor(
+        of: find.textContaining('Earlier voice note'),
+        matching: find.byType(OutlinedButton),
+      );
+      expect(tester.widget<OutlinedButton>(historyButton).onPressed, isNull);
+
+      stopCompleter.complete('final transcript after stop');
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Save to journal'),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('Save to journal'));
+      await tester.pumpAndSettle();
+
+      final saved = await store.findById('voice_saved_1');
+      expect(saved?.content, 'Earlier voice note.');
+      final entries = await store.findAll(isVoice: true);
+      expect(
+        entries
+            .where((entry) => entry.content == 'final transcript after stop'),
+        hasLength(1),
+      );
+    },
+  );
+
+  testWidgets(
     'voice start permission denial is surfaced without replacing saved draft',
     (tester) async {
       final store = LocalJournalStore();
@@ -618,13 +778,23 @@ class _FailingJournalStore extends LocalJournalStore {
 }
 
 class _FakeVoiceJournalService extends VoiceJournalService {
-  _FakeVoiceJournalService({this.startResult = true, this.startMessage});
+  _FakeVoiceJournalService({
+    this.startResult = true,
+    this.startMessage,
+    this.startCompleter,
+    this.stopCompleter,
+    this.clearRecordingBeforeStopCompletes = false,
+  });
 
   final StreamController<String> _stream = StreamController<String>.broadcast();
   final ValueNotifier<bool> _recording = ValueNotifier<bool>(false);
   final bool startResult;
   final String? startMessage;
+  final Completer<bool>? startCompleter;
+  final Completer<String>? stopCompleter;
+  final bool clearRecordingBeforeStopCompletes;
   String _current = '';
+  bool _listening = false;
 
   @override
   Stream<String> get transcriptStream => _stream.stream;
@@ -632,22 +802,49 @@ class _FakeVoiceJournalService extends VoiceJournalService {
   @override
   ValueListenable<bool> get recording => _recording;
 
+  @override
+  bool get isListening => _listening;
+
   void emit(String text) {
     _current = text;
     _stream.add(text);
+  }
+
+  void emitRuntimeError([
+    String message = 'Speech-to-text reported an input error.',
+  ]) {
+    _listening = false;
+    _stream.add(message);
   }
 
   @override
   Future<bool> startRecording() async {
     final message = startMessage;
     if (message != null) _stream.add(message);
-    if (!startResult) return false;
+    final delayedStart = startCompleter;
+    final result =
+        delayedStart == null ? startResult : await delayedStart.future;
+    if (!result) return false;
+    _listening = true;
     _recording.value = true;
-    return startResult;
+    return result;
   }
 
   @override
   Future<String> stopRecording() async {
+    final delayedStop = stopCompleter;
+    if (delayedStop != null) {
+      if (clearRecordingBeforeStopCompletes) {
+        _listening = false;
+        _recording.value = false;
+      }
+      final text = await delayedStop.future;
+      _current = text;
+      _listening = false;
+      _recording.value = false;
+      return text;
+    }
+    _listening = false;
     _recording.value = false;
     return _current;
   }

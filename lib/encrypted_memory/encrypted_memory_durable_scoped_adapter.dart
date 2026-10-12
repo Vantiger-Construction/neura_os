@@ -5,14 +5,21 @@ import 'encrypted_memory_contracts.dart';
 import 'encrypted_memory_session_adapter.dart';
 
 abstract interface class EncryptedMemoryDurableCrypto {
+  Object get authorityToken;
+
   Future<String> encryptJson(Map<String, dynamic> json);
   Future<Map<String, dynamic>> decryptJson(String blob);
 }
 
 final class MemoryCryptoDurableAdapter implements EncryptedMemoryDurableCrypto {
-  const MemoryCryptoDurableAdapter(this.crypto);
+  const MemoryCryptoDurableAdapter(this.crypto, {Object? authorityToken})
+      : _authorityToken = authorityToken ?? crypto;
 
   final MemoryCrypto crypto;
+  final Object _authorityToken;
+
+  @override
+  Object get authorityToken => _authorityToken;
 
   @override
   Future<Map<String, dynamic>> decryptJson(String blob) =>
@@ -34,14 +41,21 @@ final class EncryptedMemoryDurableScopedAdapter {
     required this.keyLifecycle,
     Future<EncryptedMemoryDurableCrypto> Function()? loadCrypto,
     this.storageKey = defaultStorageKey,
-  })  : _loadCrypto = loadCrypto ??
-            (() async => MemoryCryptoDurableAdapter(await MemoryCrypto.demo())),
+  })  : _loadCrypto = loadCrypto ?? _loadDefaultCrypto,
         _state = _DurableScopedStorageRegistry.stateFor(storageKey);
 
   static const defaultStorageKey = 'neura.encrypted_memory.scoped.v1';
+  static final Object _defaultCryptoAuthority = Object();
 
   static void debugResetStorageRegistryForTesting() {
     _DurableScopedStorageRegistry.resetForTesting();
+  }
+
+  static Future<EncryptedMemoryDurableCrypto> _loadDefaultCrypto() async {
+    return MemoryCryptoDurableAdapter(
+      await MemoryCrypto.demo(),
+      authorityToken: _defaultCryptoAuthority,
+    );
   }
 
   final NeuraLivingSafetyPolicy safetyPolicy;
@@ -49,6 +63,7 @@ final class EncryptedMemoryDurableScopedAdapter {
   final Future<EncryptedMemoryDurableCrypto> Function() _loadCrypto;
   final String storageKey;
   final _DurableScopedStorageState _state;
+  EncryptedMemoryDurableCrypto? _attachedCrypto;
   Object? _attachedCryptoAuthority;
 
   Map<String, EncryptedMemorySessionRecord> get _records => _state.records;
@@ -457,18 +472,22 @@ final class EncryptedMemoryDurableScopedAdapter {
 
   Future<EncryptedMemoryDurableCrypto> _attachCryptoAuthority() async {
     final crypto = await _loadCrypto();
+    final cryptoAuthority = crypto.authorityToken;
     _state.attachOrVerifyAuthority(
       safetyPolicy: safetyPolicy,
       keyLifecycle: keyLifecycle,
-      cryptoAuthority: crypto,
+      cryptoAuthority: cryptoAuthority,
     );
-    _attachedCryptoAuthority = crypto;
+    _attachedCrypto = crypto;
+    _attachedCryptoAuthority = cryptoAuthority;
     return crypto;
   }
 
   EncryptedMemoryDurableCrypto _requireAttachedAuthority() {
+    final crypto = _attachedCrypto;
     final attached = _attachedCryptoAuthority;
-    if (attached == null ||
+    if (crypto == null ||
+        attached == null ||
         !_state.matchesAuthority(
           safetyPolicy: safetyPolicy,
           keyLifecycle: keyLifecycle,
@@ -478,7 +497,7 @@ final class EncryptedMemoryDurableScopedAdapter {
         'durable_authority_mismatch',
       );
     }
-    return attached as EncryptedMemoryDurableCrypto;
+    return crypto;
   }
 
   bool _removeMatching(

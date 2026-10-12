@@ -38,9 +38,13 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
   List<JournalEntry> _history = const [];
   int _draftRevision = 0;
   bool _saving = false;
+  bool _captureBusy = false;
+  bool _stoppingCapture = false;
+  int _captureGeneration = 0;
   String? _saveStatus;
 
   bool get _hasUnsavedDraft => _controller.text.trim() != _savedTranscript;
+  bool get _captureLocked => _recording || _captureBusy;
 
   @override
   void initState() {
@@ -50,10 +54,19 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
     _sub = _service.transcriptStream.listen((text) {
       if (!mounted) return;
-      if (!_recording && !_service.recording.value) {
-        if (_isVoiceStatusMessage(text)) {
-          setState(() => _saveStatus = text);
-        }
+      if (_isVoiceStatusMessage(text)) {
+        setState(() {
+          _saveStatus = text;
+          if (!_service.isListening) {
+            _recording = false;
+            _captureBusy = false;
+            _stoppingCapture = false;
+            _captureGeneration++;
+          }
+        });
+        return;
+      }
+      if (!_recording || _captureBusy || !_service.recording.value) {
         return;
       }
       setState(() {
@@ -74,12 +87,18 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
   void _onSafeModeChanged() {
     if (!mounted) return;
     setState(() {
-      if (SafeBoot.instance.safeMode.value) _recording = false;
+      if (SafeBoot.instance.safeMode.value) {
+        _recording = false;
+        _captureBusy = false;
+        _stoppingCapture = false;
+        _captureGeneration++;
+      }
     });
   }
 
   @override
   void dispose() {
+    _captureGeneration++;
     _service.recording.removeListener(_onRecordingChanged);
     SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
     _sub?.cancel();
@@ -89,25 +108,42 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
   }
 
   Future<void> _toggleRecording() async {
-    if (SafeBoot.instance.safeMode.value) return;
+    if (SafeBoot.instance.safeMode.value || _captureBusy) return;
+    final generation = ++_captureGeneration;
     if (!_recording) {
-      if (_controller.text.trim().isEmpty || _saveStatus != null) {
-        _draftId = LocalJournalStore.newEntryId('voice_journal');
-        _savedTranscript = '';
-      }
-      final started = await _service.startRecording();
-      if (!mounted || started) return;
       setState(() {
-        _recording = false;
-        _saveStatus ??= 'Voice input could not start on this device.';
+        _captureBusy = true;
+        _stoppingCapture = false;
+        if (_controller.text.trim().isEmpty || _saveStatus != null) {
+          _draftId = LocalJournalStore.newEntryId('voice_journal');
+          _savedTranscript = '';
+        }
+      });
+      final started = await _service.startRecording();
+      if (!mounted || generation != _captureGeneration) return;
+      setState(() {
+        _captureBusy = false;
+        _recording = started && _service.recording.value;
+        if (!started) {
+          _saveStatus ??= 'Voice input could not start on this device.';
+        }
       });
     } else {
-      final text = await _service.stopRecording();
-      if (!mounted) return;
       setState(() {
-        _transcript = text;
-        _controller.text = text;
-        _draftRevision++;
+        _captureBusy = true;
+        _stoppingCapture = true;
+      });
+      final text = await _service.stopRecording();
+      if (!mounted || generation != _captureGeneration) return;
+      setState(() {
+        _captureBusy = false;
+        _stoppingCapture = false;
+        _recording = false;
+        if (text.trim().isNotEmpty && !_isVoiceStatusMessage(text)) {
+          _transcript = text;
+          _controller.text = text;
+          _draftRevision++;
+        }
       });
     }
   }
@@ -120,7 +156,7 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
 
   Future<void> _saveTranscript() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || _saving) return;
+    if (text.isEmpty || _saving || _captureLocked) return;
     final savedRevision = _draftRevision;
     final draftId = _draftId;
     setState(() {
@@ -157,7 +193,7 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
   }
 
   Future<void> _openSavedTranscript(JournalEntry entry) async {
-    if (_recording) return;
+    if (_captureLocked) return;
     if (_hasUnsavedDraft && !await _confirmDiscardDraft()) return;
     _controller.text = entry.content;
     if (!mounted) return;
@@ -171,7 +207,7 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
   }
 
   Future<void> _showAllSavedTranscripts() async {
-    if (_recording) return;
+    if (_captureLocked) return;
     final selected = await showModalBottomSheet<JournalEntry>(
       context: context,
       builder: (context) => SafeArea(
@@ -192,6 +228,7 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
   }
 
   void _discardDraft() {
+    if (_captureLocked) return;
     _controller.text = _savedTranscript;
     setState(() {
       _transcript = _savedTranscript;
@@ -240,9 +277,10 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
                 ? colors.primary
                 : colors.secondary;
         return PopScope(
-          canPop: !_hasUnsavedDraft && !_saving,
+          canPop: !_hasUnsavedDraft && !_saving && !_captureLocked,
           onPopInvokedWithResult: (didPop, _) async {
             if (didPop) return;
+            if (_captureLocked) return;
             if (await _confirmDiscardDraft() && mounted) {
               Navigator.of(context).pop();
             }
@@ -298,10 +336,19 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
                 ),
                 const SizedBox(height: 16),
                 FilledButton.icon(
-                  onPressed: safeMode ? null : _toggleRecording,
-                  icon: Icon(_recording ? Icons.stop : Icons.mic_none),
+                  onPressed: safeMode || _captureBusy ? null : _toggleRecording,
+                  icon: _captureBusy
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(_recording ? Icons.stop : Icons.mic_none),
                   label: Text(
-                    _recording ? 'Stop listening' : 'Start listening',
+                    _captureBusy
+                        ? (_stoppingCapture ? 'Stopping' : 'Starting')
+                        : _recording
+                            ? 'Stop listening'
+                            : 'Start listening',
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -319,7 +366,7 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
                     padding: const EdgeInsets.all(16),
                     child: TextField(
                       controller: _controller,
-                      enabled: !_saving,
+                      enabled: !_saving && !_captureBusy,
                       minLines: 8,
                       maxLines: null,
                       decoration: InputDecoration(
@@ -347,7 +394,7 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: OutlinedButton.icon(
-                        onPressed: _saving || _recording
+                        onPressed: _saving || _captureLocked
                             ? null
                             : () => _openSavedTranscript(entry),
                         icon: const Icon(Icons.history_outlined),
@@ -362,7 +409,7 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
                     ),
                   if (_history.length > 8)
                     TextButton.icon(
-                      onPressed: _saving || _recording
+                      onPressed: _saving || _captureLocked
                           ? null
                           : _showAllSavedTranscripts,
                       icon: const Icon(Icons.list_alt_outlined),
@@ -372,7 +419,7 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
                 const SizedBox(height: 12),
                 FilledButton.icon(
                   onPressed: safeMode ||
-                          _recording ||
+                          _captureLocked ||
                           _saving ||
                           _controller.text.trim().isEmpty
                       ? null
@@ -388,7 +435,7 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
                 if (_hasUnsavedDraft) ...[
                   const SizedBox(height: 8),
                   TextButton.icon(
-                    onPressed: _saving || _recording ? null : _discardDraft,
+                    onPressed: _saving || _captureLocked ? null : _discardDraft,
                     icon: const Icon(Icons.delete_outline),
                     label: const Text('Discard draft'),
                   ),
