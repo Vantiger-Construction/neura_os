@@ -8,16 +8,36 @@ MediaQueryData applyHumanAccessibilityPreferences(
   MediaQueryData source,
   HumanPrefs prefs,
 ) {
-  const referenceFontSize = 16.0;
-  final systemScale =
-      source.textScaler.scale(referenceFontSize) / referenceFontSize;
-  final combinedScale =
-      (systemScale * prefs.textScale).clamp(0.85, 4.0).toDouble();
   final reduceMotion = source.disableAnimations || prefs.reducedMotion;
 
   return source.copyWith(
-    textScaler: TextScaler.linear(combinedScale),
+    textScaler: _HumanPreferenceTextScaler(
+      source.textScaler,
+      userScale: prefs.textScale,
+    ),
     disableAnimations: reduceMotion,
     accessibleNavigation: source.accessibleNavigation || reduceMotion,
   );
+}
+
+class _HumanPreferenceTextScaler extends TextScaler {
+  const _HumanPreferenceTextScaler(
+    this.systemScaler, {
+    required this.userScale,
+  });
+
+  final TextScaler systemScaler;
+  final double userScale;
+
+  @override
+  double get textScaleFactor => scale(14) / 14;
+
+  @override
+  double scale(double fontSize) {
+    final min = fontSize * 0.85;
+    final max = fontSize * 4.0;
+    return (systemScaler.scale(fontSize) * userScale)
+        .clamp(min, max)
+        .toDouble();
+  }
 }

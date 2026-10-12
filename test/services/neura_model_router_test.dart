@@ -44,10 +44,18 @@ NeuraCloudTransactionEnvelope _transactionFor(NeuraModelProvider provider) =>
     );
 
 class _Transport implements NeuraModelTransport {
-  _Transport(this.provider, {this.result, this.error, this.onComplete});
+  _Transport(
+    this.provider, {
+    this.result,
+    this.error,
+    this.onComplete,
+    NeuraModelProfile? modelProfile,
+  }) : modelProfile = modelProfile ?? NeuraModelProfiles.defaultFor(provider);
 
   @override
   final NeuraModelProvider provider;
+  @override
+  final NeuraModelProfile modelProfile;
   final String? result;
   final Object? error;
   final void Function()? onComplete;
@@ -94,6 +102,8 @@ class _SequenceTransport implements NeuraModelTransport {
 
   @override
   final NeuraModelProvider provider;
+  @override
+  NeuraModelProfile get modelProfile => NeuraModelProfiles.defaultFor(provider);
   final List<Object> outcomes;
   int calls = 0;
 
@@ -510,6 +520,48 @@ void main() {
     expect(anthropic.calls, 0);
   });
 
+  test(
+    'approval preview and digest bind the selected transport profile',
+    () async {
+      final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
+      await credentials.save(NeuraModelProvider.openAi, openAiKey);
+      final defaultTransport = _Transport(
+        NeuraModelProvider.openAi,
+        result: 'unused',
+      );
+      final upgradedTransport = _Transport(
+        NeuraModelProvider.openAi,
+        result: 'unused',
+        modelProfile: kNeuraOpenAiGpt61SolProfile,
+      );
+      Future<NeuraCloudRequestPreview> previewFor(_Transport transport) async {
+        final router = NeuraSecureModelRouter(
+          credentials: credentials,
+          transports: [transport],
+        );
+        late NeuraCloudRequestPreview preview;
+        await expectLater(
+          router.complete(
+            request,
+            requestApproval: (value) async {
+              preview = value;
+              return false;
+            },
+          ),
+          throwsA(isA<NeuraCloudApprovalDenied>()),
+        );
+        expect(transport.calls, 0);
+        return preview;
+      }
+
+      final defaultPreview = await previewFor(defaultTransport);
+      final upgradedPreview = await previewFor(upgradedTransport);
+
+      expect(upgradedPreview.modelProfile, kNeuraOpenAiGpt61SolProfile);
+      expect(defaultPreview.promptDigest, isNot(upgradedPreview.promptDigest));
+    },
+  );
+
   test('fallback requires a separate approval', () async {
     final credentials = NeuraModelCredentials.forTesting(_MemoryStorage());
     await credentials.save(NeuraModelProvider.openAi, openAiKey);
@@ -603,6 +655,7 @@ void main() {
             .previewFor(
               NeuraModelProvider.openAi,
               _transactionFor(NeuraModelProvider.openAi),
+              kNeuraOpenAiDefaultProfile,
             )
             .omittedMessageCount,
         12,

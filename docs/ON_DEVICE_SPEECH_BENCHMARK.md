@@ -58,6 +58,15 @@ $env:NEURA_ON_DEVICE_ASR_MODEL_DIR = 'D:\NeuraModels\zipformer-en'
 $env:NEURA_ON_DEVICE_ASR_MODEL_PROFILE = 'zipformer-en-2023-06-26-int8'
 ```
 
+For packaging readiness, represent the chosen profile with
+`NeuraOnDeviceAsrPackageManifest` before an evaluation build is promoted. The
+manifest records the profile id, exact filename set, SHA-256 for each model
+file, UTC creation time, explicit license evidence, and `networkRequired:
+false`. The validator rejects URL/path-shaped entries, unknown profiles,
+missing files, invalid hashes, and packages that require network access. This
+is only a local evidence contract; it does not download a model, accept a
+license, enable the runtime gate, or prove microphone behavior.
+
 The default/`int4` profile retains the original `encoder.int4.onnx`,
 `decoder.int4.onnx`, `joiner.int4.onnx`, and `tokens.txt` contract. It is only
 a candidate convention; an int4 model has not been validated. The historical

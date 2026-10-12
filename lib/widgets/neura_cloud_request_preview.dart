@@ -23,6 +23,11 @@ Future<bool> showNeuraCloudRequestPreview(
             Text('Approval state: ${preview.approvalState.name}'),
             Text('Destination: ${preview.audience.host}'),
             Text(
+              'Model: ${preview.modelProfile.displayName} '
+              '(${preview.modelProfile.model}, '
+              '${preview.modelProfile.reasoningEffort})',
+            ),
+            Text(
               preview.retryCount == 0
                   ? 'Attempt: initial request'
                   : 'Attempt: exact retry ${preview.retryCount}',

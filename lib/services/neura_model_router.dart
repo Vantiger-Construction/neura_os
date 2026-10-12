@@ -18,6 +18,7 @@ import 'neura_model_types.dart';
 class NeuraCloudRequestPreview {
   final NeuraModelProvider provider;
   final NeuraCloudTransactionEnvelope transaction;
+  final NeuraModelProfile modelProfile;
   final String purpose;
   final int messageCount;
   final int characterCount;
@@ -29,6 +30,7 @@ class NeuraCloudRequestPreview {
   const NeuraCloudRequestPreview({
     required this.provider,
     required this.transaction,
+    required this.modelProfile,
     required this.purpose,
     required this.messageCount,
     required this.characterCount,
@@ -72,6 +74,7 @@ class NeuraModelRequest {
   NeuraCloudRequestPreview previewFor(
     NeuraModelProvider provider,
     NeuraCloudTransactionEnvelope transaction,
+    NeuraModelProfile modelProfile,
   ) {
     final encoded = jsonEncode(messages);
     final hasTypedImage = encoded.contains('"type":"image"');
@@ -79,6 +82,7 @@ class NeuraModelRequest {
     return NeuraCloudRequestPreview(
       provider: provider,
       transaction: transaction,
+      modelProfile: modelProfile,
       purpose: purpose,
       messageCount: messages.length,
       characterCount: encoded.length + systemPrompt.length,
@@ -124,11 +128,10 @@ class NeuraModelRequestBudget {
     // before every approval preview.
     final historyLength = source.messages.length;
     final historyStart = max(0, historyLength - maxMessages);
-    final messages = (jsonDecode(
-      jsonEncode(source.messages.sublist(historyStart)),
-    ) as List)
-        .map((item) => Map<String, dynamic>.from(item as Map))
-        .toList(growable: false);
+    final messages =
+        (jsonDecode(jsonEncode(source.messages.sublist(historyStart))) as List)
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList(growable: false);
     if (messages.isEmpty) {
       return NeuraModelRequest(
         systemPrompt: source.systemPrompt,
@@ -263,6 +266,7 @@ class NeuraModelResponse {
 
 abstract interface class NeuraModelTransport {
   NeuraModelProvider get provider;
+  NeuraModelProfile get modelProfile;
 
   Future<String> complete({
     required String apiKey,
@@ -271,15 +275,24 @@ abstract interface class NeuraModelTransport {
 }
 
 class NeuraOpenAiTransport implements NeuraModelTransport {
-  NeuraOpenAiTransport({http.Client? client})
-      : _client = client ?? http.Client();
+  NeuraOpenAiTransport({
+    http.Client? client,
+    NeuraModelProfile profile = kNeuraOpenAiDefaultProfile,
+  })  : _client = client ?? http.Client(),
+        _profile = profile {
+    if (profile.provider != NeuraModelProvider.openAi) {
+      throw ArgumentError('OpenAI transport requires an OpenAI profile.');
+    }
+  }
 
   static const _endpoint = 'https://api.openai.com/v1/responses';
-  static const _model = 'gpt-5.6-luna';
   final http.Client _client;
+  final NeuraModelProfile _profile;
 
   @override
   NeuraModelProvider get provider => NeuraModelProvider.openAi;
+  @override
+  NeuraModelProfile get modelProfile => _profile;
 
   @override
   Future<String> complete({
@@ -308,11 +321,11 @@ class NeuraOpenAiTransport implements NeuraModelTransport {
             ...transaction.requestHeaders(),
           },
           body: jsonEncode({
-            'model': _model,
+            'model': _profile.model,
             'store': false,
             'input': input,
             'max_output_tokens': request.maxTokens,
-            'reasoning': {'effort': 'low'},
+            'reasoning': {'effort': _profile.reasoningEffort},
           }),
         )
         .timeout(const Duration(seconds: 30));
@@ -375,6 +388,8 @@ class NeuraAnthropicTransport implements NeuraModelTransport {
 
   @override
   NeuraModelProvider get provider => NeuraModelProvider.anthropic;
+  @override
+  NeuraModelProfile get modelProfile => kNeuraAnthropicDefaultProfile;
 
   @override
   Future<String> complete({
@@ -518,7 +533,6 @@ class NeuraSecureModelRouter {
     );
     final frozenTools = NeuraModelRequestBudget.freezeTools(tools);
     final traceId = _transactionFactory.newTraceId();
-    final canonicalPayload = _canonicalPayload(request, frozenTools);
     void check() {
       cancel.throwIfCancelled();
       _throwIfSafeMode();
@@ -543,6 +557,12 @@ class NeuraSecureModelRouter {
         check();
         final transport = _streamTransports[candidate];
         if (transport == null) continue;
+        final modelProfile = transport.profile;
+        final canonicalPayload = _canonicalPayload(
+          request,
+          frozenTools,
+          modelProfile,
+        );
         final circuit = _circuits[candidate]!;
         if (provider == null && circuit.isOpen(_now())) {
           lastError = NeuraProviderCircuitOpen(candidate, circuit.openUntil!);
@@ -572,7 +592,9 @@ class NeuraSecureModelRouter {
             NeuraCloudAuditStage.approvalRequired,
           );
           final approved = await Future.any<bool>([
-            requestApproval(request.previewFor(candidate, transaction)),
+            requestApproval(
+              request.previewFor(candidate, transaction, modelProfile),
+            ),
             cancel.whenCancelled.then((_) => false),
           ]);
           check();
@@ -647,7 +669,6 @@ class NeuraSecureModelRouter {
     _throwIfSafeMode();
     _throwIfConstitutionBlocks(request);
     final traceId = _transactionFactory.newTraceId();
-    final canonicalPayload = _canonicalPayload(request, const []);
     final candidates = <NeuraModelProvider>[
       NeuraModelProvider.openAi,
       NeuraModelProvider.anthropic,
@@ -675,6 +696,12 @@ class NeuraSecureModelRouter {
 
       final transport = _transports[provider];
       if (transport == null) continue;
+      final modelProfile = transport.modelProfile;
+      final canonicalPayload = _canonicalPayload(
+        request,
+        const [],
+        modelProfile,
+      );
 
       final idempotencyKey = _transactionFactory.newIdempotencyKey();
       var failed = false;
@@ -692,7 +719,7 @@ class NeuraSecureModelRouter {
         _throwIfConstitutionBlocks(request);
         _auditTrail.record(transaction, NeuraCloudAuditStage.approvalRequired);
         final approved = await requestApproval(
-          request.previewFor(provider, transaction),
+          request.previewFor(provider, transaction, modelProfile),
         );
         _throwIfSafeMode();
         if (!approved) {
@@ -755,8 +782,10 @@ class NeuraSecureModelRouter {
   String _canonicalPayload(
     NeuraModelRequest request,
     List<Map<String, dynamic>> tools,
+    NeuraModelProfile modelProfile,
   ) {
     return jsonEncode({
+      'model_profile': modelProfile.toJson(),
       'system_prompt': request.systemPrompt,
       'messages': request.messages,
       'tools': tools,
