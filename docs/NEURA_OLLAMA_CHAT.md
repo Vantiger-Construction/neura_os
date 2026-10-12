@@ -135,7 +135,7 @@ running the complete portable package.
 | Memory and unload | Record total/available RAM before admission and during replies; combined Neura/Ollama/runner peak working set, paging and responsiveness; use `ollama ps` to confirm unloading after completion. |
 | Negative cases | Ollama closed, model missing/wrong/remote, incompatible daemon and insufficient available RAM: fixed local failure, offline remains selected, no cloud request or automatic download. |
 | Cancellation | During a slow reply test Stop/barge-in, focus loss, minimize, suspend, chat closure/navigation, Safe Mode, recovery and app exit. No stale reply or automatic restart; Safe Mode keeps microphone off and latches until restart. Separately observe how quickly the user-owned daemon stops computing. |
-| Privacy and support | No source/image/memory access or long-term writes; offline bounds on ASCII/multibyte input and long sessions; review uncertainty, unsupported beliefs, dependency pressure and crisis language against the charter with synthetic examples. |
+| Privacy and support | No model access to selected sources/images/remembered personal context or automatic long-term chat-content writes. Existing local guardrails may read stored mood and save fixed support-event metadata; inspect those stores separately. Check offline bounds on ASCII/multibyte input and long sessions, and review uncertainty, unsupported beliefs, dependency pressure and crisis language with synthetic examples. |
 | Deliberate cloud use | A manual switch back requires the existing fresh cloud-request preview/approval. Cancelling local inference never selects cloud. |
 
 Do not report these trials as passed until measured on the actual laptop. Keep
