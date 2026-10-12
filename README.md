@@ -16,8 +16,12 @@ This is the **merged** Neura OS Flutter project with the upgrades/patches you up
 
 The [Neura Engine vision and implementation milestones](docs/NEURA_ENGINE_VISION.md)
 describe a dedicated engine for ongoing reflection and learning from approved
-information, with user control over memory and actions. This is a design plan;
-the proposed engine is not yet implemented.
+information, with user control over memory and actions. The
+[milestone 1 synthetic IPC slice](docs/NEURA_ENGINE_IPC_M1.md) now includes an
+authenticated Rust sidecar and a Windows Console session with explicit
+start, pause, resume, and stop controls. It remains a synthetic-only echo check;
+milestone 1 is incomplete, and reflection, personal sources, and a real local
+model are not enabled.
 
 ## Quick start (Windows)
 1. Install Flutter (and Android Studio if you want APK builds)

@@ -1,0 +1,108 @@
+name: Neura Offline Text Adapter
+
+on:
+  pull_request:
+    branches:
+      - Neura
+      - agent/neura-rustls-security-refresh-2026-10-10
+      - agent/neura-offline-text-low-memory-2026-10-11
+    paths:
+      - 'rust/**'
+      - 'lib/modules/chat/**'
+      - 'lib/neura_link/local_conversation_session.dart'
+      - 'test/modules/chat/**'
+      - 'test/neura_link/**'
+      - 'windows/runner/**'
+      - 'tools/offline_text_native_check/**'
+      - 'tools/*NeuraLocalConversation*'
+      - 'docs/NEURA_OFFLINE_CONVERSATION.md'
+      - '.github/workflows/neura-offline-text-adapter.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-offline-text-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust adapter (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Enable stable Rust and Clippy
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup default stable
+          cargo --version
+          rustc --version
+      - name: Test all Rust targets with the committed lockfile
+        shell: bash
+        run: cargo test --manifest-path rust/Cargo.toml --locked --all-targets
+      - name: Strict Clippy
+        shell: bash
+        run: cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Check Windows preflight policy and launcher syntax
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: '& .\tools\Test-NeuraLocalConversationPolicy.ps1'
+
+  flutter:
+    name: Flutter chat and lifecycle (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Restore committed Flutter dependencies
+        shell: bash
+        run: |
+          flutter pub get --enforce-lockfile
+          git diff --exit-code -- pubspec.lock
+      - name: Canonical formatting of modified Flutter sources
+        shell: bash
+        run: |
+          dart format --output=none --set-exit-if-changed \
+            lib/neura_link/local_conversation_session.dart \
+            lib/modules/chat/neura_chat_screen.dart \
+            test/neura_link/local_conversation_session_test.dart \
+            test/modules/chat/neura_offline_chat_test.dart
+      - name: Analyze modified Flutter sources
+        shell: bash
+        run: |
+          flutter analyze --no-fatal-infos \
+            lib/neura_link/local_conversation_session.dart \
+            lib/modules/chat/neura_chat_screen.dart \
+            test/neura_link/local_conversation_session_test.dart \
+            test/modules/chat/neura_offline_chat_test.dart
+      - name: Complete Flutter suite including offline integration and existing safety controls
+        shell: bash
+        run: flutter test --reporter expanded
+      - name: Compile native method-channel owner against genuine Flutter headers
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          flutter precache --windows
+          if ($LASTEXITCODE -ne 0) { throw 'Windows Flutter headers unavailable.' }
+          $includes = Join-Path $env:FLUTTER_ROOT 'bin\cache\artifacts\engine\windows-x64\cpp_client_wrapper\include'
+          cmake -S tools/offline_text_native_check -B build/offline-native-check "-DFLUTTER_WRAPPER_INCLUDE=$includes"
+          if ($LASTEXITCODE -ne 0) { throw 'Native check configuration failed.' }
+          cmake --build build/offline-native-check --config Release
+          if ($LASTEXITCODE -ne 0) { throw 'Native method-channel compilation failed.' }

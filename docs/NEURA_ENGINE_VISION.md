@@ -2,6 +2,8 @@
 
 Status: proposed design and implementation milestones. Recorded September 30,
 2026, against `Neura` commit `3ae691156437f192d5d767e3fc645882ddcd8036`.
+Implementation status reviewed October 10, 2026, against `Neura` commit
+`3fd3a165470ba6859c4182617cc9f93aee5c21fe`.
 This document does not enable an autonomous engine or change runtime permissions.
 
 ## The vision
@@ -20,14 +22,15 @@ engine:
 
 | Foundation | Current role | Work still needed |
 | --- | --- | --- |
-| [Rust WebSocket sidecar](../rust/src/bin/neura_api.rs) | Streams fixed synthetic echo fixtures over authenticated loopback IPC with bounded queues; reports the model adapter as degraded. See the [milestone 1 IPC slice](NEURA_ENGINE_IPC_M1.md). | A real local model adapter, trusted UI session integration, and the remaining engine lifecycle controls before personal sources are admitted. |
+| [Rust WebSocket sidecar](../rust/src/bin/neura_api.rs) | Streams fixed synthetic echo fixtures over authenticated loopback IPC with bounded queues; reports the model adapter as degraded. See the [milestone 1 IPC slice](NEURA_ENGINE_IPC_M1.md). | A real local model adapter and the remaining milestone 1 gates before reflection or personal sources are admitted. |
+| [Windows synthetic session](NEURA_ENGINE_IPC_M1.md#explicit-session-startup) | A trusted native launcher and Console expose explicit start, pause, resume, and stop, with fresh credentials, generation invalidation, and bounded synthetic checks. | Supported Windows device/lifecycle evidence, measured resource budgets, and the remaining lifecycle/consent controls; this is not production chat or reflection. |
 | [Rust orchestrator](../rust/src/orchestrator.rs) | Coordinates existing provider-backed agent work. | A separately reviewed local execution path; existing cloud work must not become unattended reflection. |
 | [Flutter runtime controller](../lib/neura_runtime/neura_runtime_controller.dart) | Coordinates app runtime events and room memory behavior. | Explicit engine status, consent, cancellation, and resource controls. |
 | [Local app API](NEURA_API_SYSTEM_UPGRADES.md#3-local-app-api-v1) | Offers authenticated, visible-session proposals for native review. | Keep this contract intact when integrating an engine. It is distinct from the Rust WebSocket sidecar. |
 
-The first implementation should extend the Rust runtime and existing Flutter
-controls. It must not replace working interaction or approval paths merely to
-introduce a separate engine process.
+The synthetic implementation extends the Rust runtime and existing Flutter
+controls. Further work must not replace working interaction or approval paths
+merely to introduce a separate engine process.
 
 ## What ongoing reflection and learning mean
 

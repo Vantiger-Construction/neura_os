@@ -2,11 +2,16 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../../core/memory/memory_graph_service.dart';
 import '../../neura_link/reply_speech_queue.dart';
+import '../../neura_link/local_conversation_session.dart';
+import '../../relationships/services/crisis_text_scan.dart';
+import '../../guardrails/support_resources.dart';
+import '../../services/crisis_playbook_surface.dart';
 import '../../reliability/safe_boot.dart';
 import '../../services/neura_selected_context.dart';
 import '../../modules/mood/mood_models.dart';
@@ -36,7 +41,10 @@ import '../support/guided_support_screen.dart';
 import 'neura_voice_destinations.dart';
 
 class NeuraChatScreen extends StatefulWidget {
-  const NeuraChatScreen({super.key});
+  const NeuraChatScreen({super.key, this.localSession});
+
+  /// Optional test seam. The screen owns and disposes the supplied session.
+  final LocalConversationSession? localSession;
 
   @override
   State<NeuraChatScreen> createState() => _NeuraChatScreenState();
@@ -53,6 +61,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   ];
 
   bool _speechEnabled = true;
+  late final LocalConversationSession _localSession;
+  bool _localSelected = false;
+  int _localSerial = 0;
+  final List<_ChatLine> _localLines = [];
   NeuraConversationMode _conversationMode = NeuraConversationMode.balanced;
   bool _busy = false;
   NeuraSelectedContext? _selectedContext;
@@ -107,9 +119,150 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _localSession = widget.localSession ?? LocalConversationSession();
+    _localSession.addListener(_onLocalChanged);
     SafeBoot.instance.safeMode.addListener(_stopForSafeMode);
     unawaited(_initAgent());
     WakeWordListenerService.instance.pause();
+  }
+
+  void _onLocalChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (_localSelected &&
+          (_localSession.state == LocalConversationState.disabled ||
+              _localSession.state == LocalConversationState.error ||
+              _localSession.state == LocalConversationState.unavailable ||
+              _localSession.state == LocalConversationState.blocked)) {
+        ++_localSerial;
+        _localLines.clear();
+        _controller.clear();
+        _busy = false;
+      }
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final current = ModalRoute.of(context)?.isCurrent ?? true;
+    // ModalRoute registers this dependency when another route covers chat,
+    // even while the Windows application itself remains in the foreground.
+    if (_localSelected && !current) {
+      unawaited(_localSession.stop());
+    }
+  }
+
+  Future<void> _startLocalChat() async {
+    if (!_localSession.canStart) return;
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Start offline text chat?'),
+        content: const Text(
+          'Only new text you type enters this local session. '
+          'Previous chats, journals, files, memories, photos and voice stay outside it. '
+          'Text stays in RAM and is cleared when the session ends. '
+          'The model can make mistakes. Stopping or leaving the foreground ends the session.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Start offline chat'),
+          ),
+        ],
+      ),
+    );
+    if (approved != true || !mounted || !_localSession.canStart) return;
+    await _endConversation();
+    if (!mounted || !_localSession.canStart) return;
+    setState(() {
+      _localSelected = true;
+      ++_localSerial;
+      _localLines.clear();
+      _controller.clear();
+      _selectedContext = null;
+      _includeMemory = false;
+      _busy = false;
+    });
+    await _localSession.start();
+  }
+
+  Future<void> _useStandardChat() async {
+    await _localSession.stop();
+    if (!mounted) return;
+    setState(() {
+      _localSelected = false;
+      ++_localSerial;
+      _localLines.clear();
+      _controller.clear();
+      _busy = false;
+    });
+  }
+
+  void _trimLocalLines() {
+    while (_localLines.length > 8 ||
+        _localLines.fold<int>(
+              0,
+              (n, line) => n + utf8.encode(line.text).length,
+            ) >
+            8192) {
+      // Whole older turns only; an in-flight newest user line is never queued.
+      _localLines.removeRange(0, _localLines.length >= 2 ? 2 : 1);
+    }
+  }
+
+  Future<void> _sendLocalText(String text, {required bool hasImage}) async {
+    if (hasImage || _selectedContext != null || _includeMemory) {
+      _showVoiceNotice('Offline chat accepts only typed text.');
+      return;
+    }
+    if (_busy) {
+      await _localSession.stop();
+      return;
+    }
+    if (!_localSession.canSend) {
+      _showVoiceNotice('Start the offline session and wait until it is ready.');
+      return;
+    }
+    if (utf8.encode(text).length > 2048) {
+      _showVoiceNotice('Send a shorter message for this low-memory session.');
+      return;
+    }
+    final serial = ++_localSerial;
+    setState(() {
+      _localLines.add(_ChatLine.user(text));
+      _trimLocalLines();
+      _controller.clear();
+      _busy = true;
+    });
+    _scrollToEnd();
+    // Preserve the existing explicit-crisis routing floor using only this
+    // typed message and reviewed static resources. No mood/history lookup,
+    // storm-event write, or model inference enters this support path.
+    final scan = CrisisTextScan.of(text);
+    final playbook =
+        scan.crisis ? CrisisPlaybookSurface.select(scan, text) : null;
+    final reply = scan.crisis
+        ? '${SupportResources.forLocale(Localizations.localeOf(context).toLanguageTag())}'
+            '${playbook == null ? '' : '\n\n${CrisisPlaybookSurface.format(playbook)}'}'
+        : await _localSession.reply(text);
+    if (!mounted ||
+        !_localSelected ||
+        serial != _localSerial ||
+        !(ModalRoute.of(context)?.isCurrent ?? true)) {
+      return;
+    }
+    setState(() {
+      _busy = false;
+      if (reply != null) _localLines.add(_ChatLine.bot(reply));
+      _trimLocalLines();
+    });
+    _scrollToEnd();
   }
 
   void _stopForSafeMode() {
@@ -149,6 +302,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
 
   @override
   void dispose() {
+    ++_localSerial;
+    _localLines.clear();
+    _localSession.removeListener(_onLocalChanged);
+    _localSession.dispose();
     _voiceSession++;
     _continuousMode = false;
     WidgetsBinding.instance.removeObserver(this);
@@ -223,6 +380,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   }
 
   Future<void> _toggleListening() async {
+    if (_localSelected) return;
     if (_startingListening) {
       await _endConversation();
       return;
@@ -321,6 +479,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   }
 
   Future<void> _endConversation() async {
+    if (_localSelected) {
+      _voiceSession++;
+      await _localSession.stop();
+      return;
+    }
     final hadVoice = _continuousMode || _listening || _startingListening;
     _voiceSession++;
     _continuousMode = false;
@@ -413,14 +576,17 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       case NeuraVoiceCommand.removeSelectedContext:
         final hadContext = _selectedContext != null;
         setState(() => _selectedContext = null);
-        _showVoiceNotice(hadContext
-            ? 'Selected text removed from the next reply. The file is unchanged.'
-            : 'No text file is selected for the next reply.');
+        _showVoiceNotice(
+          hadContext
+              ? 'Selected text removed from the next reply. The file is unchanged.'
+              : 'No text file is selected for the next reply.',
+        );
         return;
       case NeuraVoiceCommand.excludeMemories:
         setState(() => _includeMemory = false);
         _showVoiceNotice(
-            'Memories excluded from the next reply. Existing chat messages remain.');
+          'Memories excluded from the next reply. Existing chat messages remain.',
+        );
         return;
       case NeuraVoiceCommand.whereAmI:
         _showVoiceNotice('You are in ${NeuraShell.of(context).room.title}.');
@@ -508,8 +674,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final settled = switch (command) {
       NeuraVoiceCommand.scrollToTop => current.minScrollExtent,
       NeuraVoiceCommand.scrollToBottom => current.maxScrollExtent,
-      _ =>
-        current.pixels.clamp(current.minScrollExtent, current.maxScrollExtent),
+      _ => current.pixels.clamp(
+          current.minScrollExtent,
+          current.maxScrollExtent,
+        ),
     };
     if ((current.pixels - settled).abs() > 0.1) {
       _scrollController.jumpTo(settled);
@@ -536,10 +704,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         return;
       }
       // Manual access to fixed local activities remains available in Safe Mode.
-      await Navigator.of(context).push<void>(MaterialPageRoute<void>(
-        settings: const RouteSettings(name: '/care/guided-support'),
-        builder: (_) => const GuidedSupportScreen(),
-      ));
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          settings: const RouteSettings(name: '/care/guided-support'),
+          builder: (_) => const GuidedSupportScreen(),
+        ),
+      );
     } catch (_) {
       _showVoiceNotice('Could not open support. Please try again.');
     }
@@ -571,11 +741,14 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
               for (final group in NeuraVoiceCommandGroup.values) ...[
                 Padding(
                   padding: const EdgeInsets.only(top: 16, bottom: 8),
-                  child: Text(group.label,
-                      style: Theme.of(context).textTheme.titleMedium),
+                  child: Text(
+                    group.label,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                 ),
-                for (final command in NeuraVoiceCommand.values
-                    .where((command) => command.group == group))
+                for (final command in NeuraVoiceCommand.values.where(
+                  (command) => command.group == group,
+                ))
                   ListTile(
                     dense: true,
                     title: Text('“Neura, ${command.phrase}”'),
@@ -691,9 +864,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       setState(() => _selectedContext = selected);
     } on FormatException catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(error.message)));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
       }
     } catch (_) {
       if (mounted) {
@@ -708,6 +880,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final text = _controller.text.trim();
     final hasImage = imageBase64 != null;
     if (text.isEmpty && !hasImage) return;
+    if (_localSelected) {
+      await _sendLocalText(text, hasImage: hasImage);
+      return;
+    }
     if ((_selectedContext != null || _includeMemory) &&
         !NeuraAiService.instance.isConfigured) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1214,21 +1390,28 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
 
   @override
   Widget build(BuildContext context) {
+    final visibleLines = _localSelected ? _localLines : _lines;
     final replySpeechAvailable =
         NeuraTtsService.instance.replySpeechMode != NeuraReplySpeechMode.off;
     final replySpeechActive = _speechEnabled && replySpeechAvailable;
     return Scaffold(
       appBar: AppBar(
         title: InkWell(
-          onTap: _openAgentPicker,
+          onTap: _localSelected ? null : _openAgentPicker,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(_activeAgent.icon, size: 20),
+              Icon(
+                  _localSelected
+                      ? Icons.chat_bubble_outline
+                      : _activeAgent.icon,
+                  size: 20),
               const SizedBox(width: 8),
-              Text(_activeAgent.displayName),
+              Text(_localSelected
+                  ? 'Neura (offline)'
+                  : _activeAgent.displayName),
               const SizedBox(width: 4),
-              const Icon(Icons.expand_more, size: 20),
+              if (!_localSelected) const Icon(Icons.expand_more, size: 20),
             ],
           ),
         ),
@@ -1236,6 +1419,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
           PopupMenuButton<NeuraConversationMode>(
             tooltip: 'Conversation mode: ${_conversationMode.label}',
             icon: const Icon(Icons.tune),
+            enabled: !_localSelected,
             onSelected: (mode) => setState(() => _conversationMode = mode),
             itemBuilder: (_) => [
               for (final mode in NeuraConversationMode.values)
@@ -1246,18 +1430,33 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
             tooltip: 'Chat options',
             icon: const Icon(Icons.more_vert),
             onSelected: (option) {
-              if (option == 'voice_commands') {
+              if (option == 'offline') {
+                unawaited(_startLocalChat());
+              } else if (option == 'standard') {
+                unawaited(_useStandardChat());
+              } else if (option == 'voice_commands') {
                 unawaited(_showVoiceCommands());
               } else {
                 _showAiDiagnostics();
               }
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(
+            itemBuilder: (_) => [
+              if (_localSession.supported)
+                PopupMenuItem(
+                  value: 'offline',
+                  enabled: _localSession.canStart,
+                  child: const Text('Offline text chat (preview)'),
+                ),
+              if (_localSelected)
+                const PopupMenuItem(
+                  value: 'standard',
+                  child: Text('Use standard chat'),
+                ),
+              const PopupMenuItem(
                 value: 'voice_commands',
                 child: Text('Voice commands'),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'diagnostics',
                 child: Text('AI diagnostics'),
               ),
@@ -1275,13 +1474,40 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                 : replySpeechActive
                     ? 'Mute Neura'
                     : 'Unmute Neura',
-            onPressed: _toggleSpeech,
-            icon: Icon(replySpeechActive ? Icons.volume_up : Icons.volume_off),
+            onPressed: _localSelected ? null : _toggleSpeech,
+            icon: Icon(
+              !_localSelected && replySpeechActive
+                  ? Icons.volume_up
+                  : Icons.volume_off,
+            ),
           ),
         ],
       ),
       body: Column(
         children: [
+          if (_localSelected)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Offline text · ${_localSession.state.name}\n'
+                      'Typed session text only. No cloud fallback.',
+                    ),
+                  ),
+                  if (_localSession.canStart)
+                    TextButton(
+                      onPressed: _startLocalChat,
+                      child: const Text('Start'),
+                    ),
+                  TextButton(
+                    onPressed: _localSession.stop,
+                    child: const Text('Stop'),
+                  ),
+                ],
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             child: OutlinedButton.icon(
@@ -1294,9 +1520,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
             child: ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.all(12),
-              itemCount: _lines.length,
+              itemCount: visibleLines.length,
               itemBuilder: (context, i) {
-                final line = _lines[i];
+                final line = visibleLines[i];
                 final align =
                     line.isUser ? Alignment.centerRight : Alignment.centerLeft;
                 final color = line.isUser
@@ -1405,10 +1631,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
               'Private rooms stay private. Review the cloud preview before sending.',
             ),
             value: _includeMemory,
-            onChanged: _busy ||
-                    !NeuraChatPolicy.forRoom(
-                      NeuraShell.of(context).room.id,
-                    ).persistMemory
+            onChanged: _localSelected ||
+                    _busy ||
+                    !NeuraChatPolicy.forRoom(NeuraShell.of(context).room.id)
+                        .persistMemory
                 ? null
                 : (value) => setState(() => _includeMemory = value ?? false),
           ),
@@ -1420,8 +1646,28 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                 children: [
                   Expanded(
                     child: TextField(
+                      // A fresh editor state drops the previous route/turn's
+                      // undo stack as well as its visible draft.
+                      key: ValueKey(
+                        _localSelected ? 'offline-$_localSerial' : 'standard',
+                      ),
                       controller: _controller,
                       enabled: true,
+                      enableIMEPersonalizedLearning: !_localSelected,
+                      inputFormatters: _localSelected
+                          ? [
+                              TextInputFormatter.withFunction(
+                                  (oldValue, newValue) {
+                                // Check code units first to avoid encoding an
+                                // unbounded paste or combining-character cluster.
+                                if (newValue.text.length > 2048 ||
+                                    utf8.encode(newValue.text).length > 2048) {
+                                  return oldValue;
+                                }
+                                return newValue;
+                              })
+                            ]
+                          : null,
                       onSubmitted: (_) => _send(),
                       decoration: InputDecoration(
                         hintText: _listening
@@ -1438,12 +1684,14 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                   const SizedBox(width: 8),
                   IconButton(
                     tooltip: 'Select text for the next reply',
-                    onPressed: _busy ? null : _pickTextContext,
+                    onPressed:
+                        _localSelected || _busy ? null : _pickTextContext,
                     icon: const Icon(Icons.attach_file),
                   ),
                   IconButton(
                     tooltip: 'Attach a photo',
-                    onPressed: _busy ? null : _pickAndSendImage,
+                    onPressed:
+                        _localSelected || _busy ? null : _pickAndSendImage,
                     icon: const Icon(Icons.image_outlined),
                   ),
                   IconButton(
@@ -1452,9 +1700,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                         : (_busy
                             ? 'Interrupt and talk'
                             : 'Talk freely (hands-free)'),
-                    onPressed: SafeBoot.instance.safeMode.value
-                        ? null
-                        : _beginVoiceBargeIn,
+                    onPressed:
+                        _localSelected || SafeBoot.instance.safeMode.value
+                            ? null
+                            : _beginVoiceBargeIn,
                     icon: Icon(
                       _listening ? Icons.mic : Icons.mic_none,
                       color: _listening ? Colors.redAccent : null,
@@ -1462,7 +1711,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                   ),
                   IconButton(
                     tooltip: _busy ? 'Interrupt and send' : 'Send',
-                    onPressed: _send,
+                    onPressed:
+                        _localSelected && !_localSession.canSend ? null : _send,
                     icon: const Icon(Icons.send),
                   ),
                 ],
