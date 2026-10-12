@@ -9,6 +9,36 @@ import 'package:neuro_companion/services/neura_ollama_chat.dart';
 import 'package:neuro_companion/startup/neura_error_pipeline.dart';
 
 void main() {
+  test('offline editor rejects oversized ASCII and multibyte pastes', () {
+    const formatter = NeuraOllamaTextInputFormatter();
+    const old = TextEditingValue(text: 'short draft');
+    for (final text in ['x' * 1501, '🧠' * 376, 'x${'\u0301' * 750}']) {
+      expect(
+        formatter.formatEditUpdate(old, TextEditingValue(text: text)),
+        old,
+      );
+    }
+    final accepted = TextEditingValue(text: 'x' * 1500);
+    expect(formatter.formatEditUpdate(old, accepted), accepted);
+  });
+
+  test('visible offline transcript evicts old text by count and UTF-8 bytes',
+      () {
+    final messages = List.generate(12, (index) => 'turn $index');
+    expect(NeuraOllamaChat.firstRetainedVisibleMessage(messages), 4);
+    final multibyte = [
+      '🧠' * 2000,
+      '🧠' * 2000,
+      'latest question',
+      'latest reply',
+    ];
+    final first = NeuraOllamaChat.firstRetainedVisibleMessage(multibyte);
+    expect(first, 0);
+    multibyte.insert(0, 'older text' * 100);
+    expect(NeuraOllamaChat.firstRetainedVisibleMessage(multibyte), 1);
+    expect(NeuraOllamaChat.firstRetainedVisibleMessage([]), 0);
+  });
+
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('neura/engine_synthetic_session');
   late ValueNotifier<bool> safe;

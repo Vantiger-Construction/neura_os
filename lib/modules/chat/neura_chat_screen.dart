@@ -23,6 +23,7 @@ import '../../services/neura_chat_policy.dart';
 import '../../services/neura_context_receipt.dart';
 import '../../services/neura_generation_cancel.dart';
 import '../../services/neura_llm_diagnostics.dart';
+import '../../services/neura_ollama_chat.dart';
 import '../../services/neura_reply_batch.dart';
 import '../../services/neura_speech_to_text_service.dart';
 import '../../services/neura_tone_runtime.dart';
@@ -706,11 +707,22 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     }
   }
 
+  void _trimOllamaVisibleHistory() {
+    final first = NeuraOllamaChat.firstRetainedVisibleMessage(
+      _lines.skip(1).map((line) => line.text).toList(),
+    );
+    if (first > 0) _lines.removeRange(1, first + 1);
+  }
+
   Future<void> _send({String? imageBase64, String? imageMediaType}) async {
     final text = _controller.text.trim();
     final hasImage = imageBase64 != null;
     if (text.isEmpty && !hasImage) return;
     final localOllama = _localOllama;
+    if (localOllama && utf8.encode(text).length > NeuraOllamaChat.maxInputBytes) {
+      _showVoiceNotice('Keep offline messages within 1,500 UTF-8 bytes.');
+      return;
+    }
     if (localOllama &&
         (hasImage ||
             _selectedContext != null ||
@@ -775,6 +787,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
           imageMediaType: imageMediaType,
         ),
       );
+      if (localOllama) _trimOllamaVisibleHistory();
       _controller.clear();
       _selectedContext = null;
       _includeMemory = false;
@@ -787,7 +800,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       'has_image': hasImage,
       'utterance_id': generationId,
       'room': room.id,
-      'persist': policy.persistMemory,
+      'persist': persistMemory,
     });
     unawaited(
       _remember(isUser: true, text: displayText, persistMemory: persistMemory),
@@ -961,6 +974,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
           _busy = false;
           _activeReplyId = null;
           _activeBotLine = null;
+          if (localOllama) _trimOllamaVisibleHistory();
         });
       }
     }
@@ -1271,6 +1285,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                   _localOllama = local;
                   _selectedContext = null;
                   _includeMemory = false;
+                  if (local) {
+                    _controller.clear();
+                    _trimOllamaVisibleHistory();
+                  }
                 });
                 _showVoiceNotice(local
                     ? 'Offline Ollama selected. Text chat stays local; memory and actions are off.'
@@ -1478,6 +1496,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                   Expanded(
                     child: TextField(
                       controller: _controller,
+                      inputFormatters: _localOllama
+                          ? const [NeuraOllamaTextInputFormatter()]
+                          : null,
                       enabled: true,
                       onSubmitted: (_) => _send(),
                       decoration: InputDecoration(

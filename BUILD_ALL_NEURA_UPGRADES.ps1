@@ -4,6 +4,8 @@ param(
     [string]$Root = $PSScriptRoot,
     [switch]$BuildAndroid,
     [switch]$SkipTests,
+    # Exact-head CI checks formatting separately and must not rewrite source.
+    [switch]$SkipFormatting,
     [switch]$SkipLaunchSmokeTest
 )
 
@@ -220,18 +222,20 @@ try {
     Step 'Resolving Flutter packages'
     Run { flutter pub get } 'flutter pub get failed'
 
-    Step 'Formatting Dart sources'
-    Run { dart format lib test } 'Dart formatting failed'
-    Run {
-        dart format --output=none --set-exit-if-changed lib test
-    } 'Dart format verification failed'
+    if (-not $SkipFormatting) {
+        Step 'Formatting Dart sources'
+        Run { dart format lib test } 'Dart formatting failed'
+        Run {
+            dart format --output=none --set-exit-if-changed lib test
+        } 'Dart format verification failed'
+        Run { cargo fmt --manifest-path rust\Cargo.toml -- --check } 'cargo fmt check failed'
+    }
 
-    Step 'Formatting and testing Rust'
-    Run { cargo fmt --manifest-path rust\Cargo.toml -- --check } 'cargo fmt check failed'
-    Run { cargo test --manifest-path rust\Cargo.toml } 'Rust tests failed'
+    Step 'Testing Rust'
+    Run { cargo test --locked --manifest-path rust\Cargo.toml } 'Rust tests failed'
 
     Step 'Building Neura local brain'
-    Run { cargo build --release --bin neura_api --manifest-path rust\Cargo.toml } 'Local brain build failed'
+    Run { cargo build --locked --release --bin neura_api --manifest-path rust\Cargo.toml } 'Local brain build failed'
 
     Step 'Analyzing Flutter'
     Run { flutter analyze --no-fatal-warnings --no-fatal-infos } 'Flutter analysis failed'

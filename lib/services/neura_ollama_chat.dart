@@ -9,8 +9,40 @@ import '../reliability/safe_boot.dart';
 import '../startup/neura_error_pipeline.dart';
 import 'neura_generation_cancel.dart';
 
+/// Reject an oversized paste before it enters the offline editor/undo history.
+class NeuraOllamaTextInputFormatter extends TextInputFormatter {
+  const NeuraOllamaTextInputFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) =>
+      utf8.encode(newValue.text).length <= NeuraOllamaChat.maxInputBytes
+          ? newValue
+          : oldValue;
+}
+
 /// Windows native owner forwards text to Rust; no Dart HTTP or cloud fallback.
 class NeuraOllamaChat with WidgetsBindingObserver {
+  static const maxInputBytes = 1500;
+  static const maxVisibleMessages = 8;
+  static const maxVisibleBytes = 16384;
+
+  /// Drop whole oldest messages; keep the newest bounded reply visible.
+  /// The model's separate 1500-byte context limit remains enforced in Rust.
+  static int firstRetainedVisibleMessage(List<String> messages) {
+    var bytes =
+        messages.fold<int>(0, (sum, text) => sum + utf8.encode(text).length);
+    var first = 0;
+    while (messages.length - first > 1 &&
+        (messages.length - first > maxVisibleMessages ||
+            bytes > maxVisibleBytes)) {
+      bytes -= utf8.encode(messages[first++]).length;
+    }
+    return first;
+  }
+
   NeuraOllamaChat({
     MethodChannel channel =
         const MethodChannel('neura/engine_synthetic_session'),
