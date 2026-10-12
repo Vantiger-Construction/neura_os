@@ -41,17 +41,23 @@ class LocalJournalStore {
 
   static final _legacyPromptIdDate = RegExp(r'^\d{4}-\d{2}-\d{2}$');
 
-  static bool isLegacyJournalPromptEntry(JournalEntry entry) {
+  static bool isLegacyJournalPromptId(String id) {
     const prefix = 'journal_prompt_';
+    if (!id.startsWith(prefix)) return false;
+    return _legacyPromptIdDate.hasMatch(id.substring(prefix.length));
+  }
+
+  static bool isLegacyJournalPromptEntry(JournalEntry entry) {
     const promptPrefix = 'Prompt:\n';
     const responseSeparator = '\n\nResponse:\n';
     if (entry.isVoice || entry.moodTag.isNotEmpty) return false;
-    if (!entry.id.startsWith(prefix)) return false;
-    final suffix = entry.id.substring(prefix.length);
-    return _legacyPromptIdDate.hasMatch(suffix) &&
+    return isLegacyJournalPromptId(entry.id) &&
         entry.content.startsWith(promptPrefix) &&
         entry.content.contains(responseSeparator);
   }
+
+  static bool isLocalOnlyJournalEntry(JournalEntry entry) =>
+      isLegacyJournalPromptId(entry.id);
 
   static bool isJournalPromptEntry(JournalEntry entry) =>
       !entry.isVoice &&

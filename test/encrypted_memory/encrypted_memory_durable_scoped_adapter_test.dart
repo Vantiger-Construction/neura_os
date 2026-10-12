@@ -15,6 +15,7 @@ void main() {
   const context = NeuraSafetyContext(directUserGesture: true);
   late _FakeDurableCrypto crypto;
   late EncryptedMemoryKeyLifecycle keys;
+  late NeuraLivingSafetyPolicy safety;
 
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
@@ -23,13 +24,15 @@ void main() {
 
   setUp(() async {
     await NeuraPrefsCache.prefs.clear();
+    EncryptedMemoryDurableScopedAdapter.debugResetStorageRegistryForTesting();
     crypto = _FakeDurableCrypto();
     keys = EncryptedMemoryKeyLifecycle()..provisionVerifiedKey();
+    safety = NeuraLivingSafetyPolicy(safeModeReader: () => false);
   });
 
   EncryptedMemoryDurableScopedAdapter adapter() {
     return EncryptedMemoryDurableScopedAdapter(
-      safetyPolicy: NeuraLivingSafetyPolicy(safeModeReader: () => false),
+      safetyPolicy: safety,
       keyLifecycle: keys,
       loadCrypto: () async => crypto,
     );
@@ -375,7 +378,7 @@ void main() {
       () async {
     final delayedCrypto = _BlockingDurableCrypto();
     final subject = EncryptedMemoryDurableScopedAdapter(
-      safetyPolicy: NeuraLivingSafetyPolicy(safeModeReader: () => false),
+      safetyPolicy: safety,
       keyLifecycle: keys,
       loadCrypto: () async => delayedCrypto,
     );
@@ -406,7 +409,7 @@ void main() {
     await remember;
     expect(await forget, isTrue);
     final restarted = EncryptedMemoryDurableScopedAdapter(
-      safetyPolicy: NeuraLivingSafetyPolicy(safeModeReader: () => false),
+      safetyPolicy: safety,
       keyLifecycle: keys,
       loadCrypto: () async => delayedCrypto,
     );
@@ -422,6 +425,8 @@ void main() {
 
   test('delayed restore cannot resurrect after queued wipe and next write',
       () async {
+    final delayedCrypto = _BlockingDecryptDurableCrypto();
+    crypto = delayedCrypto;
     final seeded = adapter();
     await seeded.remember(
       lease: lease('remember-1', EncryptedMemoryOperation.remember),
@@ -431,12 +436,7 @@ void main() {
       nowUtc: issuedAt.add(const Duration(seconds: 1)),
     );
 
-    final delayedCrypto = _BlockingDecryptDurableCrypto();
-    final subject = EncryptedMemoryDurableScopedAdapter(
-      safetyPolicy: NeuraLivingSafetyPolicy(safeModeReader: () => false),
-      keyLifecycle: keys,
-      loadCrypto: () async => delayedCrypto,
-    );
+    final subject = adapter();
     final restore = subject.restore(
       safetyContext: context,
       expectedKeyGeneration: keys.generation,
@@ -552,6 +552,92 @@ void main() {
     expect(restarted.recordCount, 1);
   });
 
+  test(
+    'wrong lifecycle or unattached crypto cannot read shared plaintext',
+    () async {
+      final subject = adapter();
+      await subject.remember(
+        lease: lease('remember-1', EncryptedMemoryOperation.remember),
+        safetyContext: context,
+        record: record(),
+        expectedKeyGeneration: keys.generation,
+        nowUtc: issuedAt.add(const Duration(seconds: 1)),
+      );
+
+      final wrongKeys = EncryptedMemoryKeyLifecycle()..provisionVerifiedKey();
+      final wrongLifecycle = EncryptedMemoryDurableScopedAdapter(
+        safetyPolicy: safety,
+        keyLifecycle: wrongKeys,
+        loadCrypto: () async => _ThrowingDurableCrypto(),
+      );
+      final wrongLease = EncryptedMemoryConsentLease(
+        id: 'recall-wrong-lifecycle',
+        scope: scope(),
+        operations: const {EncryptedMemoryOperation.recall},
+        issuedAtUtc: issuedAt,
+        expiresAtUtc: issuedAt.add(const Duration(minutes: 5)),
+        directUserGesture: true,
+      );
+
+      expect(
+        () => wrongLifecycle.recall(
+          lease: wrongLease,
+          safetyContext: context,
+          recordId: 'record-1',
+          ownerId: 'owner-1',
+          deviceId: 'device-1',
+          capsuleId: 'personal',
+          memoryClass: EncryptedMemoryClass.explicitPreference,
+          source: EncryptedMemorySource.authenticatedUser,
+          sensitivity: EncryptedMemorySensitivity.personal,
+          expectedKeyGeneration: wrongKeys.generation,
+          nowUtc: issuedAt.add(const Duration(seconds: 2)),
+        ),
+        throwsA(
+          isA<EncryptedMemoryPolicyViolation>().having(
+            (error) => error.code,
+            'code',
+            'durable_authority_mismatch',
+          ),
+        ),
+      );
+
+      final wrongCrypto = EncryptedMemoryDurableScopedAdapter(
+        safetyPolicy: safety,
+        keyLifecycle: keys,
+        loadCrypto: () async => _ThrowingDurableCrypto(),
+      );
+      expect(
+        () => recall(
+          wrongCrypto,
+          lease('recall-wrong-crypto', EncryptedMemoryOperation.recall),
+        ),
+        throwsA(
+          isA<EncryptedMemoryPolicyViolation>().having(
+            (error) => error.code,
+            'code',
+            'durable_authority_mismatch',
+          ),
+        ),
+      );
+
+      keys.suspend();
+      expect(
+        () => recall(
+          subject,
+          lease('recall-suspended-owner', EncryptedMemoryOperation.recall),
+        ),
+        throwsA(
+          isA<EncryptedMemoryPolicyViolation>().having(
+            (error) => error.code,
+            'code',
+            'key_not_usable',
+          ),
+        ),
+      );
+    },
+  );
+
   test('commit-time safe mode blocks a stale pending durable write', () async {
     var safeMode = false;
     final delayedCrypto = _BlockingDurableCrypto();
@@ -661,6 +747,106 @@ void main() {
           expectedKeyGeneration: keys.generation,
         );
         expect(restarted.recordCount, 0);
+      } finally {
+        SharedPreferencesStorePlatform.instance = original;
+        SharedPreferences.setMockInitialValues({});
+        await NeuraPrefsCache.prefs.reload();
+      }
+    },
+  );
+
+  test(
+    'failed remove and failed reload keep reconciliation through construction',
+    () async {
+      final subject = adapter();
+      await subject.remember(
+        lease: lease('remember-1', EncryptedMemoryOperation.remember),
+        safetyContext: context,
+        record: record(),
+        expectedKeyGeneration: keys.generation,
+        nowUtc: issuedAt.add(const Duration(seconds: 1)),
+      );
+      final blob = NeuraPrefsCache.prefs.getString(
+        EncryptedMemoryDurableScopedAdapter.defaultStorageKey,
+      )!;
+      final original = SharedPreferencesStorePlatform.instance;
+      final platform = _RemoveRetainingReloadFailingPreferencesStore({
+        'flutter.${EncryptedMemoryDurableScopedAdapter.defaultStorageKey}':
+            blob,
+      });
+      SharedPreferencesStorePlatform.instance = platform;
+      try {
+        await expectLater(
+          subject.forget(
+            lease: lease('forget-1', EncryptedMemoryOperation.forget),
+            safetyContext: context,
+            recordId: 'record-1',
+            ownerId: 'owner-1',
+            deviceId: 'device-1',
+            capsuleId: 'personal',
+            memoryClass: EncryptedMemoryClass.explicitPreference,
+            source: EncryptedMemorySource.authenticatedUser,
+            sensitivity: EncryptedMemorySensitivity.personal,
+            expectedKeyGeneration: keys.generation,
+            nowUtc: issuedAt.add(const Duration(seconds: 2)),
+          ),
+          throwsA(isA<StateError>()),
+        );
+        await expectLater(
+          subject.restore(
+            safetyContext: context,
+            expectedKeyGeneration: keys.generation,
+          ),
+          throwsA(isA<StateError>()),
+        );
+
+        final sibling = adapter();
+        await expectLater(
+          sibling.forget(
+            lease: lease('forget-sibling', EncryptedMemoryOperation.forget),
+            safetyContext: context,
+            recordId: 'record-1',
+            ownerId: 'owner-1',
+            deviceId: 'device-1',
+            capsuleId: 'personal',
+            memoryClass: EncryptedMemoryClass.explicitPreference,
+            source: EncryptedMemorySource.authenticatedUser,
+            sensitivity: EncryptedMemorySensitivity.personal,
+            expectedKeyGeneration: keys.generation,
+            nowUtc: issuedAt.add(const Duration(seconds: 3)),
+          ),
+          throwsA(
+            isA<EncryptedMemoryPolicyViolation>().having(
+              (error) => error.code,
+              'code',
+              'durable_reconciliation_required',
+            ),
+          ),
+        );
+
+        platform.failReload = false;
+        platform.retainOnRemove = false;
+        await subject.restore(
+          safetyContext: context,
+          expectedKeyGeneration: keys.generation,
+        );
+        expect(subject.recordCount, 1);
+        expect(
+          await subject.forget(
+            lease: lease('forget-2', EncryptedMemoryOperation.forget),
+            safetyContext: context,
+            recordId: 'record-1',
+            ownerId: 'owner-1',
+            deviceId: 'device-1',
+            capsuleId: 'personal',
+            memoryClass: EncryptedMemoryClass.explicitPreference,
+            source: EncryptedMemorySource.authenticatedUser,
+            sensitivity: EncryptedMemorySensitivity.personal,
+            expectedKeyGeneration: keys.generation,
+            nowUtc: issuedAt.add(const Duration(seconds: 4)),
+          ),
+          isTrue,
+        );
       } finally {
         SharedPreferencesStorePlatform.instance = original;
         SharedPreferences.setMockInitialValues({});
@@ -877,6 +1063,18 @@ final class _BlockingDecryptDurableCrypto extends _FakeDurableCrypto {
   }
 }
 
+final class _ThrowingDurableCrypto implements EncryptedMemoryDurableCrypto {
+  @override
+  Future<Map<String, dynamic>> decryptJson(String blob) async {
+    throw StateError('synthetic wrong crypto');
+  }
+
+  @override
+  Future<String> encryptJson(Map<String, dynamic> json) async {
+    throw StateError('synthetic wrong crypto');
+  }
+}
+
 final class _ReloadFailingAfterSetPreferencesStore
     extends SharedPreferencesStorePlatform {
   final Map<String, Object> data = {};
@@ -935,6 +1133,43 @@ final class _RemoveFailingPreferencesStore
 
   @override
   Future<bool> remove(String key) async => false;
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    data[key] = value;
+    return true;
+  }
+}
+
+final class _RemoveRetainingReloadFailingPreferencesStore
+    extends SharedPreferencesStorePlatform {
+  _RemoveRetainingReloadFailingPreferencesStore(Map<String, Object> seed)
+      : data = Map<String, Object>.from(seed);
+
+  final Map<String, Object> data;
+  bool failReload = true;
+  bool retainOnRemove = true;
+
+  @override
+  bool get isMock => true;
+
+  @override
+  Future<bool> clear() async {
+    data.clear();
+    return true;
+  }
+
+  @override
+  Future<Map<String, Object>> getAll() async {
+    if (failReload) throw StateError('synthetic reload failure');
+    return Map<String, Object>.from(data);
+  }
+
+  @override
+  Future<bool> remove(String key) async {
+    if (!retainOnRemove) data.remove(key);
+    return true;
+  }
 
   @override
   Future<bool> setValue(String valueType, String key, Object value) async {

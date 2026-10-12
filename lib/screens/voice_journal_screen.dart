@@ -50,7 +50,12 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
     _sub = _service.transcriptStream.listen((text) {
       if (!mounted) return;
-      if (!_recording && !_service.recording.value) return;
+      if (!_recording && !_service.recording.value) {
+        if (_isVoiceStatusMessage(text)) {
+          setState(() => _saveStatus = text);
+        }
+        return;
+      }
       setState(() {
         _transcript = text;
         _controller.text = text;
@@ -90,7 +95,12 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
         _draftId = LocalJournalStore.newEntryId('voice_journal');
         _savedTranscript = '';
       }
-      await _service.startRecording();
+      final started = await _service.startRecording();
+      if (!mounted || started) return;
+      setState(() {
+        _recording = false;
+        _saveStatus ??= 'Voice input could not start on this device.';
+      });
     } else {
       final text = await _service.stopRecording();
       if (!mounted) return;
@@ -212,6 +222,9 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
     );
     return discard ?? false;
   }
+
+  bool _isVoiceStatusMessage(String text) =>
+      text.startsWith('Microphone ') || text.startsWith('Speech-to-text ');
 
   @override
   Widget build(BuildContext context) {

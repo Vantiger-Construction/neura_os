@@ -36,19 +36,20 @@ final class EncryptedMemoryDurableScopedAdapter {
     this.storageKey = defaultStorageKey,
   })  : _loadCrypto = loadCrypto ??
             (() async => MemoryCryptoDurableAdapter(await MemoryCrypto.demo())),
-        _state = _DurableScopedStorageRegistry.stateFor(storageKey) {
-    if (!NeuraPrefsCache.prefs.containsKey(storageKey)) {
-      _state.resetIfStorageMissing();
-    }
-  }
+        _state = _DurableScopedStorageRegistry.stateFor(storageKey);
 
   static const defaultStorageKey = 'neura.encrypted_memory.scoped.v1';
+
+  static void debugResetStorageRegistryForTesting() {
+    _DurableScopedStorageRegistry.resetForTesting();
+  }
 
   final NeuraLivingSafetyPolicy safetyPolicy;
   final EncryptedMemoryKeyLifecycle keyLifecycle;
   final Future<EncryptedMemoryDurableCrypto> Function() _loadCrypto;
   final String storageKey;
   final _DurableScopedStorageState _state;
+  Object? _attachedCryptoAuthority;
 
   Map<String, EncryptedMemorySessionRecord> get _records => _state.records;
   Map<String, EncryptedMemorySessionRecord> get _quarantine =>
@@ -64,9 +65,14 @@ final class EncryptedMemoryDurableScopedAdapter {
       _serializedMutation(
         () async {
           _requireAvailable(safetyContext, expectedKeyGeneration);
+          await _reloadAuthoritative();
           final blob = NeuraPrefsCache.prefs.getString(storageKey);
           if (blob == null) {
             _requireAvailable(safetyContext, expectedKeyGeneration);
+            _state.requireOwnerAuthorityOrEmpty(
+              safetyPolicy: safetyPolicy,
+              keyLifecycle: keyLifecycle,
+            );
             _publishRestored(
               records: const {},
               quarantine: const {},
@@ -74,7 +80,7 @@ final class EncryptedMemoryDurableScopedAdapter {
             return;
           }
 
-          final crypto = await _loadCrypto();
+          final crypto = await _attachCryptoAuthority();
           _requireAvailable(safetyContext, expectedKeyGeneration);
           final clear = await crypto.decryptJson(blob);
           _requireAvailable(safetyContext, expectedKeyGeneration);
@@ -119,6 +125,9 @@ final class EncryptedMemoryDurableScopedAdapter {
         _requireAvailable(safetyContext, expectedKeyGeneration);
         _requireUtc(nowUtc);
         _requireRestorable(record, expectedKeyGeneration);
+        final crypto = _records.isEmpty && _quarantine.isEmpty
+            ? await _attachCryptoAuthority()
+            : _requireAttachedAuthority();
         if (_records.containsKey(record.id) ||
             _quarantine.containsKey(record.id)) {
           throw const EncryptedMemoryPolicyViolation('record_already_exists');
@@ -135,6 +144,7 @@ final class EncryptedMemoryDurableScopedAdapter {
           _records[record.id] = record;
         }
         await _persist(
+          crypto: crypto,
           safetyContext: safetyContext,
           expectedKeyGeneration: expectedKeyGeneration,
         );
@@ -170,6 +180,8 @@ final class EncryptedMemoryDurableScopedAdapter {
       sensitivity: sensitivity,
       nowUtc: nowUtc,
     );
+    if (_records.isEmpty && _quarantine.isEmpty) return null;
+    _requireAttachedAuthority();
     final record = _records[recordId];
     if (record == null ||
         !_matches(
@@ -204,6 +216,7 @@ final class EncryptedMemoryDurableScopedAdapter {
       _serializedMutation(() async {
         _requireAvailable(safetyContext, expectedKeyGeneration);
         _requireUtc(nowUtc);
+        final crypto = _requireAttachedAuthority();
         lease.consumeFor(
           operation: EncryptedMemoryOperation.correct,
           requestedOwnerId: ownerId,
@@ -241,6 +254,7 @@ final class EncryptedMemoryDurableScopedAdapter {
           keyGeneration: record.keyGeneration,
         );
         await _persist(
+          crypto: crypto,
           safetyContext: safetyContext,
           expectedKeyGeneration: expectedKeyGeneration,
         );
@@ -263,6 +277,7 @@ final class EncryptedMemoryDurableScopedAdapter {
       _serializedMutation(() async {
         _requireAvailable(safetyContext, expectedKeyGeneration);
         _requireUtc(nowUtc);
+        final crypto = _requireAttachedAuthority();
         lease.consumeFor(
           operation: EncryptedMemoryOperation.forget,
           requestedOwnerId: ownerId,
@@ -285,6 +300,7 @@ final class EncryptedMemoryDurableScopedAdapter {
         );
         if (removed) {
           await _persist(
+            crypto: crypto,
             safetyContext: safetyContext,
             expectedKeyGeneration: expectedKeyGeneration,
           );
@@ -309,6 +325,7 @@ final class EncryptedMemoryDurableScopedAdapter {
         contract.validateScopedCiphertextOnly();
         _requireAvailable(safetyContext, expectedKeyGeneration);
         _requireUtc(nowUtc);
+        final crypto = _requireAttachedAuthority();
         lease.consumeFor(
           operation: EncryptedMemoryOperation.wipe,
           requestedOwnerId: ownerId,
@@ -344,6 +361,7 @@ final class EncryptedMemoryDurableScopedAdapter {
           ),
         );
         await _persist(
+          crypto: crypto,
           safetyContext: safetyContext,
           expectedKeyGeneration: expectedKeyGeneration,
         );
@@ -367,6 +385,7 @@ final class EncryptedMemoryDurableScopedAdapter {
       _serializedMutation(() async {
         _requireAvailable(safetyContext, expectedKeyGeneration);
         _requireUtc(nowUtc);
+        final crypto = _requireAttachedAuthority();
         lease.consumeFor(
           operation: EncryptedMemoryOperation.reviewQuarantine,
           requestedOwnerId: ownerId,
@@ -412,6 +431,7 @@ final class EncryptedMemoryDurableScopedAdapter {
           _quarantine.remove(recordId);
         }
         await _persist(
+          crypto: crypto,
           safetyContext: safetyContext,
           expectedKeyGeneration: expectedKeyGeneration,
         );
@@ -429,6 +449,36 @@ final class EncryptedMemoryDurableScopedAdapter {
       ..clear()
       ..addAll(quarantine);
     _state.clearReconciliation();
+  }
+
+  Future<void> _reloadAuthoritative() async {
+    await NeuraPrefsCache.prefs.reload();
+  }
+
+  Future<EncryptedMemoryDurableCrypto> _attachCryptoAuthority() async {
+    final crypto = await _loadCrypto();
+    _state.attachOrVerifyAuthority(
+      safetyPolicy: safetyPolicy,
+      keyLifecycle: keyLifecycle,
+      cryptoAuthority: crypto,
+    );
+    _attachedCryptoAuthority = crypto;
+    return crypto;
+  }
+
+  EncryptedMemoryDurableCrypto _requireAttachedAuthority() {
+    final attached = _attachedCryptoAuthority;
+    if (attached == null ||
+        !_state.matchesAuthority(
+          safetyPolicy: safetyPolicy,
+          keyLifecycle: keyLifecycle,
+          cryptoAuthority: attached,
+        )) {
+      throw const EncryptedMemoryPolicyViolation(
+        'durable_authority_mismatch',
+      );
+    }
+    return attached as EncryptedMemoryDurableCrypto;
   }
 
   bool _removeMatching(
@@ -517,6 +567,7 @@ final class EncryptedMemoryDurableScopedAdapter {
   }
 
   Future<void> _persist({
+    required EncryptedMemoryDurableCrypto crypto,
     required NeuraSafetyContext safetyContext,
     required int expectedKeyGeneration,
   }) async {
@@ -546,7 +597,7 @@ final class EncryptedMemoryDurableScopedAdapter {
       'records': _records.values.map(_recordToJson).toList(),
       'quarantine': _quarantine.values.map(_recordToJson).toList(),
     };
-    final blob = await (await _loadCrypto()).encryptJson(clear);
+    final blob = await crypto.encryptJson(clear);
     _requireAvailable(safetyContext, expectedKeyGeneration);
     var writeAttempted = false;
     try {
@@ -619,12 +670,19 @@ final class _DurableScopedStorageRegistry {
 
   static _DurableScopedStorageState stateFor(String storageKey) =>
       _states.putIfAbsent(storageKey, _DurableScopedStorageState.new);
+
+  static void resetForTesting() {
+    _states.clear();
+  }
 }
 
 final class _DurableScopedStorageState {
   final Map<String, EncryptedMemorySessionRecord> records = {};
   final Map<String, EncryptedMemorySessionRecord> quarantine = {};
   Future<void> mutationTail = Future<void>.value();
+  Object? safetyPolicyAuthority;
+  Object? keyLifecycleAuthority;
+  Object? cryptoAuthority;
   bool reconciliationRequired = false;
   int pendingMutations = 0;
 
@@ -644,12 +702,53 @@ final class _DurableScopedStorageState {
     reconciliationRequired = false;
   }
 
-  void resetIfStorageMissing() {
-    if (pendingMutations > 0) return;
-    records.clear();
-    quarantine.clear();
-    reconciliationRequired = false;
-    mutationTail = Future<void>.value();
+  void attachOrVerifyAuthority({
+    required Object safetyPolicy,
+    required Object keyLifecycle,
+    required Object cryptoAuthority,
+  }) {
+    if (safetyPolicyAuthority == null &&
+        keyLifecycleAuthority == null &&
+        this.cryptoAuthority == null) {
+      safetyPolicyAuthority = safetyPolicy;
+      keyLifecycleAuthority = keyLifecycle;
+      this.cryptoAuthority = cryptoAuthority;
+      return;
+    }
+    if (!matchesAuthority(
+      safetyPolicy: safetyPolicy,
+      keyLifecycle: keyLifecycle,
+      cryptoAuthority: cryptoAuthority,
+    )) {
+      throw const EncryptedMemoryPolicyViolation(
+        'durable_authority_mismatch',
+      );
+    }
+  }
+
+  bool matchesAuthority({
+    required Object safetyPolicy,
+    required Object keyLifecycle,
+    required Object cryptoAuthority,
+  }) =>
+      identical(safetyPolicyAuthority, safetyPolicy) &&
+      identical(keyLifecycleAuthority, keyLifecycle) &&
+      identical(this.cryptoAuthority, cryptoAuthority);
+
+  void requireOwnerAuthorityOrEmpty({
+    required Object safetyPolicy,
+    required Object keyLifecycle,
+  }) {
+    final safetyAuthority = safetyPolicyAuthority;
+    final lifecycleAuthority = keyLifecycleAuthority;
+    if ((safetyAuthority != null &&
+            !identical(safetyAuthority, safetyPolicy)) ||
+        (lifecycleAuthority != null &&
+            !identical(lifecycleAuthority, keyLifecycle))) {
+      throw const EncryptedMemoryPolicyViolation(
+        'durable_authority_mismatch',
+      );
+    }
   }
 }
 

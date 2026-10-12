@@ -419,6 +419,97 @@ void main() {
     },
   );
 
+  testWidgets(
+    'voice start permission denial is surfaced without replacing saved draft',
+    (tester) async {
+      final store = LocalJournalStore();
+      final service = _FakeVoiceJournalService(
+        startResult: false,
+        startMessage: 'Microphone permission is required for voice journaling.',
+      );
+      await store.upsertEntry(
+        id: 'voice_saved_1',
+        content: 'Earlier voice note.',
+        isVoice: true,
+      );
+
+      await tester.pumpWidget(
+        _largeTextApp(
+          VoiceJournalScreen(
+            journalStore: store,
+            service: service,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.textContaining('Earlier voice note'),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(
+        find.ancestor(
+          of: find.textContaining('Earlier voice note'),
+          matching: find.byType(OutlinedButton),
+        ),
+      );
+      await tester.pumpAndSettle();
+      tester
+          .state<ScrollableState>(find.byType(Scrollable).first)
+          .position
+          .jumpTo(0);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Start listening'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.textContaining('Microphone permission'),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+      expect(
+        find.textContaining('Microphone permission', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Earlier voice note.', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect((await store.findById('voice_saved_1'))?.content,
+          'Earlier voice note.');
+    },
+  );
+
+  testWidgets('voice start unavailable message is not swallowed',
+      (tester) async {
+    await tester.pumpWidget(
+      _largeTextApp(
+        VoiceJournalScreen(
+          service: _FakeVoiceJournalService(
+            startResult: false,
+            startMessage: 'Speech-to-text is not available on this device.',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Start listening'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.textContaining('Speech-to-text is not available'),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(
+      find.textContaining('Speech-to-text is not available',
+          skipOffstage: false),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('voice history show-all reaches older saved transcripts',
       (tester) async {
     final store = LocalJournalStore();
@@ -527,8 +618,12 @@ class _FailingJournalStore extends LocalJournalStore {
 }
 
 class _FakeVoiceJournalService extends VoiceJournalService {
+  _FakeVoiceJournalService({this.startResult = true, this.startMessage});
+
   final StreamController<String> _stream = StreamController<String>.broadcast();
   final ValueNotifier<bool> _recording = ValueNotifier<bool>(false);
+  final bool startResult;
+  final String? startMessage;
   String _current = '';
 
   @override
@@ -544,8 +639,11 @@ class _FakeVoiceJournalService extends VoiceJournalService {
 
   @override
   Future<bool> startRecording() async {
+    final message = startMessage;
+    if (message != null) _stream.add(message);
+    if (!startResult) return false;
     _recording.value = true;
-    return true;
+    return startResult;
   }
 
   @override
