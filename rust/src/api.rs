@@ -143,4 +143,3 @@ mod tests {
         assert!(API_KEY.lock().unwrap().is_none());
     }
 }
-

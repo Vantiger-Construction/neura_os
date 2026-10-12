@@ -68,6 +68,8 @@ bool FlutterWindow::OnCreate() {
     if (window_id_ == 0) {
       engine_session_ =
           std::make_unique<NeuraEngineSession>(engine->messenger(), GetHandle());
+      local_conversation_ =
+          std::make_unique<NeuraLocalConversation>(engine->messenger(), GetHandle());
     }
   }
   RecordNeuraNativeBreadcrumb("native_channels_registered");
@@ -88,6 +90,7 @@ bool FlutterWindow::OnCreate() {
 
 
 void FlutterWindow::OnDestroy() {
+  local_conversation_.reset();
   engine_session_.reset();
   // Both custom channel owners retain the engine's BinaryMessenger. Release
   // them before destroying the FlutterViewController/engine.
@@ -109,14 +112,14 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               LPARAM const lparam) noexcept {
   // Enforce host lifecycle before plugins can consume the window message.
   // Returning to the foreground never restarts a synthetic session.
-  if (engine_session_ &&
-      ((message == WM_ACTIVATEAPP && !wparam) ||
+  if ((message == WM_ACTIVATEAPP && !wparam) ||
        (message == WM_ACTIVATE && LOWORD(wparam) == WA_INACTIVE) ||
        (message == WM_SIZE && wparam == SIZE_MINIMIZED) ||
        (message == WM_SHOWWINDOW && !wparam) ||
        (message == WM_POWERBROADCAST && wparam == PBT_APMSUSPEND) ||
-       message == WM_CLOSE)) {
-    engine_session_->Background();
+       message == WM_CLOSE) {
+    if (local_conversation_) local_conversation_->Background();
+    if (engine_session_) engine_session_->Background();
   }
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
