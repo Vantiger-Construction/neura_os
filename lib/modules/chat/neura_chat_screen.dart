@@ -629,6 +629,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       _activeReplyId = null;
       _activeBotLine = null;
       _busy = false;
+      if (_localOllama) _trimOllamaVisibleHistory();
     });
   }
 
@@ -719,7 +720,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final hasImage = imageBase64 != null;
     if (text.isEmpty && !hasImage) return;
     final localOllama = _localOllama;
-    if (localOllama && utf8.encode(text).length > NeuraOllamaChat.maxInputBytes) {
+    if (localOllama &&
+        utf8.encode(text).length > NeuraOllamaChat.maxInputBytes) {
       _showVoiceNotice('Keep offline messages within 1,500 UTF-8 bytes.');
       return;
     }
@@ -1300,6 +1302,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                     value: false,
                     child: Text('Approved cloud / basic local reply')),
               ],
+            ),
+          if (_localOllama && _busy)
+            IconButton(
+              tooltip: 'Stop offline reply',
+              onPressed: _interruptActiveReply,
+              icon: const Icon(Icons.stop_circle_outlined),
             ),
           PopupMenuButton<NeuraConversationMode>(
             tooltip: 'Conversation mode: ${_conversationMode.label}',

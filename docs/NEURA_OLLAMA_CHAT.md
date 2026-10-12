@@ -62,6 +62,8 @@ for today.” The conversation uses Neura's charter, persona, room framing and
 audience instructions. API keys are not required. Existing reply speech settings
 still control the Windows system voice; voice recognition is not installed by
 this change. This version returns the complete reply rather than token deltas.
+While it is working, **Stop offline reply** cancels the current request and keeps
+Offline Ollama selected.
 
 ## Boundaries
 
@@ -154,8 +156,8 @@ That stack remains distinct and includes the open #121 TLS dependency refresh.
 
 | Area | Ollama #127 | llama.cpp #123 + #126 | Later reconciliation |
 | --- | --- | --- | --- |
-| Flutter chat | Explicit Offline Ollama selector using the existing AI-service charter/guardrails | Separate opt-in text-session UI behind `NEURA_ENABLE_OFFLINE_TEXT=true` | `lib/modules/chat/neura_chat_screen.dart` conflicts; keep deliberate provider selection and separate session lifetimes. |
-| Rust modules | `ollama_conversation` with fixed loopback HTTP | Local conversation and owned-child session modules | Both add modules in `rust/src/lib.rs`; retain both if the second provider is deliberately adopted. |
+| Flutter chat | Explicit Offline Ollama selector using the existing AI-service charter/guardrails | Separate opt-in text-session UI behind `NEURA_ENABLE_OFFLINE_TEXT=true` | A three-way merge trial found six conflict sections in `lib/modules/chat/neura_chat_screen.dart` (imports, send path, status and source controls); keep deliberate provider selection and separate session lifetimes. |
+| Rust modules | `ollama_conversation` with fixed loopback HTTP | Local conversation and owned-child session modules | Both add modules in `rust/src/lib.rs`; the three-way trial merges this file cleanly. Retain both if the second provider is deliberately adopted. |
 | Windows owner | Existing primary `NeuraEngineSession`; user owns Ollama daemon | Dedicated `NeuraLocalConversation`; Neura owns suspended/job-assigned llama.cpp children | Preserve each teardown contract; do not apply child-kill behavior to user-owned Ollama. |
 | Model/memory | Fixed Qwen3 4B; 7 GiB total / 3.5 GiB available | Pinned Qwen3.5 2B or 0.8B assets with lower RAM profiles | No automatic provider/model substitution, download or cloud fallback. |
 | Native/build files | Existing DLL packaging rules remain in place | Adds runner sources, owner and CMake/native validation | Current #127 does not modify these overlapping runner files. Re-review the whole combined package if that stack later lands. |
