@@ -76,6 +76,30 @@ void main() {
     expect(left, isNot('journal_prompt_2026-10-10'));
   });
 
+  test('journal prompt lookup includes legacy empty-moodTag entries', () async {
+    final store = LocalJournalStore(
+      now: () => DateTime.utc(2026, 10, 10, 12),
+    );
+    await store.upsertEntry(
+      id: 'journal_prompt_2026-10-10',
+      timestamp: DateTime(2026, 10, 10, 9),
+      content: 'Prompt:\nHow are you?\n\nResponse:\nHere.',
+    );
+
+    final existing = await store.findJournalPromptForDate(
+      DateTime(2026, 10, 10, 20),
+    );
+    final history = await store.findJournalPromptEntries();
+
+    expect(existing?.id, 'journal_prompt_2026-10-10');
+    expect(history.map((entry) => entry.id),
+        contains('journal_prompt_2026-10-10'));
+    expect(
+      LocalJournalStore.journalPromptMoodTagForEntry(existing!),
+      'journal_prompt:2026-10-10',
+    );
+  });
+
   test(
     'failed platform save reloads cache so identical retry writes durably',
     () async {

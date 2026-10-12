@@ -51,7 +51,7 @@ class _JournalPromptScreenState extends State<JournalPromptScreen> {
   Future<void> _loadPrompt() async {
     final now = _now();
     final moodTag = LocalJournalStore.journalPromptMoodTag(now);
-    final existing = await _journalStore.findLatestByMoodTag(moodTag);
+    final existing = await _journalStore.findJournalPromptForDate(now);
     final prompt = existing == null
         ? await _service.fetchPrompt(time: now)
         : _JournalPromptEntryCodec.decode(existing.content).prompt ??
@@ -88,7 +88,7 @@ class _JournalPromptScreenState extends State<JournalPromptScreen> {
   }
 
   Future<List<JournalEntry>> _loadHistory() =>
-      _journalStore.findAll(moodTagPrefix: 'journal_prompt:', isVoice: false);
+      _journalStore.findJournalPromptEntries();
 
   Future<void> _saveResponse() async {
     final response = _controller.text.trim();
@@ -141,11 +141,31 @@ class _JournalPromptScreenState extends State<JournalPromptScreen> {
     setState(() {
       _prompt = prompt;
       _entryId = entry.id;
-      _moodTag = entry.moodTag;
+      _moodTag = LocalJournalStore.journalPromptMoodTagForEntry(entry);
       _savedResponse = decoded.response;
       _draftRevision++;
       _status = 'Saved response reopened.';
     });
+  }
+
+  Future<void> _showAllSavedResponses() async {
+    final selected = await showModalBottomSheet<JournalEntry>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListView.builder(
+          itemCount: _history.length,
+          itemBuilder: (context, index) {
+            final entry = _history[index];
+            return ListTile(
+              leading: const Icon(Icons.history_outlined),
+              title: Text(_JournalPromptEntryCodec.historyLabel(entry)),
+              onTap: () => Navigator.of(context).pop(entry),
+            );
+          },
+        ),
+      ),
+    );
+    if (selected != null) await _openSavedResponse(selected);
   }
 
   void _discardDraft() {
@@ -261,6 +281,12 @@ class _JournalPromptScreenState extends State<JournalPromptScreen> {
                           ),
                         ),
                       ),
+                    if (_history.length > 8)
+                      TextButton.icon(
+                        onPressed: _saving ? null : _showAllSavedResponses,
+                        icon: const Icon(Icons.list_alt_outlined),
+                        label: const Text('Show all saved responses'),
+                      ),
                   ],
                 ],
               ),
@@ -295,9 +321,8 @@ final class _JournalPromptEntryCodec {
   }
 
   static String historyLabel(JournalEntry entry) {
-    final date = entry.moodTag.startsWith('journal_prompt:')
-        ? entry.moodTag.substring('journal_prompt:'.length)
-        : LocalJournalStore.datePart(entry.timestamp);
+    final moodTag = LocalJournalStore.journalPromptMoodTagForEntry(entry);
+    final date = moodTag.substring('journal_prompt:'.length);
     final prompt = decode(entry.content).prompt;
     return prompt == null ? date : '$date - $prompt';
   }

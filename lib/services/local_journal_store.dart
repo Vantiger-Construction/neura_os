@@ -36,6 +36,33 @@ class LocalJournalStore {
   static String journalPromptMoodTag(DateTime time) =>
       'journal_prompt:${datePart(time)}';
 
+  static String legacyJournalPromptId(DateTime time) =>
+      'journal_prompt_${datePart(time)}';
+
+  static final _legacyPromptIdDate = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+
+  static bool isLegacyJournalPromptEntry(JournalEntry entry) {
+    const prefix = 'journal_prompt_';
+    const promptPrefix = 'Prompt:\n';
+    const responseSeparator = '\n\nResponse:\n';
+    if (entry.isVoice || entry.moodTag.isNotEmpty) return false;
+    if (!entry.id.startsWith(prefix)) return false;
+    final suffix = entry.id.substring(prefix.length);
+    return _legacyPromptIdDate.hasMatch(suffix) &&
+        entry.content.startsWith(promptPrefix) &&
+        entry.content.contains(responseSeparator);
+  }
+
+  static bool isJournalPromptEntry(JournalEntry entry) =>
+      !entry.isVoice &&
+      (entry.moodTag.startsWith('journal_prompt:') ||
+          isLegacyJournalPromptEntry(entry));
+
+  static String journalPromptMoodTagForEntry(JournalEntry entry) {
+    if (entry.moodTag.startsWith('journal_prompt:')) return entry.moodTag;
+    return journalPromptMoodTag(entry.timestamp);
+  }
+
   Future<List<JournalEntry>> loadEntries() async {
     final raw = NeuraPrefsCache.prefs.getStringList(storageKey) ?? const [];
     return raw
@@ -84,6 +111,27 @@ class LocalJournalStore {
       if (entry.moodTag == moodTag) return entry;
     }
     return null;
+  }
+
+  Future<JournalEntry?> findJournalPromptForDate(DateTime time) async {
+    final moodTag = journalPromptMoodTag(time);
+    final legacyId = legacyJournalPromptId(time);
+    final entries = await loadEntries();
+    for (final entry in entries) {
+      if (!entry.isVoice && entry.moodTag == moodTag) return entry;
+    }
+    for (final entry in entries) {
+      if (entry.id == legacyId && isLegacyJournalPromptEntry(entry)) {
+        return entry;
+      }
+    }
+    return null;
+  }
+
+  Future<List<JournalEntry>> findJournalPromptEntries() async {
+    return (await loadEntries())
+        .where(isJournalPromptEntry)
+        .toList(growable: false);
   }
 
   Future<List<JournalEntry>> findAll({

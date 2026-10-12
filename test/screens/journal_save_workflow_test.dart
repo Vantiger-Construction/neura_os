@@ -100,6 +100,8 @@ void main() {
       await tester.pumpAndSettle();
 
       now = DateTime(2026, 10, 11, 21);
+      await tester.pumpWidget(_largeTextApp(const SizedBox.shrink()));
+      await tester.pumpAndSettle();
       await tester.pumpWidget(
         _largeTextApp(
           JournalPromptScreen(
@@ -118,6 +120,11 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'Updated response.');
       await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Save response'),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.tap(find.text('Save response'));
       await tester.pumpAndSettle();
 
@@ -130,17 +137,56 @@ void main() {
   );
 
   testWidgets(
+    'legacy prompt response with empty moodTag reopens and migrates on save',
+    (tester) async {
+      final store = LocalJournalStore(
+        now: () => DateTime.utc(2026, 10, 11, 9),
+      );
+      await store.upsertEntry(
+        id: 'journal_prompt_2026-10-11',
+        timestamp: DateTime(2026, 10, 11, 9),
+        content: 'Prompt:\nLegacy prompt\n\nResponse:\nLegacy response.',
+      );
+
+      await tester.pumpWidget(
+        _largeTextApp(
+          JournalPromptScreen(
+            promptService: _FixedPromptService('New prompt'),
+            journalStore: store,
+            now: () => DateTime(2026, 10, 11, 21),
+            entryIdFactory: (_) => 'journal_prompt_new_uuid',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Legacy prompt'), findsOneWidget);
+      expect(find.text('New prompt'), findsNothing);
+      expect(find.text('Legacy response.'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'Migrated response.');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save response'));
+      await tester.pumpAndSettle();
+
+      final saved = await store.findById('journal_prompt_2026-10-11');
+      expect(saved, isNotNull);
+      expect(saved!.moodTag, 'journal_prompt:2026-10-11');
+      expect(saved.content, contains('Legacy prompt'));
+      expect(saved.content, contains('Migrated response.'));
+      expect(await store.findById('journal_prompt_new_uuid'), isNull);
+    },
+  );
+
+  testWidgets(
     'prompt history can reopen a prior-day saved response',
     (tester) async {
       final store = LocalJournalStore(
         now: () => DateTime.utc(2026, 10, 11, 9),
       );
       await store.upsertEntry(
-        id: 'journal_prompt_prior_day',
+        id: 'journal_prompt_2026-10-10',
         timestamp: DateTime(2026, 10, 10, 9),
-        moodTag: LocalJournalStore.journalPromptMoodTag(
-          DateTime(2026, 10, 10, 9),
-        ),
         content: 'Prompt:\nPrior prompt\n\nResponse:\nPrior response.',
       );
 
@@ -173,6 +219,67 @@ void main() {
       expect(find.text('Prior response.', skipOffstage: false), findsOneWidget);
     },
   );
+
+  testWidgets('prompt history show-all reaches older saved responses',
+      (tester) async {
+    final store = LocalJournalStore(
+      now: () => DateTime.utc(2026, 10, 20, 9),
+    );
+    for (var i = 0; i < 10; i++) {
+      final day = 10 + i;
+      final time = DateTime(2026, 10, day, 9);
+      await store.upsertEntry(
+        id: 'journal_prompt_2026-10-$day',
+        timestamp: time,
+        moodTag: LocalJournalStore.journalPromptMoodTag(time),
+        content: 'Prompt:\nPrompt $i\n\nResponse:\nResponse $i.',
+      );
+    }
+
+    await tester.pumpWidget(
+      _largeTextApp(
+        JournalPromptScreen(
+          promptService: _FixedPromptService('Today prompt'),
+          journalStore: store,
+          now: () => DateTime(2026, 10, 20, 9),
+          entryIdFactory: (_) => 'journal_prompt_today',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final showAllResponsesButton = find.ancestor(
+      of: find.text('Show all saved responses'),
+      matching: find.byType(TextButton),
+    );
+    await tester.scrollUntilVisible(
+      showAllResponsesButton,
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    tester.widget<TextButton>(showAllResponsesButton).onPressed!();
+    await tester.pumpAndSettle();
+    final promptZeroTile = find.ancestor(
+      of: find.textContaining('Prompt 0'),
+      matching: find.byType(ListTile),
+    );
+    await tester.scrollUntilVisible(
+      promptZeroTile,
+      120,
+      scrollable: find.byType(Scrollable).last,
+    );
+    tester.widget<ListTile>(promptZeroTile).onTap!();
+    await tester.pumpAndSettle();
+    tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position
+        .jumpTo(0);
+    await tester.pumpAndSettle();
+
+    expect(
+        find.textContaining('Prompt 0', skipOffstage: false), findsOneWidget);
+    expect(find.text('Response 0.', skipOffstage: false), findsOneWidget);
+  });
 
   testWidgets(
     'voice save failure keeps editable transcript under nonlinear large text',
@@ -255,6 +362,110 @@ void main() {
       );
     },
   );
+
+  testWidgets(
+    'voice history is disabled while active transcripts are streaming',
+    (tester) async {
+      final store = LocalJournalStore();
+      final service = _FakeVoiceJournalService();
+      await store.upsertEntry(
+        id: 'voice_saved_1',
+        content: 'Earlier voice note.',
+        isVoice: true,
+      );
+
+      await tester.pumpWidget(
+        _largeTextApp(
+          VoiceJournalScreen(
+            journalStore: store,
+            service: service,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Start listening'));
+      await tester.pumpAndSettle();
+      service.emit('live transcript one');
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.textContaining('Earlier voice note'),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final historyButton = find.ancestor(
+        of: find.textContaining('Earlier voice note'),
+        matching: find.byType(OutlinedButton),
+      );
+      expect(tester.widget<OutlinedButton>(historyButton).onPressed, isNull);
+      await tester.pumpAndSettle();
+      service.emit('live transcript two');
+      await tester.pumpAndSettle();
+      await service.stopRecording();
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Save to journal'),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('Save to journal'));
+      await tester.pumpAndSettle();
+
+      final saved = await store.findById('voice_saved_1');
+      expect(saved?.content, 'Earlier voice note.');
+      final entries = await store.findAll(isVoice: true);
+      expect(entries.where((entry) => entry.content == 'live transcript two'),
+          hasLength(1));
+    },
+  );
+
+  testWidgets('voice history show-all reaches older saved transcripts',
+      (tester) async {
+    final store = LocalJournalStore();
+    for (var i = 0; i < 10; i++) {
+      await store.upsertEntry(
+        id: 'voice_saved_$i',
+        timestamp: DateTime(2026, 10, 10 + i, 9),
+        content: 'Voice note $i.',
+        isVoice: true,
+      );
+    }
+
+    await tester.pumpWidget(
+      _largeTextApp(
+        VoiceJournalScreen(
+          journalStore: store,
+          service: _FakeVoiceJournalService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final showAllTranscriptsButton = find.ancestor(
+      of: find.text('Show all saved transcripts'),
+      matching: find.byType(TextButton),
+    );
+    await tester.scrollUntilVisible(
+      showAllTranscriptsButton,
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    tester.widget<TextButton>(showAllTranscriptsButton).onPressed!();
+    await tester.pumpAndSettle();
+    final voiceZeroTile = find.ancestor(
+      of: find.textContaining('Voice note 0'),
+      matching: find.byType(ListTile),
+    );
+    await tester.scrollUntilVisible(
+      voiceZeroTile,
+      120,
+      scrollable: find.byType(Scrollable).last,
+    );
+    tester.widget<ListTile>(voiceZeroTile).onTap!();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Voice note 0.', skipOffstage: false), findsOneWidget);
+  });
 }
 
 Widget _largeTextApp(Widget home) {
@@ -318,12 +529,30 @@ class _FailingJournalStore extends LocalJournalStore {
 class _FakeVoiceJournalService extends VoiceJournalService {
   final StreamController<String> _stream = StreamController<String>.broadcast();
   final ValueNotifier<bool> _recording = ValueNotifier<bool>(false);
+  String _current = '';
 
   @override
   Stream<String> get transcriptStream => _stream.stream;
 
   @override
   ValueListenable<bool> get recording => _recording;
+
+  void emit(String text) {
+    _current = text;
+    _stream.add(text);
+  }
+
+  @override
+  Future<bool> startRecording() async {
+    _recording.value = true;
+    return true;
+  }
+
+  @override
+  Future<String> stopRecording() async {
+    _recording.value = false;
+    return _current;
+  }
 
   @override
   Future<void> dispose() async {

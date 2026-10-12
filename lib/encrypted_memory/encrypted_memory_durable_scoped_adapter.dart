@@ -34,8 +34,13 @@ final class EncryptedMemoryDurableScopedAdapter {
     required this.keyLifecycle,
     Future<EncryptedMemoryDurableCrypto> Function()? loadCrypto,
     this.storageKey = defaultStorageKey,
-  }) : _loadCrypto = loadCrypto ??
-            (() async => MemoryCryptoDurableAdapter(await MemoryCrypto.demo()));
+  })  : _loadCrypto = loadCrypto ??
+            (() async => MemoryCryptoDurableAdapter(await MemoryCrypto.demo())),
+        _state = _DurableScopedStorageRegistry.stateFor(storageKey) {
+    if (!NeuraPrefsCache.prefs.containsKey(storageKey)) {
+      _state.resetIfStorageMissing();
+    }
+  }
 
   static const defaultStorageKey = 'neura.encrypted_memory.scoped.v1';
 
@@ -43,9 +48,11 @@ final class EncryptedMemoryDurableScopedAdapter {
   final EncryptedMemoryKeyLifecycle keyLifecycle;
   final Future<EncryptedMemoryDurableCrypto> Function() _loadCrypto;
   final String storageKey;
-  final Map<String, EncryptedMemorySessionRecord> _records = {};
-  final Map<String, EncryptedMemorySessionRecord> _quarantine = {};
-  Future<void> _mutationTail = Future<void>.value();
+  final _DurableScopedStorageState _state;
+
+  Map<String, EncryptedMemorySessionRecord> get _records => _state.records;
+  Map<String, EncryptedMemorySessionRecord> get _quarantine =>
+      _state.quarantine;
 
   int get recordCount => _records.length;
   int get quarantinedRecordCount => _quarantine.length;
@@ -53,28 +60,53 @@ final class EncryptedMemoryDurableScopedAdapter {
   Future<void> restore({
     required NeuraSafetyContext safetyContext,
     required int expectedKeyGeneration,
-  }) async {
-    await _mutationTail;
-    _requireAvailable(safetyContext, expectedKeyGeneration);
-    final blob = NeuraPrefsCache.prefs.getString(storageKey);
-    _records.clear();
-    _quarantine.clear();
-    if (blob == null) return;
-    final clear = await (await _loadCrypto()).decryptJson(blob);
-    if (clear['schema'] != 1) {
-      throw const EncryptedMemoryPolicyViolation('durable_schema_mismatch');
-    }
-    for (final raw in (clear['records'] as List? ?? const [])) {
-      final record = _recordFromJson(Map<String, dynamic>.from(raw as Map));
-      _requireRestorable(record, expectedKeyGeneration);
-      _records[record.id] = record;
-    }
-    for (final raw in (clear['quarantine'] as List? ?? const [])) {
-      final record = _recordFromJson(Map<String, dynamic>.from(raw as Map));
-      _requireRestorable(record, expectedKeyGeneration);
-      _quarantine[record.id] = record;
-    }
-  }
+  }) =>
+      _serializedMutation(
+        () async {
+          _requireAvailable(safetyContext, expectedKeyGeneration);
+          final blob = NeuraPrefsCache.prefs.getString(storageKey);
+          if (blob == null) {
+            _requireAvailable(safetyContext, expectedKeyGeneration);
+            _publishRestored(
+              records: const {},
+              quarantine: const {},
+            );
+            return;
+          }
+
+          final crypto = await _loadCrypto();
+          _requireAvailable(safetyContext, expectedKeyGeneration);
+          final clear = await crypto.decryptJson(blob);
+          _requireAvailable(safetyContext, expectedKeyGeneration);
+          if (clear['schema'] != 1) {
+            throw const EncryptedMemoryPolicyViolation(
+              'durable_schema_mismatch',
+            );
+          }
+
+          final restoredRecords = <String, EncryptedMemorySessionRecord>{};
+          final restoredQuarantine = <String, EncryptedMemorySessionRecord>{};
+          for (final raw in (clear['records'] as List? ?? const [])) {
+            final record =
+                _recordFromJson(Map<String, dynamic>.from(raw as Map));
+            _requireRestorable(record, expectedKeyGeneration);
+            restoredRecords[record.id] = record;
+          }
+          for (final raw in (clear['quarantine'] as List? ?? const [])) {
+            final record =
+                _recordFromJson(Map<String, dynamic>.from(raw as Map));
+            _requireRestorable(record, expectedKeyGeneration);
+            restoredQuarantine[record.id] = record;
+          }
+
+          _requireAvailable(safetyContext, expectedKeyGeneration);
+          _publishRestored(
+            records: restoredRecords,
+            quarantine: restoredQuarantine,
+          );
+        },
+        allowReconciliation: true,
+      );
 
   Future<void> remember({
     required EncryptedMemoryConsentLease lease,
@@ -102,7 +134,10 @@ final class EncryptedMemoryDurableScopedAdapter {
         } else {
           _records[record.id] = record;
         }
-        await _persist(expectedKeyGeneration);
+        await _persist(
+          safetyContext: safetyContext,
+          expectedKeyGeneration: expectedKeyGeneration,
+        );
       });
 
   EncryptedMemorySessionRecord? recall({
@@ -118,6 +153,11 @@ final class EncryptedMemoryDurableScopedAdapter {
     required int expectedKeyGeneration,
     required DateTime nowUtc,
   }) {
+    if (_state.reconciliationRequired) {
+      throw const EncryptedMemoryPolicyViolation(
+        'durable_reconciliation_required',
+      );
+    }
     _requireAvailable(safetyContext, expectedKeyGeneration);
     _requireUtc(nowUtc);
     lease.consumeFor(
@@ -200,7 +240,10 @@ final class EncryptedMemoryDurableScopedAdapter {
           createdAtUtc: record.createdAtUtc,
           keyGeneration: record.keyGeneration,
         );
-        await _persist(expectedKeyGeneration);
+        await _persist(
+          safetyContext: safetyContext,
+          expectedKeyGeneration: expectedKeyGeneration,
+        );
         return true;
       });
 
@@ -240,7 +283,12 @@ final class EncryptedMemoryDurableScopedAdapter {
           sensitivity,
           expectedKeyGeneration,
         );
-        if (removed) await _persist(expectedKeyGeneration);
+        if (removed) {
+          await _persist(
+            safetyContext: safetyContext,
+            expectedKeyGeneration: expectedKeyGeneration,
+          );
+        }
         return removed;
       });
 
@@ -295,7 +343,10 @@ final class EncryptedMemoryDurableScopedAdapter {
             expectedKeyGeneration,
           ),
         );
-        await _persist(expectedKeyGeneration);
+        await _persist(
+          safetyContext: safetyContext,
+          expectedKeyGeneration: expectedKeyGeneration,
+        );
       });
 
   Future<bool> reviewQuarantined({
@@ -360,9 +411,25 @@ final class EncryptedMemoryDurableScopedAdapter {
         } else {
           _quarantine.remove(recordId);
         }
-        await _persist(expectedKeyGeneration);
+        await _persist(
+          safetyContext: safetyContext,
+          expectedKeyGeneration: expectedKeyGeneration,
+        );
         return true;
       });
+
+  void _publishRestored({
+    required Map<String, EncryptedMemorySessionRecord> records,
+    required Map<String, EncryptedMemorySessionRecord> quarantine,
+  }) {
+    _records
+      ..clear()
+      ..addAll(records);
+    _quarantine
+      ..clear()
+      ..addAll(quarantine);
+    _state.clearReconciliation();
+  }
 
   bool _removeMatching(
     String recordId,
@@ -413,9 +480,18 @@ final class EncryptedMemoryDurableScopedAdapter {
         expectedKeyGeneration: expectedKeyGeneration,
       );
 
-  Future<T> _serializedMutation<T>(Future<T> Function() action) {
-    final previous = _mutationTail;
+  Future<T> _serializedMutation<T>(
+    Future<T> Function() action, {
+    bool allowReconciliation = false,
+  }) {
+    final previous = _state.mutationTail;
+    _state.startMutation();
     final result = previous.then((_) async {
+      if (_state.reconciliationRequired && !allowReconciliation) {
+        throw const EncryptedMemoryPolicyViolation(
+          'durable_reconciliation_required',
+        );
+      }
       final recordsBefore = Map<String, EncryptedMemorySessionRecord>.of(
         _records,
       );
@@ -434,24 +510,30 @@ final class EncryptedMemoryDurableScopedAdapter {
         Error.throwWithStackTrace(error, stackTrace);
       }
     });
-    _mutationTail = result.then<void>(
-      (_) {},
-      onError: (Object error, StackTrace stackTrace) {},
-    );
+    _state.mutationTail = result
+        .whenComplete(_state.finishMutation)
+        .then<void>((_) {}, onError: (Object error, StackTrace stackTrace) {});
     return result;
   }
 
-  Future<void> _persist(int expectedKeyGeneration) async {
-    keyLifecycle.requireUsableGeneration(expectedKeyGeneration);
+  Future<void> _persist({
+    required NeuraSafetyContext safetyContext,
+    required int expectedKeyGeneration,
+  }) async {
+    _requireAvailable(safetyContext, expectedKeyGeneration);
     if (_records.isEmpty && _quarantine.isEmpty) {
+      var removeAttempted = false;
       try {
+        _requireAvailable(safetyContext, expectedKeyGeneration);
+        removeAttempted = true;
         final removed = await NeuraPrefsCache.prefs.remove(storageKey);
         await NeuraPrefsCache.prefs.reload();
         if (!removed || NeuraPrefsCache.prefs.containsKey(storageKey)) {
           throw const EncryptedMemoryPolicyViolation('durable_remove_failed');
         }
-        keyLifecycle.requireUsableGeneration(expectedKeyGeneration);
+        _requireAvailable(safetyContext, expectedKeyGeneration);
       } catch (error, stackTrace) {
+        if (removeAttempted) _state.requireReconciliation();
         try {
           await NeuraPrefsCache.prefs.reload();
         } catch (_) {}
@@ -465,15 +547,18 @@ final class EncryptedMemoryDurableScopedAdapter {
       'quarantine': _quarantine.values.map(_recordToJson).toList(),
     };
     final blob = await (await _loadCrypto()).encryptJson(clear);
-    keyLifecycle.requireUsableGeneration(expectedKeyGeneration);
+    _requireAvailable(safetyContext, expectedKeyGeneration);
+    var writeAttempted = false;
     try {
+      writeAttempted = true;
       final saved = await NeuraPrefsCache.prefs.setString(storageKey, blob);
       await NeuraPrefsCache.prefs.reload();
       if (!saved || NeuraPrefsCache.prefs.getString(storageKey) != blob) {
         throw const EncryptedMemoryPolicyViolation('durable_write_failed');
       }
-      keyLifecycle.requireUsableGeneration(expectedKeyGeneration);
+      _requireAvailable(safetyContext, expectedKeyGeneration);
     } catch (error, stackTrace) {
+      if (writeAttempted) _state.requireReconciliation();
       try {
         await NeuraPrefsCache.prefs.reload();
       } catch (_) {}
@@ -526,6 +611,45 @@ final class EncryptedMemoryDurableScopedAdapter {
         'record_key_generation_mismatch',
       );
     }
+  }
+}
+
+final class _DurableScopedStorageRegistry {
+  static final Map<String, _DurableScopedStorageState> _states = {};
+
+  static _DurableScopedStorageState stateFor(String storageKey) =>
+      _states.putIfAbsent(storageKey, _DurableScopedStorageState.new);
+}
+
+final class _DurableScopedStorageState {
+  final Map<String, EncryptedMemorySessionRecord> records = {};
+  final Map<String, EncryptedMemorySessionRecord> quarantine = {};
+  Future<void> mutationTail = Future<void>.value();
+  bool reconciliationRequired = false;
+  int pendingMutations = 0;
+
+  void startMutation() {
+    pendingMutations++;
+  }
+
+  void finishMutation() {
+    pendingMutations--;
+  }
+
+  void requireReconciliation() {
+    reconciliationRequired = true;
+  }
+
+  void clearReconciliation() {
+    reconciliationRequired = false;
+  }
+
+  void resetIfStorageMissing() {
+    if (pendingMutations > 0) return;
+    records.clear();
+    quarantine.clear();
+    reconciliationRequired = false;
+    mutationTail = Future<void>.value();
   }
 }
 

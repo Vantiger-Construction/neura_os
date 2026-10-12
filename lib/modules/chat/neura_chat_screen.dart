@@ -185,6 +185,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     if (!mounted || !_localSession.canStart) return;
     setState(() {
       _localSelected = true;
+      _localOllama = false;
       ++_localSerial;
       _localLines.clear();
       _controller.clear();
@@ -1449,6 +1450,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                   ? 'Offline Ollama'
                   : 'Approved cloud / basic local reply',
               icon: Icon(_localOllama ? Icons.computer : Icons.cloud_outlined),
+              enabled: !_localSelected,
               onSelected: (local) async {
                 await _interruptActiveReply();
                 if (!mounted) return;
@@ -1714,22 +1716,21 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                         _localSelected ? 'offline-$_localSerial' : 'standard',
                       ),
                       controller: _controller,
-                      inputFormatters: _localOllama
-                          ? const [NeuraOllamaTextInputFormatter()]
-                          : _localSelected
-                              ? [
-                                  TextInputFormatter.withFunction(
-                                      (oldValue, newValue) {
-                                    // Check code units first to avoid encoding an
-                                    // unbounded paste or combining-character cluster.
-                                    if (newValue.text.length > 2048 ||
-                                        utf8.encode(newValue.text).length >
-                                            2048) {
-                                      return oldValue;
-                                    }
-                                    return newValue;
-                                  })
-                                ]
+                      inputFormatters: _localSelected
+                          ? [
+                              TextInputFormatter.withFunction(
+                                  (oldValue, newValue) {
+                                // Check code units first to avoid encoding an
+                                // unbounded paste or combining-character cluster.
+                                if (newValue.text.length > 2048 ||
+                                    utf8.encode(newValue.text).length > 2048) {
+                                  return oldValue;
+                                }
+                                return newValue;
+                              })
+                            ]
+                          : _localOllama
+                              ? const [NeuraOllamaTextInputFormatter()]
                               : null,
                       enabled: true,
                       enableIMEPersonalizedLearning: !_localSelected,

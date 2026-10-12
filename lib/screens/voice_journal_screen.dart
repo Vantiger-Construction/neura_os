@@ -50,6 +50,7 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
     _sub = _service.transcriptStream.listen((text) {
       if (!mounted) return;
+      if (!_recording && !_service.recording.value) return;
       setState(() {
         _transcript = text;
         _controller.text = text;
@@ -146,6 +147,7 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
   }
 
   Future<void> _openSavedTranscript(JournalEntry entry) async {
+    if (_recording) return;
     if (_hasUnsavedDraft && !await _confirmDiscardDraft()) return;
     _controller.text = entry.content;
     if (!mounted) return;
@@ -156,6 +158,27 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
       _draftRevision++;
       _saveStatus = 'Saved transcript reopened.';
     });
+  }
+
+  Future<void> _showAllSavedTranscripts() async {
+    if (_recording) return;
+    final selected = await showModalBottomSheet<JournalEntry>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListView.builder(
+          itemCount: _history.length,
+          itemBuilder: (context, index) {
+            final entry = _history[index];
+            return ListTile(
+              leading: const Icon(Icons.history_outlined),
+              title: Text(_historyLabel(entry)),
+              onTap: () => Navigator.of(context).pop(entry),
+            );
+          },
+        ),
+      ),
+    );
+    if (selected != null) await _openSavedTranscript(selected);
   }
 
   void _discardDraft() {
@@ -311,8 +334,9 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: OutlinedButton.icon(
-                        onPressed:
-                            _saving ? null : () => _openSavedTranscript(entry),
+                        onPressed: _saving || _recording
+                            ? null
+                            : () => _openSavedTranscript(entry),
                         icon: const Icon(Icons.history_outlined),
                         label: Align(
                           alignment: Alignment.centerLeft,
@@ -322,6 +346,14 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
                           ),
                         ),
                       ),
+                    ),
+                  if (_history.length > 8)
+                    TextButton.icon(
+                      onPressed: _saving || _recording
+                          ? null
+                          : _showAllSavedTranscripts,
+                      icon: const Icon(Icons.list_alt_outlined),
+                      label: const Text('Show all saved transcripts'),
                     ),
                 ],
                 const SizedBox(height: 12),
@@ -343,7 +375,7 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
                 if (_hasUnsavedDraft) ...[
                   const SizedBox(height: 8),
                   TextButton.icon(
-                    onPressed: _saving ? null : _discardDraft,
+                    onPressed: _saving || _recording ? null : _discardDraft,
                     icon: const Icon(Icons.delete_outline),
                     label: const Text('Discard draft'),
                   ),

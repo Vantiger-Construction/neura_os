@@ -58,10 +58,11 @@ void main() {
       );
 
   EncryptedMemorySessionRecord record({
+    String id = 'record-1',
     String value = 'Prefers concise text.',
   }) {
     return EncryptedMemorySessionRecord(
-      id: 'record-1',
+      id: id,
       ownerId: 'owner-1',
       deviceId: 'device-1',
       capsuleId: 'personal',
@@ -69,7 +70,7 @@ void main() {
       sensitivity: EncryptedMemorySensitivity.personal,
       provenance: EncryptedMemoryProvenance(
         source: EncryptedMemorySource.authenticatedUser,
-        sourceId: 'source-1',
+        sourceId: 'source-$id',
         authorId: 'owner-1',
         reason: 'user_tapped_remember',
         trustTier: EncryptedMemoryTrustTier.authenticatedUser,
@@ -86,12 +87,13 @@ void main() {
   EncryptedMemorySessionRecord? recall(
     EncryptedMemoryDurableScopedAdapter subject,
     EncryptedMemoryConsentLease recallLease, {
+    String recordId = 'record-1',
     String deviceId = 'device-1',
   }) {
     return subject.recall(
       lease: recallLease,
       safetyContext: context,
-      recordId: 'record-1',
+      recordId: recordId,
       ownerId: 'owner-1',
       deviceId: deviceId,
       capsuleId: 'personal',
@@ -418,6 +420,255 @@ void main() {
     );
   });
 
+  test('delayed restore cannot resurrect after queued wipe and next write',
+      () async {
+    final seeded = adapter();
+    await seeded.remember(
+      lease: lease('remember-1', EncryptedMemoryOperation.remember),
+      safetyContext: context,
+      record: record(),
+      expectedKeyGeneration: keys.generation,
+      nowUtc: issuedAt.add(const Duration(seconds: 1)),
+    );
+
+    final delayedCrypto = _BlockingDecryptDurableCrypto();
+    final subject = EncryptedMemoryDurableScopedAdapter(
+      safetyPolicy: NeuraLivingSafetyPolicy(safeModeReader: () => false),
+      keyLifecycle: keys,
+      loadCrypto: () async => delayedCrypto,
+    );
+    final restore = subject.restore(
+      safetyContext: context,
+      expectedKeyGeneration: keys.generation,
+    );
+    await delayedCrypto.waitForFirstDecrypt();
+    final wipe = subject.wipeScope(
+      lease: lease('wipe-1', EncryptedMemoryOperation.wipe),
+      safetyContext: context,
+      ownerId: 'owner-1',
+      deviceId: 'device-1',
+      capsuleId: 'personal',
+      memoryClass: EncryptedMemoryClass.explicitPreference,
+      source: EncryptedMemorySource.authenticatedUser,
+      sensitivity: EncryptedMemorySensitivity.personal,
+      expectedKeyGeneration: keys.generation,
+      nowUtc: issuedAt.add(const Duration(seconds: 2)),
+      contract: const EncryptedMemoryWipeContract(
+        stopWritersFirst: true,
+        deleteCiphertext: true,
+        destroyKey: false,
+        verifyCiphertextDeletion: true,
+        verifyKeyDeletion: false,
+      ),
+    );
+    delayedCrypto.releaseFirstDecrypt();
+
+    await restore;
+    await wipe;
+    expect(subject.recordCount, 0);
+
+    await subject.remember(
+      lease: lease('remember-2', EncryptedMemoryOperation.remember),
+      safetyContext: context,
+      record: record(id: 'record-2', value: 'Prefers evening walks.'),
+      expectedKeyGeneration: keys.generation,
+      nowUtc: issuedAt.add(const Duration(seconds: 3)),
+    );
+
+    final restarted = adapter();
+    await restarted.restore(
+      safetyContext: context,
+      expectedKeyGeneration: keys.generation,
+    );
+    expect(
+      recall(restarted, lease('recall-1', EncryptedMemoryOperation.recall)),
+      isNull,
+    );
+    expect(restarted.recordCount, 1);
+    expect(
+      recall(
+        restarted,
+        lease('recall-2', EncryptedMemoryOperation.recall),
+        recordId: 'record-2',
+      )?.value,
+      'Prefers evening walks.',
+    );
+  });
+
+  test('sibling adapters cannot persist a forgotten stale record', () async {
+    final seeded = adapter();
+    await seeded.remember(
+      lease: lease('remember-1', EncryptedMemoryOperation.remember),
+      safetyContext: context,
+      record: record(),
+      expectedKeyGeneration: keys.generation,
+      nowUtc: issuedAt.add(const Duration(seconds: 1)),
+    );
+
+    final first = adapter();
+    await first.restore(
+      safetyContext: context,
+      expectedKeyGeneration: keys.generation,
+    );
+    final second = adapter();
+    await second.restore(
+      safetyContext: context,
+      expectedKeyGeneration: keys.generation,
+    );
+
+    expect(
+      await first.forget(
+        lease: lease('forget-1', EncryptedMemoryOperation.forget),
+        safetyContext: context,
+        recordId: 'record-1',
+        ownerId: 'owner-1',
+        deviceId: 'device-1',
+        capsuleId: 'personal',
+        memoryClass: EncryptedMemoryClass.explicitPreference,
+        source: EncryptedMemorySource.authenticatedUser,
+        sensitivity: EncryptedMemorySensitivity.personal,
+        expectedKeyGeneration: keys.generation,
+        nowUtc: issuedAt.add(const Duration(seconds: 2)),
+      ),
+      isTrue,
+    );
+    await second.remember(
+      lease: lease('remember-2', EncryptedMemoryOperation.remember),
+      safetyContext: context,
+      record: record(id: 'record-2', value: 'Prefers evening walks.'),
+      expectedKeyGeneration: keys.generation,
+      nowUtc: issuedAt.add(const Duration(seconds: 3)),
+    );
+
+    final restarted = adapter();
+    await restarted.restore(
+      safetyContext: context,
+      expectedKeyGeneration: keys.generation,
+    );
+    expect(
+      recall(restarted, lease('recall-1', EncryptedMemoryOperation.recall)),
+      isNull,
+    );
+    expect(restarted.recordCount, 1);
+  });
+
+  test('commit-time safe mode blocks a stale pending durable write', () async {
+    var safeMode = false;
+    final delayedCrypto = _BlockingDurableCrypto();
+    final subject = EncryptedMemoryDurableScopedAdapter(
+      safetyPolicy: NeuraLivingSafetyPolicy(safeModeReader: () => safeMode),
+      keyLifecycle: keys,
+      loadCrypto: () async => delayedCrypto,
+    );
+
+    final remember = subject.remember(
+      lease: lease('remember-1', EncryptedMemoryOperation.remember),
+      safetyContext: context,
+      record: record(),
+      expectedKeyGeneration: keys.generation,
+      nowUtc: issuedAt.add(const Duration(seconds: 1)),
+    );
+    await delayedCrypto.waitForFirstEncrypt();
+    safeMode = true;
+    delayedCrypto.releaseFirstEncrypt();
+
+    await expectLater(
+      remember,
+      throwsA(
+        isA<EncryptedMemoryPolicyViolation>().having(
+          (error) => error.code,
+          'code',
+          'safe_mode_blocked',
+        ),
+      ),
+    );
+    expect(subject.recordCount, 0);
+    expect(
+      NeuraPrefsCache.prefs.containsKey(
+        EncryptedMemoryDurableScopedAdapter.defaultStorageKey,
+      ),
+      isFalse,
+    );
+  });
+
+  test(
+    'committed write followed by reload failure requires reconciliation',
+    () async {
+      final original = SharedPreferencesStorePlatform.instance;
+      final platform = _ReloadFailingAfterSetPreferencesStore();
+      SharedPreferencesStorePlatform.instance = platform;
+      await NeuraPrefsCache.prefs.reload();
+      try {
+        final subject = adapter();
+        await expectLater(
+          subject.remember(
+            lease: lease('remember-1', EncryptedMemoryOperation.remember),
+            safetyContext: context,
+            record: record(),
+            expectedKeyGeneration: keys.generation,
+            nowUtc: issuedAt.add(const Duration(seconds: 1)),
+          ),
+          throwsA(isA<StateError>()),
+        );
+
+        await expectLater(
+          subject.forget(
+            lease: lease('forget-1', EncryptedMemoryOperation.forget),
+            safetyContext: context,
+            recordId: 'record-1',
+            ownerId: 'owner-1',
+            deviceId: 'device-1',
+            capsuleId: 'personal',
+            memoryClass: EncryptedMemoryClass.explicitPreference,
+            source: EncryptedMemorySource.authenticatedUser,
+            sensitivity: EncryptedMemorySensitivity.personal,
+            expectedKeyGeneration: keys.generation,
+            nowUtc: issuedAt.add(const Duration(seconds: 2)),
+          ),
+          throwsA(
+            isA<EncryptedMemoryPolicyViolation>().having(
+              (error) => error.code,
+              'code',
+              'durable_reconciliation_required',
+            ),
+          ),
+        );
+
+        await subject.restore(
+          safetyContext: context,
+          expectedKeyGeneration: keys.generation,
+        );
+        expect(subject.recordCount, 1);
+        expect(
+          await subject.forget(
+            lease: lease('forget-2', EncryptedMemoryOperation.forget),
+            safetyContext: context,
+            recordId: 'record-1',
+            ownerId: 'owner-1',
+            deviceId: 'device-1',
+            capsuleId: 'personal',
+            memoryClass: EncryptedMemoryClass.explicitPreference,
+            source: EncryptedMemorySource.authenticatedUser,
+            sensitivity: EncryptedMemorySensitivity.personal,
+            expectedKeyGeneration: keys.generation,
+            nowUtc: issuedAt.add(const Duration(seconds: 3)),
+          ),
+          isTrue,
+        );
+        final restarted = adapter();
+        await restarted.restore(
+          safetyContext: context,
+          expectedKeyGeneration: keys.generation,
+        );
+        expect(restarted.recordCount, 0);
+      } finally {
+        SharedPreferencesStorePlatform.instance = original;
+        SharedPreferences.setMockInitialValues({});
+        await NeuraPrefsCache.prefs.reload();
+      }
+    },
+  );
+
   test('failed durable remove rolls back memory and leaves restart restorable',
       () async {
     final subject = adapter();
@@ -601,6 +852,65 @@ final class _BlockingDurableCrypto extends _FakeDurableCrypto {
       await _release.future;
     }
     return super.encryptJson(json);
+  }
+}
+
+final class _BlockingDecryptDurableCrypto extends _FakeDurableCrypto {
+  final _started = Completer<void>();
+  final _release = Completer<void>();
+  bool _blocked = false;
+
+  Future<void> waitForFirstDecrypt() => _started.future;
+
+  void releaseFirstDecrypt() {
+    if (!_release.isCompleted) _release.complete();
+  }
+
+  @override
+  Future<Map<String, dynamic>> decryptJson(String blob) async {
+    if (!_blocked) {
+      _blocked = true;
+      _started.complete();
+      await _release.future;
+    }
+    return super.decryptJson(blob);
+  }
+}
+
+final class _ReloadFailingAfterSetPreferencesStore
+    extends SharedPreferencesStorePlatform {
+  final Map<String, Object> data = {};
+  bool failNextReload = false;
+
+  @override
+  bool get isMock => true;
+
+  @override
+  Future<bool> clear() async {
+    data.clear();
+    return true;
+  }
+
+  @override
+  Future<Map<String, Object>> getAll() async {
+    if (failNextReload) {
+      failNextReload = false;
+      throw StateError('synthetic reload failure');
+    }
+    return Map<String, Object>.from(data);
+  }
+
+  @override
+  Future<bool> remove(String key) async {
+    data.remove(key);
+    return true;
+  }
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    data[key] = value;
+    failNextReload = true;
+    return true;
   }
 }
 
