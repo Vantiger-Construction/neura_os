@@ -30,6 +30,16 @@ final class MemoryCryptoDurableAdapter implements EncryptedMemoryDurableCrypto {
       crypto.encryptJson(json);
 }
 
+final class _LoadedDurableCrypto {
+  const _LoadedDurableCrypto({
+    required this.crypto,
+    required this.authority,
+  });
+
+  final EncryptedMemoryDurableCrypto crypto;
+  final Object authority;
+}
+
 /// Durable, exact-scope memory slice.
 ///
 /// This adapter is intentionally narrow: it stores only encrypted records under
@@ -95,9 +105,9 @@ final class EncryptedMemoryDurableScopedAdapter {
             return;
           }
 
-          final crypto = await _attachCryptoAuthority();
+          final loadedCrypto = await _loadVerifiedCryptoAuthority();
           _requireAvailable(safetyContext, expectedKeyGeneration);
-          final clear = await crypto.decryptJson(blob);
+          final clear = await loadedCrypto.crypto.decryptJson(blob);
           _requireAvailable(safetyContext, expectedKeyGeneration);
           if (clear['schema'] != 1) {
             throw const EncryptedMemoryPolicyViolation(
@@ -125,6 +135,7 @@ final class EncryptedMemoryDurableScopedAdapter {
             records: restoredRecords,
             quarantine: restoredQuarantine,
           );
+          _attachLoadedCryptoAuthority(loadedCrypto);
         },
         allowReconciliation: true,
       );
@@ -140,9 +151,10 @@ final class EncryptedMemoryDurableScopedAdapter {
         _requireAvailable(safetyContext, expectedKeyGeneration);
         _requireUtc(nowUtc);
         _requireRestorable(record, expectedKeyGeneration);
-        final crypto = _records.isEmpty && _quarantine.isEmpty
-            ? await _attachCryptoAuthority()
-            : _requireAttachedAuthority();
+        final loadedCrypto = _records.isEmpty && _quarantine.isEmpty
+            ? await _loadVerifiedCryptoAuthority()
+            : null;
+        final crypto = loadedCrypto?.crypto ?? _requireAttachedAuthority();
         if (_records.containsKey(record.id) ||
             _quarantine.containsKey(record.id)) {
           throw const EncryptedMemoryPolicyViolation('record_already_exists');
@@ -163,6 +175,9 @@ final class EncryptedMemoryDurableScopedAdapter {
           safetyContext: safetyContext,
           expectedKeyGeneration: expectedKeyGeneration,
         );
+        if (loadedCrypto != null) {
+          _attachLoadedCryptoAuthority(loadedCrypto);
+        }
       });
 
   EncryptedMemorySessionRecord? recall({
@@ -470,17 +485,28 @@ final class EncryptedMemoryDurableScopedAdapter {
     await NeuraPrefsCache.prefs.reload();
   }
 
-  Future<EncryptedMemoryDurableCrypto> _attachCryptoAuthority() async {
+  Future<_LoadedDurableCrypto> _loadVerifiedCryptoAuthority() async {
     final crypto = await _loadCrypto();
     final cryptoAuthority = crypto.authorityToken;
-    _state.attachOrVerifyAuthority(
+    _state.verifyAuthority(
       safetyPolicy: safetyPolicy,
       keyLifecycle: keyLifecycle,
       cryptoAuthority: cryptoAuthority,
     );
-    _attachedCrypto = crypto;
-    _attachedCryptoAuthority = cryptoAuthority;
-    return crypto;
+    return _LoadedDurableCrypto(
+      crypto: crypto,
+      authority: cryptoAuthority,
+    );
+  }
+
+  void _attachLoadedCryptoAuthority(_LoadedDurableCrypto loadedCrypto) {
+    _state.attachOrVerifyAuthority(
+      safetyPolicy: safetyPolicy,
+      keyLifecycle: keyLifecycle,
+      cryptoAuthority: loadedCrypto.authority,
+    );
+    _attachedCrypto = loadedCrypto.crypto;
+    _attachedCryptoAuthority = loadedCrypto.authority;
   }
 
   EncryptedMemoryDurableCrypto _requireAttachedAuthority() {
@@ -732,6 +758,27 @@ final class _DurableScopedStorageState {
       safetyPolicyAuthority = safetyPolicy;
       keyLifecycleAuthority = keyLifecycle;
       this.cryptoAuthority = cryptoAuthority;
+      return;
+    }
+    if (!matchesAuthority(
+      safetyPolicy: safetyPolicy,
+      keyLifecycle: keyLifecycle,
+      cryptoAuthority: cryptoAuthority,
+    )) {
+      throw const EncryptedMemoryPolicyViolation(
+        'durable_authority_mismatch',
+      );
+    }
+  }
+
+  void verifyAuthority({
+    required Object safetyPolicy,
+    required Object keyLifecycle,
+    required Object cryptoAuthority,
+  }) {
+    if (safetyPolicyAuthority == null &&
+        keyLifecycleAuthority == null &&
+        this.cryptoAuthority == null) {
       return;
     }
     if (!matchesAuthority(

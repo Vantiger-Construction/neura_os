@@ -463,6 +463,157 @@ void main() {
   );
 
   testWidgets(
+    'voice transcript keeps legitimate microphone-prefixed speech',
+    (tester) async {
+      final store = LocalJournalStore();
+      final service = _FakeVoiceJournalService();
+      await tester.pumpWidget(
+        _largeTextApp(
+          VoiceJournalScreen(
+            journalStore: store,
+            service: service,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Start listening'));
+      await tester.pumpAndSettle();
+      service.emit('Microphone testing one two');
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Microphone testing one two', skipOffstage: false),
+        findsOneWidget,
+      );
+      await service.stopRecording();
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Save to journal'),
+        120,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('Save to journal'));
+      await tester.pumpAndSettle();
+
+      final entries = await store.findAll(isVoice: true);
+      expect(
+        entries.where((entry) => entry.content == 'Microphone testing one two'),
+        hasLength(1),
+      );
+    },
+  );
+
+  testWidgets(
+    'voice stop keeps legitimate speech-to-text-prefixed final text',
+    (tester) async {
+      final service = _FakeVoiceJournalService(
+        stopResult: 'Speech-to-text final phrase',
+      );
+      await tester.pumpWidget(
+        _largeTextApp(VoiceJournalScreen(service: service)),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Start listening'));
+      await tester.pumpAndSettle();
+      service.emit('interim text');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Stop listening'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Speech-to-text final phrase', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('interim text', skipOffstage: false),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'voice throwing start keeps draft and allows navigation recovery',
+    (tester) async {
+      await tester.pumpWidget(
+        _navigationApp(
+          VoiceJournalScreen(
+            service: _FakeVoiceJournalService(throwOnStart: true),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Open voice journal'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'Draft before failure.');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Start listening'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(
+        find.text('Draft before failure.', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Voice input could not start on this device.',
+            skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.text('Start listening', skipOffstage: false), findsOneWidget);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard unsaved transcript?'), findsOneWidget);
+      await tester.tap(find.text('Discard'));
+      await tester.pumpAndSettle();
+      expect(find.text('Open voice journal'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'voice throwing stop keeps draft and allows navigation recovery',
+    (tester) async {
+      final service = _FakeVoiceJournalService(throwOnStop: true);
+      await tester.pumpWidget(
+        _navigationApp(VoiceJournalScreen(service: service)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Open voice journal'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Start listening'));
+      await tester.pumpAndSettle();
+      service.emit('Draft before stop failure.');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Stop listening'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(
+        find.text('Draft before stop failure.', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+            'Voice input could not stop cleanly. Your transcript is still here.',
+            skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.text('Start listening', skipOffstage: false), findsOneWidget);
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.text('Discard unsaved transcript?'), findsOneWidget);
+      await tester.tap(find.text('Discard'));
+      await tester.pumpAndSettle();
+      expect(find.text('Open voice journal'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'voice start transition locks history and ignores premature transcript',
     (tester) async {
       final store = LocalJournalStore();
@@ -728,6 +879,27 @@ Widget _largeTextApp(Widget home) {
   );
 }
 
+Widget _navigationApp(Widget route) {
+  return MaterialApp(
+    home: Scaffold(
+      body: Builder(
+        builder: (context) => Center(
+          child: TextButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => route,
+                ),
+              );
+            },
+            child: const Text('Open voice journal'),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 class _LargeNonlinearTextScaler extends TextScaler {
   const _LargeNonlinearTextScaler();
 
@@ -784,20 +956,31 @@ class _FakeVoiceJournalService extends VoiceJournalService {
     this.startCompleter,
     this.stopCompleter,
     this.clearRecordingBeforeStopCompletes = false,
+    this.stopResult,
+    this.throwOnStart = false,
+    this.throwOnStop = false,
   });
 
   final StreamController<String> _stream = StreamController<String>.broadcast();
+  final StreamController<String> _statusStream =
+      StreamController<String>.broadcast();
   final ValueNotifier<bool> _recording = ValueNotifier<bool>(false);
   final bool startResult;
   final String? startMessage;
   final Completer<bool>? startCompleter;
   final Completer<String>? stopCompleter;
   final bool clearRecordingBeforeStopCompletes;
+  final String? stopResult;
+  final bool throwOnStart;
+  final bool throwOnStop;
   String _current = '';
   bool _listening = false;
 
   @override
   Stream<String> get transcriptStream => _stream.stream;
+
+  @override
+  Stream<String> get statusStream => _statusStream.stream;
 
   @override
   ValueListenable<bool> get recording => _recording;
@@ -814,13 +997,14 @@ class _FakeVoiceJournalService extends VoiceJournalService {
     String message = 'Speech-to-text reported an input error.',
   ]) {
     _listening = false;
-    _stream.add(message);
+    _statusStream.add(message);
   }
 
   @override
   Future<bool> startRecording() async {
     final message = startMessage;
-    if (message != null) _stream.add(message);
+    if (message != null) _statusStream.add(message);
+    if (throwOnStart) throw StateError('synthetic start failure');
     final delayedStart = startCompleter;
     final result =
         delayedStart == null ? startResult : await delayedStart.future;
@@ -832,6 +1016,11 @@ class _FakeVoiceJournalService extends VoiceJournalService {
 
   @override
   Future<String> stopRecording() async {
+    if (throwOnStop) {
+      _listening = false;
+      _recording.value = false;
+      throw StateError('synthetic stop failure');
+    }
     final delayedStop = stopCompleter;
     if (delayedStop != null) {
       if (clearRecordingBeforeStopCompletes) {
@@ -846,12 +1035,15 @@ class _FakeVoiceJournalService extends VoiceJournalService {
     }
     _listening = false;
     _recording.value = false;
-    return _current;
+    final text = stopResult ?? _current;
+    _current = text;
+    return text;
   }
 
   @override
   Future<void> dispose() async {
     await _stream.close();
+    await _statusStream.close();
     _recording.dispose();
   }
 }

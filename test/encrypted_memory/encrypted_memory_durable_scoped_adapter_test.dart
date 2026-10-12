@@ -330,6 +330,122 @@ void main() {
     );
   });
 
+  test(
+    'same-token failed restore does not authorize shared plaintext recall',
+    () async {
+      final inner = _FakeDurableCrypto();
+      final authority = Object();
+      EncryptedMemoryDurableCrypto freshWrapper() =>
+          _FreshWrapperDurableCrypto(inner, authority);
+      final seeded = EncryptedMemoryDurableScopedAdapter(
+        safetyPolicy: safety,
+        keyLifecycle: keys,
+        loadCrypto: () async => freshWrapper(),
+      );
+      await seeded.remember(
+        lease: lease('remember-1', EncryptedMemoryOperation.remember),
+        safetyContext: context,
+        record: record(),
+        expectedKeyGeneration: keys.generation,
+        nowUtc: issuedAt.add(const Duration(seconds: 1)),
+      );
+
+      final failedRestore = EncryptedMemoryDurableScopedAdapter(
+        safetyPolicy: safety,
+        keyLifecycle: keys,
+        loadCrypto: () async => _FailingDecryptDurableCrypto(authority),
+      );
+      await expectLater(
+        failedRestore.restore(
+          safetyContext: context,
+          expectedKeyGeneration: keys.generation,
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(
+        () => recall(
+          failedRestore,
+          lease('recall-failed', EncryptedMemoryOperation.recall),
+        ),
+        throwsA(
+          isA<EncryptedMemoryPolicyViolation>().having(
+            (error) => error.code,
+            'code',
+            'durable_authority_mismatch',
+          ),
+        ),
+      );
+      expect(
+        recall(
+          seeded,
+          lease('recall-seeded', EncryptedMemoryOperation.recall),
+        )?.value,
+        'Prefers concise text.',
+      );
+    },
+  );
+
+  test(
+    'same-token pending restore does not authorize shared plaintext recall',
+    () async {
+      final inner = _FakeDurableCrypto();
+      final authority = Object();
+      EncryptedMemoryDurableCrypto freshWrapper() =>
+          _FreshWrapperDurableCrypto(inner, authority);
+      final seeded = EncryptedMemoryDurableScopedAdapter(
+        safetyPolicy: safety,
+        keyLifecycle: keys,
+        loadCrypto: () async => freshWrapper(),
+      );
+      await seeded.remember(
+        lease: lease('remember-1', EncryptedMemoryOperation.remember),
+        safetyContext: context,
+        record: record(),
+        expectedKeyGeneration: keys.generation,
+        nowUtc: issuedAt.add(const Duration(seconds: 1)),
+      );
+
+      final delayedCrypto = _BlockingFreshDecryptDurableCrypto(
+        inner,
+        authority,
+      );
+      final pendingRestore = EncryptedMemoryDurableScopedAdapter(
+        safetyPolicy: safety,
+        keyLifecycle: keys,
+        loadCrypto: () async => delayedCrypto,
+      );
+      final restore = pendingRestore.restore(
+        safetyContext: context,
+        expectedKeyGeneration: keys.generation,
+      );
+      await delayedCrypto.waitForFirstDecrypt();
+
+      expect(
+        () => recall(
+          pendingRestore,
+          lease('recall-pending', EncryptedMemoryOperation.recall),
+        ),
+        throwsA(
+          isA<EncryptedMemoryPolicyViolation>().having(
+            (error) => error.code,
+            'code',
+            'durable_authority_mismatch',
+          ),
+        ),
+      );
+
+      delayedCrypto.releaseFirstDecrypt();
+      await restore;
+      expect(
+        recall(
+          pendingRestore,
+          lease('recall-restored', EncryptedMemoryOperation.recall),
+        )?.value,
+        'Prefers concise text.',
+      );
+    },
+  );
+
   test('successive durable writes use distinct ciphertext envelopes', () async {
     final subject = adapter();
     await subject.remember(
@@ -1225,6 +1341,57 @@ final class _FreshWrapperDurableCrypto implements EncryptedMemoryDurableCrypto {
   @override
   Future<Map<String, dynamic>> decryptJson(String blob) =>
       inner.decryptJson(blob);
+
+  @override
+  Future<String> encryptJson(Map<String, dynamic> json) =>
+      inner.encryptJson(json);
+}
+
+final class _FailingDecryptDurableCrypto
+    implements EncryptedMemoryDurableCrypto {
+  const _FailingDecryptDurableCrypto(this.authorityToken);
+
+  @override
+  final Object authorityToken;
+
+  @override
+  Future<Map<String, dynamic>> decryptJson(String blob) async {
+    throw StateError('synthetic decrypt failure');
+  }
+
+  @override
+  Future<String> encryptJson(Map<String, dynamic> json) async {
+    throw StateError('synthetic encrypt failure');
+  }
+}
+
+final class _BlockingFreshDecryptDurableCrypto
+    implements EncryptedMemoryDurableCrypto {
+  _BlockingFreshDecryptDurableCrypto(this.inner, this.authorityToken);
+
+  final _FakeDurableCrypto inner;
+
+  @override
+  final Object authorityToken;
+  final _started = Completer<void>();
+  final _release = Completer<void>();
+  bool _blocked = false;
+
+  Future<void> waitForFirstDecrypt() => _started.future;
+
+  void releaseFirstDecrypt() {
+    if (!_release.isCompleted) _release.complete();
+  }
+
+  @override
+  Future<Map<String, dynamic>> decryptJson(String blob) async {
+    if (!_blocked) {
+      _blocked = true;
+      _started.complete();
+      await _release.future;
+    }
+    return inner.decryptJson(blob);
+  }
 
   @override
   Future<String> encryptJson(Map<String, dynamic> json) =>

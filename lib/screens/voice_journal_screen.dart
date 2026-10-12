@@ -30,6 +30,7 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
       widget._journalStore ?? LocalJournalStore();
   final TextEditingController _controller = TextEditingController();
   StreamSubscription<String>? _sub;
+  StreamSubscription<String>? _statusSub;
 
   bool _recording = false;
   String _transcript = '';
@@ -54,18 +55,6 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
     _sub = _service.transcriptStream.listen((text) {
       if (!mounted) return;
-      if (_isVoiceStatusMessage(text)) {
-        setState(() {
-          _saveStatus = text;
-          if (!_service.isListening) {
-            _recording = false;
-            _captureBusy = false;
-            _stoppingCapture = false;
-            _captureGeneration++;
-          }
-        });
-        return;
-      }
       if (!_recording || _captureBusy || !_service.recording.value) {
         return;
       }
@@ -76,7 +65,21 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
         _saveStatus = null;
       });
     });
+    _statusSub = _service.statusStream.listen(_handleVoiceStatus);
     unawaited(_refreshHistory());
+  }
+
+  void _handleVoiceStatus(String status) {
+    if (!mounted) return;
+    setState(() {
+      _saveStatus = status;
+      if (!_service.isListening) {
+        _recording = false;
+        _captureBusy = false;
+        _stoppingCapture = false;
+        _captureGeneration++;
+      }
+    });
   }
 
   void _onRecordingChanged() {
@@ -102,6 +105,7 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
     _service.recording.removeListener(_onRecordingChanged);
     SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
     _sub?.cancel();
+    _statusSub?.cancel();
     unawaited(_service.dispose());
     _controller.dispose();
     super.dispose();
@@ -119,32 +123,54 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
           _savedTranscript = '';
         }
       });
-      final started = await _service.startRecording();
-      if (!mounted || generation != _captureGeneration) return;
-      setState(() {
-        _captureBusy = false;
-        _recording = started && _service.recording.value;
-        if (!started) {
-          _saveStatus ??= 'Voice input could not start on this device.';
+      var started = false;
+      var failed = false;
+      try {
+        started = await _service.startRecording();
+      } catch (_) {
+        failed = true;
+      } finally {
+        if (mounted && generation == _captureGeneration) {
+          setState(() {
+            _captureBusy = false;
+            _stoppingCapture = false;
+            _recording = started && _service.recording.value;
+            if (!started || failed) {
+              _saveStatus ??= 'Voice input could not start on this device.';
+            }
+          });
         }
-      });
+      }
     } else {
       setState(() {
         _captureBusy = true;
         _stoppingCapture = true;
       });
-      final text = await _service.stopRecording();
-      if (!mounted || generation != _captureGeneration) return;
-      setState(() {
-        _captureBusy = false;
-        _stoppingCapture = false;
-        _recording = false;
-        if (text.trim().isNotEmpty && !_isVoiceStatusMessage(text)) {
-          _transcript = text;
-          _controller.text = text;
-          _draftRevision++;
+      String? text;
+      var failed = false;
+      try {
+        text = await _service.stopRecording();
+      } catch (_) {
+        failed = true;
+      } finally {
+        if (mounted && generation == _captureGeneration) {
+          setState(() {
+            _captureBusy = false;
+            _stoppingCapture = false;
+            _recording = false;
+            final transcript = text?.trim();
+            if (transcript != null && transcript.isNotEmpty) {
+              _transcript = text!;
+              _controller.text = text;
+              _draftRevision++;
+            }
+            if (failed) {
+              _saveStatus =
+                  'Voice input could not stop cleanly. Your transcript is still here.';
+            }
+          });
         }
-      });
+      }
     }
   }
 
@@ -259,9 +285,6 @@ class _VoiceJournalScreenState extends State<VoiceJournalScreen> {
     );
     return discard ?? false;
   }
-
-  bool _isVoiceStatusMessage(String text) =>
-      text.startsWith('Microphone ') || text.startsWith('Speech-to-text ');
 
   @override
   Widget build(BuildContext context) {
