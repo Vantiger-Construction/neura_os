@@ -108,9 +108,16 @@ class NeuraModelStreamTransport {
   NeuraModelStreamTransport(
     this.provider, {
     http.Client Function()? clientFactory,
-  }) : _clientFactory = clientFactory ?? http.Client.new;
+    NeuraModelProfile? profile,
+  })  : _clientFactory = clientFactory ?? http.Client.new,
+        profile = profile ?? NeuraModelProfiles.defaultFor(provider) {
+    if (this.profile.provider != provider) {
+      throw ArgumentError('Stream transport profile/provider mismatch.');
+    }
+  }
 
   final NeuraModelProvider provider;
+  final NeuraModelProfile profile;
   final http.Client Function() _clientFactory;
   static const timeout = Duration(seconds: 30);
   static const maxStreamBytes = 2 * 1024 * 1024;
@@ -123,13 +130,13 @@ class NeuraModelStreamTransport {
   }) {
     if (provider == NeuraModelProvider.openAi) {
       return {
-        'model': 'gpt-5.6-luna',
+        'model': profile.model,
         'instructions': systemPrompt,
         'input': openAiInput(messages),
         'stream': true,
         'store': false,
         'max_output_tokens': maxTokens,
-        'reasoning': {'effort': 'low'},
+        'reasoning': {'effort': profile.reasoningEffort},
         'include': ['reasoning.encrypted_content'],
         'parallel_tool_calls': false,
         if (tools.isNotEmpty)
@@ -147,8 +154,8 @@ class NeuraModelStreamTransport {
       };
     }
     return {
-      'model': kNeuraAnthropicModel,
-      'output_config': {'effort': kNeuraAnthropicEffort},
+      'model': profile.model,
+      'output_config': {'effort': profile.reasoningEffort},
       'system': systemPrompt,
       'messages': messages
           .map((m) => {'role': m['role'], 'content': m['content']})

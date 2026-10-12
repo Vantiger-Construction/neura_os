@@ -89,6 +89,7 @@ $manifest = [ordered]@{
   createdAtUtc = (Get-Date).ToUniversalTime().ToString('o')
   sourceCommit = $env:GITHUB_SHA
   signaturePolicy = if ($RequireAuthenticode) { 'required' } else { 'development-not-required' }
+  userInitiatedInstallOnly = $true
   files = $manifestFiles
 }
 $manifestPath = Join-Path $output 'RELEASE_MANIFEST.json'
