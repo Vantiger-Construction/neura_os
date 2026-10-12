@@ -24,9 +24,13 @@ class VoiceJournalService {
   final stt.SpeechToText _stt = stt.SpeechToText();
   final StreamController<String> _pluginTranscriptStream =
       StreamController<String>.broadcast();
+  final StreamController<String> _pluginStatusStream =
+      StreamController<String>.broadcast();
   final StreamController<NeuraSpeechSegment> _pluginSegmentStream =
       StreamController<NeuraSpeechSegment>.broadcast();
   final ValueNotifier<bool> _recording = ValueNotifier(false);
+  StreamController<String>? _nativeStatusStream;
+  StreamSubscription<String>? _nativeStatusSubscription;
 
   bool get _usesNativeWindows =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
@@ -43,6 +47,9 @@ class VoiceJournalService {
   Stream<String> get transcriptStream => _usesNativeWindows
       ? _native.transcriptStream
       : _pluginTranscriptStream.stream;
+  Stream<String> get statusStream => _usesNativeWindows
+      ? _nativeStatusController().stream
+      : _pluginStatusStream.stream;
   Stream<NeuraSpeechSegment> get segmentStream =>
       _usesNativeWindows ? _native.segmentStream : _pluginSegmentStream.stream;
 
@@ -52,6 +59,34 @@ class VoiceJournalService {
       _usesNativeWindows ? _native.isListening : _pluginListening;
 
   bool get listeningAllowed => !SafeBoot.instance.safeMode.value;
+
+  StreamController<String> _nativeStatusController() {
+    final existing = _nativeStatusStream;
+    if (existing != null) return existing;
+
+    late final StreamController<String> controller;
+    controller = StreamController<String>.broadcast(
+      onListen: () {
+        _nativeStatusSubscription ??= _native.statusStream.listen(
+          (status) {
+            if (!_native.isListening) _markRecordingStopped();
+            controller.add(status);
+          },
+          onError: controller.addError,
+          onDone: () {
+            unawaited(controller.close());
+          },
+        );
+      },
+      onCancel: () async {
+        if (controller.hasListener) return;
+        await _nativeStatusSubscription?.cancel();
+        _nativeStatusSubscription = null;
+      },
+    );
+    _nativeStatusStream = controller;
+    return controller;
+  }
 
   Future<bool> startRecording() async {
     if (_disposed || !listeningAllowed) return false;
@@ -78,7 +113,7 @@ class VoiceJournalService {
       final permission = await Permission.microphone.request();
       if (!_canCompleteStart(generation)) return false;
       if (!permission.isGranted) {
-        _pluginTranscriptStream.add(
+        _pluginStatusStream.add(
           permission.isPermanentlyDenied
               ? 'Microphone access is disabled. Enable it in system settings.'
               : 'Microphone permission is required for voice journaling.',
@@ -92,7 +127,7 @@ class VoiceJournalService {
         onError: (error) {
           _pluginListening = false;
           _markRecordingStopped();
-          _pluginTranscriptStream.add(
+          _pluginStatusStream.add(
             'Speech-to-text error: ${error.errorMsg}',
           );
         },
@@ -105,7 +140,7 @@ class VoiceJournalService {
       );
       if (!_canCompleteStart(generation)) return false;
       if (!available) {
-        _pluginTranscriptStream.add(
+        _pluginStatusStream.add(
           'Speech-to-text is not available on this device.',
         );
         return false;
@@ -163,7 +198,7 @@ class VoiceJournalService {
       _markRecordingStopped();
       await AppLog.instance.caught('voice_journal_start_failed', error, stack);
       if (!_disposed) {
-        _pluginTranscriptStream.add(
+        _pluginStatusStream.add(
           'Speech-to-text could not start on this device.',
         );
       }
@@ -232,7 +267,10 @@ class VoiceJournalService {
       _pluginListening = false;
       await _stt.cancel();
     }
+    await _nativeStatusSubscription?.cancel();
     await _pluginTranscriptStream.close();
+    await _pluginStatusStream.close();
     await _pluginSegmentStream.close();
+    await _nativeStatusStream?.close();
   }
 }

@@ -96,4 +96,28 @@ void main() {
     final encoded = record.toMap().toString();
     expect(encoded, isNot(contains('private secret')));
   });
+
+  test('legacy prompt ids remain local-only during merge', () async {
+    final sync = SyncService();
+    final local = JournalEntry(
+      id: 'journal_prompt_2026-10-10',
+      timestamp: DateTime.utc(2026, 10, 10),
+      updatedAt: DateTime.utc(2026, 10, 11),
+      content: 'Prompt:\nLocal legacy\n\nResponse:\nKeep local.',
+      moodTag: 'journal_prompt:2026-10-10',
+    );
+    final remote = JournalEntry(
+      id: 'journal_prompt_2026-10-10',
+      timestamp: DateTime.utc(2026, 10, 10),
+      updatedAt: DateTime.utc(2026, 10, 12),
+      content: 'Remote record with colliding legacy id.',
+      moodTag: 'journal_prompt:2026-10-10',
+    );
+
+    final merged = await sync.mergeEntries([local], [remote]);
+
+    expect(merged, hasLength(1));
+    expect(merged.single.content, local.content);
+    expect(SyncConflictLog.instance.records, isEmpty);
+  });
 }
