@@ -43,7 +43,7 @@ class _NeuraStartupAvatarState extends State<NeuraStartupAvatar>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _reduceMotion = MediaQuery.disableAnimationsOf(context);
-    _tickerEnabled = TickerMode.of(context);
+    _tickerEnabled = TickerMode.valuesOf(context).enabled;
     _syncMotion();
   }
 
