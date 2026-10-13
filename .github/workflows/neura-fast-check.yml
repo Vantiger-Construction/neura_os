@@ -764,10 +764,12 @@ jobs:
           $rustRoot = Join-Path $env:NEURA_RUST_VOLUME "neura-ci\$runKey\rust"
           $flutterBuild = Join-Path $flutterRoot 'build'
           $rustTarget = Join-Path $rustRoot 'target'
-          $pubCache = Join-Path $flutterRoot 'pub-cache'
+          # Reuse the dependency-only namespace already used by Android and
+          # State Matrix. Compiled output and temporary files stay run-local.
+          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.47.5'
           $nugetPackages = Join-Path $flutterRoot 'nuget-packages'
           $tempRoot = Join-Path $flutterRoot 'temp'
-          $cargoHome = Join-Path $rustRoot 'cargo-home'
+          $cargoHome = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\cargo-home'
 
           Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_SOURCE_ROOT 'build')
           Remove-LinkOrDirectory -Path (Join-Path $env:NEURA_SOURCE_ROOT 'rust\target')
@@ -862,10 +864,20 @@ jobs:
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           $ErrorActionPreference = 'Stop'
-          $nugetExe = Get-ChildItem -LiteralPath $env:RUNNER_TOOL_CACHE `
+          # The retained NuGet tool has its own cache namespace. Avoid scanning
+          # every Flutter/Android SDK file when that namespace is available.
+          $nugetToolRoot = Join-Path $env:RUNNER_TOOL_CACHE 'nuget.exe'
+          $nugetExe = Get-ChildItem -LiteralPath $nugetToolRoot `
               -Filter 'nuget.exe' -File -Recurse -ErrorAction SilentlyContinue |
             Sort-Object -Property FullName -Descending |
             Select-Object -First 1
+
+          if (-not $nugetExe) {
+            $nugetExe = Get-ChildItem -LiteralPath $env:RUNNER_TOOL_CACHE `
+                -Filter 'nuget.exe' -File -Recurse -ErrorAction SilentlyContinue |
+              Sort-Object -Property FullName -Descending |
+              Select-Object -First 1
+          }
 
           if (-not $nugetExe) {
             $nugetRoot = Join-Path $env:NEURA_FLUTTER_ROOT 'nuget-tool'
@@ -953,9 +965,27 @@ jobs:
           $configPath = Join-Path $env:RUNNER_TEMP "neura-client-$env:GITHUB_RUN_ID-$env:GITHUB_JOB.json"
           & "$env:NEURA_SOURCE_ROOT\tools\New-NeuraClientBuildConfig.ps1" -OutputPath $configPath -RequireConfiguration:$requireConfig
 
-      - name: Run optimized validation
+      # Every phase remains required. Splitting the combined invocation exposes
+      # the last completed gate and its duration even if archived logs are lost.
+      - name: Restore Flutter dependencies and check source contracts
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
-        run: '& "$env:NEURA_SOURCE_ROOT\tools\Neura-FastCheck.ps1" -Root $env:NEURA_SOURCE_ROOT -BuildWindows'
+        run: '& "$env:NEURA_SOURCE_ROOT\tools\Neura-FastCheck.ps1" -Root $env:NEURA_SOURCE_ROOT -BuildWindows -Phase Prepare'
+
+      - name: Analyze Flutter with fatal infos
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: '& "$env:NEURA_SOURCE_ROOT\tools\Neura-FastCheck.ps1" -Root $env:NEURA_SOURCE_ROOT -BuildWindows -Phase Analyze'
+
+      - name: Run startup, recovery, and complete Flutter tests
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: '& "$env:NEURA_SOURCE_ROOT\tools\Neura-FastCheck.ps1" -Root $env:NEURA_SOURCE_ROOT -BuildWindows -Phase Tests'
+
+      - name: Build configured Windows release
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: '& "$env:NEURA_SOURCE_ROOT\tools\Neura-FastCheck.ps1" -Root $env:NEURA_SOURCE_ROOT -BuildWindows -Phase WindowsBuild'
+
+      - name: Verify Windows runtime payload and packaged launch
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: '& "$env:NEURA_SOURCE_ROOT\tools\Neura-FastCheck.ps1" -Root $env:NEURA_SOURCE_ROOT -BuildWindows -Phase WindowsPackage'
 
       - name: Preserve configured Windows package
         if: steps.client_config.outputs.configured == 'true'
