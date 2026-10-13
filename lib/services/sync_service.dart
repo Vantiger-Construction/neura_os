@@ -137,7 +137,8 @@ class SyncService {
       final remoteById = {for (final entry in remote) entry.id: entry};
       final acknowledgements = <JournalEntry>[];
       final sent = <String, String>{};
-      for (final entry in planned) {
+      for (final entry in planned.where(
+          (entry) => !LocalJournalStore.isLocalOnlyJournalEntry(entry))) {
         final cloud = remoteById[entry.id];
         if (cloud != null && _samePayload(entry, cloud)) continue;
         _checkSession(userId);
@@ -177,7 +178,9 @@ class SyncService {
       };
       final pending = current
           .where((entry) =>
-              known[entry.id] == null || !_samePayload(entry, known[entry.id]!))
+              !LocalJournalStore.isLocalOnlyJournalEntry(entry) &&
+              (known[entry.id] == null ||
+                  !_samePayload(entry, known[entry.id]!)))
           .length;
       result = SyncResult(
           pending == 0 ? SyncOutcome.complete : SyncOutcome.retryNeeded,
@@ -243,9 +246,15 @@ class SyncService {
       map[entry.id] = entry;
     }
     for (final entry in remote) {
+      if (LocalJournalStore.isLocalOnlyJournalEntry(entry)) {
+        continue;
+      }
       final existing = map[entry.id];
       if (existing == null) {
         map[entry.id] = entry;
+        continue;
+      }
+      if (LocalJournalStore.isLocalOnlyJournalEntry(existing)) {
         continue;
       }
       final decision = _conflict.decide(existing, entry);

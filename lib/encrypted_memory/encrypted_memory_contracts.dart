@@ -400,6 +400,17 @@ final class EncryptedMemoryWipeContract {
       throw const EncryptedMemoryPolicyViolation('incomplete_wipe_contract');
     }
   }
+
+  void validateScopedCiphertextOnly() {
+    if (!stopWritersFirst || !deleteCiphertext || !verifyCiphertextDeletion) {
+      throw const EncryptedMemoryPolicyViolation('incomplete_wipe_contract');
+    }
+    if (destroyKey || verifyKeyDeletion) {
+      throw const EncryptedMemoryPolicyViolation(
+        'scoped_wipe_cannot_destroy_shared_key',
+      );
+    }
+  }
 }
 
 void _requireBoundedId(String value, String code) {

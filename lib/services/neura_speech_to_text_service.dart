@@ -30,6 +30,7 @@ class NeuraSpeechToTextService {
 
   final StreamController<String> _transcriptStream =
       StreamController.broadcast();
+  final StreamController<String> _statusStream = StreamController.broadcast();
 
   // WinRT's ContinuousRecognitionSession fires 'onFinal' once per completed
   // phrase using its own built-in pause/endpoint detection — the session
@@ -49,6 +50,7 @@ class NeuraSpeechToTextService {
   DateTime? _lastFinalAtUtc;
 
   Stream<String> get transcriptStream => _transcriptStream.stream;
+  Stream<String> get statusStream => _statusStream.stream;
   Stream<String> get finalPhraseStream => _finalPhraseStream.stream;
   Stream<NeuraSpeechSegment> get segmentStream => _segmentStream.stream;
   bool get isListening => _listening;
@@ -123,7 +125,7 @@ class NeuraSpeechToTextService {
       case 'onError':
         _listening = false;
         await AppLog.instance.error('speech_to_text_native_error');
-        _transcriptStream.add('Speech-to-text reported an input error.');
+        _statusStream.add('Speech-to-text reported an input error.');
         _completePendingStop();
         break;
     }
@@ -171,7 +173,7 @@ class NeuraSpeechToTextService {
     } catch (error, stack) {
       _listening = false;
       await AppLog.instance.caught('speech_to_text_start_failed', error, stack);
-      _transcriptStream.add('Speech-to-text not available on this device.');
+      _statusStream.add('Speech-to-text not available on this device.');
       return false;
     }
   }
