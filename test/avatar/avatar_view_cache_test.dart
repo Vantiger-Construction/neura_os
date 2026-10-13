@@ -15,22 +15,23 @@ const _fallback = 'test/fallback.riv';
 const _missing = 'test/missing.riv';
 
 AvatarSpec _spec(String path, {String? fallback}) => AvatarSpec(
-  id: 'test',
-  name: 'Test avatar',
-  format: AvatarFormat.rive,
-  assetPath: path,
-  fallbackAssetPath: fallback,
-);
+      id: 'test',
+      name: 'Test avatar',
+      format: AvatarFormat.rive,
+      assetPath: path,
+      fallbackAssetPath: fallback,
+    );
 
 Widget _host(
   AvatarSpec spec,
   AvatarController controller, {
   double size = 128,
-}) => MaterialApp(
-  home: Center(
-    child: AvatarView(spec: spec, controller: controller, size: size),
-  ),
-);
+}) =>
+    MaterialApp(
+      home: Center(
+        child: AvatarView(spec: spec, controller: controller, size: size),
+      ),
+    );
 
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();

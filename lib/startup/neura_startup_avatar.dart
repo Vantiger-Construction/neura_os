@@ -9,8 +9,8 @@ class NeuraStartupAvatar extends StatefulWidget {
     this.animate = true,
     this.width = 180,
     this.height = 180,
-  }) : assert(width > 0),
-       assert(height > 0);
+  })  : assert(width > 0),
+        assert(height > 0);
 
   final bool animate;
   final double width;

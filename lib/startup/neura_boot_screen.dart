@@ -75,8 +75,7 @@ class _NeuraBootScreenState extends State<NeuraBootScreen> {
       final needsSignIn = canInspectSession && AuthService.currentUser == null;
       // Device-lock only applies to the local-only dashboard path — once
       // Supabase sign-in is active it already gates identity on its own.
-      final needsDeviceLock =
-          !safeMode &&
+      final needsDeviceLock = !safeMode &&
           !needsSignIn &&
           AppLockPrefsController.instance.enabled.value;
       Navigator.of(context).pushReplacement(
@@ -122,12 +121,12 @@ class _NeuraBootScreenState extends State<NeuraBootScreen> {
                     valueListenable: SafeBoot.instance.safeMode,
                     builder: (context, safeMode, _) =>
                         ValueListenableBuilder<bool>(
-                          valueListenable: _coordinator.booting,
-                          builder: (_, booting, __) => NeuraStartupAvatar(
-                            animate: booting && !safeMode,
-                            height: 180,
-                          ),
-                        ),
+                      valueListenable: _coordinator.booting,
+                      builder: (_, booting, __) => NeuraStartupAvatar(
+                        animate: booting && !safeMode,
+                        height: 180,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 32),
                   // ── App name ─────────────────────────────────────────────

@@ -32,21 +32,22 @@ Widget _host(
   bool reduceMotion = false,
   bool tickerEnabled = true,
   double pixelRatio = 1,
-}) => MaterialApp(
-  home: DefaultAssetBundle(
-    bundle: bundle,
-    child: MediaQuery(
-      data: MediaQueryData(
-        disableAnimations: reduceMotion,
-        devicePixelRatio: pixelRatio,
+}) =>
+    MaterialApp(
+      home: DefaultAssetBundle(
+        bundle: bundle,
+        child: MediaQuery(
+          data: MediaQueryData(
+            disableAnimations: reduceMotion,
+            devicePixelRatio: pixelRatio,
+          ),
+          child: TickerMode(
+            enabled: tickerEnabled,
+            child: Center(child: NeuraStartupAvatar(animate: animate)),
+          ),
+        ),
       ),
-      child: TickerMode(
-        enabled: tickerEnabled,
-        child: Center(child: NeuraStartupAvatar(animate: animate)),
-      ),
-    ),
-  ),
-);
+    );
 
 double _verticalOffset(WidgetTester tester) => tester
     .widget<Transform>(
