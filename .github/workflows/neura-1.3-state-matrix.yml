@@ -111,6 +111,17 @@ jobs:
           flutter pub get
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Test startup animation and avatar caching
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: |
+          Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+          flutter test --reporter expanded --timeout 60s `
+            test/startup/neura_startup_avatar_test.dart `
+            test/avatar/avatar_view_cache_test.dart *>&1 |
+            Tee-Object -FilePath state-matrix-avatar.log |
+            Out-Host
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Verify committed formatting
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
@@ -159,6 +170,7 @@ jobs:
           NEURA_REPORT_TITLE: Neura-1.3-state-matrix
           NEURA_REPORT_PATHS: |
             ${{ github.workspace }}\source\state-matrix.log
+            ${{ github.workspace }}\source\state-matrix-avatar.log
         run: |
           $ErrorActionPreference = 'Stop'
           $summary = @(
@@ -216,3 +228,4 @@ jobs:
           } else {
             Write-Host 'Checkout did not provide the cleanup helper; leaving early-failure recovery to the next storage preflight.'
           }
+

@@ -9,11 +9,12 @@ import '../screens/sign_in_screen.dart';
 import '../services/app_lock_prefs.dart';
 import '../services/auth_service.dart';
 import '../widgets/auth_guard.dart';
+import 'neura_startup_avatar.dart';
 import 'neura_startup_coordinator.dart';
 
 /// Animated splash screen shown while [NeuraStartupCoordinator] runs.
 ///
-/// Immediately kicks off [NeuraStartupCoordinator.boot] on first build,
+/// Kicks off [NeuraStartupCoordinator.boot] after the first painted frame,
 /// then replaces itself with [EnhancedNavigation] once [ready] fires —
 /// or [SignInScreen] first, if Supabase is configured and no one is
 /// signed in yet.
@@ -28,86 +29,79 @@ class NeuraBootScreen extends StatefulWidget {
   State<NeuraBootScreen> createState() => _NeuraBootScreenState();
 }
 
-class _NeuraBootScreenState extends State<NeuraBootScreen>
-    with SingleTickerProviderStateMixin {
+class _NeuraBootScreenState extends State<NeuraBootScreen> {
   final _coordinator = NeuraStartupCoordinator.instance;
-
-  late final AnimationController _pulseController;
-  late final Animation<double> _pulseAnim;
+  bool _navigationScheduled = false;
 
   @override
   void initState() {
     super.initState();
 
-    // Gentle pulsing glow on the logo while booting.
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
-
-    _pulseAnim = Tween<double>(begin: 0.55, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-
     // Listen for ready so we can navigate as soon as boot finishes.
     _coordinator.ready.addListener(_onReady);
 
-    // Fire the boot sequence (idempotent — safe to call here).
-    unawaited(_coordinator.boot());
+    // Paint Neura before preference/native initialization begins. A returning
+    // boot screen must also handle an already-ready coordinator.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_coordinator.boot());
+      _onReady();
+    });
   }
 
   @override
   void dispose() {
     _coordinator.ready.removeListener(_onReady);
-    _pulseController.dispose();
     super.dispose();
   }
 
   void _onReady() {
-    if (!_coordinator.ready.value) return;
-    if (!mounted) return;
-    // Only ask for sign-in once Supabase is actually configured — with
-    // placeholder keys, Supabase.initialize() was skipped, so touching
-    // Supabase.instance (AuthService included) would throw.
-    final safeMode = SafeBoot.instance.safeMode.value;
-    final canInspectSession = shouldInspectSupabaseSession(
-      safeMode: safeMode,
-      configured: SupabaseConfig.isConfigured,
-      initialized: _coordinator.supabaseInitialized,
-    );
-    final needsSignIn = canInspectSession && AuthService.currentUser == null;
-    // Device-lock only applies to the local-only dashboard path — once
-    // Supabase sign-in is active it already gates identity on its own.
-    final needsDeviceLock = !safeMode &&
-        !needsSignIn &&
-        AppLockPrefsController.instance.enabled.value;
-    // Short pause so "Ready!" is readable, then replace the whole route stack.
-    unawaited(
-      Future<void>.delayed(const Duration(milliseconds: 350), () {
-        if (!mounted) return;
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder<void>(
-            pageBuilder: (_, __, ___) {
-              if (needsSignIn) return const SignInScreen();
-              const dashboard = EnhancedNavigation();
-              return needsDeviceLock
-                  ? const AuthGuard(child: dashboard)
-                  : dashboard;
-            },
-            transitionsBuilder: (_, animation, __, child) {
-              return FadeTransition(
-                opacity: CurvedAnimation(
-                  parent: animation,
-                  curve: Curves.easeIn,
-                ),
-                child: child,
-              );
-            },
-            transitionDuration: const Duration(milliseconds: 600),
-          ),
-        );
-      }),
-    );
+    if (!_coordinator.ready.value || !mounted || _navigationScheduled) return;
+    _navigationScheduled = true;
+    // Navigate on the next frame, without an artificial splash-screen delay.
+    // Evaluate the safety/auth/lock gates at that point, rather than carrying
+    // a stale decision across a delayed callback.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_coordinator.ready.value) return;
+      // Only ask for sign-in once Supabase is actually configured — with
+      // placeholder keys, Supabase.initialize() was skipped, so touching
+      // Supabase.instance (AuthService included) would throw.
+      final safeMode = SafeBoot.instance.safeMode.value;
+      final canInspectSession = shouldInspectSupabaseSession(
+        safeMode: safeMode,
+        configured: SupabaseConfig.isConfigured,
+        initialized: _coordinator.supabaseInitialized,
+      );
+      final needsSignIn = canInspectSession && AuthService.currentUser == null;
+      // Device-lock only applies to the local-only dashboard path — once
+      // Supabase sign-in is active it already gates identity on its own.
+      final needsDeviceLock = !safeMode &&
+          !needsSignIn &&
+          AppLockPrefsController.instance.enabled.value;
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder<void>(
+          pageBuilder: (_, __, ___) {
+            if (needsSignIn) return const SignInScreen();
+            const dashboard = EnhancedNavigation();
+            return needsDeviceLock
+                ? const AuthGuard(child: dashboard)
+                : dashboard;
+          },
+          transitionsBuilder: (_, animation, __, child) {
+            return FadeTransition(
+              opacity: CurvedAnimation(parent: animation, curve: Curves.easeIn),
+              child: child,
+            );
+          },
+          transitionDuration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 200),
+        ),
+      );
+    });
+    // addPostFrameCallback alone does not request a frame when a cached-ready
+    // coordinator returns to a quiet, non-animating boot screen.
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   @override
@@ -123,40 +117,16 @@ class _NeuraBootScreenState extends State<NeuraBootScreen>
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Spacer(flex: 2),
-                  // ── Logo / avatar placeholder ────────────────────────────
-                  AnimatedBuilder(
-                    animation: _pulseAnim,
-                    builder: (_, __) {
-                      return Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.deepPurple.shade900,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.deepPurple.withValues(
-                                alpha: _pulseAnim.value * 0.7,
-                              ),
-                              blurRadius: 40,
-                              spreadRadius: 12,
-                            ),
-                          ],
-                        ),
-                        child: Center(
-                          child: Text(
-                            'N',
-                            style: TextStyle(
-                              fontSize: 64,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white.withValues(
-                                alpha: _pulseAnim.value,
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
+                  ValueListenableBuilder<bool>(
+                    valueListenable: SafeBoot.instance.safeMode,
+                    builder: (context, safeMode, _) =>
+                        ValueListenableBuilder<bool>(
+                      valueListenable: _coordinator.booting,
+                      builder: (_, booting, __) => NeuraStartupAvatar(
+                        animate: booting && !safeMode,
+                        height: 180,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 32),
                   // ── App name ─────────────────────────────────────────────
@@ -242,7 +212,9 @@ class _NeuraBootScreenState extends State<NeuraBootScreen>
                             ),
                             const SizedBox(height: 10),
                             AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 200),
+                              duration: MediaQuery.disableAnimationsOf(context)
+                                  ? Duration.zero
+                                  : const Duration(milliseconds: 200),
                               child: Text(
                                 stage.label,
                                 key: ValueKey(stage.label),

@@ -17,6 +17,8 @@ void main() {
           '"artifactSha256":"'
           '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
           '",'
+          '"files":[{"path":"neuro_companion.exe","bytes":12,'
+          '"sha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}],'
           '"userInitiatedInstallOnly":true}',
           200,
         ),
@@ -42,6 +44,27 @@ void main() {
             '"latestTag":"beta-win64-2026-10-11",'
             '"htmlUrl":"https://example.com/neura",'
             '"userInitiatedInstallOnly":false}',
+            200,
+          ),
+        ),
+      );
+
+      expect(await service.checkForUpdate(), isNull);
+    },
+  );
+
+  test(
+    'testable service rejects link-only manifests without artifact digest',
+    () async {
+      final service = UpdateCheckService.forTesting(
+        currentTag: 'beta-win64-2026-10-10',
+        manifestUrl: 'https://updates.example.com/neura.json',
+        client: MockClient(
+          (_) async => http.Response(
+            '{"schema":1,'
+            '"latestTag":"beta-win64-2026-10-11",'
+            '"htmlUrl":"https://example.com/neura",'
+            '"userInitiatedInstallOnly":true}',
             200,
           ),
         ),
