@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -188,6 +189,28 @@ void main() {
           isEmpty);
     }
     expect(calls.any((c) => c.method == 'send'), isFalse);
+    await close(tester);
+  });
+
+  testWidgets('explicit offline session formatter wins after Ollama selection',
+      (
+    tester,
+  ) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.windows) return;
+    await pumpChat(tester);
+    await tester.tap(find.byTooltip('Approved cloud / basic local reply'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Offline Ollama'));
+    await tester.pumpAndSettle();
+
+    await chooseOffline(tester);
+    final acceptedBySessionOnly = 'x' * 1600;
+    await tester.enterText(find.byType(TextField), acceptedBySessionOnly);
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      acceptedBySessionOnly,
+    );
     await close(tester);
   });
 

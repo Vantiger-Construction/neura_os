@@ -5,7 +5,9 @@ param(
   [Parameter(Mandatory)][string]$OutputRoot,
   [string]$PreviousArtifactRoot,
   [switch]$RequireAuthenticode,
-  [string]$ExpectedPublisher
+  [string]$ExpectedPublisher,
+  [string]$LatestTag = $env:NEURA_RELEASE_TAG,
+  [string]$HtmlUrl = $env:NEURA_RELEASE_HTML_URL
 )
 
 Set-StrictMode -Version Latest
@@ -73,6 +75,16 @@ function Assert-Manifest([string]$Root, [object[]]$Expected) {
   if ($actualJson -cne $expectedJson) { throw "Artifact verification failed for $Root" }
 }
 
+function Get-TextSha256([string]$Text) {
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $bytes = [Text.Encoding]::UTF8.GetBytes($Text)
+    return ($sha.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join ''
+  } finally {
+    $sha.Dispose()
+  }
+}
+
 $artifact = Resolve-BoundedDirectory $ArtifactRoot 'ArtifactRoot'
 $output = [IO.Path]::GetFullPath($OutputRoot)
 New-Item -ItemType Directory -Path $output -Force | Out-Null
@@ -83,6 +95,10 @@ if ($RequireAuthenticode) {
 }
 
 $manifestFiles = Get-PayloadManifest $artifact
+$payloadDigestJson = $manifestFiles | ConvertTo-Json -Depth 8 -Compress
+if ([string]::IsNullOrWhiteSpace($LatestTag) -xor [string]::IsNullOrWhiteSpace($HtmlUrl)) {
+  throw 'LatestTag and HtmlUrl must be supplied together for a public update manifest.'
+}
 $manifest = [ordered]@{
   schema = 1
   product = 'Neura Companion'
@@ -91,6 +107,11 @@ $manifest = [ordered]@{
   signaturePolicy = if ($RequireAuthenticode) { 'required' } else { 'development-not-required' }
   userInitiatedInstallOnly = $true
   files = $manifestFiles
+}
+if (-not [string]::IsNullOrWhiteSpace($LatestTag)) {
+  $manifest['latestTag'] = $LatestTag
+  $manifest['htmlUrl'] = $HtmlUrl
+  $manifest['artifactSha256'] = Get-TextSha256 $payloadDigestJson
 }
 $manifestPath = Join-Path $output 'RELEASE_MANIFEST.json'
 $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
