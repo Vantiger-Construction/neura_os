@@ -6,10 +6,10 @@ param(
     [switch]$SkipTests,
     [switch]$BuildWindows,
     [string]$DartDefineFile = $env:NEURA_DART_DEFINE_FILE,
-    [ValidateSet('All', 'Prepare', 'Analyze', 'Tests', 'WindowsBuild', 'WindowsPackage')]
-    [string]$Phase = 'All',
     [ValidateRange(1, 32)]
-    [int]$TestConcurrency = [Math]::Min([Environment]::ProcessorCount, 8)
+    [int]$TestConcurrency = [Math]::Min([Environment]::ProcessorCount, 8),
+    [ValidateSet('All', 'Prepare', 'Analyze', 'Tests', 'WindowsBuild', 'WindowsPackage')]
+    [string]$Phase = 'All'
 )
 
 Set-StrictMode -Version Latest
