@@ -11,6 +11,7 @@ import 'reliability/safe_boot.dart';
 import 'src/app.dart';
 import 'startup/neura_error_pipeline.dart';
 import 'startup/neura_process_exit.dart';
+import 'startup/neura_startup_avatar.dart';
 
 const String kLaunchSmokeTestArgument = '--launch-smoke-test';
 const int kLaunchSmokeTestSuccessExitCode = 73;
@@ -31,10 +32,7 @@ bool supportsWindowManagerPlus({
 }
 
 @visibleForTesting
-bool launchSmokeTestRequested(
-  List<String> arguments, {
-  required bool isWeb,
-}) {
+bool launchSmokeTestRequested(List<String> arguments, {required bool isWeb}) {
   return !isWeb && arguments.contains(kLaunchSmokeTestArgument);
 }
 
@@ -79,11 +77,13 @@ void main(List<String> args) {
         });
         return;
       }
-      unawaited(
-        _bootstrapWindowAndLaunch().then((_) {
-          _bootstrapFinished = true;
-        }),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(
+          _bootstrapWindowAndLaunch().then((_) {
+            _bootstrapFinished = true;
+          }),
+        );
+      });
     },
     (error, stackTrace) {
       final phase = _bootstrapFinished ? 'runtime' : 'bootstrap';
@@ -134,9 +134,8 @@ Future<void> _bootstrapWindowAndLaunch() async {
 
     if (role.isMascot) {
       try {
-        await WindowManagerPlus.ensureInitialized(role.windowId).timeout(
-          const Duration(seconds: 3),
-        );
+        await WindowManagerPlus.ensureInitialized(role.windowId)
+            .timeout(const Duration(seconds: 3));
         _attachRoot(const MascotWindowApp());
       } catch (error, stackTrace) {
         NeuraErrorPipeline.instance.capture(
@@ -173,9 +172,8 @@ Future<void> _bootstrapWindowAndLaunch() async {
 
 Future<void> _initializePrimaryWindowManager(int windowId) async {
   try {
-    await WindowManagerPlus.ensureInitialized(windowId).timeout(
-      const Duration(seconds: 3),
-    );
+    await WindowManagerPlus.ensureInitialized(windowId)
+        .timeout(const Duration(seconds: 3));
   } catch (error, stackTrace) {
     MascotWindowService.I.disableForProcess();
     NeuraErrorPipeline.instance.captureBootstrapWarning(
@@ -240,21 +238,21 @@ class _NeuraBootstrapFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
       home: Scaffold(
-        backgroundColor: Color(0xFF0D0D1A),
+        backgroundColor: const Color(0xFF0D0D1A),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(
-                width: 34,
-                height: 34,
-                child: CircularProgressIndicator(strokeWidth: 3),
+              ValueListenableBuilder<bool>(
+                valueListenable: SafeBoot.instance.safeMode,
+                builder: (_, safeMode, __) =>
+                    NeuraStartupAvatar(animate: !safeMode),
               ),
-              SizedBox(height: 18),
-              Text(
+              const SizedBox(height: 18),
+              const Text(
                 'Starting Neura safely…',
                 style: TextStyle(color: Colors.white70),
               ),
@@ -315,9 +313,8 @@ Future<void> _verifyLaunchSmokeTest() async {
   if (role.isMascot || role.windowId != 0) {
     throw StateError('Launch smoke test did not start in the primary window.');
   }
-  await WindowManagerPlus.ensureInitialized(role.windowId).timeout(
-    const Duration(seconds: 3),
-  );
+  await WindowManagerPlus.ensureInitialized(role.windowId)
+      .timeout(const Duration(seconds: 3));
 }
 
 Future<void> _failLaunchSmokeTest(
@@ -359,8 +356,8 @@ Future<void> _exitLaunchSmokeTest(int exitCode) async {
 Future<void> _drainSmokeTestLogs() async {
   try {
     await NeuraErrorPipeline.instance.drain().timeout(
-          const Duration(seconds: 2),
-        );
+      const Duration(seconds: 2),
+    );
   } catch (_) {
     // Exit deterministically even if the diagnostic destination is blocked.
   }
