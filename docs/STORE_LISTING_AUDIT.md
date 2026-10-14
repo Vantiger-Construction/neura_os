@@ -94,6 +94,13 @@ interpretation/fixed prompts as AI. They are not independent evidence. This
 three-document change leaves app behavior and legal text for separate review;
 reconcile them before publication.
 
+Privacy/support follow-up prepared on 2026-10-14:
+[revised policy](PrivacyPolicy.md), [support source](Support.md) and
+[publication review](PRIVACY_SUPPORT_PUBLICATION_REVIEW.md). This new work is
+separate from the original three-document listing audit. The homepage now has
+cookie-free HTTP 200 evidence; policy/support URLs and monitored public contact
+remain unverified. Store URL fields remain unset.
+
 ## Platform references and validation
 
 Official references checked: Apple [app fields](https://developer.apple.com/help/app-store-connect/reference/app-information/app-information),
@@ -121,3 +128,4 @@ Checks for this documentation change: field/keyword lengths, relative links
 against the full source tree, customer-copy placeholder exclusions, whitespace
 and three-file scope. No new application tests or device trials were run; no
 store console or public site was changed.
+
