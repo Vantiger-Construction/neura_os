@@ -1,0 +1,99 @@
+name: Neura full-data-wipe safety
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths:
+      - 'lib/src/core/data_wipe_service.dart'
+      - 'lib/src/modules/privacy/**'
+      - 'lib/core/memory/**'
+      - 'lib/encrypted_memory/**'
+      - 'lib/services/neura_provider_credentials.dart'
+      - 'lib/services/neura_model_credentials.dart'
+      - 'lib/services/scheduled_backup_settings.dart'
+      - 'lib/services/*listening*'
+      - 'lib/services/*listener*'
+      - 'lib/reliability/safe_boot*'
+      - 'test/data_wipe*'
+      - 'test/helpers/data_wipe_fixture.dart'
+      - 'test/encrypted_memory/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/neura-data-wipe-safety.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-data-wipe-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  privacy:
+    name: Synthetic wipe, privacy and encrypted-memory regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Restore locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Focused full-wipe regressions with coverage
+        run: |
+          flutter test --no-pub --reporter expanded --concurrency 2 \
+            --coverage --coverage-path=coverage/wipe/lcov.info \
+            test/data_wipe_service_test.dart \
+            test/data_wipe_service_full_test.dart \
+            test/data_wipe_service_lifecycle_test.dart \
+            test/data_wipe_credentials_test.dart \
+            test/data_wipe_microphone_test.dart
+      - name: Related privacy and encrypted-memory contracts
+        run: |
+          flutter test --no-pub --reporter expanded --concurrency 2 \
+            test/encrypted_memory test/core/memory_graph_service_test.dart \
+            test/neura_provider_credentials_test.dart \
+            test/startup/native_speech_safe_mode_test.dart \
+            test/living_intelligence \
+            test/intelligence/action_loom_fresh_approval_test.dart \
+            test/intelligence/fresh_approval_lease_test.dart
+      - name: Require strict analysis for changed privacy code
+        run: |
+          flutter analyze --fatal-infos \
+            lib/src/core/data_wipe_service.dart \
+            lib/services/neura_provider_credentials.dart \
+            lib/services/neura_model_credentials.dart \
+            lib/services/scheduled_backup_settings.dart \
+            lib/services/sleep_listener_service.dart \
+            test/data_wipe_service_full_test.dart \
+            test/data_wipe_service_lifecycle_test.dart \
+            test/data_wipe_credentials_test.dart \
+            test/data_wipe_microphone_test.dart \
+            test/helpers/data_wipe_fixture.dart
+      - name: Check canonical formatting
+        run: |
+          dart format --output=none --set-exit-if-changed \
+            lib/src/core/data_wipe_service.dart \
+            lib/services/neura_provider_credentials.dart \
+            lib/services/neura_model_credentials.dart \
+            lib/services/scheduled_backup_settings.dart \
+            lib/services/sleep_listener_service.dart \
+            test/data_wipe_service_full_test.dart \
+            test/data_wipe_service_lifecycle_test.dart \
+            test/data_wipe_credentials_test.dart \
+            test/data_wipe_microphone_test.dart \
+            test/helpers/data_wipe_fixture.dart
+      - name: Preserve focused coverage
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: neura-wipe-coverage-${{ github.sha }}-${{ github.run_attempt }}
+          path: coverage/wipe/
+          if-no-files-found: warn
+          retention-days: 14
