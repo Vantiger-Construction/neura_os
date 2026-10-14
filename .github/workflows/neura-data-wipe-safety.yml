@@ -50,6 +50,7 @@ jobs:
           flutter test --no-pub --reporter expanded --concurrency 2 \
             --coverage --coverage-path=coverage/wipe/lcov.info \
             test/data_wipe_service_test.dart \
+            test/data_wipe_fixture_test.dart \
             test/data_wipe_service_full_test.dart \
             test/data_wipe_service_lifecycle_test.dart \
             test/data_wipe_credentials_test.dart \
@@ -75,6 +76,7 @@ jobs:
             test/data_wipe_service_lifecycle_test.dart \
             test/data_wipe_credentials_test.dart \
             test/data_wipe_microphone_test.dart \
+            test/data_wipe_fixture_test.dart \
             test/helpers/data_wipe_fixture.dart
       - name: Check canonical formatting
         run: |
@@ -88,6 +90,7 @@ jobs:
             test/data_wipe_service_lifecycle_test.dart \
             test/data_wipe_credentials_test.dart \
             test/data_wipe_microphone_test.dart \
+            test/data_wipe_fixture_test.dart \
             test/helpers/data_wipe_fixture.dart
       - name: Preserve focused coverage
         if: always()

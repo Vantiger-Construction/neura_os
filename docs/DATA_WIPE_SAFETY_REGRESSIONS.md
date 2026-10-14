@@ -23,6 +23,7 @@ flutter pub get --enforce-lockfile
 flutter test --no-pub --reporter expanded --concurrency 2 \
   --coverage --coverage-path=coverage/wipe/lcov.info \
   test/data_wipe_service_test.dart \
+  test/data_wipe_fixture_test.dart \
   test/data_wipe_service_full_test.dart \
   test/data_wipe_service_lifecycle_test.dart \
   test/data_wipe_credentials_test.dart \
@@ -44,6 +45,9 @@ using any coverage number; failed runs produce partial evidence.
 
 ## Contracts exercised
 
+- Fixture confinement accepts equivalent native/slash paths and rejects
+  normalized parent traversal and similarly prefixed siblings. Paused writes
+  and injected filesystem failures match equivalent Windows path spellings.
 - Complete deletion of exact app-owned document/support targets and every
   current temporary artifact pattern, including both temporary roots and
   bootstrap logs. Prefix/suffix neighbors, nested unrelated files, neighboring
@@ -84,3 +88,26 @@ physical device or live cloud session is initialized by this suite. The fixes
 preserve the restart boundary, Safe Mode microphone-off and no-background-cloud
 rules. See the pull request's current validation evidence for corrected-head
 results; do not merge automatically.
+
+## Windows fixture correction
+
+Windows run [38532985403](https://github.com/Vantiger-Construction/neura_os/actions/runs/38532985403)
+on `81805452c790d6d95db78ea68e4a3ab5567ac91d` reported 801 passes and 12
+failures. The fixture created slash-separated paths but checked a literal native
+separator prefix. Its paused writer also compared a slash path against the
+graph service's native path, so the lifecycle test never observed the paused
+append and reached its ten-second deadline.
+
+The full-wipe and lifecycle failures were reproduced locally on Windows with
+Flutter 3.47.5 / Dart 3.13.4 and locked dependencies. The fixture now checks
+normalized containment and uses platform-aware path equality for injected
+failures and paused writes. The lifecycle deadline and production wipe code
+are unchanged. The existing locked `path` 1.9.1 package is declared as a direct
+test dependency; no package version changes are needed.
+
+Windows validation after the correction: all 19 focused tests passed, including
+the unchanged lifecycle deadline and three fixture confinement regressions.
+Strict analysis of the changed fixture and tests found no issues; canonical
+formatting checked all 631 Dart files without changes.
+The complete Windows suite also passed all 816 tests with
+`flutter test --no-pub --reporter expanded --concurrency 4`.

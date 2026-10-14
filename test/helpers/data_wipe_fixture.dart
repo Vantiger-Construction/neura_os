@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/startup/neura_bootstrap_log.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -137,13 +138,13 @@ class DataWipeFixture {
         createFile: (path) {
           final guarded = _guard(path);
           final paused = pausedFile;
-          if (paused != null && guarded == paused.path) return paused;
+          if (paused != null && p.equals(guarded, paused.path)) return paused;
           return outer.run(() => File(guarded));
         },
         createLink: (path) => outer.run(() => Link(_guard(path))),
         fseGetType: (path, followLinks) async {
           final guarded = _guard(path);
-          if (blockedPaths.contains(guarded)) {
+          if (blockedPaths.any((blocked) => p.equals(blocked, guarded))) {
             throw FileSystemException('Synthetic private path failure.', path);
           }
           return outer.run(
@@ -156,11 +157,17 @@ class DataWipeFixture {
   }
 
   String _guard(String path) {
-    if (path == originalBootstrapParent) return '${root.path}/bootstrap';
-    if (path == originalBootstrapPath) return bootstrapPath;
-    if (path == '$originalBootstrapPath.old') return '$bootstrapPath.old';
-    if (path == root.path ||
-        path.startsWith('${root.path}${Platform.pathSeparator}')) {
+    final normalized = p.normalize(p.absolute(path));
+    if (p.equals(normalized, originalBootstrapParent)) {
+      return '${root.path}/bootstrap';
+    }
+    if (p.equals(normalized, originalBootstrapPath)) return bootstrapPath;
+    if (p.equals(normalized, '$originalBootstrapPath.old')) {
+      return '$bootstrapPath.old';
+    }
+    // Windows accepts both separators. Check normalized containment so mixed
+    // spellings work without admitting traversal or similarly prefixed siblings.
+    if (p.equals(normalized, root.path) || p.isWithin(root.path, normalized)) {
       return path;
     }
     escapedPaths.add(path);
