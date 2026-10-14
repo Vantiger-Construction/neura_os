@@ -59,6 +59,11 @@ The previous `neura.com/privacy` destination is not approved. No replacement
 policy or support URL has been invented. See [STORE_LISTING_AUDIT.md](STORE_LISTING_AUDIT.md)
 for the exact publication dependencies.
 
+Privacy/support follow-up: [revised privacy draft](PrivacyPolicy.md),
+[support draft](Support.md), and [publication review](PRIVACY_SUPPORT_PUBLICATION_REVIEW.md).
+The privacy URL and public contact assignment remain blocked until the exact
+deployed page and monitored contact are verified.
+
 ## Listing assets and release handoff
 
 - Produce an actual feature graphic. `marketing/feature_graphic.png` does not
@@ -84,3 +89,4 @@ full description; listings also appear on testing tracks. A generic
 heading has been removed. Review [User Data](https://support.google.com/googleplay/android-developer/answer/10144311)
 and [Health Content and Services](https://support.google.com/googleplay/android-developer/answer/16679511)
 when completing the publication dependencies.
+
