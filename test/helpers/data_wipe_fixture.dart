@@ -151,10 +151,7 @@ class DataWipeFixture {
           );
         },
       ),
-      createHttpClient: (_) {
-        networkAttempts += 1;
-        throw StateError('Network access is forbidden in wipe tests.');
-      },
+      createHttpClient: (_) => _NoNetworkClient(this),
     );
   }
 
@@ -182,6 +179,21 @@ class DataWipeFixture {
     expect(platformCalls, isEmpty);
     expect(networkAttempts, 0);
   }
+}
+
+/// Allocating an idle transport is harmless; opening a request is forbidden.
+class _NoNetworkClient extends Fake implements HttpClient {
+  _NoNetworkClient(this.fixture);
+  final DataWipeFixture fixture;
+
+  @override
+  Future<HttpClientRequest> openUrl(String method, Uri url) async {
+    fixture.networkAttempts += 1;
+    throw StateError('Network access is forbidden in wipe tests.');
+  }
+
+  @override
+  void close({bool force = false}) {}
 }
 
 class WipePreferencesStore extends SharedPreferencesStorePlatform {
