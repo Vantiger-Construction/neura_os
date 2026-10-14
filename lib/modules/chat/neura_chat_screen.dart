@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -184,6 +185,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     if (!mounted || !_localSession.canStart) return;
     setState(() {
       _localSelected = true;
+      _localOllama = false;
       ++_localSerial;
       _localLines.clear();
       _controller.clear();
@@ -914,6 +916,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final room = NeuraShell.of(context).room;
     final conversationMode = _conversationMode;
     final policy = NeuraChatPolicy.forRoom(room.id);
+    final localOllama = _localOllama;
     final selectedContext = _selectedContext;
     final includeMemory = _includeMemory && policy.persistMemory;
     final historyIncludedPrivateContext = _privateContextUsed;
@@ -1447,6 +1450,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                   ? 'Offline Ollama'
                   : 'Approved cloud / basic local reply',
               icon: Icon(_localOllama ? Icons.computer : Icons.cloud_outlined),
+              enabled: !_localSelected,
               onSelected: (local) async {
                 await _interruptActiveReply();
                 if (!mounted) return;
@@ -1712,11 +1716,6 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                         _localSelected ? 'offline-$_localSerial' : 'standard',
                       ),
                       controller: _controller,
-                      inputFormatters: _localOllama
-                          ? const [NeuraOllamaTextInputFormatter()]
-                          : null,
-                      enabled: true,
-                      enableIMEPersonalizedLearning: !_localSelected,
                       inputFormatters: _localSelected
                           ? [
                               TextInputFormatter.withFunction(
@@ -1730,7 +1729,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                                 return newValue;
                               })
                             ]
-                          : null,
+                          : _localOllama
+                              ? const [NeuraOllamaTextInputFormatter()]
+                              : null,
+                      enabled: true,
+                      enableIMEPersonalizedLearning: !_localSelected,
                       onSubmitted: (_) => _send(),
                       decoration: InputDecoration(
                         hintText: _listening
