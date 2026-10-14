@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +18,8 @@ class _SyntheticRecorder extends Fake
   final stopCalls = <String>[];
   final failedStops = <String>{};
   int starts = 0;
+  int disposals = 0;
+  final disposed = Completer<void>();
 
   @override
   Future<void> create(String recorderId) async {}
@@ -50,6 +53,8 @@ class _SyntheticRecorder extends Fake
   @override
   Future<void> dispose(String recorderId) async {
     live.remove(recorderId);
+    disposals += 1;
+    if (disposals == 2) disposed.complete();
   }
 }
 
@@ -67,10 +72,14 @@ void main() {
       SafeBoot.instance.safeMode.value = false;
       final first = SleepListenerService();
       final second = SleepListenerService();
-      addTearDown(() {
+      addTearDown(() async {
         first.dispose();
         second.dispose();
-        RecordPlatform.instance = original;
+        try {
+          await recorder.disposed.future.timeout(const Duration(seconds: 5));
+        } finally {
+          RecordPlatform.instance = original;
+        }
       });
       await first.startRecording();
       await second.startRecording();
