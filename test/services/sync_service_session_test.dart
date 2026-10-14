@@ -111,4 +111,32 @@ void main() {
     expect((await service.syncAll()).outcome, SyncOutcome.offline);
     expect(calls, 0);
   });
+
+  test('legacy prompt ids are not uploaded during sync', () async {
+    final legacy = JournalEntry(
+      id: 'journal_prompt_2026-10-10',
+      timestamp: DateTime.utc(2026, 10, 10),
+      updatedAt: DateTime.utc(2026, 10, 11),
+      content: 'Prompt:\nLegacy prompt\n\nResponse:\nLocal response.',
+      moodTag: 'journal_prompt:2026-10-10',
+    );
+    var pushes = 0;
+    final service = SyncService.forTesting(
+      loadLocal: () async => [legacy],
+      saveLocal: (_) async {},
+      fetchPage: (_, __, ___) async => [],
+      pushRevision: (value, _) async {
+        pushes++;
+        return value;
+      },
+      allowed: () => true,
+      userId: () => 'user',
+      online: () async => true,
+    );
+
+    final result = await service.syncAll();
+
+    expect(result.outcome, SyncOutcome.complete);
+    expect(pushes, 0);
+  });
 }

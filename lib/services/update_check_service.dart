@@ -50,6 +50,7 @@ class UpdateCheckService {
   final http.Client _client;
   final String _configuredCurrentTag;
   final String _configuredManifestUrl;
+  static final _sha256 = RegExp(r'^[0-9a-f]{64}$');
 
   Future<AvailableUpdate?> checkForUpdate() async {
     if (_configuredCurrentTag.isEmpty || _configuredManifestUrl.isEmpty) {
@@ -69,16 +70,20 @@ class UpdateCheckService {
       if (json['schema'] != 1) return null;
       final latestTag = json['latestTag'] as String?;
       final htmlUrl = json['htmlUrl'] as String?;
+      final artifactSha256 = json['artifactSha256'] as String?;
       final userInitiated = json['userInitiatedInstallOnly'] as bool? ?? true;
       if (latestTag == null || htmlUrl == null) return null;
       if (!userInitiated) return null;
+      if (artifactSha256 == null || !_sha256.hasMatch(artifactSha256)) {
+        return null;
+      }
       if (latestTag == _configuredCurrentTag) return null;
 
       return AvailableUpdate(
         tag: latestTag,
         htmlUrl: htmlUrl,
         notes: json['notes'] as String?,
-        artifactSha256: json['artifactSha256'] as String?,
+        artifactSha256: artifactSha256,
         userInitiatedInstallOnly: userInitiated,
       );
     } catch (_) {
