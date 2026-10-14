@@ -45,4 +45,3 @@ Neura Companion / Neura OS can be supportive and reflective, but it is not a sub
 If you feel unsafe, overwhelmed, or at risk of harming yourself or others, seek immediate help from local emergency services or a qualified professional.
 ''';
 }
-
