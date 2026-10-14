@@ -44,8 +44,9 @@ class _SyntheticRecorder extends Fake
   @override
   Future<String?> stop(String recorderId) async {
     stopCalls.add(recorderId);
-    if (failedStops.contains(recorderId))
+    if (failedStops.contains(recorderId)) {
       throw StateError('synthetic recorder stop failure');
+    }
     live.remove(recorderId);
     return paths[recorderId];
   }
