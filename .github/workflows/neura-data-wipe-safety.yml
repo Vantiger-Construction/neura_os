@@ -52,7 +52,8 @@ jobs:
             test/data_wipe_service_test.dart \
             test/data_wipe_service_full_test.dart \
             test/data_wipe_service_lifecycle_test.dart \
-            test/data_wipe_credentials_test.dart
+            test/data_wipe_credentials_test.dart \
+            test/data_wipe_microphone_test.dart
       - name: Related privacy and encrypted-memory contracts
         run: |
           flutter test --no-pub --reporter expanded --concurrency 2 \
@@ -68,9 +69,12 @@ jobs:
             lib/src/core/data_wipe_service.dart \
             lib/services/neura_provider_credentials.dart \
             lib/services/neura_model_credentials.dart \
+            lib/services/scheduled_backup_settings.dart \
+            lib/services/sleep_listener_service.dart \
             test/data_wipe_service_full_test.dart \
             test/data_wipe_service_lifecycle_test.dart \
             test/data_wipe_credentials_test.dart \
+            test/data_wipe_microphone_test.dart \
             test/helpers/data_wipe_fixture.dart
       - name: Check canonical formatting
         run: |
@@ -78,9 +82,12 @@ jobs:
             lib/src/core/data_wipe_service.dart \
             lib/services/neura_provider_credentials.dart \
             lib/services/neura_model_credentials.dart \
+            lib/services/scheduled_backup_settings.dart \
+            lib/services/sleep_listener_service.dart \
             test/data_wipe_service_full_test.dart \
             test/data_wipe_service_lifecycle_test.dart \
             test/data_wipe_credentials_test.dart \
+            test/data_wipe_microphone_test.dart \
             test/helpers/data_wipe_fixture.dart
       - name: Preserve focused coverage
         if: always()
