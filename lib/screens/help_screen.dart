@@ -68,7 +68,7 @@ class HelpScreen extends StatelessWidget {
                   'recognition; phones use their platform speech service. '
                   'Voice services may need an internet connection. Tap Start '
                   'listening, then Stop listening, review the words and tap '
-                  'Save transcript. If speech is unavailable, use Journal '
+                  'Save to journal. If speech is unavailable, use Journal '
                   'Prompt. Safe Mode keeps the microphone off.',
             ),
             const _HelpSection(

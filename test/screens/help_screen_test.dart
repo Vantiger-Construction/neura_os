@@ -48,7 +48,7 @@ void main() {
       'Voice services may need an internet connection',
       'Start listening',
       'Stop listening',
-      'Save transcript',
+      'Save to journal',
       'Safe Mode keeps the microphone off',
       'provider key in Controls > AI Provider',
       'your approval for each request',
@@ -102,33 +102,36 @@ void main() {
     testWidgets('Help stays readable and Back works in ${brightness.name} mode',
         (tester) async {
       final semantics = tester.ensureSemantics();
-      addTearDown(semantics.dispose);
-      await _openHelp(
-        tester,
-        size: const Size(320, 640),
-        textScale: 2,
-        brightness: brightness,
-      );
+      try {
+        await _openHelp(
+          tester,
+          size: const Size(320, 640),
+          textScale: 2,
+          brightness: brightness,
+        );
 
-      expect(find.text('Getting Started'), findsOneWidget);
-      expect(
-        tester.getSemantics(find.text('Welcome to Neura Companion!')),
-        matchesSemantics(
-          label: 'Welcome to Neura Companion!',
-          isHeader: true,
-        ),
-      );
-      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
-      await expectLater(tester, meetsGuideline(textContrastGuideline));
+        expect(find.text('Getting Started'), findsOneWidget);
+        expect(
+          tester.getSemantics(find.text('Welcome to Neura Companion!')),
+          matchesSemantics(
+            label: 'Welcome to Neura Companion!',
+            isHeader: true,
+          ),
+        );
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(textContrastGuideline));
 
-      final guidance = await _readHelp(tester);
-      expect(guidance, contains('Privacy and local data'));
-      expect(guidance, contains('Explore at your own pace with Neura'));
-      await tester.tap(find.byTooltip('Back'));
-      await tester.pumpAndSettle();
-      expect(find.byType(HelpScreen), findsNothing);
-      expect(find.text('Open Help'), findsOneWidget);
-      expect(tester.takeException(), isNull);
+        final guidance = await _readHelp(tester);
+        expect(guidance, contains('Privacy and local data'));
+        expect(guidance, contains('Explore at your own pace with Neura'));
+        await tester.tap(find.byTooltip('Back'));
+        await tester.pumpAndSettle();
+        expect(find.byType(HelpScreen), findsNothing);
+        expect(find.text('Open Help'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      } finally {
+        semantics.dispose();
+      }
     });
   }
 }
