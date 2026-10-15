@@ -8,7 +8,7 @@ import 'renderers/lottie_avatar_view.dart';
 import 'renderers/rive_avatar_view.dart';
 import 'renderers/sprite_avatar_view.dart';
 
-class AvatarView extends StatelessWidget {
+class AvatarView extends StatefulWidget {
   final AvatarSpec spec;
   final AvatarController controller;
   final double size;
@@ -21,6 +21,36 @@ class AvatarView extends StatelessWidget {
     this.size = 128,
     this.fit = BoxFit.contain,
   });
+
+  @override
+  State<AvatarView> createState() => _AvatarViewState();
+}
+
+class _AvatarViewState extends State<AvatarView> {
+  late Future<_Resolved> _resolved;
+
+  AvatarSpec get spec => widget.spec;
+  AvatarController get controller => widget.controller;
+  double get size => widget.size;
+  BoxFit get fit => widget.fit;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolved = _resolve();
+  }
+
+  @override
+  void didUpdateWidget(AvatarView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final previous = oldWidget.spec;
+    if (previous.format != spec.format ||
+        previous.assetPath != spec.assetPath ||
+        previous.fallbackAssetPath != spec.fallbackAssetPath ||
+        previous.lottie?.variants['idle'] != spec.lottie?.variants['idle']) {
+      _resolved = _resolve();
+    }
+  }
 
   Widget _placeholder(BuildContext context) {
     return Container(
@@ -35,7 +65,7 @@ class AvatarView extends StatelessWidget {
     );
   }
 
-  AvatarFormat _inferFormatFromPath(String path) {
+  AvatarFormat _inferFormatFromPath(String path, AvatarFormat fallback) {
     final p = path.toLowerCase();
     if (p.endsWith('.riv')) return AvatarFormat.rive;
     if (p.endsWith('.json')) return AvatarFormat.lottie;
@@ -45,10 +75,13 @@ class AvatarView extends StatelessWidget {
         p.endsWith('.webp')) {
       return AvatarFormat.image;
     }
-    return spec.format;
+    return fallback;
   }
 
   Future<_Resolved> _resolve() async {
+    // Capture the spec for this attempt. A later selection has its own future;
+    // an old in-flight asset probe must not resolve using the new widget's spec.
+    final spec = widget.spec;
     // Primary
     if (await AssetGuard.exists(spec.assetPath)) {
       return _Resolved(spec.format, spec.assetPath);
@@ -57,7 +90,7 @@ class AvatarView extends StatelessWidget {
     // Spec-level fallback
     final fb = spec.fallbackAssetPath;
     if (fb != null && await AssetGuard.exists(fb)) {
-      return _Resolved(_inferFormatFromPath(fb), fb);
+      return _Resolved(_inferFormatFromPath(fb, spec.format), fb);
     }
 
     // If the primary format is Rive but we have Lottie variants, prefer those.
@@ -75,18 +108,20 @@ class AvatarView extends StatelessWidget {
     final fallback = _placeholder(context);
 
     return FutureBuilder<_Resolved>(
-      future: _resolve(),
+      future: _resolved,
       builder: (context, snap) {
-        if (!snap.hasData) {
+        if (snap.connectionState != ConnectionState.done) {
           return SizedBox(
             width: size,
             height: size,
-            child:
-                const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            child: const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
           );
         }
 
-        final resolved = snap.data!;
+        final resolved = snap.data;
+        if (resolved == null) return fallback;
         final format = resolved.format;
         final path = resolved.path;
         if (format == null || path == null) return fallback;
@@ -134,18 +169,24 @@ class AvatarView extends StatelessWidget {
             );
           case AvatarFormat.sprite:
             return SpriteAvatarView(
-                spec: spec, size: size, fit: fit, fallback: fallback);
+              spec: spec,
+              size: size,
+              fit: fit,
+              fallback: fallback,
+            );
           case AvatarFormat.image:
             return SizedBox(
               width: size,
               height: size,
-              child: Image.asset(path,
-                  fit: fit,
-                  cacheWidth:
-                      (size * MediaQuery.devicePixelRatioOf(context)).round(),
-                  cacheHeight:
-                      (size * MediaQuery.devicePixelRatioOf(context)).round(),
-                  errorBuilder: (_, __, ___) => fallback),
+              child: Image.asset(
+                path,
+                fit: fit,
+                cacheWidth:
+                    (size * MediaQuery.devicePixelRatioOf(context)).round(),
+                cacheHeight:
+                    (size * MediaQuery.devicePixelRatioOf(context)).round(),
+                errorBuilder: (_, __, ___) => fallback,
+              ),
             );
         }
       },
