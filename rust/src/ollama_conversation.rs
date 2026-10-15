@@ -82,14 +82,16 @@ fn prepare(raw: &[u8]) -> Result<Value, ()> {
     let mut messages = vec![json!({"role":"system", "content": request.system})];
     messages.extend(retained.into_iter().map(|t| json!(t)));
     Ok(
-        json!({"model": LOCAL_MODEL, "messages": messages, "stream": false,
+        json!({"model": LOCAL_MODEL, "messages": messages, "stream": false, "think": false,
         "keep_alive": 0, "options": {"num_ctx":2048,"num_predict":256,
         "num_thread":2,"temperature":0.6}}),
     )
 }
 
 async fn bounded_json(mut response: reqwest::Response, limit: usize) -> Result<Value, ()> {
-    if !response.status().is_success() {
+    if !response.status().is_success()
+        || response.content_length().is_some_and(|bytes| bytes > limit as u64)
+    {
         return Err(());
     }
     let mut bytes = Zeroizing::new(Vec::new());
@@ -106,6 +108,8 @@ async fn inference(endpoint: &str, payload: Value) -> Result<String, ()> {
     let client = reqwest::Client::builder()
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
+        .pool_max_idle_per_host(1)
+        .pool_idle_timeout(Duration::from_secs(15))
         .connect_timeout(Duration::from_secs(2))
         .timeout(Duration::from_secs(90))
         .build()
@@ -354,6 +358,7 @@ mod tests {
         assert_eq!(payload["messages"][0]["content"], "Neura charter");
         assert_eq!(payload["options"]["num_ctx"], 2048);
         assert_eq!(payload["keep_alive"], 0);
+        assert_eq!(payload["think"], false);
         assert!(payload.get("tools").is_none());
     }
     #[test]
@@ -457,6 +462,7 @@ mod tests {
                     counter.fetch_add(1, Ordering::SeqCst);
                     assert_eq!(request["model"], LOCAL_MODEL);
                     assert_eq!(request["keep_alive"], 0);
+                    assert_eq!(request["think"], false);
                     assert!(request.get("tools").is_none());
                     Json(answer)
                 }),
@@ -499,6 +505,43 @@ mod tests {
             task.abort();
         }
     }
+    #[tokio::test]
+    async fn rejects_advertised_oversize_without_waiting_for_body() {
+        use axum::{body::Body, http::Response, routing::get, Router};
+        let router = Router::new().route(
+            "/",
+            get(|| async {
+                let body = Body::from_stream(futures_util::stream::pending::<
+                    Result<String, std::io::Error>,
+                >());
+                Response::builder()
+                    .header("content-length", "1000000")
+                    .body(body)
+                    .unwrap()
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let response = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
+            .get(endpoint)
+            .send()
+            .await
+            .unwrap();
+        let result = tokio::time::timeout(
+            Duration::from_secs(2),
+            bounded_json(response, MAX_RESPONSE),
+        )
+        .await;
+        task.abort();
+        assert!(result.unwrap().is_err());
+    }
+
     #[tokio::test]
     async fn never_follows_redirects() {
         use axum::{response::Redirect, routing::post, Router};
