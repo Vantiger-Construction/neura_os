@@ -68,6 +68,11 @@ journal,reflection,mood,check-in,planning,focus,grounding,personal notes
 Do not reuse the previous `neura.com` links. Exact dependencies and the existing
 feedback contact are in [STORE_LISTING_AUDIT.md](STORE_LISTING_AUDIT.md).
 
+Privacy/support follow-up: [revised privacy draft](PrivacyPolicy.md),
+[support draft](Support.md), and [publication review](PRIVACY_SUPPORT_PUBLICATION_REVIEW.md).
+These do not yet supply verified public URLs. Keep both URL fields unset until
+the exact deployed pages pass anonymous access and contact verification.
+
 ## TestFlight beta description draft
 
 Held until an accepted iOS test build exists; no TestFlight invitation or public
@@ -107,3 +112,4 @@ and [platform version information](https://developer.apple.com/help/app-store-co
 name/subtitle 30 characters, promotional text 170 characters, description 4,000
 characters, keywords 100 bytes. Apple's [review guidelines](https://developer.apple.com/app-store/review/guidelines/)
 direct beta testing to TestFlight and require accurate, functional metadata.
+
