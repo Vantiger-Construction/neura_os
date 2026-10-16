@@ -16,6 +16,9 @@ on:
       - 'docs/NEURA_OLLAMA_CHAT.md'
       - 'BUILD_ALL_NEURA_UPGRADES.ps1'
       - 'tools/verify_ollama_preview.py'
+      - 'tools/benchmark_ollama_latency.py'
+      - 'tools/test_benchmark_ollama_latency.py'
+      - 'docs/NEURA_OLLAMA_LATENCY.md'
       - '.github/workflows/neura-ollama-chat.yml'
   workflow_dispatch:
 
@@ -45,11 +48,13 @@ jobs:
           rustup default stable
       - name: Test all Rust targets
         run: cargo test --manifest-path rust/Cargo.toml --locked --all-targets
+      - name: Test synthetic benchmark statistics without a model
+        run: python -m unittest discover -s tools -p test_benchmark_ollama_latency.py -v
       - name: Check Rust adapter formatting
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
-          rustfmt --edition 2021 --check rust/src/ollama_conversation.rs
+          rustfmt --edition 2021 --check rust/src/ollama_conversation.rs rust/src/ollama_latency.rs
       - name: Strict Clippy
         run: cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
   flutter:
@@ -135,3 +140,4 @@ jobs:
             dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
+
