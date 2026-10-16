@@ -50,12 +50,12 @@ void main() {
   var elapsed = Duration.zero;
 
   Future<String> reply(NeuraGenerationCancel cancel) => chat.reply(
-    system: 'Neura charter',
-    messages: [
-      {'role': 'user', 'content': 'Hello'},
-    ],
-    cancel: cancel,
-  );
+        system: 'Neura charter',
+        messages: [
+          {'role': 'user', 'content': 'Hello'},
+        ],
+        cancel: cancel,
+      );
 
   setUp(() {
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -104,14 +104,14 @@ void main() {
   });
 
   Map<String, dynamic> nativeTiming({int outcome = 1}) => {
-    'version': 1,
-    'outcome': outcome,
-    'preflightUs': 20000,
-    'inferenceUs': 100000,
-    'deliveryUs': outcome == 1 ? 25000 : null,
-    'cancellationUs': outcome == 3 ? 15000 : null,
-    'totalUs': 145000,
-  };
+        'version': 1,
+        'outcome': outcome,
+        'preflightUs': 20000,
+        'inferenceUs': 100000,
+        'deliveryUs': outcome == 1 ? 25000 : null,
+        'cancellationUs': outcome == 3 ? 15000 : null,
+        'totalUs': 145000,
+      };
 
   testWidgets('synthetic timings separate phases and include final delivery', (
     tester,
@@ -265,7 +265,7 @@ void main() {
     ) async {
       if (call.method == 'beginOllama') return 11;
       if (call.method == 'pollOllama') return 'Must be discarded';
-      if (call.method == 'cancelOllama') return cleanup.future;
+      if (call.method == 'cancelOllama') await cleanup.future;
       return null;
     });
     final expected = expectLater(

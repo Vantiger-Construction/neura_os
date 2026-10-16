@@ -54,9 +54,10 @@ class NeuraOllamaTextInputFormatter extends TextInputFormatter {
   TextEditingValue formatEditUpdate(
     TextEditingValue oldValue,
     TextEditingValue newValue,
-  ) => utf8.encode(newValue.text).length <= NeuraOllamaChat.maxInputBytes
-      ? newValue
-      : oldValue;
+  ) =>
+      utf8.encode(newValue.text).length <= NeuraOllamaChat.maxInputBytes
+          ? newValue
+          : oldValue;
 }
 
 /// Windows native owner forwards text to Rust; no Dart HTTP or cloud fallback.
@@ -89,15 +90,13 @@ class NeuraOllamaChat with WidgetsBindingObserver {
     ValueListenable<NeuraFatalError?>? recovery,
     bool? supported,
     Duration Function()? monotonicNow,
-  }) : _channel = channel,
-       _monotonicNow = monotonicNow,
-       _safeMode = safeMode ?? SafeBoot.instance.safeMode,
-       _recovery = recovery ?? NeuraErrorPipeline.instance.fatalError,
-       _supported =
-           supported ??
-           (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
-    _foreground =
-        WidgetsBinding.instance.lifecycleState == null ||
+  })  : _channel = channel,
+        _monotonicNow = monotonicNow,
+        _safeMode = safeMode ?? SafeBoot.instance.safeMode,
+        _recovery = recovery ?? NeuraErrorPipeline.instance.fatalError,
+        _supported = supported ??
+            (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+    _foreground = WidgetsBinding.instance.lifecycleState == null ||
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     _safeMode.addListener(_onSafetyChanged);
@@ -255,8 +254,8 @@ class NeuraOllamaChat with WidgetsBindingObserver {
       timing.outcome = cancel.isCancelled || !_allowed
           ? NeuraOllamaLatencyOutcome.cancelled
           : delivered
-          ? NeuraOllamaLatencyOutcome.delivered
-          : NeuraOllamaLatencyOutcome.failed;
+              ? NeuraOllamaLatencyOutcome.delivered
+              : NeuraOllamaLatencyOutcome.failed;
       if (identical(_active, cancel)) _active = null;
       // A safety/lifecycle cancellation during final native cleanup must also
       // suppress a previously polled reply before returning it to the caller.

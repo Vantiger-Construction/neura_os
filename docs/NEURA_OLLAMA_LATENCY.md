@@ -122,12 +122,26 @@ fixtures use prescribed durations; they prove accounting, not model speed.
 
 | Evidence | Result |
 | --- | --- |
-| Rust deterministic phase tests and loopback/model/cancellation regressions | Passed in Linux authoring environment; exact test commands recorded in the PR. |
-| Existing Rust credential, lifecycle and memory boundaries | Covered by the full locked Rust test suite and strict Clippy. |
-| Flutter adapter/lifecycle and deterministic injected-clock tests | Validation in progress; see PR checks for the final result. |
+| Rust deterministic phase tests and loopback/model/cancellation regressions | Passed in Linux authoring environment as part of 73 all-target tests. |
+| Existing Rust credential, lifecycle and memory boundaries | Full locked Rust test suite passed; strict Clippy with warnings denied and formatter checks passed. |
+| Flutter adapter/lifecycle and deterministic injected-clock tests | 42 focused tests passed on Flutter 3.47.5/Dart 3.13.4, with no test assets required. Targeted analyzer and formatter checks passed. |
 | Benchmark statistics and fixed quality rubric | Five automated Python tests passed; no real model invoked. |
 | Packaged Windows ABI/launch | New timing exports and blocked timing reads added to the existing verifier; Windows execution pending. |
+| Hosted GitHub validation | First follow-up run 38865660353 failed before any job steps. Visible GitHub annotations confirm failed account payments/spending-limit restrictions; Windows preview was skipped. Self-hosted validation is separate and still pending. |
 | Baseline/candidate response speed, peak RAM, failures and answer-quality differences on an actual laptop | Not measured. No authorized, controlled offline Windows/Ollama measurement session was established during authoring. Existing Windows Local Runner success on PR #136 was build/test evidence. |
 
 No performance threshold, optimization claim or release-readiness conclusion can
 be inferred from synthetic durations, source inspection or an earlier build.
+
+Commands executed locally (Linux, not an actual Windows/laptop measurement):
+
+```text
+cargo test --manifest-path rust/Cargo.toml --locked --all-targets
+cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
+rustfmt --edition 2021 --check rust/src/ollama_conversation.rs rust/src/ollama_latency.rs
+flutter analyze --no-pub lib/services/neura_ollama_chat.dart test/services/neura_ollama_chat_test.dart
+flutter test --no-pub --no-test-assets test/services/neura_ollama_chat_test.dart test/services/neura_generation_cancel_test.dart test/neura_link/engine_session_lifecycle_test.dart
+dart format --output=none --set-exit-if-changed lib/services/neura_ollama_chat.dart test/services/neura_ollama_chat_test.dart
+python -m unittest discover -s tools -p test_benchmark_ollama_latency.py -v
+python -m py_compile tools/benchmark_ollama_latency.py tools/verify_ollama_preview.py
+```
