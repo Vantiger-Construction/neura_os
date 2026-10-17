@@ -136,6 +136,39 @@ jobs:
         ref: ${{ env.NEURA_EXPECTED_HEAD }}
         path: recovery-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.NEURA_TARGET_PR }}
         persist-credentials: false
+    - name: Discover retained PowerShell 7 for the pinned coverage installer
+      uses: actions/github-script@v8
+      with:
+        script: |
+          const fs = require('fs'), path = require('path');
+          const {spawnSync} = require('child_process');
+          const candidates = [
+            path.join(process.env.ProgramFiles, 'PowerShell', '7', 'pwsh.exe'),
+            // Observed installed package explicitly grants NetworkService read/execute.
+            // Use its physical path; Store aliases belong to interactive user profiles.
+            path.join(process.env.ProgramFiles, 'WindowsApps', 'Microsoft.PowerShell_7.6.7.0_x64__8wekyb3d8bbwe', 'pwsh.exe')
+          ];
+          const command = '$exe=Join-Path $PSHOME pwsh.exe; $sig=Get-AuthenticodeSignature -LiteralPath $exe; @{path=$exe;major=$PSVersionTable.PSVersion.Major;version=$PSVersionTable.PSVersion.ToString();edition=$PSVersionTable.PSEdition;signature=$sig.Status.ToString();signer=$sig.SignerCertificate.Subject} | ConvertTo-Json -Compress';
+          for (const candidate of candidates) {
+            // The actual runner identity must successfully launch the signed runtime.
+            try {
+              const probe = spawnSync(candidate, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command],
+                {encoding:'utf8', timeout:60000});
+              if (probe.error || probe.status !== 0) throw new Error(`${probe.error || probe.stderr || probe.status}`);
+              const runtime = JSON.parse(probe.stdout.trim());
+              if (runtime.major !== 7 || runtime.edition !== 'Core' || runtime.signature !== 'Valid' ||
+                  !/(^|,\s*)O=Microsoft Corporation(,|$)/.test(runtime.signer || '') ||
+                  !path.isAbsolute(runtime.path) || !fs.statSync(runtime.path).isFile()) {
+                throw new Error('Expected an existing Microsoft-signed PowerShell 7 Core executable.');
+              }
+              core.addPath(path.dirname(runtime.path));
+              core.info(`Validated retained PowerShell ${runtime.version}: ${runtime.path}`);
+              return;
+            } catch (error) {
+              core.warning(`Rejected retained PowerShell ${candidate}: ${error.message}`);
+            }
+          }
+          throw new Error('No compatible signed PowerShell 7 was found; restore authorized runner tooling.');
     - name: Verify checkout and enable retained tools
       shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"
       run: |2
@@ -470,37 +503,6 @@ jobs:
       run: cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
       id: clippy
       working-directory: ${{ env.NEURA_SOURCE_ROOT }}
-    - name: Discover retained PowerShell 7 for the pinned coverage installer
-      uses: actions/github-script@v8
-      with:
-        script: |
-          const fs = require('fs'), path = require('path');
-          const {spawnSync} = require('child_process');
-          const candidates = [
-            path.join(process.env.ProgramFiles, 'PowerShell', '7', 'pwsh.exe'),
-            path.join(process.env.LOCALAPPDATA, 'Microsoft', 'WindowsApps', 'pwsh.exe')
-          ];
-          const command = '$exe=Join-Path $PSHOME pwsh.exe; $sig=Get-AuthenticodeSignature -LiteralPath $exe; @{path=$exe;major=$PSVersionTable.PSVersion.Major;version=$PSVersionTable.PSVersion.ToString();edition=$PSVersionTable.PSEdition;signature=$sig.Status.ToString();signer=$sig.SignerCertificate.Subject} | ConvertTo-Json -Compress';
-          for (const candidate of candidates) {
-            // Windows Store execution aliases need a native probe, not existsSync.
-            try {
-              const probe = spawnSync(candidate, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command],
-                {encoding:'utf8', timeout:60000});
-              if (probe.error || probe.status !== 0) throw new Error(`${probe.error || probe.stderr || probe.status}`);
-              const runtime = JSON.parse(probe.stdout.trim());
-              if (runtime.major !== 7 || runtime.edition !== 'Core' || runtime.signature !== 'Valid' ||
-                  !/(^|,\s*)O=Microsoft Corporation(,|$)/.test(runtime.signer || '') ||
-                  !path.isAbsolute(runtime.path) || !fs.statSync(runtime.path).isFile()) {
-                throw new Error('Expected an existing Microsoft-signed PowerShell 7 Core executable.');
-              }
-              core.addPath(path.dirname(runtime.path));
-              core.info(`Validated retained PowerShell ${runtime.version}: ${runtime.path}`);
-              return;
-            } catch (error) {
-              core.warning(`Rejected retained PowerShell ${candidate}: ${error.message}`);
-            }
-          }
-          throw new Error('No compatible signed PowerShell 7 was found; restore authorized runner tooling.');
     - name: Install the same verified coverage tool as hosted CI
       uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe
       with:

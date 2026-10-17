@@ -30,6 +30,7 @@ class RecoveryTest(unittest.TestCase):
         if os.name != 'nt':
             self.skipTest('Windows PowerShell installer contract')
         source = block('Discover retained PowerShell 7 for the pinned coverage installer', 'script')
+        self.assertNotIn('LOCALAPPDATA', source)
         action = Path(os.environ.get('NEURA_GITHUB_SCRIPT_ENTRY',
                                      'C:/actions-runner/_work/_actions/actions/github-script/v8/dist/index.js'))
         installer = Path('C:/actions-runner/_work/_actions/taiki-e/install-action/ab6895351a88b908e96a4697860d4ffea5e57dbe/action.yml')
@@ -45,7 +46,8 @@ class RecoveryTest(unittest.TestCase):
                     del env[key]
             env.update(PATH='C:/Program Files/Git/bin;C:/Program Files/Git/usr/bin;C:/Windows/System32;C:/Windows',
                        GITHUB_PATH=str(root / 'job-path'), GITHUB_OUTPUT=str(root / 'output'),
-                       GITHUB_REPOSITORY='example/offline')
+                       GITHUB_REPOSITORY='example/offline',
+                       LOCALAPPDATA='C:/Windows/ServiceProfiles/NetworkService/AppData/Local')
             env.update({'INPUT_SCRIPT':source, 'INPUT_GITHUB-TOKEN':'offline-unused-token', 'INPUT_DEBUG':'false',
                         'INPUT_USER-AGENT':'offline-test', 'INPUT_RESULT-ENCODING':'json',
                         'INPUT_RETRIES':'0', 'INPUT_RETRY-EXEMPT-STATUS-CODES':'400,401,403,404,422'})

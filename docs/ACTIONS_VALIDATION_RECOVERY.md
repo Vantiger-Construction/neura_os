@@ -264,3 +264,20 @@ environment-injection cleanup, successful exit, propagation of exit 7, and
 rejection of unsigned, old, missing and failed runtime probes. The real action
 revision `ab6895351a88b908e96a4697860d4ffea5e57dbe`, cargo-llvm-cov 0.9.1,
 checksum defaults, all validation stages and frozen targets remain unchanged.
+
+The next attempt exposed a service-context difference: job `117478470882`
+runs as `NT AUTHORITY\NETWORK SERVICE`, whose WindowsApps alias is absent.
+The interactive-user probe did not establish service availability. The existing
+package `C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.7.0_x64__8wekyb3d8bbwe`
+and its `pwsh.exe` and `pwsh.dll` explicitly grant NetworkService read/execute.
+Discovery now probes that observed physical executable directly, without
+enumerating protected WindowsApps directories or using a user-profile alias.
+It fails closed if the package is removed or replaced; a future package path
+must be reviewed rather than guessed. The standard machine-wide PowerShell 7
+candidate remains available.
+
+The signed-runtime preflight now runs immediately after checkout, before SDK
+setup and costly application suites. Local tests use NetworkService profile
+environment values but do not impersonate the service; only the new CI run can
+confirm launch in the actual service context. No identity, ACL, privilege,
+execution-policy or installed-software changes were made.
