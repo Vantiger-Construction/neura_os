@@ -406,12 +406,56 @@ jobs:
           --coverage --coverage-path=coverage/flutter/raw.lcov.info
       shell: bash
       working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Normalize measured Flutter source paths
+      uses: actions/github-script@v8
+      if: ${{ !cancelled() && (steps.flutter_tests.outcome == 'success' || steps.flutter_tests.outcome == 'failure') }}
+      with:
+        script: |
+          const fs = require('fs'), path = require('path'), crypto = require('crypto');
+          function scopedSource(value, logical, physical, api, realpath) {
+            if (!value || value.includes('\0')) return null;
+            const inside = (root, file) => {
+              const relative = api.relative(root, file);
+              return relative && !api.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${api.sep}`);
+            };
+            const candidate = api.resolve(logical, value);
+            if (!inside(logical, candidate) && !inside(physical, candidate)) return null;
+            const resolved = realpath(candidate);
+            if (!inside(physical, resolved)) return null;
+            const relative = api.relative(physical, resolved).split(api.sep).join('/');
+            return relative.startsWith('lib/') && relative.endsWith('.dart') ? relative : null;
+          }
+          const logical = process.env.NEURA_SOURCE_ROOT;
+          const physical = fs.realpathSync(logical);
+          const input = path.join(logical, 'coverage/flutter/raw.lcov.info');
+          const output = path.join(logical, 'coverage/flutter/normalized.lcov.info');
+          const raw = fs.readFileSync(input);
+          let normalizedSources = 0;
+          const normalized = raw.toString('utf8').replace(/^SF:([^\r\n]*)/gm, (record, value) => {
+            const relative = scopedSource(value, logical, physical, path, candidate => {
+              const resolved = fs.realpathSync(candidate);
+              if (!fs.statSync(resolved).isFile()) throw new Error(`LCOV source is not a file: ${candidate}`);
+              return resolved;
+            });
+            if (!relative) return 'SF:__excluded_by_containment__/source';
+            normalizedSources++;
+            return `SF:${relative}`;
+          });
+          if (!normalizedSources) throw new Error('LCOV contains no verified checkout production sources.');
+          fs.writeFileSync(output, normalized, {flag:'wx'});
+          const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
+          fs.writeFileSync(path.join(logical, 'coverage/flutter/path-provenance.json'), JSON.stringify({
+            workflow_commit:process.env.NEURA_WORKFLOW_COMMIT, tested_head:process.env.NEURA_EXPECTED_HEAD,
+            raw_sha256:sha256(raw), normalized_sha256:sha256(Buffer.from(normalized)), normalized_sources:normalizedSources,
+            scope:'SF paths are verified relative paths or explicit exclusions; all measurement records are preserved. Original input is retained.'
+          }, null, 2) + '\n', {flag:'wx'});
+          core.info(`Normalized ${normalizedSources} verified source records; original LCOV SHA256 ${sha256(raw)}`);
     - name: Render measured Flutter coverage
       env:
         COVERAGE_TEST_OUTCOME: ${{ steps.flutter_tests.outcome }}
       run: |
         python tools/coverage/report.py --language flutter --label 'Flutter (Windows supplement)' \
-          --lcov coverage/flutter/raw.lcov.info --output coverage/flutter \
+          --lcov coverage/flutter/normalized.lcov.info --output coverage/flutter \
           --commit "$NEURA_EXPECTED_HEAD" --test-outcome "$COVERAGE_TEST_OUTCOME"
       shell: bash
       if: ${{ !cancelled() && (steps.flutter_tests.outcome == 'success' || steps.flutter_tests.outcome == 'failure') }}
@@ -564,6 +608,7 @@ jobs:
             for (const file of ['summary.json', 'summary.md', 'index.html', 'raw.lcov.info']) allowed.push(`${folder}/${file}`);
           }
           allowed.push('wipe/lcov.info');
+          allowed.push('flutter/path-provenance.json');
           const files = [], missing = [];
           let total = 0;
           for (const relative of allowed) {
@@ -583,13 +628,22 @@ jobs:
               let admitted = false;
               for (const line of data.toString('utf8').replace(/^\uFEFF/, '').split(/\r?\n/)) {
                 if (line.startsWith('SF:')) {
-                  let source = line.slice(3).replace(/\\/g, '/');
-                  const prefix = root.replace(/\\/g, '/').replace(/\/$/, '') + '/';
-                  const realPrefix = fs.realpathSync(root).replace(/\\/g, '/').replace(/\/$/, '') + '/';
-                  for (const base of [prefix, realPrefix]) {
-                    if (source.toLowerCase().startsWith(base.toLowerCase())) source = source.slice(base.length);
+                  const inside = (base, file) => {
+                    const relative = path.relative(base, file);
+                    return relative && !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`);
+                  };
+                  const physical = fs.realpathSync(root);
+                  const candidate = path.resolve(root, line.slice(3));
+                  if ((!inside(root, candidate) && !inside(physical, candidate)) || !fs.existsSync(candidate)) {
+                    admitted = false;
+                    continue;
                   }
-                  source = path.posix.normalize(source);
+                  const resolved = fs.realpathSync(candidate);
+                  if (!inside(physical, resolved) || !fs.statSync(resolved).isFile()) {
+                    admitted = false;
+                    continue;
+                  }
+                  const source = path.relative(physical, resolved).split(path.sep).join('/');
                   if (!/^(lib|rust\/src|rust\/tests|src|tests)\/[A-Za-z0-9_./-]+\.(dart|rs)$/.test(source) || source.split('/').includes('..')) {
                     admitted = false;
                     continue;
@@ -598,7 +652,10 @@ jobs:
                   normalized.push(`SF:${source}`);
                 } else if (admitted && /^(DA:\d+,\d+|L[HF]:\d+|end_of_record)$/.test(line)) normalized.push(line);
               }
-              data = Buffer.from(normalized.join('\n') + '\n');
+                if (!normalized.some(line => /^DA:\d+,\d+$/.test(line))) {
+                  throw new Error(`LCOV has no verified measured lines: ${relative}`);
+                }
+                data = Buffer.from(normalized.join('\n') + '\n');
             }
             total += data.length;
             if (total > 32 * 1024 * 1024) throw new Error('Report bundle exceeds 32 MiB.');

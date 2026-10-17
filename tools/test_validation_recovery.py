@@ -26,6 +26,72 @@ def block(name, key):
 
 
 class RecoveryTest(unittest.TestCase):
+    def test_coverage_junction_paths_and_measurement_gates(self):
+        source = block('Normalize measured Flutter source paths', 'script')
+        with tempfile.TemporaryDirectory(prefix='neura-coverage-paths-') as temporary:
+            root = Path(temporary)
+            (root / 'source.json').write_text(json.dumps(source))
+            harness = r'''
+const fs=require('fs'), path=require('path'), assert=require('assert');
+const code=JSON.parse(fs.readFileSync(path.join(__dirname,'source.json')));
+const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
+const run=new AsyncFunction('require','process','core',code);
+const scoped=new Function('require',code.split('const logical = process.env.')[0]+'return scopedSource;')(require);
+for(const api of [path.win32,path.posix]) {
+  const win=api===path.win32;
+  const logical=win?'C:/actions-runner/_work/neura_os/neura_os/recovery':'/actions-runner/_work/neura_os/neura_os/recovery';
+  const physical=win?'C:/neura-ci/run/workspace':'/neura-ci/run/workspace';
+  const relative='../../../../../neura-ci/run/workspace/lib/main.dart';
+  const source=api.join(physical,'lib/main.dart');
+  const resolve=p=>p.startsWith(api.normalize(logical))?api.join(physical,api.relative(logical,p)):p;
+  for(const value of [relative, win?relative.replace(/\//g,'\\'):relative, 'lib/main.dart',source])
+    assert.equal(scoped(value,logical,physical,api,resolve),'lib/main.dart');
+  for(const value of ['../lib/main.dart',physical+'-other/lib/main.dart','/external/lib/main.dart','lib/../../outside.dart'])
+    assert.equal(scoped(value,logical,physical,api,resolve),null,value);
+  assert.equal(scoped('lib/link.dart',logical,physical,api,()=>api.resolve(physical,'../outside.dart')),null);
+}
+(async()=>{
+  const physical=path.join(__dirname,'neura-ci/run/workspace');
+  const logical=path.join(__dirname,'a/b/c/d/link');
+  fs.mkdirSync(path.join(physical,'lib'),{recursive:true});
+  fs.mkdirSync(path.join(physical,'coverage/flutter'),{recursive:true});
+  fs.mkdirSync(path.dirname(logical),{recursive:true});
+  fs.symlinkSync(physical,logical,'junction');
+  fs.writeFileSync(path.join(physical,'lib/main.dart'),'// synthetic source');
+  fs.mkdirSync(path.join(__dirname,'outside'));
+  fs.writeFileSync(path.join(__dirname,'outside/secret.dart'),'// excluded source');
+  fs.symlinkSync(path.join(__dirname,'outside'),path.join(physical,'lib/escape'),'junction');
+  const measured='SF:..\\..\\..\\..\\..\\neura-ci\\run\\workspace\\lib\\main.dart\r\nDA:1,0\r\nDA:2,7\r\nend_of_record\r\n';
+  const raw=measured+'SF:lib/escape/secret.dart\r\nDA:99,100\r\nend_of_record\r\n';
+  const file=path.join(physical,'coverage/flutter/raw.lcov.info');
+  fs.writeFileSync(file,raw);
+  await run(require,{env:{NEURA_SOURCE_ROOT:logical,NEURA_EXPECTED_HEAD:'b'.repeat(40),NEURA_WORKFLOW_COMMIT:'a'.repeat(40)}},{info(){}});
+  assert.equal(fs.readFileSync(file,'utf8'),raw);
+  const normalized=fs.readFileSync(path.join(physical,'coverage/flutter/normalized.lcov.info'),'utf8');
+  assert.equal(normalized,'SF:lib/main.dart\r\n'+measured.split('\r\n').slice(1).join('\r\n')+'SF:__excluded_by_containment__/source\r\nDA:99,100\r\nend_of_record\r\n');
+  fs.writeFileSync(path.join(__dirname,'normalized.info'),normalized);
+  for(const content of ['', 'SF:../external.dart\nDA:1,1\nend_of_record']) {
+    fs.writeFileSync(file,content);
+    await assert.rejects(run(require,{env:{NEURA_SOURCE_ROOT:logical}},{info(){}}),/no verified checkout/);
+  }
+})().catch(e=>{console.error(e);process.exitCode=1});
+'''
+            script = root / 'test.cjs'
+            script.write_text(harness)
+            result = subprocess.run(['C:/actions-runner/externals/node24/bin/node.exe', str(script)],
+                                    capture_output=True, text=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            import importlib.util
+            spec = importlib.util.spec_from_file_location('coverage_report', WORKFLOW.parents[2] / 'tools/coverage/report.py')
+            report = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(report)
+            self.assertEqual(report.parse_lcov((root / 'normalized.info').read_text(), str(root), 'flutter'),
+                             {'lib/main.dart': {1: 0, 2: 7}})
+            for invalid in ['', 'SF:lib/main.dart\nend_of_record', 'SF:lib/main.dart\nDA:1,-1\nend_of_record',
+                            'SF:lib/main.dart\nDA:1,1']:
+                with self.assertRaises(ValueError):
+                    report.parse_lcov(invalid, str(root), 'flutter')
+
     def test_retained_bash_discovery(self):
         if os.name != 'nt':
             self.skipTest('Windows Git Bash discovery')
@@ -136,16 +202,24 @@ const gate = new AsyncFunction('core','process',JSON.parse(fs.readFileSync(path.
 const run = new AsyncFunction('require','process','context','github','core',code);
 const head = 'b'.repeat(40);
 async function scenario(name, mode, expected) {
-  const root = path.join(__dirname, name), coverage = path.join(root,'coverage');
+  let root = path.join(__dirname, name);
+  const coverage = path.join(root,'coverage');
   fs.mkdirSync(coverage,{recursive:true});
+  if(mode==='junction') {
+    const logical=path.join(__dirname,'a',name,'b/c/link');
+    fs.mkdirSync(path.dirname(logical),{recursive:true}); fs.symlinkSync(root,logical,'junction'); root=logical;
+  }
   const receipt = {expected_head:head,tested_head:head,target_pr:133,run_id:123,run_attempt:'1',
     suite_outcomes:{flutter:'failure',rust:'skipped'},head_still_current:true};
   if (mode === 'identity') receipt.tested_head = 'c'.repeat(40);
   if (mode !== 'missing') fs.writeFileSync(path.join(coverage,'validation-receipt.json'),JSON.stringify(receipt));
   fs.writeFileSync(path.join(coverage,'secret.txt'),'must not be read or uploaded');
-  if (mode === 'reports' || mode === 'oversize' || mode === 'linked') {
+  if (['reports','oversize','linked','junction','empty_lcov'].includes(mode)) {
+    fs.mkdirSync(path.join(root,'lib'),{recursive:true});
+    fs.writeFileSync(path.join(root,'lib/main.dart'),'// synthetic source');
     fs.mkdirSync(path.join(coverage,'flutter'));
-    fs.writeFileSync(path.join(coverage,'flutter/raw.lcov.info'),`SF:${root.replace(/\\/g,'/')}/lib/main.dart\nDA:1,1\nend_of_record\nSF:C:/private/secret.dart\nDA:1,0\nend_of_record\n`);
+    const measured=mode==='junction'?path.relative(root,path.join(path.dirname(coverage),'lib/main.dart')):root.replace(/\\/g,'/')+'/lib/main.dart';
+    fs.writeFileSync(path.join(coverage,'flutter/raw.lcov.info'), mode==='empty_lcov'?'SF:C:/private/secret.dart\nDA:1,0\nend_of_record\n':`SF:${measured}\nDA:1,1\nend_of_record\nSF:C:/private/secret.dart\nDA:1,0\nend_of_record\nSF:${path.dirname(coverage)}-sibling/lib/main.dart\nDA:1,0\nend_of_record\n`);
     fs.writeFileSync(path.join(coverage,'flutter/summary.json'),'{}');
     if (mode === 'oversize') fs.writeFileSync(path.join(coverage,'flutter/summary.json'),Buffer.alloc(16*1024*1024+1));
     if (mode === 'linked') {
@@ -175,7 +249,7 @@ async function scenario(name, mode, expected) {
     assert.equal(saved.suite_outcomes.rust,'skipped');
     const manifest = JSON.parse(uploads.find(x=>x.name==='report-manifest.json').data);
     assert.equal(manifest.head,head); assert(manifest.missing.length > 0);
-    if(mode==='reports') {
+    if(mode==='reports' || mode==='junction') {
       const lcov=uploads.find(x=>x.name==='flutter-raw.lcov.info').data.toString();
       assert(lcov.includes('SF:lib/main.dart')); assert(!lcov.includes('private')); assert(!lcov.includes('DA:1,0'));
     }
@@ -183,8 +257,8 @@ async function scenario(name, mode, expected) {
   console.log('PASS '+name);
 }
 (async()=>{
-  for(const mode of ['partial','reports','missing','identity','oversize','linked','public','api','checksum'])
-    await scenario(mode,mode,!['partial','reports'].includes(mode));
+  for(const mode of ['partial','reports','junction','empty_lcov','missing','identity','oversize','linked','public','api','checksum'])
+    await scenario(mode,mode,!['partial','reports','junction'].includes(mode));
   for(const [artifact,fallback,fail] of [['success','skipped',false],['failure','success',false],['failure','failure',true],['skipped','skipped',true]]) {
     let rejected=false; await gate({setFailed(){rejected=true}},{env:{ARTIFACT_OUTCOME:artifact,FALLBACK_OUTCOME:fallback}});
     assert.equal(rejected,fail);

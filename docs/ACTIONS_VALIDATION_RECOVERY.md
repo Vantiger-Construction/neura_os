@@ -214,3 +214,31 @@ For local tests, set `NEURA_GITHUB_SCRIPT_ENTRY` to an available v8
 entry point tested from temporary storage had SHA256
 `4af8211e8a7ef1f8e03e03fab7fdbd204c1108713af5c18b3d48f04d194c9abe`.
 The harness supplies offline action inputs and makes no GitHub API calls.
+
+## Junction-relative measured coverage
+
+Run `39051893827`, PR #133 job `117451995160`, passed the complete Flutter
+coverage test command but reporting rejected its junction-relative source paths.
+The original 303,948-byte LCOV has 411 source records and 28,952 line records;
+SHA256 is `0ac263a8de5b404e66627df4ddb99818a6f7438f3280fea52a92418b4173be7d`.
+Artifact `12108512687` preserves that run's evidence. Artifact delivery succeeded;
+no private draft fallback was used for this attempt.
+
+Recovery now resolves source paths against the logical checkout, verifies their
+real paths remain inside the physical checkout, and writes a separate
+`normalized.lcov.info`. Untrusted sources receive explicit excluded paths.
+All non-source records, including every hit count, remain unchanged. The original
+LCOV remains untouched; `path-provenance.json` records both SHA256 values, the
+tested head and recovery workflow commit. The frozen target's unchanged reporter
+consumes the derivative and retains its empty, malformed and generated-source
+gates. The fallback sanitizer applies the same physical containment requirement
+and fails explicitly if no measured lines survive; it also preserves provenance.
+
+Read-only replay against the preserved evidence reproduced the original error.
+The derivative retained all 411 source and 28,952 line records; the existing
+reporter's production filters accepted 409 files and 28,821 measured lines,
+including 11,547 covered lines. This is replay evidence, not a new CI result.
+Four recovery test methods and all 11 original reporter tests cover Windows and
+Unix paths, the actual five-parent junction form, physical escapes, sibling
+prefixes, missing/invalid measurements and valid zero-hit lines. Application
+sources, test commands and frozen targets remain unchanged.
