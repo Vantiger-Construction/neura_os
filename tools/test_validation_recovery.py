@@ -26,6 +26,76 @@ def block(name, key):
 
 
 class RecoveryTest(unittest.TestCase):
+    def test_retained_pwsh_and_pinned_installer_wrapper(self):
+        if os.name != 'nt':
+            self.skipTest('Windows PowerShell installer contract')
+        source = block('Discover retained PowerShell 7 for the pinned coverage installer', 'script')
+        action = Path(os.environ.get('NEURA_GITHUB_SCRIPT_ENTRY',
+                                     'C:/actions-runner/_work/_actions/actions/github-script/v8/dist/index.js'))
+        installer = Path('C:/actions-runner/_work/_actions/taiki-e/install-action/ab6895351a88b908e96a4697860d4ffea5e57dbe/action.yml')
+        body = installer.read_text().split('    - run: |\n')[-1].split('      shell: pwsh')[0]
+        wrapper = '\n'.join(line[8:] for line in body.splitlines())
+        with tempfile.TemporaryDirectory(prefix='neura-pwsh-probe-') as temporary:
+            root = Path(temporary)
+            for name in ['job-path', 'output']:
+                (root / name).touch()
+            env = dict(os.environ)
+            for key in list(env):
+                if key.upper() == 'PATH':
+                    del env[key]
+            env.update(PATH='C:/Program Files/Git/bin;C:/Program Files/Git/usr/bin;C:/Windows/System32;C:/Windows',
+                       GITHUB_PATH=str(root / 'job-path'), GITHUB_OUTPUT=str(root / 'output'),
+                       GITHUB_REPOSITORY='example/offline')
+            env.update({'INPUT_SCRIPT':source, 'INPUT_GITHUB-TOKEN':'offline-unused-token', 'INPUT_DEBUG':'false',
+                        'INPUT_USER-AGENT':'offline-test', 'INPUT_RESULT-ENCODING':'json',
+                        'INPUT_RETRIES':'0', 'INPUT_RETRY-EXEMPT-STATUS-CODES':'400,401,403,404,422'})
+            node = 'C:/actions-runner/externals/node24/bin/node.exe'
+            result = subprocess.run([node, str(action)], env=env, capture_output=True, text=True, timeout=90)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            selected = (root / 'job-path').read_text().strip()
+            env['PATH'] = selected + ';' + env['PATH']
+            where = str(Path(os.environ['SystemRoot']) / 'System32/where.exe')
+            pwsh = subprocess.check_output([where, 'pwsh'], env=env, text=True).splitlines()[0]
+            (root / 'wrapper.ps1').write_text("$ErrorActionPreference = 'stop'\n" + wrapper)
+            # Use the exact pinned wrapper; replace only its downloaded installer payload.
+            (root / 'main.sh').write_text('''#!/usr/bin/env bash
+set -eu
+for name in ENV BASH_ENV CDPATH SHELLOPTS BASHOPTS; do
+  if env | grep -q "^${name}="; then exit 31; fi
+done
+profile=$(cygpath -u "$USERPROFILE")
+mkdir -p "$profile/.install-action"
+touch "$profile/.install-action/init"
+exit "$TEST_INSTALL_EXIT"
+''')
+            env.update(USERPROFILE=str(root), GITHUB_ACTION_PATH=str(root), INPUT_TOOL='cargo-llvm-cov@0.9.1',
+                       INPUT_CHECKSUM='true', INPUT_FALLBACK='cargo-binstall', ENV='must-be-removed',
+                       BASH_ENV='must-be-removed', CDPATH='must-be-removed')
+            for code in [0, 7]:
+                env['TEST_INSTALL_EXIT'] = str(code)
+                result = subprocess.run([pwsh, '-NoLogo', '-NoProfile', '-NonInteractive', '-Command',
+                                         ". '" + str(root / 'wrapper.ps1').replace("'", "''") + "'"],
+                                        env=env, capture_output=True, text=True, timeout=60)
+                if code == 0:
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                else:
+                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertFalse((root / '.install-action/init').exists())
+            for mode in ['nonzero', 'unsigned', 'old', 'missing']:
+                (root / 'job-path').write_text('')
+                runtime = dict(path=pwsh, major=7, edition='Core', version='7.6.7', signature='Valid', signer='O=Microsoft Corporation')
+                if mode == 'unsigned':
+                    runtime['signature'] = 'NotSigned'
+                if mode == 'old':
+                    runtime['major'] = 5
+                if mode == 'missing':
+                    runtime['path'] = str(root / 'missing.exe')
+                injection = "require('child_process').spawnSync=()=>({status:" + ('7' if mode == 'nonzero' else '0') + ",stdout:" + json.dumps(json.dumps(runtime)) + "});\n"
+                env['INPUT_SCRIPT'] = injection + source
+                result = subprocess.run([node, str(action)], env=env, capture_output=True, text=True, timeout=30)
+                self.assertNotEqual(result.returncode, 0, mode + result.stdout + result.stderr)
+                self.assertEqual((root / 'job-path').read_text(), '')
+
     def test_coverage_junction_paths_and_measurement_gates(self):
         source = block('Normalize measured Flutter source paths', 'script')
         with tempfile.TemporaryDirectory(prefix='neura-coverage-paths-') as temporary:

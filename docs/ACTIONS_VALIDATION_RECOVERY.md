@@ -242,3 +242,25 @@ Four recovery test methods and all 11 original reporter tests cover Windows and
 Unix paths, the actual five-parent junction form, physical escapes, sibling
 prefixes, missing/invalid measurements and valid zero-hit lines. Application
 sources, test commands and frozen targets remain unchanged.
+
+## Retained PowerShell for the coverage installer
+
+Run `39055161130`, PR #133 job `117461533299`, passed all 816 Flutter tests,
+coverage rendering, all 67 Rust tests and strict Clippy. The pinned installer
+then failed before executing because its Windows composite step requires
+`shell: pwsh`, which was absent from the runner PATH. Rust coverage was skipped.
+
+Microsoft Store PowerShell 7.6.7 is already installed. Recovery probes the
+standard PowerShell 7 path and the current user's WindowsApps execution alias
+through the existing Node action. It requires PowerShell Core major version 7,
+a valid Microsoft signature and an existing physical executable, then adds only
+that executable's directory to job-local PATH. Alias discovery uses a native
+probe because Node file-existence checks do not recognize this Store alias.
+No installation or execution-policy override is added.
+
+The regression harness invokes the actual Node action and the exact pinned
+installer's Windows wrapper with a harmless local `main.sh` stub. It checks
+environment-injection cleanup, successful exit, propagation of exit 7, and
+rejection of unsigned, old, missing and failed runtime probes. The real action
+revision `ab6895351a88b908e96a4697860d4ffea5e57dbe`, cargo-llvm-cov 0.9.1,
+checksum defaults, all validation stages and frozen targets remain unchanged.
