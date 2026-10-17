@@ -201,6 +201,42 @@ jobs:
         @("NEURA_PYTHON=$($selected.path)", "NEURA_PYTHON_VERSION=$($selected.version -join '.')") |
           Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Discover and enable retained Git Bash
+      shell: powershell -NoLogo -NoProfile -NonInteractive -File "{0}"
+      run: |
+        Set-StrictMode -Version Latest
+        $ErrorActionPreference = 'Stop'
+        function Enable-RetainedBash {
+          param([string[]]$GitExecutables)
+          foreach ($git in ($GitExecutables | Select-Object -Unique)) {
+            $root = Split-Path -Parent (Split-Path -Parent $git)
+            $bin = Join-Path $root 'bin'
+            $utilities = Join-Path $root 'usr\bin'
+            $bash = Join-Path $bin 'bash.exe'
+            if (-not (Test-Path -LiteralPath $bash -PathType Leaf)) { continue }
+            $originalPath = $env:PATH
+            try {
+              $env:PATH = "$bin;$utilities;$originalPath"
+              $probe = @(& $bash --noprofile --norc -e -o pipefail -c 'for tool in bash git grep tee mkdir; do command -v "$tool" >/dev/null || exit 17; done; echo NEURA_BASH_OK')
+              $probeExit = $LASTEXITCODE
+              if ($probeExit -ne 0 -or $probe -notcontains 'NEURA_BASH_OK') {
+                throw "Bash probe failed with exit $probeExit."
+              }
+              # GITHUB_PATH affects only subsequent steps in this job.
+              @($utilities, $bin) | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              Write-Host "Validated retained Git Bash: $bash"
+              return
+            } catch {
+              Write-Warning "Rejected retained Git Bash ${bash}: $_"
+            } finally {
+              $env:PATH = $originalPath
+            }
+          }
+          throw 'No usable retained Git Bash was found; restore authorized runner tooling.'
+        }
+        $gitExecutables = @(Get-Command git.exe -All -ErrorAction Stop | ForEach-Object Source)
+        Enable-RetainedBash -GitExecutables $gitExecutables
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
     - name: Record tools and enforce the Flutter lockfile
       shell: bash
       run: |2

@@ -26,6 +26,44 @@ def block(name, key):
 
 
 class RecoveryTest(unittest.TestCase):
+    def test_retained_bash_discovery(self):
+        if os.name != 'nt':
+            self.skipTest('Windows Git Bash discovery')
+        function = block('Discover and enable retained Git Bash', 'run').split('$gitExecutables = @(')[0]
+        with tempfile.TemporaryDirectory(prefix='neura-bash-probe-') as temporary:
+            root = Path(temporary)
+            script = function + r'''
+$env:GITHUB_PATH = Join-Path $PSScriptRoot 'job-path'
+$env:PATH = 'C:\Program Files\Git\cmd;C:\Windows\System32;C:\Windows'
+if (Get-Command bash -ErrorAction SilentlyContinue) { throw 'baseline unexpectedly finds bash' }
+try { Enable-RetainedBash @((Join-Path $PSScriptRoot 'missing\cmd\git.exe')); throw 'accepted missing Bash' }
+catch { if ($_.Exception.Message -notlike 'No usable*') { throw } }
+$fixtureRoot = Join-Path $PSScriptRoot 'fixture'
+New-Item -ItemType Directory -Path (Join-Path $fixtureRoot 'bin') | Out-Null
+Add-Type -OutputAssembly (Join-Path $fixtureRoot 'bin\bash.exe') -OutputType ConsoleApplication -TypeDefinition @'
+using System;
+public class Probe { public static int Main() { Console.WriteLine("NEURA_BASH_OK"); return 7; } }
+'@
+try { Enable-RetainedBash @((Join-Path $fixtureRoot 'cmd\git.exe')); throw 'accepted nonzero Bash' }
+catch { if ($_.Exception.Message -notlike 'No usable*') { throw } }
+if (Test-Path -LiteralPath $env:GITHUB_PATH) { throw 'failed probe modified job PATH' }
+$original = $env:PATH
+Enable-RetainedBash @('C:\Program Files\Git\cmd\git.exe')
+if ($env:PATH -cne $original) { throw 'process PATH not restored' }
+$entries = @(Get-Content -LiteralPath $env:GITHUB_PATH)
+[array]::Reverse($entries)
+$env:PATH = ($entries -join ';') + ';' + $env:PATH
+$shell = (Get-Command bash -ErrorAction Stop).Source
+& $shell --noprofile --norc -e -o pipefail -c 'for tool in bash git grep tee mkdir; do command -v "$tool" || exit 17; done'
+if ($LASTEXITCODE -ne 0) { throw 'runner shell invocation failed' }
+'''
+            file = root / 'test.ps1'
+            file.write_text(script, encoding='utf-8')
+            command = [str(Path(os.environ['SystemRoot']) / 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+                       '-NoProfile', '-NonInteractive', '-File', str(file)]
+            result = subprocess.run(command, capture_output=True, text=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_retained_python_success_and_failures(self):
         if os.name != 'nt':
             self.skipTest('Windows PowerShell native-exit contract')

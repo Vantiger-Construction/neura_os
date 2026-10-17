@@ -183,3 +183,19 @@ Windows with Node and the retained Python; no policy override is needed.
 The workflow YAML also parses and the application validation command blocks
 remain unchanged. Exact-head recovery execution is still required; local
 infrastructure tests do not substitute for either target's application suites.
+
+## October 17 retained Bash discovery repair
+
+Run `39047686488` selected Python 3.14.4 successfully, then PR #133 failed
+before application tests with `bash: command not found`. Git was on PATH via
+`C:\Program Files\Git\cmd`, but its Bash directory was absent. The private draft
+report fallback delivered and verified the partial receipt and manifest.
+
+The recovery workflow now discovers Bash beside the retained Git executable,
+probes it with the runner's `--noprofile --norc -e -o pipefail` options, and
+checks bundled utilities before adding `bin` and `usr\bin` to job-local
+`GITHUB_PATH`. It rejects missing or nonzero probes, including a native fixture
+that prints the expected marker and exits 7. The regression test reproduces
+missing Bash on a Git-cmd-only PATH and verifies the resulting runner shell.
+No installation, machine PATH change or execution-policy override is added.
+Existing Bash command blocks and both frozen target SHAs remain unchanged.
