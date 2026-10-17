@@ -6,6 +6,7 @@ name: Neura validation recovery (Windows supplement)
     paths:
     - .github/workflows/neura-validation-recovery.yml
     - docs/ACTIONS_VALIDATION_RECOVERY.md
+    - tools/test_validation_recovery.py
   workflow_dispatch: {}
 permissions:
   contents: read
@@ -16,6 +17,9 @@ env:
   RUSTUP_TOOLCHAIN: 1.99.0
 jobs:
   windows:
+    permissions:
+      contents: write # Private draft report assets only; checkout credentials are not persisted.
+      pull-requests: read
     name: 'PR ${{ matrix.pr }}: exact-head Windows safety and coverage supplement'
     if: ${{ github.repository == 'Vantiger-Construction/neura_os' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name
       == github.repository) }}
@@ -157,39 +161,45 @@ jobs:
           --component clippy --component rustfmt --component llvm-tools-preview
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       working-directory: ${{ env.NEURA_SOURCE_ROOT }}
-    - name: Use the retained Python 3.12 runtime for reports
+    - name: Use a compatible retained Python runtime for reports
       shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"
       run: |
         Set-StrictMode -Version Latest
         $ErrorActionPreference = 'Stop'
-        $selected = $null
-        $py = Get-Command py.exe -ErrorAction SilentlyContinue
-        if ($py) {
-          try {
-            $candidate = (& $py.Source -3.12 -c "import sys; print(sys.executable)" 2>$null | Select-Object -Last 1).Trim()
-            if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
-              $selected = $candidate
+        function Find-ReportPython {
+          param([string[]]$Candidates)
+          foreach ($candidate in ($Candidates | Select-Object -Unique)) {
+            if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+            try {
+              $probe = @(& $candidate -I -c 'import json,sys; print(json.dumps(dict(path=sys.executable,version=list(sys.version_info[:3]))))')
+              $probeExit = $LASTEXITCODE
+              if ($probeExit -ne 0) { throw "Native probe exited $probeExit." }
+              $runtime = ($probe -join "`n") | ConvertFrom-Json
+              # 3.12 is the hosted baseline; retained 3.14 passed both report suites.
+              if ($runtime.version[0] -ne 3 -or $runtime.version[1] -notin @(12,14)) {
+                throw 'Only validated Python 3.12 and 3.14 runtimes are accepted.'
+              }
+              if (-not (Test-Path -LiteralPath $runtime.path -PathType Leaf)) {
+                throw 'Python reported a missing executable.'
+              }
+              Write-Host "Report interpreter: $($runtime.path), version $($runtime.version -join '.')"
+              return $runtime
+            } catch {
+              Write-Warning "Rejected retained Python candidate ${candidate}: $_"
             }
-          } catch {
-            $selected = $null
           }
+          throw 'No compatible retained Python was found. Restore an authorized signed runtime; do not bypass setup.ps1 signing policy.'
         }
-        if (-not $selected) {
-          $python = Get-Command python.exe -ErrorAction SilentlyContinue
-          if ($python) {
-            $version = (& $python.Source --version 2>&1).ToString()
-            if ($version -match '^Python 3\.12(?:\.|$)') {
-              $selected = $python.Source
-            }
-          }
-        }
-        if (-not $selected) {
-          throw 'A retained Python 3.12 runtime is required; actions/setup-python is unavailable under this runner execution policy.'
-        }
-        $selectedDir = Split-Path -Parent $selected
+        $candidates = @(
+          (Join-Path $env:SystemDrive 'Python314\python.exe')
+          (Get-Command python.exe -All -ErrorAction SilentlyContinue | ForEach-Object Source)
+          (Join-Path $env:LOCALAPPDATA 'Python\pythoncore-3.14-64\python.exe')
+        ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        $selected = Find-ReportPython -Candidates $candidates
+        $selectedDir = Split-Path -Parent $selected.path
         $selectedDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        "NEURA_PYTHON=$selected" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        & $selected --version
+        @("NEURA_PYTHON=$($selected.path)", "NEURA_PYTHON_VERSION=$($selected.version -join '.')") |
+          Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       working-directory: ${{ env.NEURA_SOURCE_ROOT }}
     - name: Record tools and enforce the Flutter lockfile
       shell: bash
@@ -477,6 +487,7 @@ jobs:
             run_id: context.runId, run_attempt: process.env.GITHUB_RUN_ATTEMPT,
             platform: 'Windows', runner: process.env.RUNNER_NAME,
             flutter_version: process.env.FLUTTER_VERSION, rust_version: process.env.RUSTUP_TOOLCHAIN,
+            python_version: process.env.NEURA_PYTHON_VERSION || null,
             suite_outcomes: JSON.parse(process.env.NEURA_SUITE_OUTCOMES),
             source_workflow_sha256: hashes,
             scope: 'Supplemental Windows evidence; hosted Linux, dynamic CodeQL and existing packaging remain required.'
@@ -491,7 +502,9 @@ jobs:
             core.setFailed('PR head moved or checkout differs; this receipt cannot validate the current head.');
           }
     - name: Preserve coverage and the exact-head receipt
+      id: artifacts
       uses: actions/upload-artifact@v6
+      continue-on-error: true # Required delivery gate below accepts only a verified fallback.
       if: ${{ always() && steps.checkout.outcome == 'success' }}
       with:
         name: neura-validation-pr-${{ env.NEURA_TARGET_PR }}-${{ env.NEURA_EXPECTED_HEAD }}-${{ github.run_id }}-${{ github.run_attempt
@@ -499,6 +512,110 @@ jobs:
         path: recovery-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.NEURA_TARGET_PR }}/coverage/
         if-no-files-found: error
         retention-days: 14
+    - name: Preserve bounded reports as private draft assets if artifact storage fails
+      id: report_fallback
+      uses: actions/github-script@v8
+      if: ${{ always() && steps.checkout.outcome == 'success' && steps.artifacts.outcome == 'failure' }}
+      with:
+        script: |
+          const fs = require('fs'), path = require('path'), crypto = require('crypto');
+          const root = process.env.NEURA_SOURCE_ROOT;
+          const digest = data => crypto.createHash('sha256').update(data).digest('hex');
+          const pr = process.env.NEURA_TARGET_PR, head = process.env.NEURA_EXPECTED_HEAD;
+          const attempt = process.env.GITHUB_RUN_ATTEMPT;
+          if (!['133','136'].includes(pr) || !/^[0-9a-f]{40}$/.test(head) || !/^\d+$/.test(attempt)) {
+            throw new Error('Invalid report identity.');
+          }
+          const allowed = ['validation-receipt.json'];
+          for (const folder of ['flutter', 'rust-windows']) {
+            for (const file of ['summary.json', 'summary.md', 'index.html', 'raw.lcov.info']) allowed.push(`${folder}/${file}`);
+          }
+          allowed.push('wipe/lcov.info');
+          const files = [], missing = [];
+          let total = 0;
+          for (const relative of allowed) {
+            let current = root, absent = false;
+            for (const part of ['coverage', ...relative.split('/')]) {
+              current = path.join(current, part);
+              if (!fs.existsSync(current)) { absent = true; break; }
+              if (fs.lstatSync(current).isSymbolicLink()) throw new Error('Linked report entry rejected.');
+            }
+            if (absent) { missing.push(relative); continue; }
+            const stat = fs.statSync(current);
+            if (!stat.isFile() || stat.size > 16 * 1024 * 1024) throw new Error('Invalid or oversized report.');
+            let data = fs.readFileSync(current);
+            if (relative.endsWith('.info')) {
+              // Keep measured line coverage only; strip machine paths and function text.
+              const normalized = [];
+              let admitted = false;
+              for (const line of data.toString('utf8').replace(/^\uFEFF/, '').split(/\r?\n/)) {
+                if (line.startsWith('SF:')) {
+                  let source = line.slice(3).replace(/\\/g, '/');
+                  const prefix = root.replace(/\\/g, '/').replace(/\/$/, '') + '/';
+                  const realPrefix = fs.realpathSync(root).replace(/\\/g, '/').replace(/\/$/, '') + '/';
+                  for (const base of [prefix, realPrefix]) {
+                    if (source.toLowerCase().startsWith(base.toLowerCase())) source = source.slice(base.length);
+                  }
+                  source = path.posix.normalize(source);
+                  if (!/^(lib|rust\/src|rust\/tests|src|tests)\/[A-Za-z0-9_./-]+\.(dart|rs)$/.test(source) || source.split('/').includes('..')) {
+                    admitted = false;
+                    continue;
+                  }
+                  admitted = true;
+                  normalized.push(`SF:${source}`);
+                } else if (admitted && /^(DA:\d+,\d+|L[HF]:\d+|end_of_record)$/.test(line)) normalized.push(line);
+              }
+              data = Buffer.from(normalized.join('\n') + '\n');
+            }
+            total += data.length;
+            if (total > 32 * 1024 * 1024) throw new Error('Report bundle exceeds 32 MiB.');
+            files.push({relative, name: relative.replace(/\//g, '-'), data, sha256: digest(data)});
+          }
+          const receiptFile = files.find(f => f.relative === 'validation-receipt.json');
+          if (!receiptFile) throw new Error('Missing validation receipt; cannot preserve unlabelled evidence.');
+          const receipt = JSON.parse(receiptFile.data.toString('utf8').replace(/^\uFEFF/, ''));
+          if (receipt.expected_head !== head || receipt.tested_head !== head || String(receipt.target_pr) !== pr ||
+              String(receipt.run_id) !== String(context.runId) || String(receipt.run_attempt) !== attempt) {
+            throw new Error('Receipt identity mismatch.');
+          }
+          const manifest = {version: 1, target_pr: Number(pr), head, run_id: context.runId, run_attempt: attempt,
+            workflow_commit: process.env.NEURA_WORKFLOW_COMMIT, missing,
+            scope: 'Report-only Windows supplement. Missing files are not passing results. LCOV contains normalized repository line records only; external records and function text are omitted. Raw originals remain on the runner.',
+            files: files.map(f => ({path: f.relative, name: f.name, bytes: f.data.length, sha256: f.sha256}))};
+          const manifestData = Buffer.from(JSON.stringify(manifest, null, 2) + '\n');
+          files.push({name: 'report-manifest.json', data: manifestData, sha256: digest(manifestData)});
+          // The original coverage remains on the runner even if either delivery route fails.
+          fs.writeFileSync(path.join(root, 'coverage', 'report-manifest.json'), manifestData, {flag: 'wx'});
+          const {data: repository} = await github.rest.repos.get(context.repo);
+          if (repository.full_name !== 'Vantiger-Construction/neura_os' || !repository.private) throw new Error('Private repository required.');
+          const tag = `neura-validation-pr-${pr}-${head.slice(0,12)}-${context.runId}-${attempt}`;
+          const {data: release} = await github.rest.repos.createRelease({...context.repo, tag_name: tag,
+            target_commitish: head, name: `Windows validation reports: PR #${pr}, run ${context.runId}/${attempt}`,
+            draft: true, prerelease: true, generate_release_notes: false,
+            body: 'Report-only fallback for unavailable Actions artifact storage. Not a package, deployment, or release approval.'});
+          if (!release.draft || !release.prerelease) throw new Error('Expected a draft prerelease.');
+          for (const file of files) {
+            const {data: asset} = await github.rest.repos.uploadReleaseAsset({...context.repo, release_id: release.id,
+              name: file.name, data: file.data, headers: {'content-type': 'application/octet-stream', 'content-length': file.data.length}});
+            const response = await github.rest.repos.getReleaseAsset({...context.repo, asset_id: asset.id,
+              headers: {accept: 'application/octet-stream'}});
+            const downloaded = Buffer.from(response.data);
+            if (downloaded.length !== file.data.length || digest(downloaded) !== file.sha256) throw new Error('Report download verification failed.');
+          }
+          await core.summary.addHeading('Verified report-only fallback')
+            .addLink('Private draft report assets', release.html_url)
+            .addRaw(`\n\nManifest SHA-256: ${digest(manifestData)}\n\nMissing report files: ${missing.join(', ') || 'none'}\n`).write();
+    - name: Require verified evidence delivery
+      if: ${{ always() && steps.checkout.outcome == 'success' }}
+      uses: actions/github-script@v8
+      env:
+        ARTIFACT_OUTCOME: ${{ steps.artifacts.outcome }}
+        FALLBACK_OUTCOME: ${{ steps.report_fallback.outcome }}
+      with:
+        script: |
+          if (process.env.ARTIFACT_OUTCOME !== 'success' && process.env.FALLBACK_OUTCOME !== 'success') {
+            core.setFailed('Evidence delivery failed. Coverage and receipt remain on the runner; no validation success may be claimed.');
+          }
     - name: Release completed validation output
       shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"
       run: |

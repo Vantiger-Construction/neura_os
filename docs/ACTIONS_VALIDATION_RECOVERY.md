@@ -59,8 +59,9 @@ free on C: after checkout; the new run checks current free space independently.
 manual dispatch. It serializes the two target heads on the existing Windows
 runner, with these safeguards:
 
-- Same-repository execution only; read-only contents and PR permissions; no
-  supplied secrets, persisted checkout credentials, release upload, status
+- Same-repository execution only; read-only PR permission and job-scoped contents
+  write permission for private draft report assets; no supplied secrets,
+  persisted checkout credentials, application release upload, status
   spoofing, `pull_request_target`, model installation, live benchmark, or cloud
   inference.
 - The GitHub PR API must confirm the exact frozen head before checkout. The
@@ -73,6 +74,10 @@ runner, with these safeguards:
 - Flutter 3.47.5 uses the existing checksum-verified provisioning helper. Rust
   1.99.0 is selected only for this job, without changing the laptop's default.
   The existing pinned, verified cargo-llvm-cov 0.9.1 installer is retained.
+- Reporting uses an installed Python 3.12 or 3.14 executable, checking native
+  exit status and runtime version. Python 3.14.4 at `C:\Python314\python.exe`
+  passed the coverage-reporter and synthetic benchmark-statistics suites.
+  No Python installation or execution-policy change is performed.
 - Both heads run the full Flutter suite once with coverage, complete Rust
   `--locked --all-targets` tests, strict Clippy, and all-target Windows Rust
   coverage. Report generation preserves partial/failing outcomes. No test
@@ -91,6 +96,25 @@ not the repair PR's workflow commit. `validation-receipt.json` separately record
 the tested tree, workflow commit, run/attempt, runner, suite outcomes, latest PR
 head, and SHA-256 hashes of the source workflow definitions. Coverage artifacts
 remain private and expire after 14 days. Logs remain in GitHub Actions.
+If Actions artifact storage is unavailable, the existing repository release-asset
+delivery mechanism is used for a separate **draft**, report-only prerelease.
+Only ten explicitly named receipt/coverage files are eligible (16 MiB per file,
+32 MiB total); linked entries are rejected. LCOV is reduced to normalized
+repository source paths and numeric line records; external records and function
+text are omitted. Source text, test logs, environment dumps, vault files,
+packages, and credentials are not included. A SHA-256/size manifest records
+included and missing files, target head, workflow commit and run/attempt.
+Every uploaded file must pass download-and-hash verification. The draft URL and
+manifest digest appear in the job summary. Draft assets do not inherit the
+14-day Actions retention period; they are retained for review without automatic
+deletion. No existing release or artifact is overwritten or removed.
+
+The artifact upload's failure can be tolerated only after the fallback is
+verified. An explicit final delivery gate fails if both routes fail; earlier
+validation failures remain failures. Original coverage, receipt and fallback
+manifest remain in the run-specific workspace through bounded cleanup even
+if remote delivery fails. This is evidence storage, not package publication,
+deployment, or authorization to release the application.
 
 The recovery checks are attached to the repair PR. Their receipts provide
 evidence about the target commits; they do not manufacture green check statuses
@@ -133,3 +157,29 @@ PR targets; three receipt cases preserve failed/skipped outcomes and reject a
 moved head or mismatched checkout. All 11 existing coverage-reporter unit tests
 pass locally. These checks validate the recovery configuration, not the Neura
 application suites; Windows execution must provide that evidence.
+
+## October 17 retained-runtime and evidence-storage repair
+
+Run `39004030829` failed at setup-python's unsigned `setup.ps1`. Run
+`39010508400` then failed because discovery required Python 3.12 although
+the runner has Python 3.14.4 at `C:\Python314\python.exe`. The Python launcher
+also lists user-local 3.14 installations; no 3.12 retained-tool-cache entry was
+found. Artifact upload separately reported storage quota exhaustion. These
+failures occurred before application tests and do not indicate failing suites.
+
+The coverage and benchmark-statistics scripts are standard-library-only; their
+annotations require modern Python but no 3.12-specific feature. Both frozen
+targets have identical coverage reporter/test blobs. Installed Python 3.14.4
+passed all 11 coverage-reporter tests and all 5 synthetic benchmark-statistics
+tests. No benchmark, microphone, model or cloud inference was invoked.
+
+`python tools/test_validation_recovery.py` tests the actual workflow blocks:
+native nonzero exit despite plausible JSON, unsupported version, missing
+runtime, accepted native probe, installed runtime, partial/complete report
+delivery, missing/mismatched receipts, oversize and linked entries, a public
+repository rejection, API/download checksum failure, and all delivery-gate
+outcomes. API calls are mocked and all fixtures are disposable. Run this on
+Windows with Node and the retained Python; no policy override is needed.
+The workflow YAML also parses and the application validation command blocks
+remain unchanged. Exact-head recovery execution is still required; local
+infrastructure tests do not substitute for either target's application suites.
