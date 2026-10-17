@@ -445,7 +445,7 @@ jobs:
       with:
         script: |
           const fs = require('fs'), path = require('path'), crypto = require('crypto');
-          function scopedSource(value, logical, physical, api, realpath) {
+          function scopedSource(value, logical, physical, api, realpath, language = 'flutter') {
             if (!value || value.includes('\0')) return null;
             const inside = (root, file) => {
               const relative = api.relative(root, file);
@@ -456,12 +456,15 @@ jobs:
             const resolved = realpath(candidate);
             if (!inside(physical, resolved)) return null;
             const relative = api.relative(physical, resolved).split(api.sep).join('/');
-            return relative.startsWith('lib/') && relative.endsWith('.dart') ? relative : null;
+            const [prefix, suffix] = language === 'rust' ? ['rust/src/', '.rs'] : ['lib/', '.dart'];
+            return relative.startsWith(prefix) && relative.endsWith(suffix) ? relative : null;
           }
           const logical = process.env.NEURA_SOURCE_ROOT;
+          const language = process.env.NEURA_COVERAGE_LANGUAGE || 'flutter';
+          const folder = language === 'rust' ? 'rust-windows' : 'flutter';
           const physical = fs.realpathSync(logical);
-          const input = path.join(logical, 'coverage/flutter/raw.lcov.info');
-          const output = path.join(logical, 'coverage/flutter/normalized.lcov.info');
+          const input = path.join(logical, 'coverage', folder, 'raw.lcov.info');
+          const output = path.join(logical, 'coverage', folder, 'normalized.lcov.info');
           const raw = fs.readFileSync(input);
           let normalizedSources = 0;
           const normalized = raw.toString('utf8').replace(/^SF:([^\r\n]*)/gm, (record, value) => {
@@ -469,7 +472,7 @@ jobs:
               const resolved = fs.realpathSync(candidate);
               if (!fs.statSync(resolved).isFile()) throw new Error(`LCOV source is not a file: ${candidate}`);
               return resolved;
-            });
+            }, language);
             if (!relative) return 'SF:__excluded_by_containment__/source';
             normalizedSources++;
             return `SF:${relative}`;
@@ -477,7 +480,7 @@ jobs:
           if (!normalizedSources) throw new Error('LCOV contains no verified checkout production sources.');
           fs.writeFileSync(output, normalized, {flag:'wx'});
           const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
-          fs.writeFileSync(path.join(logical, 'coverage/flutter/path-provenance.json'), JSON.stringify({
+          fs.writeFileSync(path.join(logical, 'coverage', folder, 'path-provenance.json'), JSON.stringify({
             workflow_commit:process.env.NEURA_WORKFLOW_COMMIT, tested_head:process.env.NEURA_EXPECTED_HEAD,
             raw_sha256:sha256(raw), normalized_sha256:sha256(Buffer.from(normalized)), normalized_sources:normalizedSources,
             scope:'SF paths are verified relative paths or explicit exclusions; all measurement records are preserved. Original input is retained.'
@@ -515,17 +518,71 @@ jobs:
           --no-report -- --test-threads=2
       shell: bash
       working-directory: ${{ env.NEURA_SOURCE_ROOT }}
-    - name: Export and render measured Rust coverage without rerunning tests
-      env:
-        COVERAGE_TEST_OUTCOME: ${{ steps.rust_coverage.outcome }}
+    - name: Export measured Rust coverage without rerunning tests
       run: |
         mkdir -p "$COVERAGE_REPORT_DIR"
         # The default tests/ filter also drops #[path = "../src/..."] lifecycle
         # mappings. Scope normalized production paths in our reporter instead.
         cargo llvm-cov report --manifest-path rust/Cargo.toml --lcov --no-default-ignore-filename-regex \
           --output-path "$COVERAGE_REPORT_DIR/raw.lcov.info"
+      shell: bash
+      if: ${{ !cancelled() && (steps.rust_coverage.outcome == 'success' || steps.rust_coverage.outcome == 'failure') }}
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Normalize measured Rust source paths
+      uses: actions/github-script@v8
+      if: ${{ !cancelled() && (steps.rust_coverage.outcome == 'success' || steps.rust_coverage.outcome == 'failure') }}
+      env:
+        NEURA_COVERAGE_LANGUAGE: rust
+      with:
+        script: |
+          const fs = require('fs'), path = require('path'), crypto = require('crypto');
+          function scopedSource(value, logical, physical, api, realpath, language = 'flutter') {
+            if (!value || value.includes('\0')) return null;
+            const inside = (root, file) => {
+              const relative = api.relative(root, file);
+              return relative && !api.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${api.sep}`);
+            };
+            const candidate = api.resolve(logical, value);
+            if (!inside(logical, candidate) && !inside(physical, candidate)) return null;
+            const resolved = realpath(candidate);
+            if (!inside(physical, resolved)) return null;
+            const relative = api.relative(physical, resolved).split(api.sep).join('/');
+            const [prefix, suffix] = language === 'rust' ? ['rust/src/', '.rs'] : ['lib/', '.dart'];
+            return relative.startsWith(prefix) && relative.endsWith(suffix) ? relative : null;
+          }
+          const logical = process.env.NEURA_SOURCE_ROOT;
+          const language = process.env.NEURA_COVERAGE_LANGUAGE || 'flutter';
+          const folder = language === 'rust' ? 'rust-windows' : 'flutter';
+          const physical = fs.realpathSync(logical);
+          const input = path.join(logical, 'coverage', folder, 'raw.lcov.info');
+          const output = path.join(logical, 'coverage', folder, 'normalized.lcov.info');
+          const raw = fs.readFileSync(input);
+          let normalizedSources = 0;
+          const normalized = raw.toString('utf8').replace(/^SF:([^\r\n]*)/gm, (record, value) => {
+            const relative = scopedSource(value, logical, physical, path, candidate => {
+              const resolved = fs.realpathSync(candidate);
+              if (!fs.statSync(resolved).isFile()) throw new Error(`LCOV source is not a file: ${candidate}`);
+              return resolved;
+            }, language);
+            if (!relative) return 'SF:__excluded_by_containment__/source';
+            normalizedSources++;
+            return `SF:${relative}`;
+          });
+          if (!normalizedSources) throw new Error('LCOV contains no verified checkout production sources.');
+          fs.writeFileSync(output, normalized, {flag:'wx'});
+          const sha256 = data => crypto.createHash('sha256').update(data).digest('hex');
+          fs.writeFileSync(path.join(logical, 'coverage', folder, 'path-provenance.json'), JSON.stringify({
+            workflow_commit:process.env.NEURA_WORKFLOW_COMMIT, tested_head:process.env.NEURA_EXPECTED_HEAD,
+            raw_sha256:sha256(raw), normalized_sha256:sha256(Buffer.from(normalized)), normalized_sources:normalizedSources,
+            scope:'SF paths are verified relative paths or explicit exclusions; all measurement records are preserved. Original input is retained.'
+          }, null, 2) + '\n', {flag:'wx'});
+          core.info(`Normalized ${normalizedSources} verified source records; original LCOV SHA256 ${sha256(raw)}`);
+    - name: Render measured Rust coverage
+      env:
+        COVERAGE_TEST_OUTCOME: ${{ steps.rust_coverage.outcome }}
+      run: |
         python tools/coverage/report.py --language rust --label "Rust ($RUNNER_OS)" \
-          --lcov "$COVERAGE_REPORT_DIR/raw.lcov.info" --output "$COVERAGE_REPORT_DIR" \
+          --lcov "$COVERAGE_REPORT_DIR/normalized.lcov.info" --output "$COVERAGE_REPORT_DIR" \
           --commit "$NEURA_EXPECTED_HEAD" --test-outcome "$COVERAGE_TEST_OUTCOME"
       shell: bash
       if: ${{ !cancelled() && (steps.rust_coverage.outcome == 'success' || steps.rust_coverage.outcome == 'failure') }}
@@ -642,6 +699,7 @@ jobs:
           }
           allowed.push('wipe/lcov.info');
           allowed.push('flutter/path-provenance.json');
+          allowed.push('rust-windows/path-provenance.json');
           const files = [], missing = [];
           let total = 0;
           for (const relative of allowed) {

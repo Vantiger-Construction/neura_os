@@ -100,6 +100,7 @@ exit "$TEST_INSTALL_EXIT"
 
     def test_coverage_junction_paths_and_measurement_gates(self):
         source = block('Normalize measured Flutter source paths', 'script')
+        self.assertEqual(source, block('Normalize measured Rust source paths', 'script'))
         with tempfile.TemporaryDirectory(prefix='neura-coverage-paths-') as temporary:
             root = Path(temporary)
             (root / 'source.json').write_text(json.dumps(source))
@@ -121,6 +122,11 @@ for(const api of [path.win32,path.posix]) {
   for(const value of ['../lib/main.dart',physical+'-other/lib/main.dart','/external/lib/main.dart','lib/../../outside.dart'])
     assert.equal(scoped(value,logical,physical,api,resolve),null,value);
   assert.equal(scoped('lib/link.dart',logical,physical,api,()=>api.resolve(physical,'../outside.dart')),null);
+  for(const value of [api.join(logical,'rust/src/engine_session.rs'), logical+'/rust/tests/../src/engine_session.rs',
+                     api.join(physical,'rust/src/engine_session.rs')])
+    assert.equal(scoped(value,logical,physical,api,resolve,'rust'),'rust/src/engine_session.rs');
+  for(const value of [physical+'-sibling/rust/src/a.rs', '/registry/src/a.rs', 'rust/tests/lifecycle.rs'])
+    assert.equal(scoped(value,logical,physical,api,resolve,'rust'),null);
 }
 (async()=>{
   const physical=path.join(__dirname,'neura-ci/run/workspace');
@@ -142,6 +148,23 @@ for(const api of [path.win32,path.posix]) {
   const normalized=fs.readFileSync(path.join(physical,'coverage/flutter/normalized.lcov.info'),'utf8');
   assert.equal(normalized,'SF:lib/main.dart\r\n'+measured.split('\r\n').slice(1).join('\r\n')+'SF:__excluded_by_containment__/source\r\nDA:99,100\r\nend_of_record\r\n');
   fs.writeFileSync(path.join(__dirname,'normalized.info'),normalized);
+  fs.mkdirSync(path.join(physical,'rust/src'),{recursive:true});
+  fs.mkdirSync(path.join(physical,'rust/tests'),{recursive:true});
+  fs.mkdirSync(path.join(physical,'coverage/rust-windows'),{recursive:true});
+  for(const file of ['src/engine_session.rs','src/frb_generated.rs','tests/lifecycle.rs'])
+    fs.writeFileSync(path.join(physical,'rust',file),'// synthetic Rust source');
+  const rustRaw=`SF:${path.join(logical,'rust/src/engine_session.rs')}\nDA:1,0\nDA:2,0\nend_of_record\n`+
+    `SF:${logical}/rust/tests/../src/engine_session.rs\nDA:1,3\nend_of_record\n`+
+    `SF:${logical}/rust/src/frb_generated.rs\nDA:1,7\nend_of_record\n`+
+    `SF:${logical}/rust/tests/lifecycle.rs\nDA:1,7\nend_of_record\n`+
+    'SF:C:/registry/dependency/src/lib.rs\nDA:1,9\nend_of_record\n';
+  const rustInput=path.join(physical,'coverage/rust-windows/raw.lcov.info');
+  fs.writeFileSync(rustInput,rustRaw);
+  await run(require,{env:{NEURA_SOURCE_ROOT:logical,NEURA_COVERAGE_LANGUAGE:'rust'}},{info(){}});
+  const rustNormalized=fs.readFileSync(path.join(physical,'coverage/rust-windows/normalized.lcov.info'),'utf8');
+  assert.equal(fs.readFileSync(rustInput,'utf8'),rustRaw);
+  assert.deepEqual(rustNormalized.split('\n').filter(x=>!x.startsWith('SF:')),rustRaw.split('\n').filter(x=>!x.startsWith('SF:')));
+  fs.writeFileSync(path.join(__dirname,'rust-normalized.info'),rustNormalized);
   for(const content of ['', 'SF:../external.dart\nDA:1,1\nend_of_record']) {
     fs.writeFileSync(file,content);
     await assert.rejects(run(require,{env:{NEURA_SOURCE_ROOT:logical}},{info(){}}),/no verified checkout/);
@@ -159,10 +182,14 @@ for(const api of [path.win32,path.posix]) {
             spec.loader.exec_module(report)
             self.assertEqual(report.parse_lcov((root / 'normalized.info').read_text(), str(root), 'flutter'),
                              {'lib/main.dart': {1: 0, 2: 7}})
+            self.assertEqual(report.parse_lcov((root / 'rust-normalized.info').read_text(), str(root), 'rust'),
+                             {'rust/src/engine_session.rs': {1: 3, 2: 0}})
             for invalid in ['', 'SF:lib/main.dart\nend_of_record', 'SF:lib/main.dart\nDA:1,-1\nend_of_record',
                             'SF:lib/main.dart\nDA:1,1']:
                 with self.assertRaises(ValueError):
                     report.parse_lcov(invalid, str(root), 'flutter')
+                with self.assertRaises(ValueError):
+                    report.parse_lcov(invalid.replace('lib/main.dart', 'rust/src/main.rs'), str(root), 'rust')
 
     def test_retained_bash_discovery(self):
         if os.name != 'nt':
@@ -293,6 +320,14 @@ async function scenario(name, mode, expected) {
     const measured=mode==='junction'?path.relative(root,path.join(path.dirname(coverage),'lib/main.dart')):root.replace(/\\/g,'/')+'/lib/main.dart';
     fs.writeFileSync(path.join(coverage,'flutter/raw.lcov.info'), mode==='empty_lcov'?'SF:C:/private/secret.dart\nDA:1,0\nend_of_record\n':`SF:${measured}\nDA:1,1\nend_of_record\nSF:C:/private/secret.dart\nDA:1,0\nend_of_record\nSF:${path.dirname(coverage)}-sibling/lib/main.dart\nDA:1,0\nend_of_record\n`);
     fs.writeFileSync(path.join(coverage,'flutter/summary.json'),'{}');
+    if(mode==='reports' || mode==='junction') {
+      fs.mkdirSync(path.join(root,'rust/src'),{recursive:true});
+      fs.writeFileSync(path.join(root,'rust/src/engine_session.rs'),'// synthetic source');
+      fs.mkdirSync(path.join(coverage,'rust-windows'));
+      fs.writeFileSync(path.join(coverage,'rust-windows/raw.lcov.info'),
+        `SF:${root}/rust/tests/../src/engine_session.rs\nDA:1,2\nend_of_record\nSF:C:/registry/src/lib.rs\nDA:1,99\nend_of_record\n`);
+      fs.writeFileSync(path.join(coverage,'rust-windows/path-provenance.json'),'{}');
+    }
     if (mode === 'oversize') fs.writeFileSync(path.join(coverage,'flutter/summary.json'),Buffer.alloc(16*1024*1024+1));
     if (mode === 'linked') {
       const outside = path.join(__dirname,'outside'); fs.mkdirSync(outside,{recursive:true});
@@ -324,6 +359,10 @@ async function scenario(name, mode, expected) {
     if(mode==='reports' || mode==='junction') {
       const lcov=uploads.find(x=>x.name==='flutter-raw.lcov.info').data.toString();
       assert(lcov.includes('SF:lib/main.dart')); assert(!lcov.includes('private')); assert(!lcov.includes('DA:1,0'));
+      const rust=uploads.find(x=>x.name==='rust-windows-raw.lcov.info').data.toString();
+      assert(rust.includes('SF:rust/src/engine_session.rs')); assert(rust.includes('DA:1,2'));
+      assert(!rust.includes('registry')); assert(!rust.includes('DA:1,99'));
+      assert(uploads.some(x=>x.name==='rust-windows-path-provenance.json'));
     }
   }
   console.log('PASS '+name);

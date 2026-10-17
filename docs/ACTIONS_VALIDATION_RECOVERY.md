@@ -281,3 +281,29 @@ setup and costly application suites. Local tests use NetworkService profile
 environment values but do not impersonate the service; only the new CI run can
 confirm launch in the actual service context. No identity, ACL, privilege,
 execution-policy or installed-software changes were made.
+
+## Rust logical-checkout coverage mapping
+
+Run `39067306418`, PR #133 job `117497523531`, passed the service runtime
+preflight, pinned installer and all 67 instrumented Rust tests. Rust reporting
+then rejected absolute logical-junction paths after resolving its root to the
+physical workspace. Artifact `12116063452` preserves the 221,702-byte Rust LCOV,
+SHA256 `c0d2fe558b610d12ea45f1c03d13b9f85302421ab925dae41974e41b93bc18fe`.
+It contains 28 source records and 4,206 `DA:` line records, including external
+registry and generated/test mappings.
+
+Rust export and rendering are now separated by the same physically confined
+normalization used for Flutter. The two normalization bodies are identical and
+regression-tested for equality, selecting only the language and report folder.
+Raw evidence and every non-`SF:` record remain unchanged; a separate derivative
+and hash provenance are written. The original reporter keeps its generated,
+test-helper, external-source and zero-measurement gates. Rust provenance is also
+included in the private fallback, whose existing containment mapping is tested
+with logical absolute paths and `rust/tests/../src` aliases.
+
+Read-only replay reproduced the original error, then accepted 14 production
+files, 2,314 measured lines and 1,738 covered lines (75.11%). It normalized 18
+in-checkout production-source records before the unchanged reporter's filters
+and alias merging. The original hash and all non-source records were verified
+unchanged. This replay does not replace fresh CI evidence. Frozen targets,
+coverage-tool version, test commands and coverage thresholds remain unchanged.
