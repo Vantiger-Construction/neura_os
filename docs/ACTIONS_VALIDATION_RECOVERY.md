@@ -194,8 +194,23 @@ report fallback delivered and verified the partial receipt and manifest.
 The recovery workflow now discovers Bash beside the retained Git executable,
 probes it with the runner's `--noprofile --norc -e -o pipefail` options, and
 checks bundled utilities before adding `bin` and `usr\bin` to job-local
-`GITHUB_PATH`. It rejects missing or nonzero probes, including a native fixture
+`GITHUB_PATH`. It rejects missing or nonzero probes, including a result
 that prints the expected marker and exits 7. The regression test reproduces
 missing Bash on a Git-cmd-only PATH and verifies the resulting runner shell.
 No installation, machine PATH change or execution-policy override is added.
 Existing Bash command blocks and both frozen target SHAs remain unchanged.
+
+The initial discovery step in run `39050871600` was rejected before execution
+because the runner-generated PowerShell script was unsigned. Discovery now uses
+the existing `actions/github-script@v8` Node runtime, with direct bounded native
+process calls and `core.addPath`; it does not generate a PowerShell script or
+change signing policy. Tests invoke the actual v8 action entry point with the
+runner's Node 24, checking real Git Bash and job PATH output, then injected
+missing executable, nonzero exit, missing marker, timeout and discovery failures.
+All other workflow steps remain unchanged.
+
+For local tests, set `NEURA_GITHUB_SCRIPT_ENTRY` to an available v8
+`dist/index.js` when the runner action cache has been cleaned. The official v8
+entry point tested from temporary storage had SHA256
+`4af8211e8a7ef1f8e03e03fab7fdbd204c1108713af5c18b3d48f04d194c9abe`.
+The harness supplies offline action inputs and makes no GitHub API calls.

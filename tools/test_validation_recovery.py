@@ -29,40 +29,52 @@ class RecoveryTest(unittest.TestCase):
     def test_retained_bash_discovery(self):
         if os.name != 'nt':
             self.skipTest('Windows Git Bash discovery')
-        function = block('Discover and enable retained Git Bash', 'run').split('$gitExecutables = @(')[0]
+        source = block('Discover and enable retained Git Bash', 'script')
+        node = Path('C:/actions-runner/externals/node24/bin/node.exe')
+        action = Path(os.environ.get('NEURA_GITHUB_SCRIPT_ENTRY',
+                                     'C:/actions-runner/_work/_actions/actions/github-script/v8/dist/index.js'))
+        self.assertTrue(node.is_file() and action.is_file(), 'Retained Node 24 and github-script v8 required')
         with tempfile.TemporaryDirectory(prefix='neura-bash-probe-') as temporary:
             root = Path(temporary)
-            script = function + r'''
-$env:GITHUB_PATH = Join-Path $PSScriptRoot 'job-path'
-$env:PATH = 'C:\Program Files\Git\cmd;C:\Windows\System32;C:\Windows'
-if (Get-Command bash -ErrorAction SilentlyContinue) { throw 'baseline unexpectedly finds bash' }
-try { Enable-RetainedBash @((Join-Path $PSScriptRoot 'missing\cmd\git.exe')); throw 'accepted missing Bash' }
-catch { if ($_.Exception.Message -notlike 'No usable*') { throw } }
-$fixtureRoot = Join-Path $PSScriptRoot 'fixture'
-New-Item -ItemType Directory -Path (Join-Path $fixtureRoot 'bin') | Out-Null
-Add-Type -OutputAssembly (Join-Path $fixtureRoot 'bin\bash.exe') -OutputType ConsoleApplication -TypeDefinition @'
-using System;
-public class Probe { public static int Main() { Console.WriteLine("NEURA_BASH_OK"); return 7; } }
-'@
-try { Enable-RetainedBash @((Join-Path $fixtureRoot 'cmd\git.exe')); throw 'accepted nonzero Bash' }
-catch { if ($_.Exception.Message -notlike 'No usable*') { throw } }
-if (Test-Path -LiteralPath $env:GITHUB_PATH) { throw 'failed probe modified job PATH' }
-$original = $env:PATH
-Enable-RetainedBash @('C:\Program Files\Git\cmd\git.exe')
-if ($env:PATH -cne $original) { throw 'process PATH not restored' }
-$entries = @(Get-Content -LiteralPath $env:GITHUB_PATH)
-[array]::Reverse($entries)
-$env:PATH = ($entries -join ';') + ';' + $env:PATH
-$shell = (Get-Command bash -ErrorAction Stop).Source
-& $shell --noprofile --norc -e -o pipefail -c 'for tool in bash git grep tee mkdir; do command -v "$tool" || exit 17; done'
-if ($LASTEXITCODE -ne 0) { throw 'runner shell invocation failed' }
-'''
-            file = root / 'test.ps1'
-            file.write_text(script, encoding='utf-8')
-            command = [str(Path(os.environ['SystemRoot']) / 'System32/WindowsPowerShell/v1.0/powershell.exe'),
-                       '-NoProfile', '-NonInteractive', '-File', str(file)]
-            result = subprocess.run(command, capture_output=True, text=True, timeout=60)
+            (root / 'job-path').touch()
+            (root / 'output').touch()
+            env = dict(os.environ)
+            for key in list(env):
+                if key.upper() == 'PATH':
+                    del env[key]
+            env.update(PATH='C:/Program Files/Git/cmd;C:/Windows/System32;C:/Windows',
+                       NEURA_SOURCE_ROOT=str(root), GITHUB_PATH=str(root / 'job-path'),
+                       GITHUB_OUTPUT=str(root / 'output'), GITHUB_REPOSITORY='example/offline')
+            env.update({'INPUT_SCRIPT':source, 'INPUT_GITHUB-TOKEN':'offline-unused-token', 'INPUT_DEBUG':'false',
+                        'INPUT_USER-AGENT':'offline-test', 'INPUT_RESULT-ENCODING':'json',
+                        'INPUT_RETRIES':'0', 'INPUT_RETRY-EXEMPT-STATUS-CODES':'400,401,403,404,422'})
+            where = str(Path(os.environ['SystemRoot']) / 'System32/where.exe')
+            self.assertNotEqual(subprocess.run([where, 'bash'], env=env, capture_output=True).returncode, 0)
+            result = subprocess.run([str(node), str(action)], env=env, capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            entries = (root / 'job-path').read_text().splitlines()
+            self.assertEqual(entries, [r'C:\Program Files\Git\usr\bin', r'C:\Program Files\Git\bin'])
+            env['PATH'] = ';'.join(reversed(entries)) + ';' + env['PATH']
+            shell = subprocess.check_output([where, 'bash'], env=env, text=True).splitlines()[0]
+            result = subprocess.run([shell, '--noprofile', '--norc', '-e', '-o', 'pipefail', '-c',
+                                     'for tool in bash git grep tee mkdir; do command -v "$tool" || exit 17; done'],
+                                    env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            # Exercise the same action invocation with injected native process results.
+            for mode in ['missing', 'nonzero', 'marker', 'timeout', 'where']:
+                (root / 'job-path').write_text('')
+                injection = """
+const cp = require('child_process');
+cp.spawnSync = (file) => file.endsWith('where.exe')
+  ? {status: MODE === 'where' ? 1 : 0, stdout: MODE === 'missing' ? 'C:/absent/cmd/git.exe' : 'C:/Program Files/Git/cmd/git.exe', stderr:''}
+  : {status: MODE === 'nonzero' ? 7 : MODE === 'timeout' ? null : 0,
+     stdout: MODE === 'marker' ? '' : 'NEURA_BASH_OK\\n', stderr:'',
+     error: MODE === 'timeout' ? new Error('ETIMEDOUT') : undefined};
+""".replace('MODE', json.dumps(mode))
+                env['INPUT_SCRIPT'] = injection + source
+                result = subprocess.run([str(node), str(action)], env=env, capture_output=True, text=True, timeout=30)
+                self.assertNotEqual(result.returncode, 0, mode + result.stdout + result.stderr)
+                self.assertEqual((root / 'job-path').read_text(), '', mode)
 
     def test_retained_python_success_and_failures(self):
         if os.name != 'nt':

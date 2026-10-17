@@ -202,41 +202,38 @@ jobs:
           Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       working-directory: ${{ env.NEURA_SOURCE_ROOT }}
     - name: Discover and enable retained Git Bash
-      shell: powershell -NoLogo -NoProfile -NonInteractive -File "{0}"
-      run: |
-        Set-StrictMode -Version Latest
-        $ErrorActionPreference = 'Stop'
-        function Enable-RetainedBash {
-          param([string[]]$GitExecutables)
-          foreach ($git in ($GitExecutables | Select-Object -Unique)) {
-            $root = Split-Path -Parent (Split-Path -Parent $git)
-            $bin = Join-Path $root 'bin'
-            $utilities = Join-Path $root 'usr\bin'
-            $bash = Join-Path $bin 'bash.exe'
-            if (-not (Test-Path -LiteralPath $bash -PathType Leaf)) { continue }
-            $originalPath = $env:PATH
-            try {
-              $env:PATH = "$bin;$utilities;$originalPath"
-              $probe = @(& $bash --noprofile --norc -e -o pipefail -c 'for tool in bash git grep tee mkdir; do command -v "$tool" >/dev/null || exit 17; done; echo NEURA_BASH_OK')
-              $probeExit = $LASTEXITCODE
-              if ($probeExit -ne 0 -or $probe -notcontains 'NEURA_BASH_OK') {
-                throw "Bash probe failed with exit $probeExit."
-              }
-              # GITHUB_PATH affects only subsequent steps in this job.
-              @($utilities, $bin) | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-              Write-Host "Validated retained Git Bash: $bash"
-              return
-            } catch {
-              Write-Warning "Rejected retained Git Bash ${bash}: $_"
-            } finally {
-              $env:PATH = $originalPath
-            }
+      uses: actions/github-script@v8
+      with:
+        script: |
+          const fs = require('fs'), path = require('path');
+          const {spawnSync} = require('child_process');
+          const childEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PATH'));
+          const where = path.join(process.env.SystemRoot, 'System32', 'where.exe');
+          const found = spawnSync(where, ['git.exe'], {encoding:'utf8', timeout:15000});
+          if (found.error || found.status !== 0) {
+            throw new Error(`Retained Git discovery failed: ${found.error || found.stderr || found.status}`);
           }
-          throw 'No usable retained Git Bash was found; restore authorized runner tooling.'
-        }
-        $gitExecutables = @(Get-Command git.exe -All -ErrorAction Stop | ForEach-Object Source)
-        Enable-RetainedBash -GitExecutables $gitExecutables
-      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+          for (const git of new Set(found.stdout.trim().split(/\r?\n/))) {
+            const root = path.dirname(path.dirname(git));
+            const bin = path.join(root, 'bin'), utilities = path.join(root, 'usr', 'bin');
+            const bash = path.join(bin, 'bash.exe');
+            if (!fs.existsSync(bash)) continue;
+            const probe = spawnSync(bash, ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c',
+              'for tool in bash git grep tee mkdir; do command -v "$tool" >/dev/null || exit 17; done; echo NEURA_BASH_OK'], {
+              cwd:process.env.NEURA_SOURCE_ROOT, encoding:'utf8', timeout:15000,
+              env:{...childEnv, PATH:`${bin};${utilities};${process.env.PATH}`}
+            });
+            if (probe.error || probe.status !== 0 || !probe.stdout.split(/\r?\n/).includes('NEURA_BASH_OK')) {
+              core.warning(`Rejected retained Git Bash ${bash}: ${probe.error || probe.stderr || `exit ${probe.status}; missing success marker`}`);
+              continue;
+            }
+            // Only this job and its subsequent steps receive these directories.
+            core.addPath(utilities);
+            core.addPath(bin);
+            core.info(`Validated retained Git Bash: ${bash}`);
+            return;
+          }
+          throw new Error('No usable retained Git Bash was found; restore authorized runner tooling.');
     - name: Record tools and enforce the Flutter lockfile
       shell: bash
       run: |2
