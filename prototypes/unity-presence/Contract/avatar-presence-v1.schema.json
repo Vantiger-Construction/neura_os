@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Neura avatar presentation snapshot v1",
+  "description": "Presentation only. Input is a flat ASCII JSON profile limited to 512 characters. The consumer canonicalizes either Safe Mode signal to phase safeMode, safe_mode true and motion still. No additional authority is granted.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "room_id",
+    "phase",
+    "stance",
+    "motion",
+    "scale",
+    "safe_mode"
+  ],
+  "properties": {
+    "v": {
+      "type": "integer",
+      "const": 1
+    },
+    "room_id": {
+      "type": "string",
+      "enum": [
+        "penthouse",
+        "reflection_bay",
+        "joy_lounge",
+        "mood_den",
+        "dream_atrium",
+        "legacy_vault"
+      ]
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "idle",
+        "thinking",
+        "speaking",
+        "listening",
+        "safeMode"
+      ]
+    },
+    "stance": {
+      "type": "string",
+      "enum": [
+        "welcoming",
+        "reflective",
+        "playful",
+        "grounding",
+        "dreaming",
+        "guardian"
+      ]
+    },
+    "motion": {
+      "type": "string",
+      "enum": [
+        "still",
+        "subtle",
+        "expressive"
+      ]
+    },
+    "scale": {
+      "type": "string",
+      "enum": [
+        "compact",
+        "standard",
+        "large"
+      ]
+    },
+    "safe_mode": {
+      "type": "boolean"
+    }
+  }
+}

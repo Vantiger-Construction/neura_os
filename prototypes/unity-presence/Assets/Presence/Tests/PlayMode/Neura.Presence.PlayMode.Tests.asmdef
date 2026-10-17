@@ -1,0 +1,6 @@
+{
+  "name": "Neura.Presence.PlayMode.Tests",
+  "references": ["Neura.Presence.Core", "Neura.Presence.Runtime"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false
+}
