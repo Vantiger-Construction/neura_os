@@ -1,0 +1,498 @@
+name: Neura validation recovery (Windows supplement)
+'on':
+  pull_request:
+    branches:
+    - Neura
+    paths:
+    - .github/workflows/neura-validation-recovery.yml
+    - docs/ACTIONS_VALIDATION_RECOVERY.md
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  pull-requests: read
+env:
+  FLUTTER_VERSION: 3.47.5
+  FLUTTER_SHA256: 0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8
+  RUSTUP_TOOLCHAIN: 1.99.0
+jobs:
+  windows:
+    name: 'PR ${{ matrix.pr }}: exact-head Windows safety and coverage supplement'
+    if: ${{ github.repository == 'Vantiger-Construction/neura_os' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name
+      == github.repository) }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+        - pr: 133
+          sha: b822c48be5a871d5a5e8e88825205d70534216d0
+          module: state-matrix
+        - pr: 136
+          sha: c79aca63e861b2e4f9f049f408d27f5103170e58
+          module: living-intelligence
+    runs-on:
+    - self-hosted
+    - Windows
+    - X64
+    - neura
+    timeout-minutes: 150
+    concurrency:
+      group: neura-validation-recovery-pr-${{ matrix.pr }}
+      cancel-in-progress: false
+    env:
+      NEURA_TARGET_PR: ${{ matrix.pr }}
+      NEURA_EXPECTED_HEAD: ${{ matrix.sha }}
+      NEURA_STORAGE_MODULE: ${{ matrix.module }}
+      NEURA_WORKFLOW_COMMIT: ${{ github.sha }}
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_DEV_DEBUG: '1'
+      CARGO_PROFILE_TEST_DEBUG: '1'
+      COVERAGE_REPORT_DIR: coverage/rust-windows
+    steps:
+    - name: Reject stale or foreign target commits
+      uses: actions/github-script@v8
+      with:
+        script: |
+          const {owner, repo} = context.repo;
+          const number = Number(process.env.NEURA_TARGET_PR);
+          const expected = process.env.NEURA_EXPECTED_HEAD;
+          const {data: pr} = await github.rest.pulls.get({owner, repo, pull_number: number});
+          if (pr.state !== 'open' || pr.head.repo.full_name !== `${owner}/${repo}` ||
+              pr.head.sha !== expected) {
+            throw new Error(`PR #${number} changed or is not a trusted open same-repository PR; review its new head before running.`);
+          }
+          core.info(`Validating PR #${number}, exact branch head ${expected}.`);
+    - name: Require 16 GiB and route isolated validation output
+      shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"
+      run: |
+        Set-StrictMode -Version Latest
+        $ErrorActionPreference = 'Stop'
+
+        $runnerWork = Split-Path -Parent $env:RUNNER_TEMP
+        $systemRoot = [System.IO.Path]::GetPathRoot($runnerWork)
+        if (-not $systemRoot -or -not (Test-Path -LiteralPath $systemRoot)) {
+          $systemRoot = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetTempPath())
+          Write-Warning "RUNNER_TEMP points to an unavailable volume; using $systemRoot as the system-volume root."
+        }
+        $systemDriveName = $systemRoot.TrimEnd('\').TrimEnd(':')
+        $systemDrive = Get-PSDrive -Name $systemDriveName -ErrorAction SilentlyContinue
+        if (-not $systemDrive) {
+          throw "Unable to inspect the system volume $systemRoot."
+        }
+        $systemFree = $systemDrive.Free
+        $drive = [System.IO.DriveInfo]::GetDrives() |
+          Where-Object {
+            $_.IsReady -and
+            ($_.Name -ne $systemRoot -or $systemFree -ge 16GB) -and
+            ($_.DriveType -eq [System.IO.DriveType]::Fixed -or
+             $_.DriveType -eq [System.IO.DriveType]::Removable) -and
+            $_.AvailableFreeSpace -ge 16GB
+          } |
+          Sort-Object -Property AvailableFreeSpace -Descending |
+          Select-Object -First 1
+        if (-not $drive) {
+          throw 'State Matrix requires one writable volume with at least 16 GiB free; the system volume requires at least 16 GiB free.'
+        }
+
+        $runKey = "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+        $root = Join-Path $drive.RootDirectory.FullName "neura-ci\$runKey\$env:NEURA_STORAGE_MODULE"
+        $workspace = Join-Path $root 'workspace'
+        $sourceLink = Join-Path $env:GITHUB_WORKSPACE "recovery-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-$env:NEURA_TARGET_PR"
+        if (Test-Path -LiteralPath $sourceLink) {
+          throw 'The run-specific checkout already exists; do not reuse unknown output.'
+        }
+        if (Test-Path -LiteralPath $root) {
+          throw 'The run-specific validation root already exists; do not reuse unknown output.'
+        }
+        $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.47.5'
+        New-Item -ItemType Directory -Path $workspace -Force | Out-Null
+        New-Item -ItemType Directory -Path $pubCache -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $root 'temp') -Force | Out-Null
+        New-Item -ItemType Junction -Path $sourceLink -Target $workspace | Out-Null
+        @(
+          "NEURA_SOURCE_ROOT=$sourceLink",
+          "NEURA_VALIDATION_RUN_ROOT=$root",
+          "PUB_CACHE=$pubCache",
+          "TEMP=$(Join-Path $root 'temp')",
+          "TMP=$(Join-Path $root 'temp')"
+        ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+        $cargoHome = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\cargo-home'
+        New-Item -ItemType Directory -Path $cargoHome -Force | Out-Null
+        @(
+          "CARGO_HOME=$cargoHome",
+          "CARGO_TARGET_DIR=$(Join-Path $root 'temp\rust-target')"
+        ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      working-directory: ${{ github.workspace }}
+    - name: Check out the immutable PR head
+      id: checkout
+      uses: actions/checkout@v5
+      with:
+        ref: ${{ env.NEURA_EXPECTED_HEAD }}
+        path: recovery-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.NEURA_TARGET_PR }}
+        persist-credentials: false
+    - name: Verify checkout and enable retained tools
+      shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"
+      run: |2
+
+        Set-StrictMode -Version Latest
+        $ErrorActionPreference = 'Stop'
+        Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+        $actual = (git rev-parse HEAD).Trim()
+        if ($LASTEXITCODE -ne 0 -or $actual -cne $env:NEURA_EXPECTED_HEAD) {
+          throw 'Checkout does not match the reviewed PR head.'
+        }
+        $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
+        if (-not (Test-Path -LiteralPath (Join-Path $cargoBin 'rustup.exe') -PathType Leaf)) {
+          throw 'The retained Rust installation is missing; restore runner tooling first.'
+        }
+        $cargoBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        $env:PATH = "$cargoBin;$env:PATH"
+        & "$env:NEURA_SOURCE_ROOT\tools\Enable-NeuraFlutter.ps1" `
+          -Version $env:FLUTTER_VERSION -ExpectedSha256 $env:FLUTTER_SHA256
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        # RUSTUP_TOOLCHAIN is job-scoped; do not change the laptop's default toolchain.
+        rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal `
+          --component clippy --component rustfmt --component llvm-tools-preview
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Enable Python 3.12 for reports
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
+    - name: Record tools and enforce the Flutter lockfile
+      shell: bash
+      run: |2
+
+        flutter --version
+        dart --version
+        rustc --version
+        cargo --version
+        python --version
+        flutter pub get --enforce-lockfile
+        git diff --exit-code -- pubspec.lock rust/Cargo.lock
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Test bounded storage recovery
+      shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"
+      run: |-
+        & "$env:NEURA_SOURCE_ROOT\tools\Repair-NeuraCiStorage.Tests.ps1"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Reject unresolved merge markers
+      shell: bash
+      run: |
+        set -euo pipefail
+        if grep -RInE '^(<<<<<<<|=======|>>>>>>>)' \
+          lib/living_intelligence \
+          lib/intelligence/action_loom.dart \
+          lib/intelligence/fresh_approval_lease.dart \
+          test/living_intelligence \
+          test/intelligence/action_loom_fresh_approval_test.dart \
+          test/intelligence/fresh_approval_lease_test.dart; then
+          echo "::error::Unresolved merge markers are committed."
+          exit 1
+        fi
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Verify canonical formatting
+      shell: bash
+      run: |
+        set -euo pipefail
+        dart format --output=none --set-exit-if-changed \
+          lib/living_intelligence \
+          lib/intelligence/action_loom.dart \
+          lib/intelligence/fresh_approval_lease.dart \
+          lib/intelligence/intelligence.dart \
+          test/living_intelligence \
+          test/intelligence/action_loom_fresh_approval_test.dart \
+          test/intelligence/fresh_approval_lease_test.dart
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Require zero analyzer findings
+      shell: bash
+      run: |
+        set -o pipefail
+        flutter analyze --fatal-infos 2>&1 | tee analyze.log
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Run focused safety tests
+      shell: bash
+      run: |
+        set -o pipefail
+        flutter test --no-pub --reporter expanded \
+          test/living_intelligence \
+          test/intelligence/action_loom_fresh_approval_test.dart \
+          test/intelligence/fresh_approval_lease_test.dart \
+          2>&1 | tee focused-safety-tests.log
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Focused full-wipe regressions with coverage
+      run: |
+        flutter test --no-pub --reporter expanded --concurrency 2 \
+          --coverage --coverage-path=coverage/wipe/lcov.info \
+          test/data_wipe_service_test.dart \
+          test/data_wipe_fixture_test.dart \
+          test/data_wipe_service_full_test.dart \
+          test/data_wipe_service_lifecycle_test.dart \
+          test/data_wipe_credentials_test.dart \
+          test/data_wipe_microphone_test.dart
+      shell: bash
+      if: ${{ matrix.pr == 133 }}
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Related privacy and encrypted-memory contracts
+      run: |
+        flutter test --no-pub --reporter expanded --concurrency 2 \
+          test/encrypted_memory test/core/memory_graph_service_test.dart \
+          test/neura_provider_credentials_test.dart \
+          test/startup/native_speech_safe_mode_test.dart \
+          test/living_intelligence \
+          test/intelligence/action_loom_fresh_approval_test.dart \
+          test/intelligence/fresh_approval_lease_test.dart
+      shell: bash
+      if: ${{ matrix.pr == 133 }}
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Require strict analysis for changed privacy code
+      run: |
+        flutter analyze --fatal-infos \
+          lib/src/core/data_wipe_service.dart \
+          lib/services/neura_provider_credentials.dart \
+          lib/services/neura_model_credentials.dart \
+          lib/services/scheduled_backup_settings.dart \
+          lib/services/sleep_listener_service.dart \
+          test/data_wipe_service_full_test.dart \
+          test/data_wipe_service_lifecycle_test.dart \
+          test/data_wipe_credentials_test.dart \
+          test/data_wipe_microphone_test.dart \
+          test/data_wipe_fixture_test.dart \
+          test/helpers/data_wipe_fixture.dart
+      shell: bash
+      if: ${{ matrix.pr == 133 }}
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Check canonical formatting
+      run: |
+        dart format --output=none --set-exit-if-changed \
+          lib/src/core/data_wipe_service.dart \
+          lib/services/neura_provider_credentials.dart \
+          lib/services/neura_model_credentials.dart \
+          lib/services/scheduled_backup_settings.dart \
+          lib/services/sleep_listener_service.dart \
+          test/data_wipe_service_full_test.dart \
+          test/data_wipe_service_lifecycle_test.dart \
+          test/data_wipe_credentials_test.dart \
+          test/data_wipe_microphone_test.dart \
+          test/data_wipe_fixture_test.dart \
+          test/helpers/data_wipe_fixture.dart
+      shell: bash
+      if: ${{ matrix.pr == 133 }}
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Check canonical Dart formatting
+      run: |
+        dart format --output=none --set-exit-if-changed lib/services/neura_ollama_chat.dart lib/services/neura_ai_service.dart lib/modules/chat/neura_chat_screen.dart lib/persona/services/neura_prompt_builder.dart test/services/neura_ollama_chat_test.dart test/persona/neura_offline_prompt_test.dart
+      shell: bash
+      if: ${{ matrix.pr == 136 }}
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Analyze integration
+      run: flutter analyze --no-pub lib/services/neura_ollama_chat.dart lib/services/neura_ai_service.dart lib/modules/chat/neura_chat_screen.dart
+        lib/persona/services/neura_prompt_builder.dart test/services/neura_ollama_chat_test.dart test/persona/neura_offline_prompt_test.dart
+      shell: bash
+      if: ${{ matrix.pr == 136 }}
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Test adapter and existing lifecycle boundaries
+      run: flutter test --no-pub test/services/neura_ollama_chat_test.dart test/neura_link/engine_session_lifecycle_test.dart
+        test/services/neura_generation_cancel_test.dart test/persona/neura_character_charter_test.dart test/persona/neura_prompt_builder_test.dart
+        test/persona/neura_offline_prompt_test.dart
+      shell: bash
+      if: ${{ matrix.pr == 136 }}
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Canonical formatting of modified Flutter sources
+      shell: bash
+      run: |
+        dart format --output=none --set-exit-if-changed \
+          lib/neura_link/local_conversation_session.dart \
+          lib/modules/chat/neura_chat_screen.dart \
+          test/neura_link/local_conversation_session_test.dart \
+          test/modules/chat/neura_offline_chat_test.dart
+      if: ${{ matrix.pr == 136 }}
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Analyze modified Flutter sources
+      shell: bash
+      run: |
+        flutter analyze --no-fatal-infos \
+          lib/neura_link/local_conversation_session.dart \
+          lib/modules/chat/neura_chat_screen.dart \
+          test/neura_link/local_conversation_session_test.dart \
+          test/modules/chat/neura_offline_chat_test.dart
+      if: ${{ matrix.pr == 136 }}
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Validate coverage report accuracy
+      shell: bash
+      run: python -m unittest discover -s tools/coverage -p 'test_*.py' -v
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Run the complete Flutter suite once with coverage
+      id: flutter_tests
+      run: |
+        mkdir -p coverage/flutter
+        flutter test --no-pub --concurrency 2 --timeout 2m \
+          --coverage --coverage-path=coverage/flutter/raw.lcov.info
+      shell: bash
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Render measured Flutter coverage
+      env:
+        COVERAGE_TEST_OUTCOME: ${{ steps.flutter_tests.outcome }}
+      run: |
+        python tools/coverage/report.py --language flutter --label 'Flutter (Windows supplement)' \
+          --lcov coverage/flutter/raw.lcov.info --output coverage/flutter \
+          --commit "$NEURA_EXPECTED_HEAD" --test-outcome "$COVERAGE_TEST_OUTCOME"
+      shell: bash
+      if: ${{ !cancelled() && (steps.flutter_tests.outcome == 'success' || steps.flutter_tests.outcome == 'failure') }}
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Test every Rust target with the committed lockfile
+      shell: bash
+      run: cargo test --manifest-path rust/Cargo.toml --locked --all-targets
+      id: rust_tests
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Require strict Clippy for every Rust target
+      shell: bash
+      run: cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
+      id: clippy
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Install the same verified coverage tool as hosted CI
+      uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe
+      with:
+        tool: cargo-llvm-cov@0.9.1
+    - name: Run all existing Rust targets once with instrumentation
+      id: rust_coverage
+      run: |
+        cargo llvm-cov clean --manifest-path rust/Cargo.toml --workspace
+        cargo llvm-cov --manifest-path rust/Cargo.toml --locked --all-targets \
+          --no-report -- --test-threads=2
+      shell: bash
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Export and render measured Rust coverage without rerunning tests
+      env:
+        COVERAGE_TEST_OUTCOME: ${{ steps.rust_coverage.outcome }}
+      run: |
+        mkdir -p "$COVERAGE_REPORT_DIR"
+        # The default tests/ filter also drops #[path = "../src/..."] lifecycle
+        # mappings. Scope normalized production paths in our reporter instead.
+        cargo llvm-cov report --manifest-path rust/Cargo.toml --lcov --no-default-ignore-filename-regex \
+          --output-path "$COVERAGE_REPORT_DIR/raw.lcov.info"
+        python tools/coverage/report.py --language rust --label "Rust ($RUNNER_OS)" \
+          --lcov "$COVERAGE_REPORT_DIR/raw.lcov.info" --output "$COVERAGE_REPORT_DIR" \
+          --commit "$NEURA_EXPECTED_HEAD" --test-outcome "$COVERAGE_TEST_OUTCOME"
+      shell: bash
+      if: ${{ !cancelled() && (steps.rust_coverage.outcome == 'success' || steps.rust_coverage.outcome == 'failure') }}
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Test synthetic benchmark statistics without a model
+      run: python -m unittest discover -s tools -p test_benchmark_ollama_latency.py -v
+      shell: bash
+      if: ${{ matrix.pr == 136 }}
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Check Rust adapter formatting
+      shell: bash
+      run: |
+        rustfmt --edition 2021 --check rust/src/ollama_conversation.rs rust/src/ollama_latency.rs
+      if: ${{ matrix.pr == 136 }}
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Check native Windows offline policy and launcher syntax
+      shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"
+      run: |-
+        Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+        & .\tools\Test-NeuraLocalConversationPolicy.ps1
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      if: ${{ matrix.pr == 136 }}
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Compile native method-channel owner against genuine Flutter headers
+      shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"
+      run: |
+        Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
+        $ErrorActionPreference = 'Stop'
+        flutter precache --windows
+        if ($LASTEXITCODE -ne 0) { throw 'Windows Flutter headers unavailable.' }
+        $includes = Join-Path (Join-Path $env:RUNNER_TOOL_CACHE 'flutter\3.47.5\x64') 'bin\cache\artifacts\engine\windows-x64\cpp_client_wrapper\include'
+        cmake -S tools/offline_text_native_check -B build/offline-native-check "-DFLUTTER_WRAPPER_INCLUDE=$includes"
+        if ($LASTEXITCODE -ne 0) { throw 'Native check configuration failed.' }
+        cmake --build build/offline-native-check --config Release
+        if ($LASTEXITCODE -ne 0) { throw 'Native method-channel compilation failed.' }
+      if: ${{ matrix.pr == 136 }}
+      working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Record tested commit, suite outcomes and source hashes
+      id: receipt
+      uses: actions/github-script@v8
+      if: ${{ always() && steps.checkout.outcome == 'success' }}
+      env:
+        NEURA_SUITE_OUTCOMES: '{"flutter":"${{ steps.flutter_tests.outcome }}","rust":"${{ steps.rust_tests.outcome }}","clippy":"${{
+          steps.clippy.outcome }}","rust_coverage":"${{ steps.rust_coverage.outcome }}","prior_steps":"${{ job.status }}"}'
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          const cp = require('child_process');
+          const root = process.env.NEURA_SOURCE_ROOT;
+          const git = (...args) => cp.execFileSync('git', args, {cwd: root, encoding: 'utf8'}).trim();
+          const actual = git('rev-parse', 'HEAD');
+          const number = Number(process.env.NEURA_TARGET_PR);
+          const {data: pr} = await github.rest.pulls.get({...context.repo, pull_number: number});
+          const workflows = [
+            'neura-coverage.yml', 'neura-1.5.1-consent-turn-safety.yml',
+            number === 133 ? 'neura-data-wipe-safety.yml' : 'neura-ollama-chat.yml',
+            'neura-offline-text-adapter.yml'
+          ];
+          const hashes = Object.fromEntries(workflows.map(name => [name,
+            require('crypto').createHash('sha256').update(fs.readFileSync(path.join(root, '.github/workflows', name))).digest('hex')
+          ]));
+          const receipt = {
+            version: 1, target_pr: number, expected_head: process.env.NEURA_EXPECTED_HEAD,
+            tested_head: actual, tested_tree: git('rev-parse', 'HEAD^{tree}'),
+            current_pr_head: pr.head.sha,
+            head_still_current: pr.state === 'open' && pr.head.sha === actual,
+            workflow_commit: process.env.NEURA_WORKFLOW_COMMIT,
+            run_id: context.runId, run_attempt: process.env.GITHUB_RUN_ATTEMPT,
+            platform: 'Windows', runner: process.env.RUNNER_NAME,
+            flutter_version: process.env.FLUTTER_VERSION, rust_version: process.env.RUSTUP_TOOLCHAIN,
+            suite_outcomes: JSON.parse(process.env.NEURA_SUITE_OUTCOMES),
+            source_workflow_sha256: hashes,
+            scope: 'Supplemental Windows evidence; hosted Linux, dynamic CodeQL and existing packaging remain required.'
+          };
+          fs.mkdirSync(path.join(root, 'coverage'), {recursive:true});
+          fs.writeFileSync(path.join(root, 'coverage', 'validation-receipt.json'), JSON.stringify(receipt, null, 2) + '\n');
+          await core.summary.addHeading(`PR #${number}: Windows validation supplement`)
+            .addRaw(`Tested branch head: ${actual}\n\nCurrent PR head: ${pr.head.sha}\n\n`)
+            .addRaw('Linux and CodeQL are separate outstanding gates. Existing package delivery is not rerun.\n\n')
+            .addCodeBlock(JSON.stringify(receipt, null, 2), 'json').write();
+          if (actual !== process.env.NEURA_EXPECTED_HEAD || !receipt.head_still_current) {
+            core.setFailed('PR head moved or checkout differs; this receipt cannot validate the current head.');
+          }
+    - name: Preserve coverage and the exact-head receipt
+      uses: actions/upload-artifact@v6
+      if: ${{ always() && steps.checkout.outcome == 'success' }}
+      with:
+        name: neura-validation-pr-${{ env.NEURA_TARGET_PR }}-${{ env.NEURA_EXPECTED_HEAD }}-${{ github.run_id }}-${{ github.run_attempt
+          }}
+        path: recovery-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.NEURA_TARGET_PR }}/coverage/
+        if-no-files-found: error
+        retention-days: 14
+    - name: Release completed validation output
+      shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"
+      run: |
+        $ErrorActionPreference = 'Stop'
+        # Post-checkout still needs the source tree, but temporary test output
+        # must not remain until a later job's two-hour stale-data cleanup.
+        if (-not [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP) -and
+            (Test-Path -LiteralPath $env:RUNNER_TEMP -PathType Container)) {
+          Set-Location -LiteralPath $env:RUNNER_TEMP
+          $env:TEMP = $env:RUNNER_TEMP
+          $env:TMP = $env:RUNNER_TEMP
+          @("TEMP=$env:RUNNER_TEMP", "TMP=$env:RUNNER_TEMP") |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        }
+        if ([string]::IsNullOrWhiteSpace($env:NEURA_VALIDATION_RUN_ROOT) -or
+            [string]::IsNullOrWhiteSpace($env:NEURA_SOURCE_ROOT)) {
+          Write-Host 'No validation workspace was selected; nothing to release.'
+          exit 0
+        }
+        $helper = Join-Path $env:NEURA_SOURCE_ROOT 'tools\Repair-NeuraCiStorage.ps1'
+        if (Test-Path -LiteralPath $helper -PathType Leaf) {
+          & $helper -ClearValidationOutput -ValidationRunRoot $env:NEURA_VALIDATION_RUN_ROOT
+        } else {
+          Write-Host 'Checkout did not provide the cleanup helper; leaving early-failure recovery to the next storage preflight.'
+        }
+      if: ${{ always() }}
+      working-directory: ${{ github.workspace }}
