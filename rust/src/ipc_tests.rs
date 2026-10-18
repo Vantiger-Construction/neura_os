@@ -824,7 +824,11 @@ async fn cancel_aborts_the_in_flight_model_request() {
     })
     .await
     .expect("cancelling must drop the model response stream");
-    assert_eq!(local.last_run().unwrap().outcome, "cancelled");
+    let cancelled = local.last_run().unwrap();
+    assert_eq!(cancelled.outcome, "cancelled");
+    // Metrics are kept for a run cancelled mid-stream.
+    assert_eq!(cancelled.output_bytes, "Thinking ".len());
+    assert!(cancelled.ttft_ms.is_some());
 
     // Revocation likewise stops a hung request for every client.
     let mut replacement = server.connect().await;
@@ -847,6 +851,12 @@ async fn overlong_or_incomplete_model_output_is_rejected_without_completion() {
             "model output exceeded budget",
         ),
         (vec![ndjson("partial", false)], "model request failed"),
+        // Within the line and output budgets, but JSON escaping pushes the
+        // delta frame past 4 KiB: a budget error, not a dropped connection.
+        (
+            vec![ndjson(&"\"".repeat(1995), true)],
+            "model output exceeded budget",
+        ),
         (
             vec![format!(
                 "{}\n",
@@ -877,4 +887,60 @@ async fn overlapping_local_work_and_diagnostics_are_rejected_not_queued() {
     let response = receive(&mut socket).await;
     assert_eq!(response["data"]["message"], "synthetic work already active");
     assert_eq!(ollama.chats.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn one_local_run_at_a_time_across_clients() {
+    let ollama = MockOllama::start(pinned_info(), ChatBody::Hang).await;
+    let (adapter, _) = ollama.adapter();
+    let server = Server::start_with(adapter).await;
+    let mut first = server.connect().await;
+    send(&mut first, "synthetic_input", json!({"fixture":"stream"})).await;
+    assert_eq!(receive(&mut first).await["kind"], "speak_delta");
+
+    let mut second = server.connect().await;
+    send(&mut second, "synthetic_input", json!({"fixture":"hello"})).await;
+    assert_eq!(
+        receive(&mut second).await["data"]["message"],
+        "local model busy"
+    );
+    assert_eq!(ollama.chats.load(Ordering::SeqCst), 1);
+
+    // Ending the first run releases the adapter-wide permit.
+    send(&mut first, "cancel", json!({})).await;
+    assert_closed_without_completion(&mut first).await;
+    timeout(TEST_TIMEOUT, async {
+        loop {
+            send(&mut second, "synthetic_input", json!({"fixture":"hello"})).await;
+            let response = receive(&mut second).await;
+            if response["kind"] == "speak_delta" {
+                break;
+            }
+            assert_eq!(response["data"]["message"], "local model busy");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("permit must be released when a run ends");
+}
+
+#[tokio::test]
+async fn a_run_cancelled_immediately_is_still_recorded() {
+    let ollama = MockOllama::start(pinned_info(), ChatBody::Hang).await;
+    let (adapter, local) = ollama.adapter();
+    let server = Server::start_with(adapter).await;
+    let mut socket = server.connect().await;
+    send(&mut socket, "synthetic_input", json!({"fixture":"hello"})).await;
+    send(&mut socket, "cancel", json!({})).await;
+    assert_closed_without_completion(&mut socket).await;
+    timeout(TEST_TIMEOUT, async {
+        while local.last_run().is_none() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("an accepted run must be recorded even if aborted early");
+    let run = local.last_run().unwrap();
+    assert_eq!(run.fixture, "hello");
+    assert_eq!(run.outcome, "cancelled");
 }

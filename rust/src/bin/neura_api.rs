@@ -20,7 +20,7 @@ use std::{
 use subtle::ConstantTimeEq;
 use tokio::{
     net::TcpListener,
-    sync::{mpsc, watch, Semaphore},
+    sync::{mpsc, watch, OwnedSemaphorePermit, Semaphore},
     task::JoinHandle,
 };
 use tracing::{info, warn};
@@ -37,6 +37,9 @@ const PROBE_DEADLINE: Duration = Duration::from_secs(3);
 const LOCAL_RUN_DEADLINE: Duration = Duration::from_secs(60);
 const MAX_MODEL_OUTPUT: usize = 3_000;
 const MAX_MODEL_LINE: usize = 4_096;
+const MAX_MODEL_RESPONSE: usize = 65_536;
+/// One local model run at a time across every client of this process.
+const MAX_LOCAL_RUNS: usize = 1;
 const DELTA_FLUSH_BYTES: usize = 48;
 const DELTA_FLUSH_INTERVAL: Duration = Duration::from_millis(60);
 const FIXTURE_SYSTEM: &str = "You are the Neura engine running a synthetic self-check. \
@@ -86,6 +89,7 @@ struct LocalAdapter {
     endpoint: String,
     admit: fn() -> bool,
     last_run: Mutex<Option<RunRecord>>,
+    runs: Arc<Semaphore>,
 }
 
 impl LocalAdapter {
@@ -94,6 +98,7 @@ impl LocalAdapter {
             endpoint,
             admit,
             last_run: Mutex::new(None),
+            runs: Arc::new(Semaphore::new(MAX_LOCAL_RUNS)),
         }
     }
 
@@ -102,14 +107,11 @@ impl LocalAdapter {
         if !(self.admit)() {
             return Err(ModelUnavailable::InsufficientMemory);
         }
-        let client =
-            local_model::client(PROBE_DEADLINE).map_err(|_| ModelUnavailable::Unreachable)?;
-        tokio::time::timeout(
-            PROBE_DEADLINE,
-            local_model::verify_pinned_model(&client, &self.endpoint),
-        )
-        .await
-        .unwrap_or(Err(ModelUnavailable::Unreachable))
+        let client = local_model::LoopbackClient::new(&self.endpoint, PROBE_DEADLINE)
+            .map_err(|_| ModelUnavailable::Unreachable)?;
+        tokio::time::timeout(PROBE_DEADLINE, local_model::verify_pinned_model(&client))
+            .await
+            .unwrap_or(Err(ModelUnavailable::Unreachable))
     }
 
     fn last_run(&self) -> Option<RunRecord> {
@@ -118,13 +120,23 @@ impl LocalAdapter {
 }
 
 /// Records a run when dropped, so an aborted (cancelled) task is still counted.
+/// Created before the task is spawned, so even a task aborted before its first
+/// poll records its run, and holds the adapter-wide run permit until then.
 struct RunGuard {
     local: Arc<LocalAdapter>,
+    _permit: OwnedSemaphorePermit,
     fixture: &'static str,
     started: Instant,
     ttft: Option<Duration>,
     output_bytes: usize,
     outcome: &'static str,
+}
+
+impl RunGuard {
+    /// The outcome recorded when the guard drops.
+    fn finish(&mut self, outcome: &'static str) {
+        self.outcome = outcome;
+    }
 }
 
 impl Drop for RunGuard {
@@ -443,17 +455,24 @@ impl SyntheticFixture {
     }
 }
 
-fn spawn_local(fixture: SyntheticFixture, out: Outbound, local: Arc<LocalAdapter>) -> OwnedTask {
-    OwnedTask(tokio::spawn(async move {
-        // Dropped on completion or abort; abort (cancel/revoke) records "cancelled".
-        let mut run = RunGuard {
-            local: local.clone(),
-            fixture: fixture.name(),
-            started: Instant::now(),
-            ttft: None,
-            output_bytes: 0,
-            outcome: "cancelled",
-        };
+/// Start a local run, or `None` while another client's run holds the permit.
+fn spawn_local(
+    fixture: SyntheticFixture,
+    out: Outbound,
+    local: Arc<LocalAdapter>,
+) -> Option<OwnedTask> {
+    let permit = local.runs.clone().try_acquire_owned().ok()?;
+    // Dropped on completion or abort; abort (cancel/revoke) records "cancelled".
+    let mut run = RunGuard {
+        local: local.clone(),
+        _permit: permit,
+        fixture: fixture.name(),
+        started: Instant::now(),
+        ttft: None,
+        output_bytes: 0,
+        outcome: "cancelled",
+    };
+    Some(OwnedTask(tokio::spawn(async move {
         // Re-verify before every run: a tag can be replaced after diagnostics.
         // There is no echo or cloud fallback when the pinned model is missing.
         let verified = tokio::select! {
@@ -463,15 +482,16 @@ fn spawn_local(fixture: SyntheticFixture, out: Outbound, local: Arc<LocalAdapter
             result = local.probe() => result,
         };
         if let Err(reason) = verified {
-            run.outcome = "unavailable";
+            run.finish("unavailable");
             out.send(frame(
                 "error",
                 json!({"message":"model adapter unavailable","code":reason.code()}),
             ));
             return;
         }
-        let Ok(client) = local_model::client(LOCAL_RUN_DEADLINE) else {
-            run.outcome = "failed";
+        let Ok(client) = local_model::LoopbackClient::new(&local.endpoint, LOCAL_RUN_DEADLINE)
+        else {
+            run.finish("failed");
             out.send(frame("error", json!({"message":"model request failed"})));
             return;
         };
@@ -480,32 +500,40 @@ fn spawn_local(fixture: SyntheticFixture, out: Outbound, local: Arc<LocalAdapter
         let limits = StreamLimits {
             max_line: MAX_MODEL_LINE,
             max_output: MAX_MODEL_OUTPUT,
+            max_response: MAX_MODEL_RESPONSE,
         };
         let mut pending = String::new();
         // None until the first delta, which is always delivered immediately.
         let mut last_flush: Option<Instant> = None;
-        let started = run.started;
-        let (mut ttft, mut output_bytes) = (None, 0usize);
+        let mut oversized = false;
         let result = {
-            let stream =
-                local_model::stream_chat(&client, &local.endpoint, &payload, limits, |delta| {
-                    ttft.get_or_insert_with(|| started.elapsed());
-                    output_bytes += delta.len();
-                    pending.push_str(delta);
-                    // Coalesce token-sized deltas so a fast model cannot fill the
-                    // bounded outbound queue faster than the eager writer drains it.
-                    if pending.len() < DELTA_FLUSH_BYTES
-                        && last_flush.is_some_and(|at| at.elapsed() < DELTA_FLUSH_INTERVAL)
-                    {
-                        return true;
-                    }
-                    last_flush = Some(Instant::now());
-                    let delta = std::mem::take(&mut pending);
-                    out.send(frame(
-                        "speak_delta",
-                        json!({"utterance_id":id,"delta":delta}),
-                    ))
-                });
+            // Metrics are written into the guard as deltas arrive, so a run
+            // cancelled mid-stream still reports its TTFT and output size.
+            let run = &mut run;
+            let stream = local_model::stream_chat(&client, &payload, limits, |delta| {
+                run.ttft.get_or_insert_with(|| run.started.elapsed());
+                run.output_bytes += delta.len();
+                pending.push_str(delta);
+                // Coalesce token-sized deltas so a fast model cannot fill the
+                // bounded outbound queue faster than the eager writer drains it.
+                if pending.len() < DELTA_FLUSH_BYTES
+                    && last_flush.is_some_and(|at| at.elapsed() < DELTA_FLUSH_INTERVAL)
+                {
+                    return true;
+                }
+                last_flush = Some(Instant::now());
+                let delta = frame(
+                    "speak_delta",
+                    json!({"utterance_id":id,"delta":std::mem::take(&mut pending)}),
+                );
+                // JSON escaping can grow text past the frame budget; report it
+                // as a budget error instead of letting delivery close the client.
+                if delta.len() > MAX_MESSAGE_BYTES {
+                    oversized = true;
+                    return false;
+                }
+                out.send(delta)
+            });
             tokio::select! {
                 biased;
                 _ = out.session.revoked() => return,
@@ -513,49 +541,48 @@ fn spawn_local(fixture: SyntheticFixture, out: Outbound, local: Arc<LocalAdapter
                 result = tokio::time::timeout(LOCAL_RUN_DEADLINE, stream) => result,
             }
         };
-        run.ttft = ttft;
-        run.output_bytes = output_bytes;
+        let exhausted = |run: &mut RunGuard| {
+            run.finish("exhausted");
+            out.send(frame(
+                "error",
+                json!({"message":"model output exceeded budget"}),
+            ));
+        };
         match result {
             Ok(Ok(text)) => {
-                if !pending.is_empty()
-                    && !out.send(frame(
+                if !pending.is_empty() {
+                    let tail = frame(
                         "speak_delta",
                         json!({"utterance_id":id,"delta":std::mem::take(&mut pending)}),
-                    ))
-                {
-                    return;
+                    );
+                    if tail.len() > MAX_MESSAGE_BYTES {
+                        return exhausted(&mut run);
+                    }
+                    if !out.send(tail) {
+                        return;
+                    }
                 }
                 let done = frame("speak", json!({"utterance_id":id,"text":text.as_str()}));
                 if done.len() > MAX_MESSAGE_BYTES {
-                    run.outcome = "exhausted";
-                    out.send(frame(
-                        "error",
-                        json!({"message":"model output exceeded budget"}),
-                    ));
-                    return;
+                    return exhausted(&mut run);
                 }
                 if out.send(done) {
-                    run.outcome = "completed";
+                    run.finish("completed");
                 }
             }
+            Ok(Err(StreamError::Stopped)) if oversized => exhausted(&mut run),
             Ok(Err(StreamError::Stopped)) => {}
-            Ok(Err(StreamError::Exhausted)) => {
-                run.outcome = "exhausted";
-                out.send(frame(
-                    "error",
-                    json!({"message":"model output exceeded budget"}),
-                ));
-            }
+            Ok(Err(StreamError::Exhausted)) => exhausted(&mut run),
             Ok(Err(StreamError::Transport | StreamError::Protocol)) => {
-                run.outcome = "failed";
+                run.finish("failed");
                 out.send(frame("error", json!({"message":"model request failed"})));
             }
             Err(_) => {
-                run.outcome = "exhausted";
+                run.finish("exhausted");
                 out.send(frame("error", json!({"message":"model request timed out"})));
             }
         }
-    }))
+    })))
 }
 
 /// Result of checking the configured adapter for diagnostics.
@@ -733,7 +760,16 @@ async fn client(socket: WebSocket, session: Session, adapter: Adapter) {
                         generation = Some(match &adapter {
                             Adapter::Echo => spawn_echo(input.fixture, out.clone()),
                             Adapter::Local(local) => {
-                                spawn_local(input.fixture, out.clone(), local.clone())
+                                match spawn_local(input.fixture, out.clone(), local.clone()) {
+                                    Some(task) => task,
+                                    None => {
+                                        out.send(frame(
+                                            "error",
+                                            json!({"message":"local model busy"}),
+                                        ));
+                                        continue;
+                                    }
+                                }
                             }
                         })
                     }

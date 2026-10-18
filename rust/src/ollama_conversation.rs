@@ -70,16 +70,15 @@ fn prepare(raw: &[u8]) -> Result<Value, ()> {
 }
 
 async fn inference(endpoint: &str, payload: Value) -> Result<String, ()> {
-    let client = crate::local_model::client(Duration::from_secs(90))?;
+    let client = crate::local_model::LoopbackClient::new(endpoint, Duration::from_secs(90))?;
     // Fail before submitting conversation text if this tag is a remote model
     // or has been replaced with a different family/size/quantization.
-    crate::local_model::verify_pinned_model(&client, endpoint)
+    crate::local_model::verify_pinned_model(&client)
         .await
         .map_err(|_| ())?;
     let response = bounded_json(
         client
-            .post(format!("{endpoint}/api/chat"))
-            .json(&payload)
+            .post_json("/api/chat", &payload)
             .send()
             .await
             .map_err(|_| ())?,

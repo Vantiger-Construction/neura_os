@@ -35,7 +35,9 @@ adapter (#127) and the sidecar:
 - Metadata must report family `qwen3`, parameter size `4.0B`, quantization
   `Q4_K_M`, and no `remote_host`/`remote_model`.
 - Fixed endpoint `http://127.0.0.1:11434`, no proxy, no redirects, 2-second
-  connect deadline.
+  connect deadline. `LoopbackClient` is the only way the module reaches a
+  daemon and accepts only numeric loopback `http://` endpoints, so neither
+  verification nor chat can be pointed at a LAN, public or DNS host.
 - Windows admission budget: at least 7 GiB installed and 3.5 GiB available
   memory. Other platforms are not admitted.
 
@@ -92,15 +94,18 @@ Each run:
 | --- | --- |
 | 3 s probe deadline | Reported as `unreachable`. |
 | 60 s run deadline | `error` "model request timed out"; outcome `exhausted`. |
-| 4 KiB per streamed line, 3,000 bytes total text | `error` "model output exceeded budget"; outcome `exhausted`. |
-| Final frame over 4 KiB | Same budget error; no `speak`. |
+| 4 KiB per streamed line, 3,000 bytes total text, 64 KiB response body | `error` "model output exceeded budget"; outcome `exhausted`. The body budget is checked before each chunk is buffered. |
+| Any delta or final frame over 4 KiB after JSON escaping | Same budget error; no `speak`, and the connection stays open. |
 | Remote model, tool call, `error` line, malformed line, or no `done` | `error` "model request failed"; no `speak`. |
 | One run per connection | Overlapping work receives "synthetic work already active". |
+| One local run per process | A run from another client while one is active receives "local model busy"; nothing is queued. The permit is released when the run ends, including by cancel or revocation. |
 
 `cancel`, revocation, a stalled writer or queue exhaustion abort the run task,
 which drops the HTTP response and closes the connection to Ollama, so the
-daemon abandons generation. The run is recorded as `cancelled`; no late
-completion is delivered or replayed.
+daemon abandons generation. The run is recorded as `cancelled` with the
+TTFT and output size observed so far; the record is created before the task is
+spawned, so even a run aborted before it starts is recorded. No late completion
+is delivered or replayed.
 
 ## Validation
 

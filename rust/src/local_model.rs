@@ -70,16 +70,56 @@ pub fn memory_admitted() -> bool {
     false
 }
 
-/// Loopback-only HTTP client: no proxy, no redirects, short connect deadline.
-#[allow(clippy::result_unit_err)]
-pub fn client(timeout: Duration) -> Result<reqwest::Client, ()> {
-    reqwest::Client::builder()
-        .no_proxy()
-        .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_secs(2))
-        .timeout(timeout)
-        .build()
-        .map_err(|_| ())
+/// HTTP client bound to one numeric loopback Ollama endpoint: no proxy, no
+/// redirects, short connect deadline. The only way to reach the daemon through
+/// this module, so callers cannot point verification or chat elsewhere.
+pub struct LoopbackClient {
+    inner: reqwest::Client,
+    endpoint: String,
+}
+
+impl LoopbackClient {
+    /// Accepts only `http://127.0.0.1:<port>` or `http://[::1]:<port>` with no
+    /// path, query, fragment or credentials. No DNS names, LAN or public hosts.
+    #[allow(clippy::result_unit_err)]
+    pub fn new(endpoint: &str, timeout: Duration) -> Result<Self, ()> {
+        let url = reqwest::Url::parse(endpoint).map_err(|_| ())?;
+        // Numeric literals only: a DNS name is never resolved or trusted.
+        let loopback = url
+            .host_str()
+            .map(|host| host.trim_start_matches('[').trim_end_matches(']'))
+            .and_then(|host| host.parse::<std::net::IpAddr>().ok())
+            .is_some_and(|ip| ip.is_loopback());
+        if url.scheme() != "http"
+            || !loopback
+            || url.port().is_none()
+            || url.path() != "/"
+            || url.query().is_some()
+            || url.fragment().is_some()
+            || !url.username().is_empty()
+            || url.password().is_some()
+        {
+            return Err(());
+        }
+        let inner = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(Duration::from_secs(2))
+            .timeout(timeout)
+            .build()
+            .map_err(|_| ())?;
+        Ok(Self {
+            inner,
+            endpoint: endpoint.trim_end_matches('/').to_owned(),
+        })
+    }
+
+    /// POST a JSON body to a fixed daemon API path such as `/api/chat`.
+    pub fn post_json(&self, path: &'static str, body: &Value) -> reqwest::RequestBuilder {
+        self.inner
+            .post(format!("{}{path}", self.endpoint))
+            .json(body)
+    }
 }
 
 /// Read a whole JSON body within `limit` bytes; the buffer is zeroized.
@@ -100,13 +140,9 @@ pub async fn bounded_json(mut response: reqwest::Response, limit: usize) -> Resu
 
 /// Confirm the pinned tag is installed locally with the pinned weights.
 /// Sends only the model name; never any conversation or fixture text.
-pub async fn verify_pinned_model(
-    client: &reqwest::Client,
-    endpoint: &str,
-) -> Result<(), ModelUnavailable> {
+pub async fn verify_pinned_model(client: &LoopbackClient) -> Result<(), ModelUnavailable> {
     let response = client
-        .post(format!("{endpoint}/api/show"))
-        .json(&json!({"model": MODEL}))
+        .post_json("/api/show", &json!({"model": MODEL}))
         .send()
         .await
         .map_err(|_| ModelUnavailable::Unreachable)?;
@@ -140,6 +176,9 @@ pub struct StreamLimits {
     pub max_line: usize,
     /// Largest total assistant text accepted.
     pub max_output: usize,
+    /// Largest total response body accepted, checked before each chunk is
+    /// buffered so one oversized chunk cannot force a large allocation.
+    pub max_response: usize,
 }
 
 /// Why a stream ended without a verified completion.
@@ -149,7 +188,7 @@ pub enum StreamError {
     Transport,
     /// Malformed line, remote model, tool call, error field or missing `done`.
     Protocol,
-    /// A line or the total output exceeded its budget.
+    /// A line, the total output or the response body exceeded its budget.
     Exhausted,
     /// The delta consumer asked to stop.
     Stopped,
@@ -183,8 +222,7 @@ fn stream_line(line: &[u8]) -> Result<(String, bool), StreamError> {
 /// returned future drops the HTTP response, which closes the connection and
 /// lets the daemon abandon generation.
 pub async fn stream_chat<F>(
-    client: &reqwest::Client,
-    endpoint: &str,
+    client: &LoopbackClient,
     payload: &Value,
     limits: StreamLimits,
     mut on_delta: F,
@@ -193,8 +231,7 @@ where
     F: FnMut(&str) -> bool,
 {
     let mut response = client
-        .post(format!("{endpoint}/api/chat"))
-        .json(payload)
+        .post_json("/api/chat", payload)
         .send()
         .await
         .map_err(|_| StreamError::Transport)?;
@@ -203,11 +240,16 @@ where
     }
     let mut pending = Zeroizing::new(Vec::new());
     let mut text = Zeroizing::new(String::new());
+    let mut received = 0usize;
     loop {
         let Some(chunk) = response.chunk().await.map_err(|_| StreamError::Transport)? else {
             // The body ended without a final `done` line.
             return Err(StreamError::Protocol);
         };
+        received += chunk.len();
+        if received > limits.max_response {
+            return Err(StreamError::Exhausted);
+        }
         pending.extend_from_slice(&chunk);
         while let Some(end) = pending.iter().position(|byte| *byte == b'\n') {
             if end > limits.max_line {
@@ -259,8 +301,46 @@ pub(crate) mod tests {
         (endpoint, task)
     }
 
-    fn http() -> reqwest::Client {
-        client(Duration::from_secs(5)).unwrap()
+    fn http(endpoint: &str) -> LoopbackClient {
+        LoopbackClient::new(endpoint, Duration::from_secs(5)).unwrap()
+    }
+
+    #[test]
+    fn pin_matches_the_reviewed_model() {
+        // Independent literals: changing the pin must also change this test.
+        assert_eq!(MODEL, "qwen3:4b-instruct");
+        assert_eq!(LOCAL_MODEL, "qwen3:4b-instruct:local");
+        assert_eq!(FAMILY, "qwen3");
+        assert_eq!(PARAMETER_SIZE, "4.0B");
+        assert_eq!(QUANTIZATION, "Q4_K_M");
+        assert_eq!(ENDPOINT, "http://127.0.0.1:11434");
+    }
+
+    #[test]
+    fn client_accepts_only_numeric_loopback_http() {
+        for ok in [ENDPOINT, "http://127.0.0.1:8080/", "http://[::1]:11434"] {
+            assert!(
+                LoopbackClient::new(ok, Duration::from_secs(1)).is_ok(),
+                "{ok}"
+            );
+        }
+        for bad in [
+            "https://127.0.0.1:11434",
+            "http://localhost:11434",
+            "http://192.168.1.5:11434",
+            "http://0.0.0.0:11434",
+            "http://ollama.com:11434",
+            "http://127.0.0.1",
+            "http://127.0.0.1:11434/api",
+            "http://127.0.0.1:11434/?x=1",
+            "http://user:pw@127.0.0.1:11434",
+            "not a url",
+        ] {
+            assert!(
+                LoopbackClient::new(bad, Duration::from_secs(1)).is_err(),
+                "{bad}"
+            );
+        }
     }
 
     #[tokio::test]
@@ -288,7 +368,7 @@ pub(crate) mod tests {
         for (info, expected) in cases {
             let router = Router::new().route("/api/show", post(move || async move { Json(info) }));
             let (endpoint, task) = serve(router).await;
-            assert_eq!(verify_pinned_model(&http(), &endpoint).await, expected);
+            assert_eq!(verify_pinned_model(&http(&endpoint)).await, expected);
             task.abort();
         }
     }
@@ -301,13 +381,13 @@ pub(crate) mod tests {
         );
         let (endpoint, task) = serve(router).await;
         assert_eq!(
-            verify_pinned_model(&http(), &endpoint).await,
+            verify_pinned_model(&http(&endpoint)).await,
             Err(ModelUnavailable::NotInstalled)
         );
         task.abort();
         // Port 1 on loopback is not an Ollama daemon.
         assert_eq!(
-            verify_pinned_model(&http(), "http://127.0.0.1:1").await,
+            verify_pinned_model(&http("http://127.0.0.1:1")).await,
             Err(ModelUnavailable::Unreachable)
         );
     }
@@ -320,7 +400,7 @@ pub(crate) mod tests {
         );
         let (endpoint, task) = serve(router).await;
         assert_eq!(
-            verify_pinned_model(&http(), &endpoint).await,
+            verify_pinned_model(&http(&endpoint)).await,
             Err(ModelUnavailable::Malformed)
         );
         task.abort();
@@ -338,7 +418,7 @@ pub(crate) mod tests {
             Router::new().route("/api/chat", post(move || async move { Body::from(body) }));
         let (endpoint, task) = serve(router).await;
         let mut deltas = Vec::new();
-        let result = stream_chat(&http(), &endpoint, &json!({}), limits, |delta| {
+        let result = stream_chat(&http(&endpoint), &json!({}), limits, |delta| {
             deltas.push(delta.to_owned());
             true
         })
@@ -354,6 +434,7 @@ pub(crate) mod tests {
     const LIMITS: StreamLimits = StreamLimits {
         max_line: 1024,
         max_output: 64,
+        max_response: 4096,
     };
 
     #[tokio::test]
@@ -391,6 +472,8 @@ pub(crate) mod tests {
             (line(&"x".repeat(65), true), StreamError::Exhausted),
             (line(&"x".repeat(2048), true), StreamError::Exhausted),
             ("x".repeat(2048), StreamError::Exhausted),
+            // One newline-free chunk over the body budget is refused before buffering.
+            ("\n".repeat(5000), StreamError::Exhausted),
         ] {
             assert_eq!(stream_with(body, LIMITS).await.unwrap_err(), expected);
         }
@@ -402,7 +485,7 @@ pub(crate) mod tests {
         let router =
             Router::new().route("/api/chat", post(move || async move { Body::from(body) }));
         let (endpoint, task) = serve(router).await;
-        let result = stream_chat(&http(), &endpoint, &json!({}), LIMITS, |_| false).await;
+        let result = stream_chat(&http(&endpoint), &json!({}), LIMITS, |_| false).await;
         assert_eq!(result.unwrap_err(), StreamError::Stopped);
         task.abort();
     }
