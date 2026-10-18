@@ -26,6 +26,62 @@ def block(name, key):
 
 
 class RecoveryTest(unittest.TestCase):
+    def test_retained_cmake_and_native_gate(self):
+        if os.name != 'nt':
+            self.skipTest('Windows CMake/MSVC native gate')
+        source = block('Preflight retained CMake and the native Windows toolchain', 'script')
+        action = Path(os.environ.get('NEURA_GITHUB_SCRIPT_ENTRY',
+                                     'C:/actions-runner/_work/_actions/actions/github-script/v8/dist/index.js'))
+        target = Path(os.environ.get('NEURA_NATIVE_CHECK_ROOT', str(WORKFLOW.parents[3] / 'pr136')))
+        with tempfile.TemporaryDirectory(prefix='neura-cmake-probe-') as temporary:
+            root = Path(temporary)
+            for file in ['tools/offline_text_native_check/CMakeLists.txt',
+                         'windows/runner/neura_local_conversation.cpp', 'windows/runner/neura_local_conversation.h']:
+                destination = root / file
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(target / file, destination)
+            for name in ['job-path', 'output']:
+                (root / name).touch()
+            env = dict(os.environ)
+            for key in list(env):
+                if key.upper() == 'PATH':
+                    del env[key]
+            env.update(PATH='C:/Windows/System32;C:/Windows', NEURA_SOURCE_ROOT=str(root),
+                       RUNNER_TOOL_CACHE='C:/actions-runner/_work/_tool', GITHUB_PATH=str(root / 'job-path'),
+                       GITHUB_OUTPUT=str(root / 'output'), GITHUB_REPOSITORY='example/offline',
+                       LOCALAPPDATA='C:/Windows/ServiceProfiles/NetworkService/AppData/Local')
+            env.update({'INPUT_SCRIPT':source, 'INPUT_GITHUB-TOKEN':'offline-unused-token', 'INPUT_DEBUG':'false',
+                        'INPUT_USER-AGENT':'offline-test', 'INPUT_RESULT-ENCODING':'json',
+                        'INPUT_RETRIES':'0', 'INPUT_RETRY-EXEMPT-STATUS-CODES':'400,401,403,404,422'})
+            node = 'C:/actions-runner/externals/node24/bin/node.exe'
+            result = subprocess.run([node, str(action)], env=env, capture_output=True, text=True, timeout=120)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            selected = (root / 'job-path').read_text().strip()
+            env['PATH'] = selected + ';' + env['PATH']
+            where = str(Path(os.environ['SystemRoot']) / 'System32/where.exe')
+            cmake = subprocess.check_output([where, 'cmake'], env=env, text=True).splitlines()[0]
+            result = subprocess.run([cmake, '--build', str(root / 'build/offline-native-check'), '--config', 'Release'],
+                                    env=env, capture_output=True, text=True, timeout=120)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            cache = (root / 'build/offline-native-check/CMakeCache.txt').read_text()
+            self.assertIn('CMAKE_GENERATOR:INTERNAL=Visual Studio 18 2026', cache)
+            for mode in ['discovery_failed', 'discovery_empty', 'old', 'invalid', 'configure_failed']:
+                (root / 'job-path').write_text('')
+                injection = r'''
+const real=require('child_process').spawnSync;
+require('child_process').spawnSync=(file,args,options)=>{
+  if(file.endsWith('vswhere.exe') && MODE==='discovery_failed') return {status:7,stdout:'C:/plausible',stderr:''};
+  if(file.endsWith('vswhere.exe') && MODE==='discovery_empty') return {status:0,stdout:'',stderr:''};
+  if(args[0]==='-E' && ['old','invalid'].includes(MODE)) return {status:0,stdout:JSON.stringify({version:MODE==='old'?{major:3,minor:13}:{}})};
+  if(args[0]==='-S' && MODE==='configure_failed') return {status:7,stdout:'configuration failed',stderr:''};
+  return real(file,args,options);
+};
+'''.replace('MODE', json.dumps(mode))
+                env['INPUT_SCRIPT'] = injection + source
+                result = subprocess.run([node, str(action)], env=env, capture_output=True, text=True, timeout=90)
+                self.assertNotEqual(result.returncode, 0, mode + result.stdout + result.stderr)
+                self.assertEqual((root / 'job-path').read_text(), '', mode)
+
     def test_retained_pwsh_and_pinned_installer_wrapper(self):
         if os.name != 'nt':
             self.skipTest('Windows PowerShell installer contract')

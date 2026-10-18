@@ -194,6 +194,37 @@ jobs:
           --component clippy --component rustfmt --component llvm-tools-preview
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       working-directory: ${{ env.NEURA_SOURCE_ROOT }}
+    - name: Preflight retained CMake and the native Windows toolchain
+      if: ${{ matrix.pr == 136 }}
+      uses: actions/github-script@v8
+      with:
+        script: |
+          const fs = require('fs'), path = require('path');
+          const {spawnSync} = require('child_process');
+          const run = (exe, args) => {
+            const result = spawnSync(exe, args, {encoding:'utf8', timeout:60000, maxBuffer:4 * 1024 * 1024});
+            if (result.error || result.status !== 0) throw new Error(`${exe}: ${result.error || result.stderr || result.stdout || result.status}`);
+            return result.stdout.trim();
+          };
+          const vswhere = path.join(process.env['ProgramFiles(x86)'], 'Microsoft Visual Studio', 'Installer', 'vswhere.exe');
+          const installation = run(vswhere, ['-latest', '-products', '*', '-requires',
+            'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath']);
+          if (!installation || installation.includes('\n') || !path.isAbsolute(installation)) {
+            throw new Error('Expected one retained Visual Studio C++ installation.');
+          }
+          const cmake = path.join(installation, 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe');
+          const capabilities = JSON.parse(run(cmake, ['-E', 'capabilities']));
+          const version = capabilities.version;
+          if (!Number.isInteger(version.major) || !Number.isInteger(version.minor) ||
+              version.major < 3 || (version.major === 3 && version.minor < 14)) throw new Error('CMake 3.14 or newer is required.');
+          const includes = path.join(process.env.RUNNER_TOOL_CACHE, 'flutter/3.47.5/x64/bin/cache/artifacts/engine/windows-x64/cpp_client_wrapper/include');
+          if (!fs.statSync(path.join(includes, 'flutter/method_channel.h')).isFile()) throw new Error('Retained genuine Flutter header is unavailable.');
+          // Configure the unchanged native gate early under the actual service identity.
+          const root = process.env.NEURA_SOURCE_ROOT;
+          core.info(run(cmake, ['-S', path.join(root, 'tools/offline_text_native_check'),
+            '-B', path.join(root, 'build/offline-native-check'), `-DFLUTTER_WRAPPER_INCLUDE=${includes}`]));
+          core.addPath(path.dirname(cmake));
+          core.info(`Validated retained CMake ${version.string}: ${cmake}`);
     - name: Use a compatible retained Python runtime for reports
       shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"
       run: |

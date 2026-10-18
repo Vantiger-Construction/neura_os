@@ -307,3 +307,30 @@ in-checkout production-source records before the unchanged reporter's filters
 and alias merging. The original hash and all non-source records were verified
 unchanged. This replay does not replace fresh CI evidence. Frozen targets,
 coverage-tool version, test commands and coverage thresholds remain unchanged.
+
+## Retained CMake preflight for PR #136
+
+Run `39075168199` completed PR #133 successfully. PR #136 job `117536628255`
+passed its Flutter/Rust suites, coverage rendering, Clippy, benchmark tests and
+native policy checks, then failed before native configuration because `cmake`
+was absent from PATH. Artifact `12120475829` preserves that attempt's reports;
+the receipt correctly records the overall failure.
+
+The installed Visual Studio 18 Build Tools includes CMake 4.2.3-msvc3 and its
+Visual Studio 18 2026 generator. A PR #136-only preflight now locates the C++
+installation using retained `vswhere`, checks native exit codes and CMake's
+minimum version, verifies the pinned Flutter method-channel header, and
+configures the unchanged native gate before expensive test suites. Only after
+successful configuration does it add CMake's directory to job-local PATH.
+This checks compiler/SDK selection under the actual runner identity without
+using an interactive alias or changing machine PATH. The original later native
+configuration and Release compilation remain unchanged, including C++20 and
+`/W4 /WX`.
+
+The offline harness copies the three frozen PR #136 native-check source files
+into a temporary directory, invokes the actual Node action, and compiles the
+object target against genuine retained Flutter headers. It also rejects failed
+or empty discovery, old/invalid CMake versions and configuration failures before
+writing job PATH. Local profile-environment simulation is not impersonation;
+actual NetworkService execution remains a fresh-CI check. No installation,
+identity, ACL, privilege, policy, billing or artifact changes are involved.
