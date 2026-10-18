@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Neura.Presence.Tests
 {
@@ -38,6 +39,12 @@ namespace Neura.Presence.Tests
         private static void Check(bool value, string message)
         {
             if (!value) throw new InvalidOperationException(message);
+        }
+        // Tight absolute tolerance for the bounded, unit-scale presentation values.
+        // NaN and infinities fail this comparison rather than passing silently.
+        private static bool Near(float actual, float expected)
+        {
+            return Math.Abs(actual - expected) <= 0.000001f;
         }
         private static AvatarSnapshot Accept(string json)
         {
@@ -146,7 +153,7 @@ namespace Neura.Presence.Tests
             {
                 var a = PresentationPose.Evaluate(state, 0);
                 var b = PresentationPose.Evaluate(state, 1234.5);
-                Check(a.HeightMultiplier == 1 && b.HeightMultiplier == 1 && a.YawDegrees == b.YawDegrees, "Still pose moved.");
+                Check(Near(a.HeightMultiplier, 1f) && Near(b.HeightMultiplier, 1f) && Near(a.YawDegrees, b.YawDegrees), "Still pose moved.");
             }
         }
         private static void BoundedPose()
@@ -162,17 +169,18 @@ namespace Neura.Presence.Tests
                     Check(pose.Scale >= 0.8f && pose.Scale <= 1.15f, "Stage scale out of bounds.");
                     Check(pose.HeightMultiplier >= 0.98f && pose.HeightMultiplier <= 1.02f, "Breathing exceeded its bounds.");
                     Check(Math.Abs(pose.YawDegrees) <= 5, "Motion exceeded its bounds.");
-                    changed |= pose.HeightMultiplier != 1;
+                    changed |= !Near(pose.HeightMultiplier, 1f);
                 }
                 Check(changed, "Animated mode never moved.");
             }
         }
         private static void NonfiniteTime()
         {
-            foreach (double time in new[] { double.NaN, double.PositiveInfinity, double.NegativeInfinity })
+            var state = Accept(Valid);
+            foreach (var pose in new[] { double.NaN, double.PositiveInfinity, double.NegativeInfinity }
+                .Select(time => PresentationPose.Evaluate(state, time)))
             {
-                var pose = PresentationPose.Evaluate(Accept(Valid), time);
-                Check(pose.HeightMultiplier == 1 && pose.YawDegrees == 0, "Invalid clock reached transforms.");
+                Check(Near(pose.HeightMultiplier, 1f) && Near(pose.YawDegrees, 0f), "Invalid clock reached transforms.");
             }
         }
     }
