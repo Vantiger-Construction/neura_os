@@ -358,3 +358,8 @@ with captured compiler/SDK messages and a synthetic secret, plus the existing
 real retained-tool configure/build check. No timeout, gate or tool selection
 was relaxed. Fresh exact-head CI is still needed to distinguish a transient
 runner issue from a reproducible configuration problem.
+
+Authorization diagnostics are redacted as complete header values before generic
+token masking, including Bearer, Basic, mixed-case, proxy, quoted and folded
+forms. Synthetic regressions verify no credential suffix survives while ordinary
+diagnostic text remains visible. No actual credential exposure was observed.

@@ -76,7 +76,15 @@ require('child_process').spawnSync=(file,args,options)=>{
   if(args[0]==='-S' && MODE==='configure_failed') return {status:7,stdout:'configuration failed',stderr:''};
   if(args[0]==='-S' && MODE==='configure_timeout') return {status:null,signal:'SIGTERM',error:{code:'ETIMEDOUT'},
     stdout:'x'.repeat(5000)+'compiler detection reached '+process.env.NEURA_SOURCE_ROOT,
-    stderr:'SDK probe pending token=synthetic-sensitive-value'};
+    stderr:'SDK probe pending token=synthetic-sensitive-value\n'+
+      'Authorization: Bearer SYNTHETIC_BEARER_CREDENTIAL\n'+
+      'Authorization: Basic SYNTHETIC_BASIC_CREDENTIAL\r\n'+
+      'aUtHoRiZaTiOn\t=\tBearer SYNTHETIC_MIXED_CREDENTIAL suffix\n'+
+      'Proxy-Authorization: Basic SYNTHETIC_PROXY_CREDENTIAL\n'+
+      'Authorization: Custom SYNTHETIC_CUSTOM_CREDENTIAL more-values\n'+
+      'Authorization: Bearer\r\n\tSYNTHETIC_FOLDED_CREDENTIAL\r\n'+
+      '"Authorization": "Basic SYNTHETIC_QUOTED_CREDENTIAL"\n'+
+      'ordinary diagnostic remains visible\nBearer SYNTHETIC_STANDALONE_CREDENTIAL'};
   return real(file,args,options);
 };
 '''.replace('MODE', json.dumps(mode))
@@ -89,6 +97,10 @@ require('child_process').spawnSync=(file,args,options)=>{
                     self.assertIn('compiler detection reached <NEURA_SOURCE_ROOT>', result.stdout + result.stderr)
                     self.assertIn('SDK probe pending token=[redacted]', result.stdout + result.stderr)
                     self.assertNotIn('synthetic-sensitive-value', result.stdout + result.stderr)
+                    for kind in ['BEARER', 'BASIC', 'MIXED', 'PROXY', 'CUSTOM', 'FOLDED', 'QUOTED', 'STANDALONE']:
+                        self.assertNotIn('SYNTHETIC_' + kind + '_CREDENTIAL', result.stdout + result.stderr)
+                    self.assertIn('Authorization: [redacted]', result.stdout + result.stderr)
+                    self.assertIn('ordinary diagnostic remains visible', result.stdout + result.stderr)
                     self.assertNotIn('x' * 4001, result.stdout + result.stderr)
 
     def test_retained_pwsh_and_pinned_installer_wrapper(self):

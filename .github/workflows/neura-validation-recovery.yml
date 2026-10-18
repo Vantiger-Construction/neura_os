@@ -209,7 +209,9 @@ jobs:
                 for (const key of ['NEURA_SOURCE_ROOT', 'RUNNER_TOOL_CACHE', 'USERPROFILE', 'TEMP', 'TMP']) {
                   if (process.env[key]) text = text.split(process.env[key]).join(`<${key}>`);
                 }
-                text = text.replace(/(authorization\s*[:=]\s*|bearer\s+|(?:token|password|secret)\s*[:=]\s*)[^\s]+/gi, '$1[redacted]');
+                // Consume the complete header value before generic scheme/token masking.
+                text = text.replace(/\b((?:proxy-)?authorization["']?[ \t]*[:=][ \t]*)[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*/gi, '$1[redacted]');
+                text = text.replace(/(bearer\s+|(?:token|password|secret)\s*[:=]\s*)[^\s]+/gi, '$1[redacted]');
                 return text.slice(-4000) || '(empty)';
               };
               throw new Error(`${path.basename(exe)} failed: code=${result.error?.code || 'none'}, status=${result.status}, signal=${result.signal || 'none'}\nstdout (tail):\n${bounded(result.stdout)}\nstderr (tail):\n${bounded(result.stderr)}`);
