@@ -4,12 +4,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 import '../integrations/tts/neura_flutter_tts_viseme_bridge.dart';
+import '../integrations/tts/neura_windows_tts.dart';
 import 'neura_audio_focus.dart';
 import 'neura_companion_presence.dart';
 import '../reliability/safe_boot.dart';
 import '../startup/neura_prefs_cache.dart';
 
-/// One system voice, as surfaced by flutter_tts's getVoices().
+/// One installed voice, as surfaced by the platform speech adapter.
 class NeuraVoiceOption {
   final String name;
   final String locale;
@@ -174,7 +175,10 @@ class NeuraTtsService {
     bool current() => _engineUsable && generation == _cancelGeneration;
     if (!current()) return false;
 
-    final tts = _tts ??= FlutterTts();
+    final tts = _tts ??=
+        (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows
+            ? NeuraWindowsTts()
+            : FlutterTts());
     await NeuraFlutterTtsVisemeBridge.attach(
       tts,
       onCompletion: _completeSpeak,
@@ -185,8 +189,9 @@ class NeuraTtsService {
     if (!current()) return false;
 
     // Keep native awaitSpeakCompletion disabled (issue #32 / PR #41).
-    // Dart callbacks avoid native result retention, but still use the same
-    // Windows synthesis coroutine. Native crash acceptance remains unverified.
+    // Windows uses Neura's owned SAPI channel instead of the plugin's synthesis
+    // coroutine. Other platforms retain the Dart callback completion bridge.
+    // Physical Windows crash acceptance remains unverified.
     // See docs/WINDOWS_TTS_RELIABILITY.md.
     final prefs = NeuraPrefsCache.prefsOrNull;
     _speechRate = (prefs?.getDouble(_kSpeechRateKey) ?? 0.5).clamp(0.25, 0.75);
@@ -304,7 +309,9 @@ class NeuraTtsService {
     if (!await _ensureInit()) return;
     if (!playbackAllowed) return;
 
-    await _tts!.setVoice({'name': voice.name, 'locale': voice.locale});
+    final result =
+        await _tts!.setVoice({'name': voice.name, 'locale': voice.locale});
+    if (result == 0) return;
     _selectedVoiceName = voice.name;
     try {
       final prefs = NeuraPrefsCache.prefs;
@@ -348,7 +355,9 @@ class NeuraTtsService {
     if (!await _ensureInit()) return;
     if (!current() || sampleText.trim().isEmpty) return;
 
-    await _tts!.setVoice({'name': voice.name, 'locale': voice.locale});
+    final result =
+        await _tts!.setVoice({'name': voice.name, 'locale': voice.locale});
+    if (result == 0) return;
     if (!current()) return;
     await speak(sampleText);
   }
@@ -373,9 +382,12 @@ class NeuraTtsService {
       final savedLocale = prefs?.getString(_kVoiceLocaleKey);
       if (savedName != null && savedLocale != null) {
         if (!_configurationAllowed(cancellation)) return;
-        await tts.setVoice({'name': savedName, 'locale': savedLocale});
-        _selectedVoiceName = savedName;
-        return;
+        final result =
+            await tts.setVoice({'name': savedName, 'locale': savedLocale});
+        if (result != 0) {
+          _selectedVoiceName = savedName;
+          return;
+        }
       }
     } catch (_) {
       // Fall through to the default picker.
@@ -409,11 +421,11 @@ class NeuraTtsService {
         orElse: () => female.first,
       );
       if (!_configurationAllowed(cancellation)) return;
-      await tts.setVoice({
+      final result = await tts.setVoice({
         'name': natural['name'].toString(),
         'locale': natural['locale'].toString(),
       });
-      _selectedVoiceName = natural['name'].toString();
+      if (result != 0) _selectedVoiceName = natural['name'].toString();
     } catch (_) {
       // Fall back silently to the system default voice.
     }
@@ -489,6 +501,12 @@ class NeuraTtsService {
   Future<void> stop() {
     ++_speechGeneration;
     ++_cancelGeneration;
+    // A stop before first use must remain a no-op. In particular, do not
+    // leave a native command tail owned by a disposed UI/test lifecycle when
+    // there has never been a native speech engine to stop.
+    if (_tts == null && _initialization == null && _playing == null) {
+      return Future<void>.value();
+    }
     return _queueNative(_stopPlayback);
   }
 

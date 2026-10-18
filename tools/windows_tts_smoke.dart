@@ -14,7 +14,7 @@ void main() {
   }
   WidgetsFlutterBinding.ensureInitialized();
   // No application boot, preferences, credentials, models, journal, microphone
-  // or mascot startup. TTS uses the real registered Windows plugin and defaults.
+  // or mascot startup. TTS uses the same owned Windows SAPI channel as the app.
   runApp(const MaterialApp(home: _SpeechSmoke()));
 }
 

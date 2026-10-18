@@ -2,8 +2,12 @@
 
 Investigation date: 2026-10-18 UTC. Source baseline:
 `a4e8c5e793d4aa3764c66a47819c395b555c786b` (`Neura`).
-This work hardens Dart speech lifecycle handling. **The original native access
-violation is not verified fixed.** `kEnableProactiveGreetingTts` remains `false`.
+Windows speech now uses an owned local SAPI channel instead of the
+`flutter_tts` Windows speak/coroutine path. Dart speech ownership is also bounded
+and cancellation-aware. **The original native access violation is not verified
+fixed on a physical device.** `kEnableProactiveGreetingTts` remains `false`.
+Review: [draft PR #139](https://github.com/Vantiger-Construction/neura_os/pull/139).
+Issue #32 remains open pending physical Windows acceptance.
 
 ## Evidence and corrected diagnosis
 
@@ -12,7 +16,7 @@ violation is not verified fixed.** `kEnableProactiveGreetingTts` remains `false`
 | [Issue #32 original report](https://github.com/Vantiger-Construction/neura_os/issues/32) | The initial hypothesis linked first native calls and mascot creation. Several ordering changes reduced reported failures. | Timing correlation did not establish causation. |
 | [August 17 debugger report](https://github.com/Vantiger-Construction/neura_os/issues/32#issuecomment-5318685604) | The author reported 10/10 failures with only mascot-required plugins, and 7/8 with mascot creation completely disabled. Dump analysis reported `0xC0000005`, `flutter_tts_plugin+0xe657`, null `rcx`, on the UI thread. | Historical reported experiments; their dumps, binaries and matching symbols were not available for independent re-analysis here. A lifetime/coroutine defect was inferred, not located to a symbolized source line. |
 | [Merged PR #38](https://github.com/Vantiger-Construction/neura_os/pull/38) and current `windows/runner/flutter_window.cpp` | The mascot engine registers only window-manager and screen-retriever plugins. Removing duplicate process-global plugin registration is independently useful. | It did not eliminate the crash in the reported isolation tests. |
-| [Merged PR #41](https://github.com/Vantiger-Construction/neura_os/pull/41) | Removed `awaitSpeakCompletion(true)` and reused the viseme bridge's terminal callbacks for a Dart completer. | Its verification explicitly excluded interactive Windows playback. Issue #32 is administratively closed, but closure is not device acceptance. |
+| [Merged PR #41](https://github.com/Vantiger-Construction/neura_os/pull/41) | Removed `awaitSpeakCompletion(true)` and reused the viseme bridge's terminal callbacks for a Dart completer. | Its verification explicitly excluded interactive Windows playback. The issue was subsequently reopened; its earlier closure was not device acceptance. |
 | [Upstream issue #217](https://github.com/dlutton/flutter_tts/issues/217) | A historical Android 3.0.0 report describes a null method-channel result when using native completion waiting. A commenter proposed Dart completion; the maintainer said they would investigate moving it. | It is not a Windows 4.2.5 reproduction. PR #41 misattributes the proposal to the maintainer and overstates the Windows mechanism. |
 | Exact `flutter_tts` 4.2.5 package source | In the Windows desktop branch, `speak()` calls `asyncSpeak(text)` with either setting. The setting controls retaining `speakResult` and calling `Success` on it in stop/completion. `asyncSpeak()` still awaits synthesis, then accesses `mPlayer`; `stop()` closes/replaces that player without canceling the synthesis action. | Source hazards suggest targets for a symbolized investigation. They do not prove which instruction caused the historical crash or that disabling result retention fixes it. |
 
@@ -58,17 +62,19 @@ Initialization and each command batch have a ten-second deadline; each utterance
 has a two-minute completion deadline. Completion timeout attempts a bounded stop
 and reports failure. Missing terminal callbacks, unacknowledged commands or failed
 stops disable further speech for this service until application restart. Long
-utterances can therefore be interrupted at two minutes. The existing twenty-second
+utterances can therefore be interrupted at two minutes. The existing 45-second
 streamed-chat caller timeout remains an additional caller boundary.
 
-**Limits:** Dart deadlines do not cancel native coroutines, guarantee silence from
-a hung native player, or stop an access violation. Native stop acknowledgement
-does not prove synthesis continuations are drained. An old terminal event arriving
-after a later utterance has started cannot be attributed reliably because the
-plugin supplies no ID. Command-order tests do not establish actual audio ordering.
-If physical testing demonstrates this ambiguity, the next change belongs in a
-symbolized, separately reviewed native adapter/plugin with utterance IDs and
-real synthesis cancellation; do not add another arbitrary startup delay.
+The initial lifecycle patch also exposed a full-suite queue scheduling regression,
+corrected by lazy, caller-zone queue creation and release after draining (details
+below). Stop additionally revokes request generations and returns immediately when
+no engine, initialization or playback exists, avoiding unnecessary native dispatch.
+
+**Limits:** Dart deadlines do not interrupt a blocked native UI thread or stop an
+access violation. They can release Neura's focus/presence state while a native
+operation remains unresponsive. The retained plugin on non-Windows platforms
+still supplies untagged callbacks; a very late terminal event cannot reliably be
+attributed there. Command-order tests do not establish actual audio ordering.
 
 Audio focus coordinates only Neura-owned ambient ducking. Its reference counter
 does not own the Windows audio session or validate that audio has stopped. Presence
@@ -82,6 +88,48 @@ Safe Mode listener and invalidates pending speech. Existing chat disposal and
 background handling call `stop`; voice settings now also stops a preview before
 restoring the selected voice. No microphone, cloud, avatar motion or startup
 speech feature is added by this change.
+
+## Windows native speech ownership
+
+`NeuraWindowsTts` implements the existing Dart speech interface over
+`neura/speech_synthesis`. The primary Flutter window owns the native channel;
+the mascot has no such speech owner. The legacy plugin remains registered for
+compatibility, but Windows service speech/configuration calls do not invoke its
+channel. Missing channel support fails closed; it never falls back to that plugin.
+
+Each utterance has a monotonically increasing request ID and a fresh `ISpVoice`
+COM object/event queue. This second boundary matters:
+[SAPI stream numbers restart at 1 when the queue empties](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee125024(v=vs.85)).
+A stream number alone cannot identify a replacement. Stop first revokes the
+request, calls SAPI's purge operation, then releases that voice and its queue.
+Completion checks both the current owner ID and stream number, and checks the
+engine's final HRESULT. Background/minimize/suspend/close also purges the native
+owner; teardown releases its channel before the Flutter engine/messenger.
+
+All native channel/COM work stays on the existing UI/STA thread. There are no
+native asynchronous continuations capturing the owner, retained method replies,
+WinRT synthesis actions or MediaPlayer instances. Dart polls at 40 ms only while
+speech is active, with at most one outstanding poll. Polls return only ID/state;
+late polls or acknowledgements cannot finish a replacement. Malformed status,
+command timeout or failed Stop prevents further adapter speech until restart.
+A missing speech acknowledgement requests a bounded best-effort purge. These
+bounds cannot force a stalled Windows engine to return.
+
+The catalogue is limited to already-installed Microsoft desktop SAPI tokens
+(`Vendor=Microsoft`, `TTS_MS_` IDs); no voice installation, registry modification,
+network service, third-party provider or arbitrary default engine is selected.
+The catalogue and voice sound can differ from WinRT natural voices. A rejected
+saved voice falls back to an eligible local selection without persisting a false
+selection. With no eligible installed voice, explicit speech fails. Record that
+as unavailable, not as a successful silent utterance.
+
+Rate 0.25–0.75 maps to SAPI -5–5, volume maps to 0–100, and pitch 0.5–2 maps
+logarithmically to SAPI XML absolute pitch -10–10. Text is bounded to 64 KiB of
+strict UTF-8, rejects NUL, and is escaped inside the controlled pitch element.
+User input cannot create XML/audio/file directives. The current utterance exists
+only in process memory; channel errors contain static descriptions, not text.
+The older untagged-plugin limitation is avoided by this Windows owner, but an
+OS speech-engine defect can still crash the process. Native acceptance is required.
 
 ## Automated regressions
 
@@ -97,6 +145,15 @@ and use it from consecutive widget clocks. The existing voice-command and offlin
 chat suites exercise the same stop barrier through real screen interactions.
 No physical sound, microphone, cloud requests or real user content is involved.
 
+`test/services/neura_windows_tts_test.dart` adds 11 method-channel regressions for
+request identity, late polls/acknowledgements, background cancellation, malformed
+status, bounded poll/speak acknowledgement, failed Stop, text/concurrency bounds,
+missing owner and settings routing. Every test rejects legacy plugin invocation.
+`neura_windows_tts_routing_test.dart` verifies the actual Windows service selects
+the local owner and that Safe Mode blocks initialization/speech. The portable
+native contract checks 17 ownership/escaping assertions, including reused stream
+numbers with different owners. It does not instantiate COM or execute speech.
+
 Reproduce with the pinned Flutter 3.47.5 / Dart 3.13.4 SDK:
 
 ```powershell
@@ -105,6 +162,8 @@ flutter test --no-pub --reporter expanded `
   test/services/neura_tts_lifecycle_test.dart `
   test/modules/chat/neura_voice_commands_test.dart `
   test/modules/chat/neura_offline_chat_test.dart `
+  test/services/neura_windows_tts_test.dart `
+  test/services/neura_windows_tts_routing_test.dart `
   test/screens/neura_voice_settings_lifecycle_test.dart `
   test/services/neura_tts_speak_replies_test.dart `
   test/services/neura_audio_focus_test.dart `
@@ -114,23 +173,37 @@ flutter test --no-pub --reporter expanded `
   test/startup/startup_platform_policy_test.dart
 ```
 
-Initial verification at `c96bfb0a37a34ede15449440dd193a73b9ceb0ea` on Linux
-with Flutter 3.47.5 / Dart 3.13.4, before the chat queue follow-up below:
+Current verification uses Linux with Flutter 3.47.5 / Dart 3.13.4:
 
-- **46 tests passed** across the original eight files (23 new cases).
+- The first Dart-only patch passed 46 focused tests, but its subsequent hosted
+  full-suite run exposed 26 failures (809 passed) in chat/voice tests. The no-op
+  Stop correction above then passed all 835 tests before adding the native owner.
+- **849/849 tests passed** in the complete Flutter suite after integrating the
+  Windows owner and both process-scoped queue regressions from `f20c873`:
+  `flutter test --no-pub --coverage --reporter expanded --concurrency 4`.
 - Four service regressions and the voice-settings disposal regression failed
   against the original baseline. That reproduction used test-only constructor /
   cleanup seams and per-object bridge attachment, with original speech logic.
 - Targeted analysis of all changed Dart files and the harness: no issues.
 - Canonical formatting across `lib`, `test` and the harness: no changes required.
-- State Matrix YAML parsed; all ten listed test paths exist. Dependency lock and
-  disabled greeting flag are unchanged. Windows workflow execution is pending.
+- The actual Windows owner cross-compiles with MinGW 13.2 against genuine Flutter
+  3.47.5 wrapper headers with warnings treated as errors. This is not an MSVC,
+  whole-application, runtime or acoustic acceptance result.
+- The pure native contract passes all 17 assertions under Linux g++ with
+  `-std=c++17 -Wall -Wextra -Werror -pedantic`.
+- Dependency lock and disabled greeting flag are unchanged.
 
-The local tests used `--no-test-assets` and `--no-pub`. Dependencies came from
+The full local suite uses normal test assets, `--no-pub`, `--coverage`, and
+concurrency 4. Dependencies came from
 archives verified against the app/SDK locks, with local package configuration;
 standard dependency resolution was not claimed. No private app data was used.
-Synthetic success is not native Windows acceptance. The new cases are included
-in the existing self-hosted State Matrix workflow.
+Synthetic success is not native Windows acceptance. All new Dart cases are in
+the existing self-hosted State Matrix workflow. The dedicated hosted Windows
+workflow `.github/workflows/neura-windows-tts.yml` additionally compiles/links the
+real owner with genuine Flutter wrapper/API sources and the Windows import
+library, then executes only the pure ownership/escaping assertions. It discovers
+SDK paths instead of assuming wrapper headers are under the engine cache.
+It never instantiates a speech voice, opens a microphone or runs the app.
 
 ### Complete-suite chat queue regression
 
@@ -149,7 +222,8 @@ pumps, sleeps, microphone restarts or relaxed expectations were added to the cha
 tests. The two process-scoped regressions cover initial dispatch and reuse across
 widget clocks; both chat suites now also run in the Windows State Matrix.
 
-Follow-up verification on Linux with Flutter 3.47.5 / Dart 3.13.4:
+Earlier queue follow-up verification at `f20c873` on Linux with Flutter 3.47.5 /
+Dart 3.13.4 (before the Windows native owner):
 
 - **837/837 tests passed** in the complete Flutter suite with coverage, using
   `--no-pub --no-test-assets --concurrency 2 --timeout 2m`. The local test asset
@@ -171,8 +245,9 @@ or headphones can complete these steps. This investigation runs on Linux. An
 available self-hosted CI runner is not evidence of permission or ability to hear
 and supervise native speech; no remote audio test was dispatched.
 
-Use a clean Windows test account containing synthetic data, microphone/ambient
-capture off, and no cloud credentials. Preserve the production entry point and
+Use a clean Windows test account containing synthetic data, an installed eligible
+Microsoft desktop voice, microphone/ambient capture off, and no cloud credentials.
+Disconnect networking for the synthetic playback runs. Preserve the production entry point and
 the disabled greeting flag. Record OS build, audio output/driver, installed voice,
 Flutter/Dart versions, plugin version, tested commit and build configuration.
 Reserve at least eight GiB plus space for bounded full dumps.
@@ -186,7 +261,7 @@ Reserve at least eight GiB plus space for bounded full dumps.
    sentence already in the app. Observe first-use audio with the normal mascot
    lifecycle. Close voice settings while a sample is playing.
 3. For controlled longer speech and explicit Stop/Safe Mode controls, build the
-   isolated harness. It uses the same native host/plugin and `NeuraTtsService`,
+   isolated harness. It uses the same native SAPI owner and `NeuraTtsService`,
    with **no mascot**, app startup services, mic, preferences, AI or journal.
    It is a separate diagnostic executable, not the shipping entry point:
 
@@ -252,16 +327,18 @@ private symbols and Microsoft's public symbols. Capture:
 !analyze -v
 .ecxr
 kv
-lmvm flutter_tts_plugin
+lmvm neuro_companion
+lmvm sapi
 ```
 
 Record exception code, fault module/version/hash, relative offset, thread and
 symbolized stack. The historical `+0xe657` offset applies only to its original
-binary. If plugin PDBs are unavailable, build the **same locked** plugin in Debug
-and reproduce with that matching binary; never apply a different binary's PDB or
-claim source-line certainty from an offset alone. If needed, use a separately
-recorded first-chance debugger reproduction to inspect synthesis, completion and
-stop/player lifetime; keep it separate from the unattached WER acceptance runs.
+binary. Inspect the actual fault module with `lmvm <module>`; use
+`lmvm flutter_tts_plugin` if that module appears in a new failure or when analyzing
+the historical bundle. Never apply a different binary's PDB or claim source-line
+certainty from an offset alone. If needed, use a separately recorded first-chance
+debugger reproduction to inspect SAPI creation, completion, purge and teardown;
+keep it separate from the unattached WER acceptance runs.
 
 Record every matrix row as PASS/FAIL/NOT RUN with commit, bundle hashes,
 configuration, repetitions, audible result, callback/focus outcome and diagnostic
