@@ -10,29 +10,10 @@ use std::{
 use tokio::sync::watch;
 use zeroize::Zeroizing;
 
-const MODEL: &str = "qwen3:4b-instruct";
-// Current Ollama's explicit source suffix rejects remote aliases at request
-// execution time, including a tag replacement after metadata preflight.
-const LOCAL_MODEL: &str = "qwen3:4b-instruct:local";
-const ENDPOINT: &str = "http://127.0.0.1:11434";
+use crate::local_model::{bounded_json, memory_admitted, ENDPOINT, LOCAL_MODEL};
 const MAX_REQUEST: usize = 16_384;
 const MAX_RESPONSE: usize = 32_768;
 const MAX_REPLY: usize = 8_192;
-
-#[cfg(windows)]
-fn memory_admitted() -> bool {
-    use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
-    // SAFETY: MEMORYSTATUSEX is a plain output structure initialized with its size.
-    let mut memory: MEMORYSTATUSEX = unsafe { std::mem::zeroed() };
-    memory.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
-    (unsafe { GlobalMemoryStatusEx(&mut memory) != 0 })
-        && memory.ullTotalPhys >= 7 * 1024 * 1024 * 1024
-        && memory.ullAvailPhys >= 3584 * 1024 * 1024
-}
-#[cfg(not(windows))]
-fn memory_admitted() -> bool {
-    false
-}
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -88,48 +69,13 @@ fn prepare(raw: &[u8]) -> Result<Value, ()> {
     )
 }
 
-async fn bounded_json(mut response: reqwest::Response, limit: usize) -> Result<Value, ()> {
-    if !response.status().is_success() {
-        return Err(());
-    }
-    let mut bytes = Zeroizing::new(Vec::new());
-    while let Some(chunk) = response.chunk().await.map_err(|_| ())? {
-        if bytes.len() + chunk.len() > limit {
-            return Err(());
-        }
-        bytes.extend_from_slice(&chunk);
-    }
-    serde_json::from_slice(&bytes).map_err(|_| ())
-}
-
 async fn inference(endpoint: &str, payload: Value) -> Result<String, ()> {
-    let client = reqwest::Client::builder()
-        .no_proxy()
-        .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_secs(2))
-        .timeout(Duration::from_secs(90))
-        .build()
-        .map_err(|_| ())?;
+    let client = crate::local_model::client(Duration::from_secs(90))?;
     // Fail before submitting conversation text if this tag is a remote model
     // or has been replaced with a different family/size/quantization.
-    let info = bounded_json(
-        client
-            .post(format!("{endpoint}/api/show"))
-            .json(&json!({"model":MODEL}))
-            .send()
-            .await
-            .map_err(|_| ())?,
-        131_072,
-    )
-    .await?;
-    if info.get("remote_host").is_some()
-        || info.get("remote_model").is_some()
-        || info["details"]["family"] != "qwen3"
-        || info["details"]["parameter_size"] != "4.0B"
-        || info["details"]["quantization_level"] != "Q4_K_M"
-    {
-        return Err(());
-    }
+    crate::local_model::verify_pinned_model(&client, endpoint)
+        .await
+        .map_err(|_| ())?;
     let response = bounded_json(
         client
             .post(format!("{endpoint}/api/chat"))
@@ -431,7 +377,7 @@ mod tests {
     }
 
     fn local_info() -> Value {
-        json!({"details":{"family":"qwen3","parameter_size":"4.0B","quantization_level":"Q4_K_M"}})
+        crate::local_model::tests::pinned_info()
     }
     fn payload() -> Value {
         prepare(br#"{"system":"Neura charter","messages":[{"role":"user","content":"Hello"}]}"#)
