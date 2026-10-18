@@ -21,9 +21,37 @@ cancellation, revocation and `input_scope: synthetic-only`.
 | anything else | The process exits before binding. The value is never logged. |
 
 The adapter cannot be changed over IPC, by a URL, or per request. The Windows
-native launcher still passes a restricted environment without this variable, so
-the Console's synthetic check keeps using echo; wiring an explicit Console
-opt-in is a separate, reviewable change (see remaining gates).
+native launcher sets it only through the Console's explicit local model check
+(below); an ordinary start still passes no adapter variable and uses echo.
+
+## Console local model check
+
+The Console has an optional **Local model** section. Its **Start local model
+check** button stays disabled until the operator ticks an acknowledgement that
+they installed the pinned model themselves and want the check to use it. The
+acknowledgement lives only in that screen's session object: it is never
+persisted, closing the screen discards it, and Safe Mode or recovery clears it
+and blocks new starts.
+
+| Layer | Behavior |
+| --- | --- |
+| Flutter `EngineSession.startLocal()` | Does nothing without the acknowledgement; otherwise sends the argument-free `startLocalCheck` method. |
+| Windows bridge | `startLocalCheck` calls the new `neura_engine_start_local_check` export. The bridge requires that export, so an older DLL fails closed as `unavailable`. |
+| Native launcher | Adds exactly `NEURA_API_MODEL_ADAPTER=ollama-local` to the restricted child environment for that session. Pause and Resume keep the session's adapter; Start cannot bypass Pause in either mode. |
+| Native probe | Checks `hello` reports `model_adapter: ollama-local`, then diagnostics before any fixture. `model_mode: unavailable` ends the session as `model_unavailable` without submitting the fixture. Otherwise it runs the fixed hello and accepts any non-empty completion; the model text is never retained or delivered to Flutter. |
+
+The local check has its own budgets because a cold model load is slow: a
+75-second probe deadline (the sidecar's 60-second run deadline plus loading)
+and up to 200 response frames (192 predicted tokens, each possibly its own
+delta, plus the completion). Exhausting either pauses the session, as in the
+echo check. A run-time `error` with an unavailable code maps to
+`model_unavailable`; a budget or timeout error maps to exhaustion; any other
+error is a failure.
+
+Native status slot 8 is `model_unavailable`. Flutter shows it with what the
+operator needs to do (start Ollama and install the pinned model) and treats it
+like `unavailable`: the session is stopped and a new explicit start is
+required.
 
 ## The pinned model
 
@@ -111,6 +139,8 @@ is delivered or replayed.
 
 ```text
 cargo test --manifest-path rust/Cargo.toml --locked --bin neura_api
+cargo test --manifest-path rust/Cargo.toml --locked --test engine_session_lifecycle
+flutter test test/neura_link/engine_session_lifecycle_test.dart
 cargo test --manifest-path rust/Cargo.toml --locked --lib local_model ollama_conversation
 rustfmt --edition 2021 --check rust/src/bin/neura_api.rs rust/src/ipc_tests.rs rust/src/local_model.rs rust/src/ollama_conversation.rs
 ```
@@ -124,6 +154,17 @@ hung model response; over-budget, incomplete and tool-call output; and
 overlapping work rejection. The existing echo, authorization, revocation and
 transport-exhaustion tests pass unchanged.
 
+The native lifecycle suite launches the real sidecar through the local check.
+Off Windows the pinned model is never admitted, so a correctly wired launch
+must end as `model_unavailable` (an echo-mode child would fail the probe
+instead). It also checks that Resume keeps the adapter, that only the local
+entry point adds the adapter variable, and, with controlled loopback peers,
+that the probe accepts a verified completion, reports unavailable models before
+submitting a fixture, maps run errors, rejects an echo sidecar, and pauses at
+the frame budget. Flutter tests cover the acknowledgement gate, argument-free
+calls, the `model_unavailable` stop, Safe Mode clearing the acknowledgement, and
+the Console checkbox.
+
 ## Remaining milestone 2 gates
 
 - Record target-hardware evidence on supported Windows devices with the pinned
@@ -131,11 +172,10 @@ transport-exhaustion tests pass unchanged.
   cancellation latency for both fixtures. Mock tests are not device evidence.
 - Confirm the model license and storage footprint review that the vision
   requires before selection is treated as final.
-- Add an explicit, consent-gated Console opt-in that passes
-  `NEURA_API_MODEL_ADAPTER=ollama-local` through the trusted launcher, and teach
-  the native probe and Flutter status to accept `local` and report
-  `unavailable` distinctly from errors.
-- Windows CI must confirm the moved `cfg(windows)` admission check builds.
+- Run the Console local model check on supported Windows hardware with the
+  pinned model installed, and with it missing, and record the outcomes and
+  timings. Measure whether the 75-second probe deadline is right for a cold
+  load on the slowest supported device.
 
 Personal sources, memory admission, reflection, suggestions and background
 availability remain disabled (milestones 3–5).
