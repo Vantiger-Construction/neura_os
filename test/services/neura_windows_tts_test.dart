@@ -61,6 +61,35 @@ void main() {
     expect(completions, 1);
   });
 
+  speechTest('legacy plugin events cannot terminate owned Windows speech',
+      (tester, tts, calls, respond) async {
+    var completions = 0;
+    var cancellations = 0;
+    var errors = 0;
+    tts.setCompletionHandler(() => completions++);
+    tts.setCancelHandler(() => cancellations++);
+    tts.setErrorHandler((_) => errors++);
+    respond((call) async =>
+        call.method == 'poll' ? {'id': 1, 'state': 'completed'} : 1);
+    await tts.speak('Synthetic alpha.');
+    for (final event in [
+      'speak.onComplete',
+      'speak.onCancel',
+      'speak.onError'
+    ]) {
+      tester.binding.channelBuffers.push(
+        'flutter_tts',
+        const StandardMethodCodec()
+            .encodeMethodCall(MethodCall(event, 'Synthetic legacy event.')),
+        (_) {},
+      );
+    }
+    await tester.pump();
+    expect([completions, cancellations, errors], [0, 0, 0]);
+    await tester.pump(const Duration(milliseconds: 10));
+    expect([completions, cancellations, errors], [1, 0, 0]);
+  });
+
   speechTest('late poll cannot complete a replacement',
       (tester, tts, calls, respond) async {
     var completions = 0;

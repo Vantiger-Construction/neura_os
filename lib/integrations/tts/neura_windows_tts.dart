@@ -24,6 +24,11 @@ class NeuraWindowsTts extends FlutterTts {
   bool _polling = false;
   bool _failed = false;
 
+  // FlutterTts's constructor installs this handler on its legacy channel.
+  // Even unsolicited old-plugin events must never bypass our request IDs.
+  @override
+  Future<dynamic> platformCallHandler(MethodCall call) async => null;
+
   Future<T?> _invoke<T>(String method, [Object? value]) =>
       _channel.invokeMethod<T>(method, value).timeout(_commandTimeout);
 

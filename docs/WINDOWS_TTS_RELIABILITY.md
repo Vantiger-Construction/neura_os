@@ -148,12 +148,16 @@ and use it from consecutive widget clocks. The existing voice-command and offlin
 chat suites exercise the same stop barrier through real screen interactions.
 No physical sound, microphone, cloud requests or real user content is involved.
 
-`test/services/neura_windows_tts_test.dart` adds 13 method-channel regressions for
+`test/services/neura_windows_tts_test.dart` adds 14 method-channel regressions for
 request identity, late polls/acknowledgements, background cancellation, malformed
 status, bounded poll/speak acknowledgement, failed Stop, text/concurrency bounds,
 missing owner and settings routing. Every test rejects legacy plugin invocation.
 Explicit Stop still emits the existing cancellation/rest callback exactly once;
 an old Stop acknowledgement cannot emit that callback for a replacement.
+An inbound-channel regression also proves that legacy plugin events cannot
+terminate owned Windows speech. It failed against `559e371` (completion, cancel
+and error each fired), then passed after overriding the inherited legacy event
+dispatcher. Only the owned channel's request-matched status may finish speech.
 `neura_windows_tts_routing_test.dart` verifies the actual Windows service selects
 the local owner and that Safe Mode blocks initialization/speech. The portable
 native contract checks 17 ownership/escaping assertions, including reused stream
@@ -183,7 +187,7 @@ Current verification uses Linux with Flutter 3.47.5 / Dart 3.13.4:
 - The first Dart-only patch passed 46 focused tests, but its subsequent hosted
   full-suite run exposed 26 failures (809 passed) in chat/voice tests. The no-op
   Stop correction above then passed all 835 tests before adding the native owner.
-- **851/851 tests passed** in the complete Flutter suite after integrating the
+- **852/852 tests passed** in the complete Flutter suite after integrating the
   Windows owner and both process-scoped queue regressions from `f20c873`:
   `flutter test --no-pub --coverage --reporter expanded --concurrency 4`.
 - Four service regressions and the voice-settings disposal regression failed
@@ -200,8 +204,11 @@ Current verification uses Linux with Flutter 3.47.5 / Dart 3.13.4:
   passed locked dependency restoration, analysis, all 70 selected Dart cases,
   MSVC 19.51 compilation/linking of the real owner with genuine Flutter SDK
   sources/libraries, and the pure native contract. The complete hosted Flutter
-  coverage and both Rust coverage jobs also passed at that commit. Follow-up
-  cancellation/type-boundary changes require their own fresh Windows run.
+  coverage and both Rust coverage jobs also passed at that commit. The follow-up
+  [Windows run at `559e371`](https://github.com/Vantiger-Construction/neura_os/actions/runs/39100381454)
+  passed all 72 selected Dart cases, real-owner compile/link under the production
+  `_HAS_EXCEPTIONS=0` setting, and the native contract. Head-specific results are
+  recorded on PR #139 and issue #32; none of these jobs executes speech.
 - Dependency lock and disabled greeting flag are unchanged.
 
 The full local suite uses normal test assets, `--no-pub`, `--coverage`, and
