@@ -5,7 +5,9 @@ adds a trusted launcher, a synthetic-only Console session, and explicit
 pause/resume with generation-guarded, bounded execution.
 These slices do not complete milestone 1, enable reflection, install a model,
 or admit personal sources.
-The adapter remains the degraded local echo provider.
+The adapter remains the degraded local echo provider by default; the opt-in
+pinned local model adapter is described in
+[milestone 2's first slice](NEURA_ENGINE_MODEL_ADAPTER_M2.md).
 
 ## Explicit session startup
 
