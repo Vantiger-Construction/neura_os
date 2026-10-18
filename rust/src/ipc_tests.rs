@@ -22,10 +22,14 @@ struct Server {
 
 impl Server {
     async fn start() -> Self {
+        Self::start_with(Adapter::Echo).await
+    }
+
+    async fn start_with(adapter: Adapter) -> Self {
         let session = Session::new("ab".repeat(32)).unwrap();
         let listener = bind_local("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
-        let router = app(session.clone());
+        let router = app_with(session.clone(), adapter);
         let task = tokio::spawn(async move {
             axum::serve(
                 listener,
@@ -228,6 +232,7 @@ async fn authenticated_diagnostics_keep_the_degraded_echo_adapter() {
     send(&mut socket, "hello", json!({})).await;
     let hello = receive(&mut socket).await;
     assert_eq!(hello["data"]["input_scope"], "synthetic-only");
+    assert_eq!(hello["data"]["model_adapter"], "echo");
 
     send(&mut socket, "room_entered", json!({"room":"therapy"})).await;
     assert_eq!(receive(&mut socket).await["data"]["tone"], "calm");
@@ -235,6 +240,8 @@ async fn authenticated_diagnostics_keep_the_degraded_echo_adapter() {
     send(&mut socket, "diagnostics_request", json!({})).await;
     let diagnostics = receive(&mut socket).await;
     assert_eq!(diagnostics["kind"], "diagnostics");
+    assert_eq!(diagnostics["data"]["model_mode"], "echo");
+    assert!(diagnostics["data"].get("last_run").is_none());
     assert_eq!(diagnostics["data"]["checks"][2]["status"], "degraded");
     assert_eq!(
         diagnostics["data"]["checks"][2]["detail"],
@@ -558,4 +565,382 @@ async fn owner_drop_aborts_instead_of_detaching_work() {
     timeout(TEST_TIMEOUT, started.notified()).await.unwrap();
     drop(task);
     timeout(TEST_TIMEOUT, receiver).await.unwrap().unwrap();
+}
+
+// ---- Milestone 2: opt-in pinned local model adapter -------------------------
+
+struct DropFlag(Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for DropFlag {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+/// Loopback stand-in for the operator's Ollama daemon.
+struct MockOllama {
+    endpoint: String,
+    chats: Arc<AtomicUsize>,
+    requests: Arc<Mutex<Vec<Value>>>,
+    response_dropped: Arc<std::sync::atomic::AtomicBool>,
+    _task: OwnedTask,
+}
+
+enum ChatBody {
+    Lines(Vec<String>),
+    /// One delta, then the response never completes.
+    Hang,
+}
+
+fn ndjson(content: &str, done: bool) -> String {
+    format!(
+        "{}\n",
+        json!({"message":{"role":"assistant","content":content},"done":done})
+    )
+}
+
+fn pinned_info() -> Value {
+    json!({"details":{"family":local_model::FAMILY,"parameter_size":local_model::PARAMETER_SIZE,
+        "quantization_level":local_model::QUANTIZATION}})
+}
+
+impl MockOllama {
+    async fn start(info: Value, body: ChatBody) -> Self {
+        use axum::{body::Body, Json};
+        let chats = Arc::new(AtomicUsize::new(0));
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let response_dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let body = Arc::new(body);
+        let (counter, seen, dropped) = (chats.clone(), requests.clone(), response_dropped.clone());
+        let router = Router::new()
+            .route(
+                "/api/show",
+                post(move |Json(request): Json<Value>| async move {
+                    assert_eq!(request, json!({"model": local_model::MODEL}));
+                    Json(info)
+                }),
+            )
+            .route(
+                "/api/chat",
+                post(move |Json(request): Json<Value>| async move {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    seen.lock().unwrap().push(request);
+                    match &*body {
+                        ChatBody::Lines(lines) => Body::from(lines.concat()),
+                        ChatBody::Hang => {
+                            let guard = DropFlag(dropped);
+                            let first = futures_util::stream::once(async {
+                                Ok::<_, std::io::Error>(ndjson("Thinking ", false))
+                            });
+                            Body::from_stream(first.chain(futures_util::stream::pending()).map(
+                                move |item| {
+                                    let _ = &guard;
+                                    item
+                                },
+                            ))
+                        }
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        Self {
+            endpoint,
+            chats,
+            requests,
+            response_dropped,
+            _task: OwnedTask(task),
+        }
+    }
+
+    fn adapter(&self) -> (Adapter, Arc<LocalAdapter>) {
+        let local = Arc::new(LocalAdapter::new(self.endpoint.clone(), || true));
+        (Adapter::Local(local.clone()), local)
+    }
+}
+
+/// Collect a run's frames until its terminal `speak` or `error`.
+async fn run_fixture(socket: &mut ClientSocket, fixture: &str) -> (String, Value) {
+    send(socket, "synthetic_input", json!({"fixture":fixture})).await;
+    let mut deltas = String::new();
+    loop {
+        let response = receive(socket).await;
+        match response["kind"].as_str() {
+            Some("speak_delta") => deltas.push_str(response["data"]["delta"].as_str().unwrap()),
+            Some("speak" | "error") => return (deltas, response),
+            other => panic!("unexpected frame {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn adapter_selection_is_explicit_and_fails_closed() {
+    assert!(matches!(Adapter::from_setting(None), Ok(Adapter::Echo)));
+    assert!(matches!(
+        Adapter::from_setting(Some("echo")),
+        Ok(Adapter::Echo)
+    ));
+    assert!(matches!(
+        Adapter::from_setting(Some("ollama-local")),
+        Ok(Adapter::Local(_))
+    ));
+    for value in [
+        "",
+        "ollama",
+        "OLLAMA-LOCAL",
+        "cloud",
+        "http://127.0.0.1:11434",
+    ] {
+        assert!(Adapter::from_setting(Some(value)).is_err());
+    }
+}
+
+#[tokio::test]
+async fn verified_local_model_streams_fixed_fixture_and_reports_content_free_metrics() {
+    let model_text = "The local Neura engine link works.";
+    let ollama = MockOllama::start(
+        pinned_info(),
+        ChatBody::Lines(vec![
+            ndjson("The local ", false),
+            ndjson("Neura engine ", false),
+            ndjson("link works.", false),
+            ndjson("", true),
+        ]),
+    )
+    .await;
+    let (adapter, _) = ollama.adapter();
+    let server = Server::start_with(adapter).await;
+    let mut socket = server.connect().await;
+
+    send(&mut socket, "hello", json!({})).await;
+    assert_eq!(
+        receive(&mut socket).await["data"]["model_adapter"],
+        "ollama-local"
+    );
+    send(&mut socket, "diagnostics_request", json!({})).await;
+    let diagnostics = receive(&mut socket).await;
+    assert_eq!(diagnostics["data"]["model_mode"], "local");
+    assert_eq!(diagnostics["data"]["input_scope"], "synthetic-only");
+    assert_eq!(diagnostics["data"]["checks"][2]["status"], "ok");
+    assert_eq!(
+        diagnostics["data"]["model"]["quantization"],
+        local_model::QUANTIZATION
+    );
+    assert!(diagnostics["data"]["last_run"].is_null());
+
+    let (deltas, done) = run_fixture(&mut socket, "hello").await;
+    assert_eq!(done["kind"], "speak");
+    assert_eq!(done["data"]["text"], model_text);
+    assert_eq!(deltas, model_text);
+
+    // Only the fixed, repository-defined prompt reached the model.
+    let request = ollama.requests.lock().unwrap()[0].clone();
+    assert_eq!(request["model"], local_model::LOCAL_MODEL);
+    assert_eq!(request["keep_alive"], 0);
+    assert_eq!(request["stream"], true);
+    assert!(request.get("tools").is_none());
+    assert_eq!(
+        request["messages"][1]["content"],
+        SyntheticFixture::Hello.model_prompt()
+    );
+
+    send(&mut socket, "diagnostics_request", json!({})).await;
+    let diagnostics = receive(&mut socket).await;
+    let last = &diagnostics["data"]["last_run"];
+    assert_eq!(last["fixture"], "hello");
+    assert_eq!(last["outcome"], "completed");
+    assert_eq!(last["output_bytes"], model_text.len());
+    assert!(last["ttft_ms"].is_u64() && last["total_ms"].is_u64());
+    // Metrics never carry model output or the prompt.
+    let text = diagnostics.to_string();
+    assert!(!text.contains("engine link works"));
+    assert!(!text.contains(SyntheticFixture::Hello.model_prompt()));
+    assert!(!text.contains(server.session.token.as_ref()));
+}
+
+#[tokio::test]
+async fn unverifiable_models_are_unavailable_with_no_fallback_or_prompt_submission() {
+    let mut remote = pinned_info();
+    remote["remote_host"] = json!("https://ollama.com");
+    let mut wrong = pinned_info();
+    wrong["details"]["parameter_size"] = json!("8.0B");
+    for (info, code) in [(remote, "remote_model"), (wrong, "model_mismatch")] {
+        let ollama = MockOllama::start(info, ChatBody::Lines(vec![ndjson("leak", true)])).await;
+        let (adapter, local) = ollama.adapter();
+        let server = Server::start_with(adapter).await;
+        let mut socket = server.connect().await;
+
+        send(&mut socket, "diagnostics_request", json!({})).await;
+        let diagnostics = receive(&mut socket).await;
+        assert_eq!(diagnostics["data"]["model_mode"], "unavailable");
+        assert_eq!(diagnostics["data"]["checks"][2]["status"], "unavailable");
+        assert_eq!(diagnostics["data"]["checks"][2]["code"], code);
+
+        let (deltas, response) = run_fixture(&mut socket, "hello").await;
+        assert!(deltas.is_empty());
+        assert_eq!(response["kind"], "error");
+        assert_eq!(response["data"]["code"], code);
+        assert_eq!(ollama.chats.load(Ordering::SeqCst), 0);
+        assert_eq!(local.last_run().unwrap().outcome, "unavailable");
+    }
+}
+
+#[tokio::test]
+async fn absent_daemon_and_memory_budget_fail_closed() {
+    // Nothing listens on loopback port 1.
+    let absent = Arc::new(LocalAdapter::new("http://127.0.0.1:1".into(), || true));
+    assert_eq!(absent.probe().await, Err(ModelUnavailable::Unreachable));
+
+    let ollama = MockOllama::start(pinned_info(), ChatBody::Lines(vec![ndjson("x", true)])).await;
+    let starved = Arc::new(LocalAdapter::new(ollama.endpoint.clone(), || false));
+    let server = Server::start_with(Adapter::Local(starved)).await;
+    let mut socket = server.connect().await;
+    let (_, response) = run_fixture(&mut socket, "stream").await;
+    assert_eq!(response["data"]["code"], "insufficient_memory");
+    assert_eq!(ollama.chats.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn cancel_aborts_the_in_flight_model_request() {
+    let ollama = MockOllama::start(pinned_info(), ChatBody::Hang).await;
+    let (adapter, local) = ollama.adapter();
+    let server = Server::start_with(adapter).await;
+    let mut socket = server.connect().await;
+    send(&mut socket, "synthetic_input", json!({"fixture":"stream"})).await;
+    // The first delta is delivered immediately even though it is tiny.
+    let first = receive(&mut socket).await;
+    assert_eq!(first["kind"], "speak_delta");
+    assert!(!ollama.response_dropped.load(Ordering::SeqCst));
+
+    send(&mut socket, "cancel", json!({})).await;
+    assert_closed_without_completion(&mut socket).await;
+    timeout(TEST_TIMEOUT, async {
+        while !ollama.response_dropped.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("cancelling must drop the model response stream");
+    let cancelled = local.last_run().unwrap();
+    assert_eq!(cancelled.outcome, "cancelled");
+    // Metrics are kept for a run cancelled mid-stream.
+    assert_eq!(cancelled.output_bytes, "Thinking ".len());
+    assert!(cancelled.ttft_ms.is_some());
+
+    // Revocation likewise stops a hung request for every client.
+    let mut replacement = server.connect().await;
+    send(
+        &mut replacement,
+        "synthetic_input",
+        json!({"fixture":"hello"}),
+    )
+    .await;
+    assert_eq!(receive(&mut replacement).await["kind"], "speak_delta");
+    server.session.revoke();
+    assert_closed_without_completion(&mut replacement).await;
+}
+
+#[tokio::test]
+async fn overlong_or_incomplete_model_output_is_rejected_without_completion() {
+    for (lines, message) in [
+        (
+            vec![ndjson(&"x".repeat(MAX_MODEL_OUTPUT + 1), true)],
+            "model output exceeded budget",
+        ),
+        (vec![ndjson("partial", false)], "model request failed"),
+        // Within the line and output budgets, but JSON escaping pushes the
+        // delta frame past 4 KiB: a budget error, not a dropped connection.
+        (
+            vec![ndjson(&"\"".repeat(1995), true)],
+            "model output exceeded budget",
+        ),
+        (
+            vec![format!(
+                "{}\n",
+                json!({"message":{"role":"assistant","content":"x","tool_calls":[{}]},"done":true})
+            )],
+            "model request failed",
+        ),
+    ] {
+        let ollama = MockOllama::start(pinned_info(), ChatBody::Lines(lines)).await;
+        let (adapter, _) = ollama.adapter();
+        let server = Server::start_with(adapter).await;
+        let mut socket = server.connect().await;
+        let (_, response) = run_fixture(&mut socket, "hello").await;
+        assert_eq!(response["kind"], "error");
+        assert_eq!(response["data"]["message"], message);
+    }
+}
+
+#[tokio::test]
+async fn overlapping_local_work_and_diagnostics_are_rejected_not_queued() {
+    let ollama = MockOllama::start(pinned_info(), ChatBody::Hang).await;
+    let (adapter, _) = ollama.adapter();
+    let server = Server::start_with(adapter).await;
+    let mut socket = server.connect().await;
+    send(&mut socket, "synthetic_input", json!({"fixture":"stream"})).await;
+    assert_eq!(receive(&mut socket).await["kind"], "speak_delta");
+    send(&mut socket, "synthetic_input", json!({"fixture":"hello"})).await;
+    let response = receive(&mut socket).await;
+    assert_eq!(response["data"]["message"], "synthetic work already active");
+    assert_eq!(ollama.chats.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn one_local_run_at_a_time_across_clients() {
+    let ollama = MockOllama::start(pinned_info(), ChatBody::Hang).await;
+    let (adapter, _) = ollama.adapter();
+    let server = Server::start_with(adapter).await;
+    let mut first = server.connect().await;
+    send(&mut first, "synthetic_input", json!({"fixture":"stream"})).await;
+    assert_eq!(receive(&mut first).await["kind"], "speak_delta");
+
+    let mut second = server.connect().await;
+    send(&mut second, "synthetic_input", json!({"fixture":"hello"})).await;
+    assert_eq!(
+        receive(&mut second).await["data"]["message"],
+        "local model busy"
+    );
+    assert_eq!(ollama.chats.load(Ordering::SeqCst), 1);
+
+    // Ending the first run releases the adapter-wide permit.
+    send(&mut first, "cancel", json!({})).await;
+    assert_closed_without_completion(&mut first).await;
+    timeout(TEST_TIMEOUT, async {
+        loop {
+            send(&mut second, "synthetic_input", json!({"fixture":"hello"})).await;
+            let response = receive(&mut second).await;
+            if response["kind"] == "speak_delta" {
+                break;
+            }
+            assert_eq!(response["data"]["message"], "local model busy");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("permit must be released when a run ends");
+}
+
+#[tokio::test]
+async fn a_run_cancelled_immediately_is_still_recorded() {
+    let ollama = MockOllama::start(pinned_info(), ChatBody::Hang).await;
+    let (adapter, local) = ollama.adapter();
+    let server = Server::start_with(adapter).await;
+    let mut socket = server.connect().await;
+    send(&mut socket, "synthetic_input", json!({"fixture":"hello"})).await;
+    send(&mut socket, "cancel", json!({})).await;
+    assert_closed_without_completion(&mut socket).await;
+    timeout(TEST_TIMEOUT, async {
+        while local.last_run().is_none() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("an accepted run must be recorded even if aborted early");
+    let run = local.last_run().unwrap();
+    assert_eq!(run.fixture, "hello");
+    assert_eq!(run.outcome, "cancelled");
 }
