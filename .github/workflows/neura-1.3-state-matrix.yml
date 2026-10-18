@@ -126,7 +126,7 @@ jobs:
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
-          dart format --output=none --set-exit-if-changed lib test
+          dart format --output=none --set-exit-if-changed lib test tools/windows_tts_smoke.dart
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Analyze startup state code
@@ -144,6 +144,12 @@ jobs:
             test/neura_link/engine_session_lifecycle_test.dart `
             test/startup/startup_platform_policy_test.dart `
             test/startup/native_speech_safe_mode_test.dart `
+            test/services/neura_tts_lifecycle_test.dart `
+            test/screens/neura_voice_settings_lifecycle_test.dart `
+            test/services/neura_tts_speak_replies_test.dart `
+            test/services/neura_audio_focus_test.dart `
+            test/services/neura_companion_presence_test.dart `
+            test/neura_link/reply_speech_queue_test.dart `
             test/startup/neura_error_pipeline_test.dart *>&1 |
             Tee-Object -FilePath state-matrix.log |
             Out-Host
