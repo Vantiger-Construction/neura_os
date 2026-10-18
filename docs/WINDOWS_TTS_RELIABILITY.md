@@ -92,6 +92,9 @@ entry/exit; pending/concurrent replacements and late acknowledgement; deadlines;
 stop failure; focus/presence release; preview cancellation; reentrant stop; and
 service disposal. `test/screens/neura_voice_settings_lifecycle_test.dart` mocks
 the TTS method channel and verifies that leaving the screen stops its sample.
+Two process-scoped queue cases construct the service outside the widget clock
+and use it from consecutive widget clocks. The existing voice-command and offline
+chat suites exercise the same stop barrier through real screen interactions.
 No physical sound, microphone, cloud requests or real user content is involved.
 
 Reproduce with the pinned Flutter 3.47.5 / Dart 3.13.4 SDK:
@@ -100,6 +103,8 @@ Reproduce with the pinned Flutter 3.47.5 / Dart 3.13.4 SDK:
 flutter pub get
 flutter test --no-pub --reporter expanded `
   test/services/neura_tts_lifecycle_test.dart `
+  test/modules/chat/neura_voice_commands_test.dart `
+  test/modules/chat/neura_offline_chat_test.dart `
   test/screens/neura_voice_settings_lifecycle_test.dart `
   test/services/neura_tts_speak_replies_test.dart `
   test/services/neura_audio_focus_test.dart `
@@ -109,9 +114,10 @@ flutter test --no-pub --reporter expanded `
   test/startup/startup_platform_policy_test.dart
 ```
 
-Local verification on Linux with Flutter 3.47.5 / Dart 3.13.4:
+Initial verification at `c96bfb0a37a34ede15449440dd193a73b9ceb0ea` on Linux
+with Flutter 3.47.5 / Dart 3.13.4, before the chat queue follow-up below:
 
-- **46 tests passed** across the eight files listed above (23 new cases).
+- **46 tests passed** across the original eight files (23 new cases).
 - Four service regressions and the voice-settings disposal regression failed
   against the original baseline. That reproduction used test-only constructor /
   cleanup seams and per-object bridge attachment, with original speech logic.
@@ -125,6 +131,38 @@ archives verified against the app/SDK locks, with local package configuration;
 standard dependency resolution was not claimed. No private app data was used.
 Synthetic success is not native Windows acceptance. The new cases are included
 in the existing self-hosted State Matrix workflow.
+
+### Complete-suite chat queue regression
+
+The [initial coverage run](https://github.com/Vantiger-Construction/neura_os/actions/runs/39098375562)
+at `c96bfb0` passed 809 Flutter tests and failed 26 voice-command/offline-chat
+tests. Both Rust coverage jobs passed. The same 26 failures reproduced locally:
+commands and offline-session selection awaited `stop()`, whose queue dispatched
+only after the widget assertions had finished. The constructor-created completed
+future retained its outer zone's scheduler, outside the widget test clock.
+
+The native tail now starts lazily in the calling zone and clears after draining,
+only if no newer command owns the tail. This preserves ordering, deadlines,
+generation invalidation and native-failure quarantine while avoiding an idle
+queue tied to the service's construction or a previous test's clock. No extra
+pumps, sleeps, microphone restarts or relaxed expectations were added to the chat
+tests. The two process-scoped regressions cover initial dispatch and reuse across
+widget clocks; both chat suites now also run in the Windows State Matrix.
+
+Follow-up verification on Linux with Flutter 3.47.5 / Dart 3.13.4:
+
+- **837/837 tests passed** in the complete Flutter suite with coverage, using
+  `--no-pub --no-test-assets --concurrency 2 --timeout 2m`. The local test asset
+  bundle was already built; this does not claim a fresh asset build.
+- All 33 tests in the two affected chat files passed, together with the original
+  22 lifecycle cases; all 24 lifecycle cases passed after adding the two queue
+  regressions. Both new queue assertions fail against the original `c96bfb0`
+  implementation; that reproduction was stopped at its external 90-second bound
+  while the original queue remained stuck during teardown.
+- Targeted analysis: no issues. Canonical formatting: 632 files, zero changes.
+  State Matrix YAML parsed and all 15 referenced test paths exist.
+- Dependency manifests, native code, startup speech policy and chat test
+  assertions are unchanged. Fresh GitHub/Windows validation remains separate.
 
 ## Physical Windows acceptance (not executed in this investigation)
 

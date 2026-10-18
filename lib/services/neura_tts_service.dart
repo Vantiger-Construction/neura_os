@@ -78,7 +78,7 @@ class NeuraTtsService {
   bool _initialized = false;
   bool enabled = true;
   String? _selectedVoiceName;
-  Future<void> _nativeTail = Future<void>.value();
+  Future<void>? _nativeTail;
   _TtsPlayback? _playing;
   bool _acceptCallbacks = false;
   bool _nativeUncertain = false;
@@ -228,7 +228,9 @@ class NeuraTtsService {
   // Serialize only native command dispatch/acknowledgement, not the whole
   // utterance. A replacement can stop playback while its Dart caller waits.
   Future<void> _queueNative(Future<void> Function() action) {
-    final next = _nativeTail.then((_) async {
+    // Create an idle tail in the caller's zone. A constructor-created future
+    // can retain an unrelated scheduler, including a previous widget clock.
+    final next = (_nativeTail ?? Future<void>.value()).then((_) async {
       if (_nativeUncertain) {
         throw StateError('Local speech requires an application restart.');
       }
@@ -241,8 +243,13 @@ class NeuraTtsService {
         throw error;
       });
     });
-    _nativeTail =
-        next.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    late final Future<void> tail;
+    tail = next
+        .then<void>((_) {}, onError: (Object _, StackTrace __) {})
+        .whenComplete(() {
+      if (identical(_nativeTail, tail)) _nativeTail = null;
+    });
+    _nativeTail = tail;
     return next;
   }
 

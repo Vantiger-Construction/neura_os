@@ -437,4 +437,37 @@ void main() {
     expect(native.spoken, isEmpty);
     expectIdle();
   });
+
+  group('process-scoped native queue', () {
+    late _SyntheticTts sharedNative;
+    late NeuraTtsService sharedService;
+
+    setUpAll(() {
+      // Like the application singleton, this service predates each widget
+      // test's fake clock. Its idle queue must not retain that creation zone.
+      sharedNative = _SyntheticTts();
+      sharedService = NeuraTtsService.forTesting(sharedNative);
+    });
+
+    tearDownAll(() async {
+      await sharedService.dispose();
+    });
+
+    for (final name in [
+      'first stop completes inside the calling widget clock',
+      'drained queue accepts a stop from the next widget clock',
+    ]) {
+      testWidgets(name, (tester) async {
+        sharedNative.calls.clear();
+        var stopped = false;
+        final stopping = sharedService.stop().then((_) => stopped = true);
+        await tester.pump();
+        expect(stopped, isTrue);
+        expect(sharedNative.calls, ['stop']);
+        expect(sharedNative.spoken, isEmpty);
+        await stopping;
+        expectIdle();
+      });
+    }
+  });
 }
