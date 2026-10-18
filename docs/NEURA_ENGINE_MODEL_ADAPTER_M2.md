@@ -154,11 +154,13 @@ hung model response; over-budget, incomplete and tool-call output; and
 overlapping work rejection. The existing echo, authorization, revocation and
 transport-exhaustion tests pass unchanged.
 
-The native lifecycle suite launches the real sidecar through the local check.
-Off Windows the pinned model is never admitted, so a correctly wired launch
-must end as `model_unavailable` (an echo-mode child would fail the probe
-instead). It also checks that Resume keeps the adapter, that only the local
-entry point adds the adapter variable, and, with controlled loopback peers,
+The native lifecycle suite launches real sidecars through both spawn plans and
+checks that only the local entry point starts one whose `hello` reports
+`ollama-local`; this never contacts Ollama. Where no daemon can answer (any
+non-Windows host, or nothing listening on the Ollama port), it also runs the
+whole local check and requires `model_unavailable`. Tests never load a real
+model: on a host that could serve one, that test stops right after launch. It
+also checks that Resume keeps the adapter and, with controlled loopback peers,
 that the probe accepts a verified completion, reports unavailable models before
 submitting a fixture, maps run errors, rejects an echo sidecar, and pauses at
 the frame budget. Flutter tests cover the acknowledgement gate, argument-free

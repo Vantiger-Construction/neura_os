@@ -471,15 +471,72 @@ fn wait_settled(launcher: &Launcher, timeout: Duration) -> i32 {
     launcher.status()
 }
 
-// The real sidecar is launched with the local adapter. Off Windows the pinned
-// model is never admitted, so a correctly wired launch reports the distinct
-// model-unavailable state rather than an echo-mode success or a generic error.
+/// True when a real Ollama daemon could answer the local check on this host.
+/// Only the measured Windows target admits the model; elsewhere the sidecar
+/// always reports it unavailable. Tests never run a real model.
+fn host_may_serve_model() -> bool {
+    cfg!(windows)
+        && TcpStream::connect_timeout(
+            &"127.0.0.1:11434".parse().unwrap(),
+            Duration::from_millis(300),
+        )
+        .is_ok()
+}
+
+/// Launch a real sidecar through the native spawn plan and read its `hello`.
+async fn child_hello(local_model: bool) -> serde_json::Value {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
+    let token = fresh_token().unwrap();
+    let (mut child, pipe) = process::spawn(&executable(), &token, local_model).unwrap();
+    let address = tokio::task::spawn_blocking(move || read_ready(pipe))
+        .await
+        .unwrap()
+        .unwrap();
+    let mut request = format!("ws://{address}/").into_client_request().unwrap();
+    request.headers_mut().insert(
+        "Authorization",
+        format!("Bearer {}", token.as_str()).parse().unwrap(),
+    );
+    let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    socket
+        .send(Message::Text(
+            serde_json::json!({"v":1,"kind":"hello","data":{}}).to_string(),
+        ))
+        .await
+        .unwrap();
+    let Some(Ok(Message::Text(text))) = socket.next().await else {
+        panic!("expected a hello envelope");
+    };
+    child.terminate();
+    serde_json::from_str(&text).unwrap()
+}
+
+// Proves the launcher wiring on every platform without contacting Ollama:
+// only the local entry point starts a sidecar with the local adapter.
+#[tokio::test]
+async fn only_the_local_spawn_plan_starts_the_local_adapter() {
+    assert_eq!(
+        child_hello(true).await["data"]["model_adapter"],
+        "ollama-local"
+    );
+    assert_eq!(child_hello(false).await["data"]["model_adapter"], "echo");
+}
+
+// Where no daemon can answer, a correctly wired local launch must end as the
+// distinct model-unavailable state rather than an echo-mode success or error.
 #[test]
-fn local_check_launches_the_local_adapter_and_reports_model_unavailable() {
+fn local_check_without_a_model_reports_model_unavailable() {
     let mut launcher = Launcher::new(Some(executable()));
     launcher.set_foreground(true);
     assert_eq!(launcher.start_local(), STARTING);
     assert_eq!(launcher.mode(), CheckMode::Local);
+    if host_may_serve_model() {
+        // Never load the operator's real model from a test.
+        launcher.stop();
+        assert_eq!(launcher.status(), DISABLED);
+        return;
+    }
     assert_eq!(
         wait_settled(&launcher, Duration::from_secs(10)),
         MODEL_UNAVAILABLE
@@ -507,10 +564,9 @@ fn resume_keeps_the_explicitly_selected_adapter_and_safety_still_blocks() {
     assert_eq!(launcher.start(), PAUSED);
     assert_eq!(launcher.resume(), STARTING);
     assert_eq!(launcher.mode(), CheckMode::Local);
-    assert_eq!(
-        wait_settled(&launcher, Duration::from_secs(10)),
-        MODEL_UNAVAILABLE
-    );
+    // Stop before the check can reach a real daemon.
+    launcher.stop();
+    assert_eq!(launcher.status(), DISABLED);
 
     launcher.set_foreground(false);
     assert_eq!(launcher.start_local(), BLOCKED);
