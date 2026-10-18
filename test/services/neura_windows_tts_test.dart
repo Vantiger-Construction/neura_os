@@ -107,6 +107,40 @@ void main() {
     expect(calls.length, count);
   });
 
+  speechTest('explicit stop emits one cancellation and clears polling',
+      (tester, tts, calls, respond) async {
+    var cancelled = 0;
+    tts.setCancelHandler(() => cancelled++);
+    await tts.speak('Synthetic alpha.');
+    await tts.stop();
+    await tts.stop();
+    await tester.pump(const Duration(seconds: 1));
+    expect(cancelled, 1);
+    expect(calls.where((call) => call.method == 'poll'), isEmpty);
+  });
+
+  speechTest('a late stop acknowledgement cannot cancel a replacement',
+      (tester, tts, calls, respond) async {
+    final stopped = Completer<Object?>();
+    var cancelled = 0;
+    var completed = 0;
+    tts.setCancelHandler(() => cancelled++);
+    tts.setCompletionHandler(() => completed++);
+    respond((call) async => switch (call.method) {
+          'stop' => await stopped.future,
+          'poll' => {'id': 2, 'state': 'completed'},
+          _ => 1,
+        });
+    await tts.speak('Synthetic alpha.');
+    final stopping = tts.stop();
+    await tts.speak('Synthetic beta.');
+    stopped.complete(1);
+    await stopping;
+    expect(cancelled, 0);
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(completed, 1);
+  });
+
   speechTest('a missing speak acknowledgement requests a bounded purge',
       (tester, tts, calls, respond) async {
     final stalled = Completer<Object?>();
@@ -124,9 +158,12 @@ void main() {
 
   speechTest('a rejected stop prevents subsequent speech',
       (tester, tts, calls, respond) async {
+    var errors = 0;
+    tts.setErrorHandler((_) => errors++);
     respond((call) async => call.method == 'stop' ? 0 : 1);
     await tts.speak('Synthetic alpha.');
     expect(await tts.stop(), 0);
+    expect(errors, 1);
     await expectLater(tts.speak('Synthetic beta.'), throwsStateError);
     expect(calls.where((call) => call.method == 'speak').length, 1);
   });

@@ -63,6 +63,12 @@ int64_t Id(const Value& value) {
   throw std::invalid_argument("Invalid local speech identity");
 }
 
+const std::string& Text(const Value& value) {
+  const auto* text = std::get_if<std::string>(&value);
+  if (!text) throw std::invalid_argument("Invalid local speech text field");
+  return *text;
+}
+
 double Number(const Value* value, double low, double high) {
   const auto* number = value ? std::get_if<double>(value) : nullptr;
   if (!number || !std::isfinite(*number) || *number < low || *number > high) {
@@ -216,8 +222,8 @@ void NeuraWindowsTts::Handle(
     } else if (method == "setVoice") {
       const auto* args = call.arguments() ? std::get_if<Map>(call.arguments()) : nullptr;
       if (!args || args->size() != 2) throw std::invalid_argument("Invalid voice selection");
-      const auto& name = std::get<std::string>(Field(*args, "name"));
-      const auto& locale = std::get<std::string>(Field(*args, "locale"));
+      const auto& name = Text(Field(*args, "name"));
+      const auto& locale = Text(Field(*args, "locale"));
       int accepted = 0;
       for (size_t i = 0; i < voices_.size(); ++i) {
         const auto& voice = voices_[i];
@@ -249,7 +255,7 @@ void NeuraWindowsTts::Handle(
       if (!args || args->size() != 2) throw std::invalid_argument("Invalid speech request");
       const int64_t id = Id(Field(*args, "id"));
       if (!lifecycle_.CanStart(id)) throw std::invalid_argument("Invalid speech lifecycle");
-      const auto text = Wide(std::get<std::string>(Field(*args, "text")));
+      const auto text = Wide(Text(Field(*args, "text")));
       // SAPI stream numbers reset to 1 after an empty queue. Give every
       // utterance a fresh COM voice/event queue so old events cannot be
       // reinterpreted as events for that reused stream number.

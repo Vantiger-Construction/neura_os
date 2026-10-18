@@ -30,8 +30,11 @@ Callbacks contain no utterance ID.
 The mascot's eager creation completer closes an early-return ordering gap; its
 eight-second timeout is a best-effort wait, not a native-subsystem safety gate.
 Keep that independent ordering precaution and limited plugin registration. Do
-not use them as explanations or fixes for #32. Launch currently avoids native
-TTS initialization; explicit voice settings and speech requests initialize it.
+not use them as explanations or fixes for #32. Launch avoids Dart service
+warm-up and speech. The retained Windows plugin's native registration still
+constructs a WinRT synthesizer/player; the new SAPI voice is created only for
+explicit speech. This change bypasses the old speak path and does not remove
+legacy plugin registration or certify native startup/teardown.
 Current TTS callers include chat, wake-word replies, jokes, proactive banner
 actions and voice-settings previews. The current Voice Lab uses prerecorded
 `NeuraVoicePack.playAsset` clips; playing those clips does not test this TTS path.
@@ -145,10 +148,12 @@ and use it from consecutive widget clocks. The existing voice-command and offlin
 chat suites exercise the same stop barrier through real screen interactions.
 No physical sound, microphone, cloud requests or real user content is involved.
 
-`test/services/neura_windows_tts_test.dart` adds 11 method-channel regressions for
+`test/services/neura_windows_tts_test.dart` adds 13 method-channel regressions for
 request identity, late polls/acknowledgements, background cancellation, malformed
 status, bounded poll/speak acknowledgement, failed Stop, text/concurrency bounds,
 missing owner and settings routing. Every test rejects legacy plugin invocation.
+Explicit Stop still emits the existing cancellation/rest callback exactly once;
+an old Stop acknowledgement cannot emit that callback for a replacement.
 `neura_windows_tts_routing_test.dart` verifies the actual Windows service selects
 the local owner and that Safe Mode blocks initialization/speech. The portable
 native contract checks 17 ownership/escaping assertions, including reused stream
@@ -178,7 +183,7 @@ Current verification uses Linux with Flutter 3.47.5 / Dart 3.13.4:
 - The first Dart-only patch passed 46 focused tests, but its subsequent hosted
   full-suite run exposed 26 failures (809 passed) in chat/voice tests. The no-op
   Stop correction above then passed all 835 tests before adding the native owner.
-- **849/849 tests passed** in the complete Flutter suite after integrating the
+- **851/851 tests passed** in the complete Flutter suite after integrating the
   Windows owner and both process-scoped queue regressions from `f20c873`:
   `flutter test --no-pub --coverage --reporter expanded --concurrency 4`.
 - Four service regressions and the voice-settings disposal regression failed
@@ -191,6 +196,12 @@ Current verification uses Linux with Flutter 3.47.5 / Dart 3.13.4:
   whole-application, runtime or acoustic acceptance result.
 - The pure native contract passes all 17 assertions under Linux g++ with
   `-std=c++17 -Wall -Wextra -Werror -pedantic`.
+- Hosted [Windows checks at `007020f`](https://github.com/Vantiger-Construction/neura_os/actions/runs/39099927303)
+  passed locked dependency restoration, analysis, all 70 selected Dart cases,
+  MSVC 19.51 compilation/linking of the real owner with genuine Flutter SDK
+  sources/libraries, and the pure native contract. The complete hosted Flutter
+  coverage and both Rust coverage jobs also passed at that commit. Follow-up
+  cancellation/type-boundary changes require their own fresh Windows run.
 - Dependency lock and disabled greeting flag are unchanged.
 
 The full local suite uses normal test assets, `--no-pub`, `--coverage`, and

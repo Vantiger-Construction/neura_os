@@ -135,14 +135,24 @@ class NeuraWindowsTts extends FlutterTts {
   Future<dynamic> stop() async {
     // Revoke identity before awaiting native work. Old poll/acknowledgement
     // results cannot complete a replacement, including after a Safe Mode exit.
+    final stopped = _active;
     _clear();
+    bool ownsSignal() =>
+        stopped != null && _serial == stopped && _active == null;
+    final int? result;
     try {
-      final result = await _invoke<int>('stop');
-      if (result != 1) _failed = true;
-      return result;
+      result = await _invoke<int>('stop');
     } catch (_) {
       _failed = true;
+      if (ownsSignal()) errorHandler?.call('Local speech failed.');
       rethrow;
     }
+    if (result != 1) {
+      _failed = true;
+      if (ownsSignal()) errorHandler?.call('Local speech failed.');
+    } else if (ownsSignal()) {
+      cancelHandler?.call();
+    }
+    return result;
   }
 }
