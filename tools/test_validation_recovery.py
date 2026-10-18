@@ -65,7 +65,7 @@ class RecoveryTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             cache = (root / 'build/offline-native-check/CMakeCache.txt').read_text()
             self.assertIn('CMAKE_GENERATOR:INTERNAL=Visual Studio 18 2026', cache)
-            for mode in ['discovery_failed', 'discovery_empty', 'old', 'invalid', 'configure_failed']:
+            for mode in ['discovery_failed', 'discovery_empty', 'old', 'invalid', 'configure_failed', 'configure_timeout']:
                 (root / 'job-path').write_text('')
                 injection = r'''
 const real=require('child_process').spawnSync;
@@ -74,6 +74,9 @@ require('child_process').spawnSync=(file,args,options)=>{
   if(file.endsWith('vswhere.exe') && MODE==='discovery_empty') return {status:0,stdout:'',stderr:''};
   if(args[0]==='-E' && ['old','invalid'].includes(MODE)) return {status:0,stdout:JSON.stringify({version:MODE==='old'?{major:3,minor:13}:{}})};
   if(args[0]==='-S' && MODE==='configure_failed') return {status:7,stdout:'configuration failed',stderr:''};
+  if(args[0]==='-S' && MODE==='configure_timeout') return {status:null,signal:'SIGTERM',error:{code:'ETIMEDOUT'},
+    stdout:'x'.repeat(5000)+'compiler detection reached '+process.env.NEURA_SOURCE_ROOT,
+    stderr:'SDK probe pending token=synthetic-sensitive-value'};
   return real(file,args,options);
 };
 '''.replace('MODE', json.dumps(mode))
@@ -81,6 +84,12 @@ require('child_process').spawnSync=(file,args,options)=>{
                 result = subprocess.run([node, str(action)], env=env, capture_output=True, text=True, timeout=90)
                 self.assertNotEqual(result.returncode, 0, mode + result.stdout + result.stderr)
                 self.assertEqual((root / 'job-path').read_text(), '', mode)
+                if mode == 'configure_timeout':
+                    self.assertIn('ETIMEDOUT', result.stdout + result.stderr)
+                    self.assertIn('compiler detection reached <NEURA_SOURCE_ROOT>', result.stdout + result.stderr)
+                    self.assertIn('SDK probe pending token=[redacted]', result.stdout + result.stderr)
+                    self.assertNotIn('synthetic-sensitive-value', result.stdout + result.stderr)
+                    self.assertNotIn('x' * 4001, result.stdout + result.stderr)
 
     def test_retained_pwsh_and_pinned_installer_wrapper(self):
         if os.name != 'nt':

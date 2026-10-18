@@ -334,3 +334,27 @@ or empty discovery, old/invalid CMake versions and configuration failures before
 writing job PATH. Local profile-environment simulation is not impersonation;
 actual NetworkService execution remains a fresh-CI check. No installation,
 identity, ACL, privilege, policy, billing or artifact changes are involved.
+
+## Interrupted runner and bounded CMake diagnostics
+
+Run `39084931367` PR #133 job `117549381048` reports that the self-hosted
+runner lost communication; its job-log endpoint returns 404. Windows records
+an unclean reboot before the runner resumed on October 18. That supports a
+runner interruption, not an inferred application-test failure.
+
+PR #136 job `117555609783` reached CMake configuration and timed out at
+03:33:32 UTC. Earlier retained-tool output also says `timeout reading rustc
+version`. Cleanup removed the configure cache/logs. After reconnection, only
+the runner listener was present (no worker, CMake, compiler or Rust processes),
+with about 8.4 GiB available RAM and 23.5 GB free disk. These later observations
+do not establish resource availability at the time of failure or its cause.
+
+The preflight keeps its 60-second timeout and 4 MiB capture bound. Failure
+diagnostics now include error code, exit status, signal and the last 4,000
+characters of both stdout and stderr, rather than discarding captured output
+when a spawn error exists. Known workspace/profile paths and credential-like
+values are redacted. The regression verifies this using a synthetic timeout
+with captured compiler/SDK messages and a synthetic secret, plus the existing
+real retained-tool configure/build check. No timeout, gate or tool selection
+was relaxed. Fresh exact-head CI is still needed to distinguish a transient
+runner issue from a reproducible configuration problem.

@@ -203,7 +203,17 @@ jobs:
           const {spawnSync} = require('child_process');
           const run = (exe, args) => {
             const result = spawnSync(exe, args, {encoding:'utf8', timeout:60000, maxBuffer:4 * 1024 * 1024});
-            if (result.error || result.status !== 0) throw new Error(`${exe}: ${result.error || result.stderr || result.stdout || result.status}`);
+            if (result.error || result.status !== 0) {
+              const bounded = value => {
+                let text = String(value || '');
+                for (const key of ['NEURA_SOURCE_ROOT', 'RUNNER_TOOL_CACHE', 'USERPROFILE', 'TEMP', 'TMP']) {
+                  if (process.env[key]) text = text.split(process.env[key]).join(`<${key}>`);
+                }
+                text = text.replace(/(authorization\s*[:=]\s*|bearer\s+|(?:token|password|secret)\s*[:=]\s*)[^\s]+/gi, '$1[redacted]');
+                return text.slice(-4000) || '(empty)';
+              };
+              throw new Error(`${path.basename(exe)} failed: code=${result.error?.code || 'none'}, status=${result.status}, signal=${result.signal || 'none'}\nstdout (tail):\n${bounded(result.stdout)}\nstderr (tail):\n${bounded(result.stderr)}`);
+            }
             return result.stdout.trim();
           };
           const vswhere = path.join(process.env['ProgramFiles(x86)'], 'Microsoft Visual Studio', 'Installer', 'vswhere.exe');
