@@ -45,8 +45,18 @@ jobs:
           WIPE_HEAD: b822c48be5a871d5a5e8e88825205d70534216d0
         run: |
           git fetch --no-tags origin "$WIPE_HEAD"
-          git -c user.name='Synthetic validation' -c user.email='validation@localhost' \
-            merge --no-commit --no-ff "$WIPE_HEAD"
+          if ! git -c user.name='Synthetic validation' -c user.email='validation@localhost' \
+            merge --no-commit --no-ff "$WIPE_HEAD"; then
+            # Both PRs added this fixture. The reviewed current version retains
+            # #133's complete confinement and adds only held preference hooks.
+            # Resolve that exact pair only; any other conflict must fail closed.
+            fixture=test/helpers/data_wipe_fixture.dart
+            test "$(git diff --name-only --diff-filter=U)" = "$fixture"
+            test "$(git rev-parse ":2:$fixture")" = 383624734a80fa3716b8b3b9fee0cf49390aa49d
+            test "$(git rev-parse ":3:$fixture")" = d4f533ee6905694296ae8124947f2bca8f98b467
+            git checkout --ours -- "$fixture"
+            git add -- "$fixture"
+          fi
           # #133 expected authentication failure from a refreshed old handle.
           # The stronger contract rejects that destroyed handle before decrypt.
           git apply --index test/fixtures/pr133-terminal-key-revocation.patch
