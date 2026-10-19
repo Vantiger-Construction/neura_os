@@ -13,6 +13,10 @@ approve a public release. PR #133 and this review branch require human review.
   Its graph, tail helper and graph tests are unchanged in the reviewed default.
 - Unmerged wipe candidate: [PR #133](https://github.com/Vantiger-Construction/neura_os/pull/133),
   [`b822c48be5a871d5a5e8e88825205d70534216d0`](https://github.com/Vantiger-Construction/neura_os/commit/b822c48be5a871d5a5e8e88825205d70534216d0).
+- Latest #133 head: `d7ca9118e6d3425f251ee7e8c55d88a99cecbefe`, an empty
+  CI-trigger commit whose full tree is identical to `b822c48`:
+  `22e936ff9ddd7516fecbb1a572892fae811b19a9`. Local three-way merges with either
+  head produce identical trees; the immutable test pin remains `b822c48`.
 - Corrections and new regressions: [draft PR #141](https://github.com/Vantiger-Construction/neura_os/pull/141).
 
 These are separate implementations: the legacy JSONL graph, a RAM-only scoped
@@ -86,8 +90,33 @@ version, to analyze that reused fixture without suppressions.
 
 ## Validation record
 
-Final review-head validation is pending. Update this section with exact run,
-head and tested-tree references after the focused jobs finish.
+[Run 39234170927](https://github.com/Vantiger-Construction/neura_os/actions/runs/39234170927)
+passed both lanes on reviewed code/test head
+`596a91a1667903f3e331db69e89053d27d4a6d6b`, default base `08fd9493038ef2aa6274c3a12402d96299b5b1bb`.
+Both jobs checked out PR merge `16fedc1dd8bb753b35ecf86bfeb7955c30e6c1da`.
+
+| Lane | Result | Actual tested tree | Evidence |
+| --- | --- | --- | --- |
+| Current application source | 63 focused tests passed; strict analysis clean; canonical formatting changed zero of 21 files | `30d33313a140787b423fd637aef604957c8aa02d`, exactly the reviewed head tree | [Job 117999122426](https://github.com/Vantiger-Construction/neura_os/actions/runs/39234170927/job/117999122426), [artifact 12178398656](https://github.com/Vantiger-Construction/neura_os/actions/runs/39234170927/artifacts/12178398656) |
+| Source plus pinned #133 and the explicit assertion adaptation | 81 focused tests passed; strict analysis clean; canonical formatting changed zero of 21 files | `1c7a5b8f88b0a0412b7bc5828c0ffe542edf20a9`, independently reproduced locally | [Job 117999122975](https://github.com/Vantiger-Construction/neura_os/actions/runs/39234170927/job/117999122975), [artifact 12178283675](https://github.com/Vantiger-Construction/neura_os/actions/runs/39234170927/artifacts/12178283675) |
+
+The counts overlap: 63 is a subset of 81, not 144 distinct tests. This branch
+adds 17 focused regression cases. Both downloaded evidence ZIPs were checked
+against GitHub's SHA-256 digests, and their head/base/checkout/tree/test-log
+contents match the identities above:
+
+- Current ZIP: `498e4c390c06bca3bcbcf1ce77370377b34154b394c8208c319f480147c27ebf`.
+- Combined ZIP: `54b4df5e83eb9e56cf2f9cfea3dbde9a1437d9c4be07c2b2048754a19853f38f`.
+
+The artifacts expire on November 2, 2026; this record, the source commits and
+test names preserve the reproducible result. Subsequent evidence-only edits to
+this document do not alter the validated code, tests, dependency locks or CI.
+Complete-suite, Windows/Android packaging and other PR gates remain separately
+scoped; this focused record does not imply they all passed.
+
+PR #133's newer [CodeQL Code Quality run 39232230353](https://github.com/Vantiger-Construction/neura_os/actions/runs/39232230353)
+also passed both language jobs on `d7ca911`. This supersedes its older failed
+Code Quality status; it is neither #141 validation nor Code Security clearance.
 
 Historical #133 evidence remains distinct:
 [38606990921, attempt 3](https://github.com/Vantiger-Construction/neura_os/actions/runs/38606990921/attempts/3)
