@@ -1,0 +1,84 @@
+name: Neura memory release contracts
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths:
+      - 'lib/core/memory/**'
+      - 'lib/encrypted_memory/**'
+      - 'lib/src/core/data_wipe_service.dart'
+      - 'test/core/**'
+      - 'test/encrypted_memory/**'
+      - 'test/data_wipe*'
+      - '.github/workflows/neura-memory-release-contracts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-memory-contracts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Synthetic memory contracts (${{ matrix.source }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [current, with-wipe-pr133]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # This is a disposable working-tree integration, never a PR merge or push.
+      # Keep the candidate immutable so the evidence has an exact source scope.
+      # Retire this extra lane when #133's final integration is reviewed.
+      - name: Integrate the reviewed wipe candidate in this disposable checkout
+        if: matrix.source == 'with-wipe-pr133'
+        env:
+          WIPE_HEAD: b822c48be5a871d5a5e8e88825205d70534216d0
+        run: |
+          git fetch --no-tags origin "$WIPE_HEAD"
+          git -c user.name='Synthetic validation' -c user.email='validation@localhost' \
+            merge --no-commit --no-ff "$WIPE_HEAD"
+      - name: Record source identity
+        run: |
+          mkdir -p validation/memory
+          git rev-parse HEAD > validation/memory/checkout-commit.txt
+          git write-tree > validation/memory/tested-tree.txt
+          git diff --cached --stat > validation/memory/integration-diff.txt
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Restore locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Focused memory and full-wipe regressions
+        run: |
+          set -o pipefail
+          flutter test --no-pub --reporter expanded --concurrency 2 --timeout 2m \
+            test/core test/encrypted_memory test/data_wipe*test.dart \
+            2>&1 | tee validation/memory/tests.txt
+      - name: Strict memory analysis
+        if: ${{ !cancelled() }}
+        run: |
+          flutter analyze --fatal-infos \
+            lib/core/memory lib/encrypted_memory test/core test/encrypted_memory
+      - name: Canonical memory formatting
+        if: ${{ !cancelled() }}
+        run: |
+          dart format lib/core/memory lib/encrypted_memory test/core test/encrypted_memory
+          git diff --exit-code -- lib/core/memory lib/encrypted_memory test/core test/encrypted_memory
+      - name: Preserve synthetic evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: neura-memory-contracts-${{ matrix.source }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: validation/memory/
+          if-no-files-found: warn
+          retention-days: 14

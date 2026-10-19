@@ -237,9 +237,7 @@ final class EncryptedMemoryConsentLease {
   }) {
     if (_consumed ||
         !directUserGesture ||
-        !nowUtc.isUtc ||
-        nowUtc.isBefore(issuedAtUtc) ||
-        !nowUtc.isBefore(expiresAtUtc) ||
+        !isWithinLifetime(nowUtc) ||
         !operations.contains(operation)) {
       return false;
     }
@@ -277,6 +275,13 @@ final class EncryptedMemoryConsentLease {
     }
     _consumed = true;
   }
+
+  /// Lifetime validation remains meaningful after the one permitted use.
+  /// Async adapters recheck it before publishing or committing that operation.
+  bool isWithinLifetime(DateTime nowUtc) =>
+      nowUtc.isUtc &&
+      !nowUtc.isBefore(issuedAtUtc) &&
+      nowUtc.isBefore(expiresAtUtc);
 
   bool get isConsumed => _consumed;
 }

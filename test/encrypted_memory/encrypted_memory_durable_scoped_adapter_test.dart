@@ -65,6 +65,7 @@ void main() {
 
   EncryptedMemoryDurableScopedAdapter adapter() {
     return EncryptedMemoryDurableScopedAdapter(
+      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
       safetyPolicy: safety,
       keyLifecycle: keys,
       loadCrypto: () async => crypto,
@@ -175,6 +176,7 @@ void main() {
     'default crypto authority restores and can write after empty durable state',
     () async {
       final subject = EncryptedMemoryDurableScopedAdapter(
+      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: keys,
       );
@@ -187,6 +189,7 @@ void main() {
       );
 
       final restarted = EncryptedMemoryDurableScopedAdapter(
+      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: keys,
       );
@@ -233,6 +236,7 @@ void main() {
         nowUtc: issuedAt.add(const Duration(seconds: 3)),
       );
       final afterEmptyRestart = EncryptedMemoryDurableScopedAdapter(
+      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: keys,
       );
@@ -258,6 +262,7 @@ void main() {
     EncryptedMemoryDurableCrypto freshWrapper() =>
         _FreshWrapperDurableCrypto(inner, authority);
     final subject = EncryptedMemoryDurableScopedAdapter(
+      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
       safetyPolicy: safety,
       keyLifecycle: keys,
       loadCrypto: () async => freshWrapper(),
@@ -271,6 +276,7 @@ void main() {
     );
 
     final restarted = EncryptedMemoryDurableScopedAdapter(
+      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
       safetyPolicy: safety,
       keyLifecycle: keys,
       loadCrypto: () async => freshWrapper(),
@@ -312,6 +318,7 @@ void main() {
     );
 
     final secondRestart = EncryptedMemoryDurableScopedAdapter(
+      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
       safetyPolicy: safety,
       keyLifecycle: keys,
       loadCrypto: () async => freshWrapper(),
@@ -338,6 +345,7 @@ void main() {
       EncryptedMemoryDurableCrypto freshWrapper() =>
           _FreshWrapperDurableCrypto(inner, authority);
       final seeded = EncryptedMemoryDurableScopedAdapter(
+      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: keys,
         loadCrypto: () async => freshWrapper(),
@@ -351,6 +359,7 @@ void main() {
       );
 
       final failedRestore = EncryptedMemoryDurableScopedAdapter(
+      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: keys,
         loadCrypto: () async => _FailingDecryptDurableCrypto(authority),
@@ -393,6 +402,7 @@ void main() {
       EncryptedMemoryDurableCrypto freshWrapper() =>
           _FreshWrapperDurableCrypto(inner, authority);
       final seeded = EncryptedMemoryDurableScopedAdapter(
+      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: keys,
         loadCrypto: () async => freshWrapper(),
@@ -410,6 +420,7 @@ void main() {
         authority,
       );
       final pendingRestore = EncryptedMemoryDurableScopedAdapter(
+      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: keys,
         loadCrypto: () async => delayedCrypto,
@@ -686,6 +697,7 @@ void main() {
       () async {
     final delayedCrypto = _BlockingDurableCrypto();
     final subject = EncryptedMemoryDurableScopedAdapter(
+      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
       safetyPolicy: safety,
       keyLifecycle: keys,
       loadCrypto: () async => delayedCrypto,
@@ -717,6 +729,7 @@ void main() {
     await remember;
     expect(await forget, isTrue);
     final restarted = EncryptedMemoryDurableScopedAdapter(
+      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
       safetyPolicy: safety,
       keyLifecycle: keys,
       loadCrypto: () async => delayedCrypto,
@@ -874,6 +887,7 @@ void main() {
 
       final wrongKeys = EncryptedMemoryKeyLifecycle()..provisionVerifiedKey();
       final wrongLifecycle = EncryptedMemoryDurableScopedAdapter(
+      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: wrongKeys,
         loadCrypto: () async => _ThrowingDurableCrypto(),
@@ -911,6 +925,7 @@ void main() {
       );
 
       final wrongCrypto = EncryptedMemoryDurableScopedAdapter(
+      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: keys,
         loadCrypto: () async => _ThrowingDurableCrypto(),
@@ -950,6 +965,7 @@ void main() {
     var safeMode = false;
     final delayedCrypto = _BlockingDurableCrypto();
     final subject = EncryptedMemoryDurableScopedAdapter(
+      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
       safetyPolicy: NeuraLivingSafetyPolicy(safeModeReader: () => safeMode),
       keyLifecycle: keys,
       loadCrypto: () async => delayedCrypto,

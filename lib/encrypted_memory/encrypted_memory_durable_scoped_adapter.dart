@@ -19,7 +19,10 @@ final class MemoryCryptoDurableAdapter implements EncryptedMemoryDurableCrypto {
   final Object _authorityToken;
 
   @override
-  Object get authorityToken => _authorityToken;
+  Object get authorityToken {
+    crypto.requireActiveKey();
+    return _authorityToken;
+  }
 
   @override
   Future<Map<String, dynamic>> decryptJson(String blob) =>
@@ -50,12 +53,13 @@ final class EncryptedMemoryDurableScopedAdapter {
     required this.safetyPolicy,
     required this.keyLifecycle,
     Future<EncryptedMemoryDurableCrypto> Function()? loadCrypto,
+    DateTime Function()? utcNow,
     this.storageKey = defaultStorageKey,
   })  : _loadCrypto = loadCrypto ?? _loadDefaultCrypto,
+        _utcNow = utcNow ?? (() => DateTime.now().toUtc()),
         _state = _DurableScopedStorageRegistry.stateFor(storageKey);
 
   static const defaultStorageKey = 'neura.encrypted_memory.scoped.v1';
-  static final Object _defaultCryptoAuthority = Object();
 
   static void debugResetStorageRegistryForTesting() {
     _DurableScopedStorageRegistry.resetForTesting();
@@ -64,7 +68,6 @@ final class EncryptedMemoryDurableScopedAdapter {
   static Future<EncryptedMemoryDurableCrypto> _loadDefaultCrypto() async {
     return MemoryCryptoDurableAdapter(
       await MemoryCrypto.demo(),
-      authorityToken: _defaultCryptoAuthority,
     );
   }
 
@@ -72,6 +75,7 @@ final class EncryptedMemoryDurableScopedAdapter {
   final EncryptedMemoryKeyLifecycle keyLifecycle;
   final Future<EncryptedMemoryDurableCrypto> Function() _loadCrypto;
   final String storageKey;
+  final DateTime Function() _utcNow;
   final _DurableScopedStorageState _state;
   EncryptedMemoryDurableCrypto? _attachedCrypto;
   Object? _attachedCryptoAuthority;
@@ -151,6 +155,7 @@ final class EncryptedMemoryDurableScopedAdapter {
         _requireAvailable(safetyContext, expectedKeyGeneration);
         _requireUtc(nowUtc);
         _requireRestorable(record, expectedKeyGeneration);
+        _requireLeaseTime(lease, nowUtc);
         final loadedCrypto = _records.isEmpty && _quarantine.isEmpty
             ? await _loadVerifiedCryptoAuthority()
             : null;
@@ -172,6 +177,8 @@ final class EncryptedMemoryDurableScopedAdapter {
         }
         await _persist(
           crypto: crypto,
+          lease: lease,
+          requestedAtUtc: nowUtc,
           safetyContext: safetyContext,
           expectedKeyGeneration: expectedKeyGeneration,
         );
@@ -200,6 +207,12 @@ final class EncryptedMemoryDurableScopedAdapter {
     }
     _requireAvailable(safetyContext, expectedKeyGeneration);
     _requireUtc(nowUtc);
+    if (_records.isNotEmpty || _quarantine.isNotEmpty) {
+      _requireAttachedAuthority();
+    }
+    if (_state.pendingMutations != 0) {
+      throw const EncryptedMemoryPolicyViolation('durable_mutation_pending');
+    }
     lease.consumeFor(
       operation: EncryptedMemoryOperation.recall,
       requestedOwnerId: ownerId,
@@ -208,7 +221,7 @@ final class EncryptedMemoryDurableScopedAdapter {
       memoryClass: memoryClass,
       source: source,
       sensitivity: sensitivity,
-      nowUtc: nowUtc,
+      nowUtc: _leaseTime(nowUtc),
     );
     if (_records.isEmpty && _quarantine.isEmpty) return null;
     _requireAttachedAuthority();
@@ -255,7 +268,7 @@ final class EncryptedMemoryDurableScopedAdapter {
           memoryClass: memoryClass,
           source: source,
           sensitivity: sensitivity,
-          nowUtc: nowUtc,
+          nowUtc: _leaseTime(nowUtc),
         );
         final record = _records[recordId];
         if (record == null ||
@@ -285,6 +298,8 @@ final class EncryptedMemoryDurableScopedAdapter {
         );
         await _persist(
           crypto: crypto,
+          lease: lease,
+          requestedAtUtc: nowUtc,
           safetyContext: safetyContext,
           expectedKeyGeneration: expectedKeyGeneration,
         );
@@ -316,7 +331,7 @@ final class EncryptedMemoryDurableScopedAdapter {
           memoryClass: memoryClass,
           source: source,
           sensitivity: sensitivity,
-          nowUtc: nowUtc,
+          nowUtc: _leaseTime(nowUtc),
         );
         final removed = _removeMatching(
           recordId,
@@ -331,6 +346,8 @@ final class EncryptedMemoryDurableScopedAdapter {
         if (removed) {
           await _persist(
             crypto: crypto,
+            lease: lease,
+            requestedAtUtc: nowUtc,
             safetyContext: safetyContext,
             expectedKeyGeneration: expectedKeyGeneration,
           );
@@ -364,7 +381,7 @@ final class EncryptedMemoryDurableScopedAdapter {
           memoryClass: memoryClass,
           source: source,
           sensitivity: sensitivity,
-          nowUtc: nowUtc,
+          nowUtc: _leaseTime(nowUtc),
         );
         _records.removeWhere(
           (_, record) => _matches(
@@ -392,6 +409,8 @@ final class EncryptedMemoryDurableScopedAdapter {
         );
         await _persist(
           crypto: crypto,
+          lease: lease,
+          requestedAtUtc: nowUtc,
           safetyContext: safetyContext,
           expectedKeyGeneration: expectedKeyGeneration,
         );
@@ -424,7 +443,7 @@ final class EncryptedMemoryDurableScopedAdapter {
           memoryClass: memoryClass,
           source: source,
           sensitivity: sensitivity,
-          nowUtc: nowUtc,
+          nowUtc: _leaseTime(nowUtc),
         );
         final record = _quarantine[recordId];
         if (record == null ||
@@ -462,6 +481,8 @@ final class EncryptedMemoryDurableScopedAdapter {
         }
         await _persist(
           crypto: crypto,
+          lease: lease,
+          requestedAtUtc: nowUtc,
           safetyContext: safetyContext,
           expectedKeyGeneration: expectedKeyGeneration,
         );
@@ -514,6 +535,7 @@ final class EncryptedMemoryDurableScopedAdapter {
     final attached = _attachedCryptoAuthority;
     if (crypto == null ||
         attached == null ||
+        !identical(crypto.authorityToken, attached) ||
         !_state.matchesAuthority(
           safetyPolicy: safetyPolicy,
           keyLifecycle: keyLifecycle,
@@ -613,14 +635,18 @@ final class EncryptedMemoryDurableScopedAdapter {
 
   Future<void> _persist({
     required EncryptedMemoryDurableCrypto crypto,
+    required EncryptedMemoryConsentLease lease,
+    required DateTime requestedAtUtc,
     required NeuraSafetyContext safetyContext,
     required int expectedKeyGeneration,
   }) async {
     _requireAvailable(safetyContext, expectedKeyGeneration);
+    _requireLeaseTime(lease, requestedAtUtc);
     if (_records.isEmpty && _quarantine.isEmpty) {
       var removeAttempted = false;
       try {
         _requireAvailable(safetyContext, expectedKeyGeneration);
+        _requireLeaseTime(lease, requestedAtUtc);
         removeAttempted = true;
         final removed = await NeuraPrefsCache.prefs.remove(storageKey);
         await NeuraPrefsCache.prefs.reload();
@@ -628,6 +654,7 @@ final class EncryptedMemoryDurableScopedAdapter {
           throw const EncryptedMemoryPolicyViolation('durable_remove_failed');
         }
         _requireAvailable(safetyContext, expectedKeyGeneration);
+        _requireLeaseTime(lease, requestedAtUtc);
       } catch (error, stackTrace) {
         if (removeAttempted) _state.requireReconciliation();
         try {
@@ -644,6 +671,7 @@ final class EncryptedMemoryDurableScopedAdapter {
     };
     final blob = await crypto.encryptJson(clear);
     _requireAvailable(safetyContext, expectedKeyGeneration);
+    _requireLeaseTime(lease, requestedAtUtc);
     var writeAttempted = false;
     try {
       writeAttempted = true;
@@ -653,12 +681,32 @@ final class EncryptedMemoryDurableScopedAdapter {
         throw const EncryptedMemoryPolicyViolation('durable_write_failed');
       }
       _requireAvailable(safetyContext, expectedKeyGeneration);
+      _requireLeaseTime(lease, requestedAtUtc);
     } catch (error, stackTrace) {
       if (writeAttempted) _state.requireReconciliation();
       try {
         await NeuraPrefsCache.prefs.reload();
       } catch (_) {}
       Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  DateTime _leaseTime(DateTime requestedAtUtc) {
+    _requireUtc(requestedAtUtc);
+    final current = _utcNow();
+    _requireUtc(current);
+    if (current.isBefore(requestedAtUtc)) {
+      throw const EncryptedMemoryPolicyViolation('consent_clock_rollback');
+    }
+    return current;
+  }
+
+  void _requireLeaseTime(
+    EncryptedMemoryConsentLease lease,
+    DateTime requestedAtUtc,
+  ) {
+    if (!lease.isWithinLifetime(_leaseTime(requestedAtUtc))) {
+      throw const EncryptedMemoryPolicyViolation('consent_not_authorized');
     }
   }
 
@@ -676,7 +724,7 @@ final class EncryptedMemoryDurableScopedAdapter {
       memoryClass: record.memoryClass,
       source: record.provenance.source,
       sensitivity: record.sensitivity,
-      nowUtc: nowUtc,
+      nowUtc: _leaseTime(nowUtc),
     );
   }
 
