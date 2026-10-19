@@ -10,6 +10,7 @@ on:
       - 'test/core/**'
       - 'test/encrypted_memory/**'
       - 'test/data_wipe*'
+      - 'test/helpers/scoped_wipe_native_contract.dart'
       - 'test/fixtures/pr133-terminal-key-revocation.patch'
       - '.github/workflows/neura-memory-release-contracts.yml'
   workflow_dispatch:
@@ -78,16 +79,16 @@ jobs:
         run: |
           flutter analyze --fatal-infos \
             lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
-            test/data_wipe_memory_contracts_test.dart test/helpers/data_wipe_fixture.dart \
+            test/data_wipe_memory_contracts_test.dart test/data_wipe_scoped_*test.dart test/helpers/data_wipe_fixture.dart test/helpers/scoped_wipe_native_contract.dart \
             lib/src/core/data_wipe_service.dart
       - name: Canonical memory formatting
         if: ${{ !cancelled() }}
         run: |
           dart format lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
-            test/data_wipe_memory_contracts_test.dart test/helpers/data_wipe_fixture.dart \
+            test/data_wipe_memory_contracts_test.dart test/data_wipe_scoped_*test.dart test/helpers/data_wipe_fixture.dart test/helpers/scoped_wipe_native_contract.dart \
             lib/src/core/data_wipe_service.dart
           git diff --exit-code -- lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
-            test/data_wipe_memory_contracts_test.dart test/helpers/data_wipe_fixture.dart \
+            test/data_wipe_memory_contracts_test.dart test/data_wipe_scoped_*test.dart test/helpers/data_wipe_fixture.dart test/helpers/scoped_wipe_native_contract.dart \
             lib/src/core/data_wipe_service.dart
       - name: Preserve synthetic evidence
         if: always()

@@ -617,6 +617,16 @@ final class EncryptedMemoryDurableScopedAdapter {
     Future<T> Function() action, {
     bool allowReconciliation = false,
   }) {
+    // Register the owner before the first asynchronous crypto or storage call.
+    // Crypto attachment still requires successful verification and persistence.
+    try {
+      _state.attachOrVerifyOwner(
+        safetyPolicy: safetyPolicy,
+        keyLifecycle: keyLifecycle,
+      );
+    } catch (error, stackTrace) {
+      return Future<T>.error(error, stackTrace);
+    }
     final previous = _state.mutationTail;
     _state.startMutation();
     final result = previous.then((_) async {
@@ -798,7 +808,7 @@ final class _DurableScopedStorageRegistry {
   }
 
   static Future<void> drainAllForDataWipe() async {
-    await Future.wait(_states.entries.map(_drainAndRemove));
+    await Future.wait(_states.entries.map(_drainAndRemove), eagerError: true);
   }
 
   static Future<void> _drainAndRemove(
@@ -814,13 +824,19 @@ final class _DurableScopedStorageRegistry {
       }
     }
 
+    // One deadline includes the writer, native removal and verification reload.
+    // Timeout is a failed wipe, but must not prevent device-key deletion later.
+    final cleanup = drain.then((_) => remove());
     try {
-      await drain.timeout(const Duration(seconds: 3));
-      await remove();
+      await cleanup.timeout(const Duration(seconds: 3));
     } catch (_) {
-      // A timed-out native write may finish after the coordinator clears prefs.
-      // Delete its result again, while retaining the failed-wipe outcome.
-      unawaited(drain.then((_) => remove()).catchError((_) {}));
+      // Timeout does not cancel native I/O. After it settles, remove once more
+      // in case a late write recreated ciphertext. Never upgrade the failed
+      // wipe to success, even if this best-effort bounded cleanup succeeds.
+      unawaited(cleanup
+          .then<void>((_) {}, onError: (Object error, StackTrace stackTrace) {})
+          .then((_) => remove().timeout(const Duration(seconds: 3)))
+          .catchError((_) {}));
       rethrow;
     }
   }
@@ -880,28 +896,34 @@ final class _DurableScopedStorageState {
     reconciliationRequired = false;
   }
 
+  void attachOrVerifyOwner({
+    required Object safetyPolicy,
+    required Object keyLifecycle,
+  }) {
+    requireOwnerAuthorityOrEmpty(
+      safetyPolicy: safetyPolicy,
+      keyLifecycle: keyLifecycle,
+    );
+    safetyPolicyAuthority = safetyPolicy;
+    keyLifecycleAuthority = keyLifecycle;
+    if (suspendedForDataWipe) suspendForDataWipe();
+  }
+
   void attachOrVerifyAuthority({
     required Object safetyPolicy,
     required Object keyLifecycle,
     required Object cryptoAuthority,
   }) {
-    if (safetyPolicyAuthority == null &&
-        keyLifecycleAuthority == null &&
-        this.cryptoAuthority == null) {
-      safetyPolicyAuthority = safetyPolicy;
-      keyLifecycleAuthority = keyLifecycle;
-      this.cryptoAuthority = cryptoAuthority;
-      return;
-    }
-    if (!matchesAuthority(
+    verifyAuthority(
       safetyPolicy: safetyPolicy,
       keyLifecycle: keyLifecycle,
       cryptoAuthority: cryptoAuthority,
-    )) {
-      throw const EncryptedMemoryPolicyViolation(
-        'durable_authority_mismatch',
-      );
-    }
+    );
+    attachOrVerifyOwner(
+      safetyPolicy: safetyPolicy,
+      keyLifecycle: keyLifecycle,
+    );
+    this.cryptoAuthority = cryptoAuthority;
   }
 
   void verifyAuthority({
@@ -909,16 +931,12 @@ final class _DurableScopedStorageState {
     required Object keyLifecycle,
     required Object cryptoAuthority,
   }) {
-    if (safetyPolicyAuthority == null &&
-        keyLifecycleAuthority == null &&
-        this.cryptoAuthority == null) {
-      return;
-    }
-    if (!matchesAuthority(
+    requireOwnerAuthorityOrEmpty(
       safetyPolicy: safetyPolicy,
       keyLifecycle: keyLifecycle,
-      cryptoAuthority: cryptoAuthority,
-    )) {
+    );
+    if (this.cryptoAuthority != null &&
+        !identical(this.cryptoAuthority, cryptoAuthority)) {
       throw const EncryptedMemoryPolicyViolation(
         'durable_authority_mismatch',
       );

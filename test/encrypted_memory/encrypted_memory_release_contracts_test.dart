@@ -155,6 +155,23 @@ void main() {
         replacementValue: 'synthetic replacement',
       );
 
+  test('first remember registers its owner before the first async turn',
+      () async {
+    final subject = adapter();
+    final pending = seed(subject);
+    final rejected = expectLater(
+      pending,
+      throwsA(isA<EncryptedMemoryPolicyViolation>()),
+    );
+    EncryptedMemoryDurableScopedAdapter.suspendAllForDataWipe();
+    expect(keys.state, EncryptedMemoryKeyState.suspended);
+    expect(subject.recordCount, 0);
+    await rejected;
+    await MemoryCrypto.clearDeviceKey();
+    EncryptedMemoryDurableScopedAdapter.confirmDeviceKeyDestroyedForDataWipe();
+    expect(keys.state, EncryptedMemoryKeyState.destroyed);
+  });
+
   test('expired recall cannot backdate access using its request timestamp',
       () async {
     final subject = adapter();
