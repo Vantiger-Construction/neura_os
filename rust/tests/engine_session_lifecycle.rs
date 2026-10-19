@@ -4,8 +4,8 @@
 mod engine_session;
 
 use engine_session::{
-    fresh_token, process, read_ready, run_session, Launcher, RuntimeState, BLOCKED, DISABLED,
-    ERROR, IDLE, PAUSED, STARTING, UNAVAILABLE, WORKING,
+    fresh_token, process, read_ready, run_session, CheckMode, Launcher, RuntimeState, BLOCKED,
+    DISABLED, ERROR, IDLE, MODEL_UNAVAILABLE, PAUSED, STARTING, UNAVAILABLE, WORKING,
 };
 use std::{
     io::{Read, Write},
@@ -157,10 +157,16 @@ async fn pause_during_real_probe_revokes_kills_and_discards_pending_completion()
         observed.invalidate(PAUSED);
         cancel.send_replace(true);
     });
-    let (address, revoked) = run_session(executable(), receiver, state.clone(), generation)
-        .await
-        .unwrap()
-        .unwrap();
+    let (address, revoked) = run_session(
+        executable(),
+        CheckMode::Echo,
+        receiver,
+        state.clone(),
+        generation,
+    )
+    .await
+    .unwrap()
+    .unwrap();
     trigger.await.unwrap();
     assert!(revoked);
     assert!(TcpStream::connect_timeout(&address, Duration::from_millis(100)).is_err());
@@ -211,9 +217,14 @@ async fn time_frame_and_byte_exhaustion_pause_and_invalidate_the_probe() {
         let state = RuntimeState::new();
         let generation = state.invalidate(WORKING);
         let started = Instant::now();
-        let result =
-            engine_session::bounded_probe(address, &fresh_token().unwrap(), &state, generation)
-                .await;
+        let result = engine_session::bounded_probe(
+            address,
+            &fresh_token().unwrap(),
+            CheckMode::Echo,
+            &state,
+            generation,
+        )
+        .await;
         peer.await.unwrap();
         if limit == "invalid" {
             assert_eq!(result, Err(engine_session::ProbeFailure::Failed));
@@ -274,10 +285,11 @@ async fn real_session_verifies_hello_diagnostics_revokes_and_terminates() {
         .unwrap();
         cancel.send_replace(true);
     });
-    let (address, revoked) = run_session(executable(), receiver, state, generation)
-        .await
-        .unwrap()
-        .unwrap();
+    let (address, revoked) =
+        run_session(executable(), CheckMode::Echo, receiver, state, generation)
+            .await
+            .unwrap()
+            .unwrap();
     trigger.await.unwrap();
     assert!(
         revoked,
@@ -293,6 +305,7 @@ async fn cancellation_before_launch_prevents_child_creation() {
     let generation = state.invalidate(STARTING);
     assert!(run_session(
         PathBuf::from("missing-sidecar"),
+        CheckMode::Echo,
         receiver,
         state,
         generation
@@ -359,12 +372,12 @@ fn missing_binary_fails_without_retry_or_external_fallback() {
 #[test]
 fn owner_drop_kills_real_child_and_pipe_contains_no_credential_or_logs() {
     let token = fresh_token().unwrap();
-    let (child, mut pipe) = process::spawn(&executable(), &token).unwrap();
+    let (child, mut pipe) = process::spawn(&executable(), &token, false).unwrap();
     let address = read_ready(&mut pipe).unwrap();
     assert!(TcpStream::connect_timeout(&address, Duration::from_secs(1)).is_ok());
     #[cfg(not(windows))]
     {
-        let plan = process::platform::spawn_plan(&executable(), &token);
+        let plan = process::platform::spawn_plan(&executable(), &token, false);
         assert_eq!(
             plan.get_args().count(),
             0,
@@ -375,6 +388,19 @@ fn owner_drop_kills_real_child_and_pipe_contains_no_credential_or_logs() {
             3,
             "The child environment must be an allowlist."
         );
+        assert!(
+            plan.get_envs()
+                .all(|(key, _)| key != "NEURA_API_MODEL_ADAPTER"),
+            "An ordinary start never selects the local adapter."
+        );
+        // The local check adds exactly the one fixed adapter value.
+        let local = process::platform::spawn_plan(&executable(), &token, true);
+        assert_eq!(local.get_args().count(), 0);
+        assert_eq!(local.get_envs().count(), 4);
+        assert!(local
+            .get_envs()
+            .any(|(key, value)| key == "NEURA_API_MODEL_ADAPTER"
+                && value.is_some_and(|value| value == "ollama-local")));
         assert!(plan
             .get_envs()
             .any(|(key, value)| key == "NEURA_API_SESSION_TOKEN"
@@ -433,4 +459,270 @@ fn native_owner_emits_no_credentials_or_wire_data_even_with_parent_trace_logging
         buffer.0.lock().unwrap().is_empty(),
         "Native session traffic must not enter tracing output."
     );
+}
+
+// ---- Milestone 2: explicitly selected local model check --------------------
+
+fn wait_settled(launcher: &Launcher, timeout: Duration) -> i32 {
+    let deadline = Instant::now() + timeout;
+    while matches!(launcher.status(), STARTING | WORKING) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    launcher.status()
+}
+
+/// True when a real Ollama daemon could answer the local check on this host.
+/// Only the measured Windows target admits the model; elsewhere the sidecar
+/// always reports it unavailable. Tests never run a real model.
+fn host_may_serve_model() -> bool {
+    cfg!(windows)
+        && TcpStream::connect_timeout(
+            &"127.0.0.1:11434".parse().unwrap(),
+            Duration::from_millis(300),
+        )
+        .is_ok()
+}
+
+/// Launch a real sidecar through the native spawn plan and read its `hello`.
+async fn child_hello(local_model: bool) -> serde_json::Value {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
+    let token = fresh_token().unwrap();
+    let (mut child, pipe) = process::spawn(&executable(), &token, local_model).unwrap();
+    let address = tokio::task::spawn_blocking(move || read_ready(pipe))
+        .await
+        .unwrap()
+        .unwrap();
+    let mut request = format!("ws://{address}/").into_client_request().unwrap();
+    request.headers_mut().insert(
+        "Authorization",
+        format!("Bearer {}", token.as_str()).parse().unwrap(),
+    );
+    let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    socket
+        .send(Message::Text(
+            serde_json::json!({"v":1,"kind":"hello","data":{}}).to_string(),
+        ))
+        .await
+        .unwrap();
+    let Some(Ok(Message::Text(text))) = socket.next().await else {
+        panic!("expected a hello envelope");
+    };
+    child.terminate();
+    serde_json::from_str(&text).unwrap()
+}
+
+// Proves the launcher wiring on every platform without contacting Ollama:
+// only the local entry point starts a sidecar with the local adapter.
+#[tokio::test]
+async fn only_the_local_spawn_plan_starts_the_local_adapter() {
+    assert_eq!(
+        child_hello(true).await["data"]["model_adapter"],
+        "ollama-local"
+    );
+    assert_eq!(child_hello(false).await["data"]["model_adapter"], "echo");
+}
+
+// Where no daemon can answer, a correctly wired local launch must end as the
+// distinct model-unavailable state rather than an echo-mode success or error.
+#[test]
+fn local_check_without_a_model_reports_model_unavailable() {
+    let mut launcher = Launcher::new(Some(executable()));
+    launcher.set_foreground(true);
+    assert_eq!(launcher.start_local(), STARTING);
+    assert_eq!(launcher.mode(), CheckMode::Local);
+    if host_may_serve_model() {
+        // Never load the operator's real model from a test.
+        launcher.stop();
+        assert_eq!(launcher.status(), DISABLED);
+        return;
+    }
+    assert_eq!(
+        wait_settled(&launcher, Duration::from_secs(10)),
+        MODEL_UNAVAILABLE
+    );
+    // The session was torn down; a new explicit start is required.
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(launcher.status(), MODEL_UNAVAILABLE);
+
+    // Echo remains the default for an ordinary start.
+    assert_eq!(launcher.start(), STARTING);
+    assert_eq!(launcher.mode(), CheckMode::Echo);
+    wait_idle(&launcher);
+    launcher.stop();
+    assert_eq!(launcher.status(), DISABLED);
+}
+
+#[test]
+fn resume_keeps_the_explicitly_selected_adapter_and_safety_still_blocks() {
+    let mut launcher = Launcher::new(Some(executable()));
+    launcher.set_foreground(true);
+    launcher.start_local();
+    assert_eq!(launcher.pause(), PAUSED);
+    // Start cannot bypass Pause in either mode.
+    assert_eq!(launcher.start_local(), PAUSED);
+    assert_eq!(launcher.start(), PAUSED);
+    assert_eq!(launcher.resume(), STARTING);
+    assert_eq!(launcher.mode(), CheckMode::Local);
+    // Stop before the check can reach a real daemon.
+    launcher.stop();
+    assert_eq!(launcher.status(), DISABLED);
+
+    launcher.set_foreground(false);
+    assert_eq!(launcher.start_local(), BLOCKED);
+    launcher.set_foreground(true);
+    launcher.block();
+    assert_eq!(launcher.start_local(), BLOCKED);
+    assert_eq!(launcher.status(), BLOCKED);
+}
+
+/// Controlled loopback stand-in for a sidecar answering the local check.
+async fn local_peer(
+    hello_adapter: &'static str,
+    model_mode: &'static str,
+    run: Vec<serde_json::Value>,
+) -> (
+    std::net::SocketAddr,
+    tokio::task::JoinHandle<Vec<serde_json::Value>>,
+) {
+    use futures_util::{SinkExt, StreamExt};
+    use serde_json::json;
+    use tokio_tungstenite::tungstenite::Message;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let peer = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+        let mut seen = Vec::new();
+        while let Some(Ok(Message::Text(text))) = socket.next().await {
+            let request: serde_json::Value = serde_json::from_str(&text).unwrap();
+            seen.push(request.clone());
+            let replies = match request["kind"].as_str().unwrap() {
+                "hello" => vec![json!({"v":1,"kind":"hello","data":{
+                    "input_scope":"synthetic-only","model_adapter":hello_adapter}})],
+                "diagnostics_request" => vec![json!({"v":1,"kind":"diagnostics","data":{
+                    "input_scope":"synthetic-only","model_mode":model_mode,"checks":[]}})],
+                "synthetic_input" => run.clone(),
+                _ => vec![],
+            };
+            for reply in replies {
+                if socket.send(Message::Text(reply.to_string())).await.is_err() {
+                    return seen;
+                }
+            }
+        }
+        seen
+    });
+    (address, peer)
+}
+
+async fn local_probe(address: std::net::SocketAddr) -> Result<(), engine_session::ProbeFailure> {
+    let state = RuntimeState::new();
+    let generation = state.invalidate(WORKING);
+    engine_session::bounded_probe(
+        address,
+        &fresh_token().unwrap(),
+        CheckMode::Local,
+        &state,
+        generation,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn local_probe_accepts_a_verified_model_completion() {
+    use serde_json::json;
+    let (address, peer) = local_peer(
+        "ollama-local",
+        "local",
+        vec![
+            json!({"v":1,"kind":"speak_delta","data":{"delta":"The link "}}),
+            json!({"v":1,"kind":"speak_delta","data":{"delta":"works."}}),
+            json!({"v":1,"kind":"speak","data":{"text":"The link works."}}),
+        ],
+    )
+    .await;
+    assert_eq!(local_probe(address).await, Ok(()));
+    let seen = peer.await.unwrap();
+    let kinds: Vec<_> = seen.iter().map(|r| r["kind"].as_str().unwrap()).collect();
+    // Diagnostics before the fixture, and only the fixed fixture is submitted.
+    assert_eq!(kinds, ["hello", "diagnostics_request", "synthetic_input"]);
+    assert_eq!(seen[2]["data"], json!({"fixture":"hello"}));
+}
+
+#[tokio::test]
+async fn local_probe_reports_unavailable_models_before_submitting_a_fixture() {
+    let (address, peer) = local_peer("ollama-local", "unavailable", vec![]).await;
+    assert_eq!(
+        local_probe(address).await,
+        Err(engine_session::ProbeFailure::ModelUnavailable)
+    );
+    let seen = peer.await.unwrap();
+    assert!(seen.iter().all(|r| r["kind"] != "synthetic_input"));
+}
+
+#[tokio::test]
+async fn local_probe_maps_run_errors_and_rejects_an_echo_sidecar() {
+    use engine_session::ProbeFailure;
+    use serde_json::json;
+    let error = |data: serde_json::Value| json!({"v":1,"kind":"error","data":data});
+    for (adapter, run, expected) in [
+        (
+            "ollama-local",
+            vec![error(
+                json!({"message":"model adapter unavailable","code":"not_installed"}),
+            )],
+            ProbeFailure::ModelUnavailable,
+        ),
+        (
+            "ollama-local",
+            vec![error(json!({"message":"model output exceeded budget"}))],
+            ProbeFailure::Exhausted,
+        ),
+        (
+            "ollama-local",
+            vec![error(json!({"message":"model request timed out"}))],
+            ProbeFailure::Exhausted,
+        ),
+        (
+            "ollama-local",
+            vec![error(json!({"message":"model request failed"}))],
+            ProbeFailure::Failed,
+        ),
+        (
+            "ollama-local",
+            vec![json!({"v":1,"kind":"speak","data":{"text":"   "}})],
+            ProbeFailure::Failed,
+        ),
+        // A sidecar launched without the local adapter must never pass.
+        ("echo", vec![], ProbeFailure::Failed),
+    ] {
+        let (address, peer) = local_peer(adapter, "local", run).await;
+        assert_eq!(local_probe(address).await, Err(expected));
+        peer.abort();
+    }
+}
+
+#[tokio::test]
+async fn local_probe_frame_budget_pauses_the_session() {
+    use serde_json::json;
+    let deltas = vec![
+        json!({"v":1,"kind":"speak_delta","data":{"delta":"x"}});
+        engine_session::LOCAL_MAX_FIXTURE_FRAMES
+    ];
+    let (address, peer) = local_peer("ollama-local", "local", deltas).await;
+    let state = RuntimeState::new();
+    let generation = state.invalidate(WORKING);
+    let result = engine_session::bounded_probe(
+        address,
+        &fresh_token().unwrap(),
+        CheckMode::Local,
+        &state,
+        generation,
+    )
+    .await;
+    assert_eq!(result, Err(engine_session::ProbeFailure::Exhausted));
+    assert_eq!(state.status(), PAUSED);
+    assert!(!state.publish(generation, IDLE));
+    peer.abort();
 }
