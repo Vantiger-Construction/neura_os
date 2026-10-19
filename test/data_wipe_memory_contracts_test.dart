@@ -77,6 +77,49 @@ void main() {
         expectedKeyGeneration: keys.generation,
         nowUtc: now,
       );
+      await subject.remember(
+        lease: EncryptedMemoryConsentLease(
+          id: 'quarantine',
+          scope: EncryptedMemoryAccessScope(
+            ownerId: 'owner',
+            deviceId: 'device',
+            capsuleId: 'personal',
+            classes: const {EncryptedMemoryClass.explicitPreference},
+            sources: const {EncryptedMemorySource.modelOutput},
+            sensitivity: EncryptedMemorySensitivity.personal,
+          ),
+          operations: const {EncryptedMemoryOperation.remember},
+          issuedAtUtc: now,
+          expiresAtUtc: now.add(const Duration(minutes: 5)),
+          directUserGesture: true,
+        ),
+        safetyContext: context,
+        record: EncryptedMemorySessionRecord(
+          id: 'quarantined',
+          ownerId: 'owner',
+          deviceId: 'device',
+          capsuleId: 'personal',
+          memoryClass: EncryptedMemoryClass.explicitPreference,
+          sensitivity: EncryptedMemorySensitivity.personal,
+          provenance: EncryptedMemoryProvenance(
+            source: EncryptedMemorySource.modelOutput,
+            sourceId: 'synthetic-candidate',
+            authorId: 'local-model',
+            reason: 'candidate_memory',
+            trustTier: EncryptedMemoryTrustTier.inferred,
+            integrityState: EncryptedMemoryIntegrityState.pending,
+            integrityTag: null,
+            observedAtUtc: now,
+          ),
+          value: 'synthetic unreviewed candidate',
+          createdAtUtc: now,
+          keyGeneration: keys.generation,
+        ),
+        expectedKeyGeneration: keys.generation,
+        nowUtc: now,
+      );
+      expect(subject.recordCount, 1);
+      expect(subject.quarantinedRecordCount, 1);
       final ciphertext = NeuraPrefsCache.prefs.getString(
         EncryptedMemoryDurableScopedAdapter.defaultStorageKey,
       )!;
@@ -159,6 +202,25 @@ void main() {
               ),
           throwsA(isA<EncryptedMemoryPolicyViolation>()));
       expect(read.isConsumed, isFalse);
+      final freshLifecycle = EncryptedMemoryKeyLifecycle()
+        ..provisionVerifiedKey();
+      final freshOwner = EncryptedMemoryDurableScopedAdapter(
+        safetyPolicy: NeuraLivingSafetyPolicy(safeModeReader: () => false),
+        keyLifecycle: freshLifecycle,
+        storageKey: 'synthetic.after-wipe',
+        utcNow: () => now,
+      );
+      await expectLater(
+        freshOwner.restore(
+          safetyContext: context,
+          expectedKeyGeneration: freshLifecycle.generation,
+        ),
+        throwsA(isA<EncryptedMemoryPolicyViolation>().having(
+          (e) => e.code,
+          'code',
+          'durable_memory_suspended',
+        )),
+      );
       f.expectIsolation();
     });
   });

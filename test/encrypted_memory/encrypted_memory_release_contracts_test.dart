@@ -190,7 +190,8 @@ void main() {
     expect(consent.isConsumed, isFalse);
   });
 
-  test('expiry after a platform write requires explicit reconciliation', () async {
+  test('expiry after a platform write requires explicit reconciliation',
+      () async {
     final subject = adapter();
     await seed(subject);
     final prefs = NeuraPrefsCache.prefs;
