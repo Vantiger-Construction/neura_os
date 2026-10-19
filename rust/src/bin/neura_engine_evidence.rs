@@ -446,7 +446,15 @@ async fn model_footprint() -> Value {
                 .iter()
                 .find(|model| model["name"] == local_model::MODEL)
         })
-        .map(|model| json!({"size_bytes": model["size"], "digest": model["digest"]}))
+        .map(|model| {
+            let digest = model["digest"].as_str().unwrap_or_default();
+            let installed = digest.strip_prefix("sha256:").unwrap_or(digest);
+            json!({
+                "size_bytes": model["size"],
+                "digest": model["digest"],
+                "matches_pinned_digest": installed.eq_ignore_ascii_case(local_model::MODEL_DIGEST),
+            })
+        })
         .unwrap_or(Value::Null)
 }
 
@@ -495,6 +503,7 @@ async fn collect(options: &Options) -> Result<(Value, u8), String> {
             "family": local_model::FAMILY,
             "parameter_size": local_model::PARAMETER_SIZE,
             "quantization": local_model::QUANTIZATION,
+            "pinned_digest": local_model::MODEL_DIGEST,
             "installed": model_footprint().await,
         },
     });

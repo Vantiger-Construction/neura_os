@@ -599,6 +599,11 @@ fn ndjson(content: &str, done: bool) -> String {
     )
 }
 
+fn pinned_tags() -> Value {
+    json!({"models":[{"name":local_model::MODEL,"model":local_model::MODEL,
+        "digest":local_model::MODEL_DIGEST}]})
+}
+
 fn pinned_info() -> Value {
     json!({"details":{"family":local_model::FAMILY,"parameter_size":local_model::PARAMETER_SIZE,
         "quantization_level":local_model::QUANTIZATION}})
@@ -606,6 +611,10 @@ fn pinned_info() -> Value {
 
 impl MockOllama {
     async fn start(info: Value, body: ChatBody) -> Self {
+        Self::start_with_tags(info, pinned_tags(), body).await
+    }
+
+    async fn start_with_tags(info: Value, tags: Value, body: ChatBody) -> Self {
         use axum::{body::Body, Json};
         let chats = Arc::new(AtomicUsize::new(0));
         let requests = Arc::new(Mutex::new(Vec::new()));
@@ -619,6 +628,10 @@ impl MockOllama {
                     assert_eq!(request, json!({"model": local_model::MODEL}));
                     Json(info)
                 }),
+            )
+            .route(
+                "/api/tags",
+                axum::routing::get(move || async move { Json(tags) }),
             )
             .route(
                 "/api/chat",
@@ -943,4 +956,33 @@ async fn a_run_cancelled_immediately_is_still_recorded() {
     let run = local.last_run().unwrap();
     assert_eq!(run.fixture, "hello");
     assert_eq!(run.outcome, "cancelled");
+}
+
+#[tokio::test]
+async fn swapped_weights_with_matching_metadata_are_refused_before_any_prompt() {
+    let tags = json!({"models":[{"name":local_model::MODEL,"model":local_model::MODEL,
+        "digest":"cd".repeat(32)}]});
+    let ollama = MockOllama::start_with_tags(
+        pinned_info(),
+        tags,
+        ChatBody::Lines(vec![ndjson("x", true)]),
+    )
+    .await;
+    let (adapter, local) = ollama.adapter();
+    let server = Server::start_with(adapter).await;
+    let mut socket = server.connect().await;
+
+    send(&mut socket, "diagnostics_request", json!({})).await;
+    let diagnostics = receive(&mut socket).await;
+    assert_eq!(diagnostics["data"]["model_mode"], "unavailable");
+    assert_eq!(
+        diagnostics["data"]["checks"][2]["code"],
+        "model_digest_mismatch"
+    );
+
+    let (deltas, response) = run_fixture(&mut socket, "hello").await;
+    assert!(deltas.is_empty());
+    assert_eq!(response["data"]["code"], "model_digest_mismatch");
+    assert_eq!(ollama.chats.load(Ordering::SeqCst), 0);
+    assert_eq!(local.last_run().unwrap().outcome, "unavailable");
 }

@@ -390,12 +390,19 @@ mod tests {
         std::sync::Arc<std::sync::atomic::AtomicUsize>,
         tokio::task::JoinHandle<()>,
     ) {
-        use axum::{routing::post, Json, Router};
+        use axum::{
+            routing::{get, post},
+            Json, Router,
+        };
         use std::sync::atomic::{AtomicUsize, Ordering};
         let calls = Arc::new(AtomicUsize::new(0));
         let counter = calls.clone();
         let router = Router::new()
             .route("/api/show", post(move || async move { Json(info) }))
+            .route(
+                "/api/tags",
+                get(|| async { Json(crate::local_model::tests::pinned_tags()) }),
+            )
             .route(
                 "/api/chat",
                 post(move |Json(request): Json<Value>| async move {

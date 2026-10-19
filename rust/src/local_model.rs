@@ -20,6 +20,11 @@ pub const ENDPOINT: &str = "http://127.0.0.1:11434";
 pub const FAMILY: &str = "qwen3";
 pub const PARAMETER_SIZE: &str = "4.0B";
 pub const QUANTIZATION: &str = "Q4_K_M";
+/// Content digest Ollama reports for the reviewed `qwen3:4b-instruct` install
+/// (`/api/tags`; `ollama list` shows its first 12 characters). A tag pointing
+/// at any other weights is refused even when its metadata matches.
+pub const MODEL_DIGEST: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+const MAX_TAGS_RESPONSE: usize = 1 << 20;
 const MAX_SHOW_RESPONSE: usize = 131_072;
 
 /// Content-free reason a pinned local model cannot be used right now.
@@ -35,6 +40,8 @@ pub enum ModelUnavailable {
     Mismatch,
     /// The daemon's metadata was malformed or exceeded its size budget.
     Malformed,
+    /// The tag resolves to weights whose digest is not the reviewed one.
+    DigestMismatch,
     /// The host does not meet the admission memory budget.
     InsufficientMemory,
 }
@@ -48,6 +55,7 @@ impl ModelUnavailable {
             Self::Remote => "remote_model",
             Self::Mismatch => "model_mismatch",
             Self::Malformed => "malformed_metadata",
+            Self::DigestMismatch => "model_digest_mismatch",
             Self::InsufficientMemory => "insufficient_memory",
         }
     }
@@ -171,6 +179,40 @@ pub async fn verify_pinned_model(client: &LoopbackClient) -> Result<(), ModelUna
     {
         return Err(ModelUnavailable::Mismatch);
     }
+    verify_pinned_digest(client).await
+}
+
+/// Normalize a digest as Ollama reports it (optionally `sha256:`-prefixed).
+fn normalized_digest(value: &str) -> Option<String> {
+    let hex = value.strip_prefix("sha256:").unwrap_or(value);
+    (hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| hex.to_ascii_lowercase())
+}
+
+/// Confirm the installed tag's content digest is the reviewed one.
+async fn verify_pinned_digest(client: &LoopbackClient) -> Result<(), ModelUnavailable> {
+    let response = client
+        .get("/api/tags")
+        .send()
+        .await
+        .map_err(|_| ModelUnavailable::Unreachable)?;
+    let tags = bounded_json(response, MAX_TAGS_RESPONSE)
+        .await
+        .map_err(|_| ModelUnavailable::Malformed)?;
+    let models = tags["models"]
+        .as_array()
+        .ok_or(ModelUnavailable::Malformed)?;
+    let installed = models
+        .iter()
+        .find(|model| model["name"] == MODEL || model["model"] == MODEL)
+        .ok_or(ModelUnavailable::NotInstalled)?;
+    let digest = installed["digest"]
+        .as_str()
+        .and_then(normalized_digest)
+        .ok_or(ModelUnavailable::Malformed)?;
+    if Some(digest) != normalized_digest(MODEL_DIGEST) {
+        return Err(ModelUnavailable::DigestMismatch);
+    }
     Ok(())
 }
 
@@ -291,10 +333,35 @@ where
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use axum::{body::Body, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
+    use axum::{
+        body::Body,
+        http::StatusCode,
+        response::IntoResponse,
+        routing::{get, post},
+        Json, Router,
+    };
 
     pub(crate) fn pinned_info() -> Value {
         json!({"details":{"family":FAMILY,"parameter_size":PARAMETER_SIZE,"quantization_level":QUANTIZATION}})
+    }
+
+    /// `/api/tags` listing the pinned tag with the reviewed digest.
+    pub(crate) fn pinned_tags() -> Value {
+        tags_with(MODEL, MODEL_DIGEST)
+    }
+
+    pub(crate) fn tags_with(name: &str, digest: &str) -> Value {
+        json!({"models":[
+            {"name":"llama3:8b","model":"llama3:8b","digest":"ab".repeat(32)},
+            {"name":name,"model":name,"digest":digest,"size":2_500_000_000u64},
+        ]})
+    }
+
+    /// A stand-in daemon answering `/api/show` and `/api/tags`.
+    pub(crate) fn daemon(info: Value, tags: Value) -> Router {
+        Router::new()
+            .route("/api/show", post(move || async move { Json(info) }))
+            .route("/api/tags", get(move || async move { Json(tags) }))
     }
 
     async fn serve(router: Router) -> (String, tokio::task::JoinHandle<()>) {
@@ -371,10 +438,66 @@ pub(crate) mod tests {
             (json!({}), Err(ModelUnavailable::Mismatch)),
         ];
         for (info, expected) in cases {
-            let router = Router::new().route("/api/show", post(move || async move { Json(info) }));
-            let (endpoint, task) = serve(router).await;
+            let (endpoint, task) = serve(daemon(info, pinned_tags())).await;
             assert_eq!(verify_pinned_model(&http(&endpoint)).await, expected);
             task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn only_the_reviewed_weights_digest_is_accepted() {
+        let pinned = normalized_digest(MODEL_DIGEST).map(|_| MODEL_DIGEST.to_owned());
+        let cases = [
+            // Same metadata, different weights.
+            (
+                tags_with(MODEL, &"cd".repeat(32)),
+                Err(ModelUnavailable::DigestMismatch),
+            ),
+            // The pinned tag is not installed at all.
+            (
+                tags_with("qwen3:8b", MODEL_DIGEST),
+                Err(ModelUnavailable::NotInstalled),
+            ),
+            (
+                tags_with(MODEL, "not-a-digest"),
+                Err(ModelUnavailable::Malformed),
+            ),
+            (json!({"models":"nope"}), Err(ModelUnavailable::Malformed)),
+            (json!({}), Err(ModelUnavailable::Malformed)),
+        ];
+        for (tags, expected) in cases {
+            let (endpoint, task) = serve(daemon(pinned_info(), tags)).await;
+            assert_eq!(verify_pinned_model(&http(&endpoint)).await, expected);
+            task.abort();
+        }
+        // Ollama's optional `sha256:` prefix and letter case do not matter.
+        if let Some(pinned) = pinned {
+            for spelling in [format!("sha256:{pinned}"), pinned.to_ascii_uppercase()] {
+                let (endpoint, task) =
+                    serve(daemon(pinned_info(), tags_with(MODEL, &spelling))).await;
+                assert_eq!(verify_pinned_model(&http(&endpoint)).await, Ok(()));
+                task.abort();
+            }
+        }
+    }
+
+    #[test]
+    fn digests_are_normalized_strictly() {
+        let hex = "Ab".repeat(32);
+        assert_eq!(normalized_digest(&hex), Some("ab".repeat(32)));
+        assert_eq!(
+            normalized_digest(&format!("sha256:{hex}")),
+            Some("ab".repeat(32))
+        );
+        for bad in [
+            "",
+            "sha256:",
+            "ab",
+            &"g".repeat(64),
+            &"a".repeat(65),
+            &format!("sha512:{hex}"),
+        ] {
+            assert_eq!(normalized_digest(bad), None, "{bad}");
         }
     }
 

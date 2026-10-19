@@ -62,12 +62,23 @@ adapter (#127) and the sidecar:
   rejects remote aliases at execution time.
 - Metadata must report family `qwen3`, parameter size `4.0B`, quantization
   `Q4_K_M`, and no `remote_host`/`remote_model`.
+- The installed tag's content digest from `/api/tags` must equal the reviewed
+  `MODEL_DIGEST` (an optional `sha256:` prefix and letter case are ignored).
+  Different weights under the same tag are refused even when their metadata
+  matches. `ollama list` shows the first 12 characters of this digest.
 - Fixed endpoint `http://127.0.0.1:11434`, no proxy, no redirects, 2-second
   connect deadline. `LoopbackClient` is the only way the module reaches a
   daemon and accepts only numeric loopback `http://` endpoints, so neither
   verification nor chat can be pointed at a LAN, public or DNS host.
 - Windows admission budget: at least 7 GiB installed and 3.5 GiB available
   memory. Other platforms are not admitted.
+
+Both the chat adapter and the sidecar run these checks before any request
+text is sent, and the sidecar repeats them before every run. The checks and
+the chat request remain separate calls, so a process that controls the local
+daemon could still swap weights in between; that party can already alter the
+daemon itself, so this is accepted. Updating the pinned model means changing
+`MODEL_DIGEST` (and its test) in a reviewed change.
 
 Neura never installs, downloads, pulls, starts or stops a model or the daemon.
 Installing Ollama and the pinned model is the operator's explicit choice.
@@ -85,7 +96,8 @@ selected: an unverifiable model is reported as unavailable and refuses work.
 | `unavailable` | `unavailable` + `code` | Opted in, but the model cannot be used. |
 
 Unavailable codes: `unreachable`, `not_installed`, `remote_model`,
-`model_mismatch`, `malformed_metadata`, `insufficient_memory`. They never
+`model_mismatch`, `model_digest_mismatch`, `malformed_metadata`,
+`insufficient_memory`. They never
 include daemon output.
 
 For the local adapter, diagnostics also report the pinned `model` identity and
@@ -184,7 +196,7 @@ JSON report. The same tool runs on its own with
 | Report field | What it records |
 | --- | --- |
 | `host` | OS, architecture, logical CPUs, total and available memory, mains power and battery percentage. |
-| `model.installed` | Size and digest of the installed pinned tag from Ollama's `/api/tags`, or `null` if absent. |
+| `model.pinned_digest`, `model.installed` | The reviewed digest, and the installed tag's size, digest and `matches_pinned_digest` from Ollama's `/api/tags` (`null` if absent). |
 | `model_mode` | `local`, or `unavailable` with `unavailable_code` (exit code 2, nothing measured). |
 | `runs[]` | Per run of each fixture: outcome, client and sidecar time to first token and total time, delta frames, output bytes, peak drop in available memory, power state. |
 | `summary` | Min, median and max of completed runs per fixture. |
