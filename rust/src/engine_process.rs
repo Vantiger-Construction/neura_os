@@ -3,6 +3,11 @@
 
 use std::path::PathBuf;
 
+/// The only model adapter value the launcher can pass to the sidecar. Selected
+/// by a fixed native entry point, never by Flutter text, a URL or the parent
+/// environment.
+pub(crate) const LOCAL_MODEL_ADAPTER: (&str, &str) = ("NEURA_API_MODEL_ADAPTER", "ollama-local");
+
 /// Trusted native launch plan, never populated from Flutter text or a URL.
 pub(crate) struct SpawnSpec {
     pub executable: PathBuf,
@@ -29,7 +34,7 @@ pub(crate) mod platform {
     pub(crate) struct ChildProcess {
         child: Child,
     }
-    pub(crate) fn spawn_plan(executable: &Path, token: &str) -> Command {
+    pub(crate) fn spawn_plan(executable: &Path, token: &str, local_model: bool) -> Command {
         let mut command = Command::new(executable);
         command
             .env_clear()
@@ -39,10 +44,19 @@ pub(crate) mod platform {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
+        if local_model {
+            command.env(super::LOCAL_MODEL_ADAPTER.0, super::LOCAL_MODEL_ADAPTER.1);
+        }
         command
     }
-    pub(crate) fn spawn(executable: &Path, token: &str) -> Result<(ChildProcess, ChildStdout), ()> {
-        let mut child = spawn_plan(executable, token).spawn().map_err(|_| ())?;
+    pub(crate) fn spawn(
+        executable: &Path,
+        token: &str,
+        local_model: bool,
+    ) -> Result<(ChildProcess, ChildStdout), ()> {
+        let mut child = spawn_plan(executable, token, local_model)
+            .spawn()
+            .map_err(|_| ())?;
         let pipe = child.stdout.take().ok_or(())?;
         Ok((ChildProcess { child }, pipe))
     }
@@ -212,15 +226,26 @@ mod platform {
         }
     }
 
-    pub(crate) fn spawn(executable: &Path, token: &str) -> Result<(ChildProcess, File), ()> {
+    pub(crate) fn spawn(
+        executable: &Path,
+        token: &str,
+        local_model: bool,
+    ) -> Result<(ChildProcess, File), ()> {
+        let mut environment = vec![
+            ("NEURA_API_ADDR".into(), "127.0.0.1:0".into()),
+            ("NEURA_API_LAUNCHER_READY".into(), "1".into()),
+            ("NEURA_API_SESSION_TOKEN".into(), token.into()),
+        ];
+        if local_model {
+            environment.push((
+                super::LOCAL_MODEL_ADAPTER.0.into(),
+                super::LOCAL_MODEL_ADAPTER.1.into(),
+            ));
+        }
         spawn_spec(&SpawnSpec {
             executable: executable.to_owned(),
             arguments: Vec::new(),
-            environment: vec![
-                ("NEURA_API_ADDR".into(), "127.0.0.1:0".into()),
-                ("NEURA_API_LAUNCHER_READY".into(), "1".into()),
-                ("NEURA_API_SESSION_TOKEN".into(), token.into()),
-            ],
+            environment,
         })
     }
 

@@ -9,13 +9,18 @@ use axum::{
     Router,
 };
 use futures_util::{Sink, SinkExt, StreamExt};
+use neura_swarm::local_model::{self, ModelUnavailable, StreamError, StreamLimits};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    net::SocketAddr,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 use subtle::ConstantTimeEq;
 use tokio::{
     net::TcpListener,
-    sync::{mpsc, watch, Semaphore},
+    sync::{mpsc, watch, OwnedSemaphorePermit, Semaphore},
     task::JoinHandle,
 };
 use tracing::{info, warn};
@@ -25,6 +30,137 @@ const OUTBOUND_CAPACITY: usize = 32;
 const MAX_MESSAGE_BYTES: usize = 4096;
 const MAX_CLIENTS: usize = 4;
 const WRITE_TIMEOUT: Duration = Duration::from_secs(2);
+
+// Milestone 2 local model adapter budgets. See docs/NEURA_ENGINE_MODEL_ADAPTER_M2.md.
+const MODEL_ADAPTER_ENV: &str = "NEURA_API_MODEL_ADAPTER";
+const PROBE_DEADLINE: Duration = Duration::from_secs(3);
+const LOCAL_RUN_DEADLINE: Duration = Duration::from_secs(60);
+const MAX_MODEL_OUTPUT: usize = 3_000;
+const MAX_MODEL_LINE: usize = 4_096;
+const MAX_MODEL_RESPONSE: usize = 65_536;
+/// One local model run at a time across every client of this process.
+const MAX_LOCAL_RUNS: usize = 1;
+const DELTA_FLUSH_BYTES: usize = 48;
+const DELTA_FLUSH_INTERVAL: Duration = Duration::from_millis(60);
+const FIXTURE_SYSTEM: &str = "You are the Neura engine running a synthetic self-check. \
+Follow only the instruction given. Do not ask questions.";
+
+/// Which model adapter this process was explicitly launched with. Selected once
+/// at startup by the trusted launcher; never changeable over IPC.
+#[derive(Clone)]
+enum Adapter {
+    /// Default: fixed repository echo text, no model.
+    Echo,
+    /// Opt-in: the pinned model on the operator's loopback Ollama daemon.
+    Local(Arc<LocalAdapter>),
+}
+
+impl Adapter {
+    fn from_setting(value: Option<&str>) -> Result<Self, &'static str> {
+        match value {
+            None | Some("echo") => Ok(Self::Echo),
+            Some("ollama-local") => Ok(Self::Local(Arc::new(LocalAdapter::new(
+                local_model::ENDPOINT.into(),
+                local_model::memory_admitted,
+            )))),
+            Some(_) => Err("NEURA_API_MODEL_ADAPTER must be echo or ollama-local"),
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Echo => "echo",
+            Self::Local(_) => "ollama-local",
+        }
+    }
+}
+
+/// Content-free record of the most recent local run. Never holds model text.
+#[derive(Clone, Copy)]
+struct RunRecord {
+    fixture: &'static str,
+    outcome: &'static str,
+    ttft_ms: Option<u64>,
+    total_ms: u64,
+    output_bytes: usize,
+}
+
+struct LocalAdapter {
+    endpoint: String,
+    admit: fn() -> bool,
+    last_run: Mutex<Option<RunRecord>>,
+    runs: Arc<Semaphore>,
+}
+
+impl LocalAdapter {
+    fn new(endpoint: String, admit: fn() -> bool) -> Self {
+        Self {
+            endpoint,
+            admit,
+            last_run: Mutex::new(None),
+            runs: Arc::new(Semaphore::new(MAX_LOCAL_RUNS)),
+        }
+    }
+
+    /// Admission plus pinned-model verification. Sends only the model name.
+    async fn probe(&self) -> Result<(), ModelUnavailable> {
+        if !(self.admit)() {
+            return Err(ModelUnavailable::InsufficientMemory);
+        }
+        let client = local_model::LoopbackClient::new(&self.endpoint, PROBE_DEADLINE)
+            .map_err(|_| ModelUnavailable::Unreachable)?;
+        tokio::time::timeout(PROBE_DEADLINE, local_model::verify_pinned_model(&client))
+            .await
+            .unwrap_or(Err(ModelUnavailable::Unreachable))
+    }
+
+    fn last_run(&self) -> Option<RunRecord> {
+        *self.last_run.lock().unwrap_or_else(|p| p.into_inner())
+    }
+}
+
+/// Records a run when dropped, so an aborted (cancelled) task is still counted.
+/// Created before the task is spawned, so even a task aborted before its first
+/// poll records its run, and holds the adapter-wide run permit until then.
+struct RunGuard {
+    local: Arc<LocalAdapter>,
+    _permit: OwnedSemaphorePermit,
+    fixture: &'static str,
+    started: Instant,
+    ttft: Option<Duration>,
+    output_bytes: usize,
+    outcome: &'static str,
+}
+
+impl RunGuard {
+    /// The outcome recorded when the guard drops.
+    fn finish(&mut self, outcome: &'static str) {
+        self.outcome = outcome;
+    }
+}
+
+impl Drop for RunGuard {
+    fn drop(&mut self) {
+        let record = RunRecord {
+            fixture: self.fixture,
+            outcome: self.outcome,
+            ttft_ms: self.ttft.map(|d| d.as_millis() as u64),
+            total_ms: self.started.elapsed().as_millis() as u64,
+            output_bytes: self.output_bytes,
+        };
+        *self
+            .local
+            .last_run
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(record);
+    }
+}
+
+#[derive(Clone)]
+struct AppState {
+    session: Session,
+    adapter: Adapter,
+}
 
 // Supplied by an explicit trusted launcher, never by a URL or a built-in default.
 // Do not derive Debug: the session credential must not appear in diagnostics.
@@ -96,15 +232,15 @@ async fn bind_local(value: &str) -> std::io::Result<TcpListener> {
     TcpListener::bind(address).await
 }
 
-fn app(session: Session) -> Router {
+fn app_with(session: Session, adapter: Adapter) -> Router {
     Router::new()
         .route("/", get(ws_handler))
         .route("/session/revoke", post(revoke_session))
-        .with_state(session)
+        .with_state(AppState { session, adapter })
 }
 
 async fn ws_handler(
-    State(session): State<Session>,
+    State(AppState { session, adapter }): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
@@ -122,12 +258,12 @@ async fn ws_handler(
         .max_write_buffer_size(MAX_MESSAGE_BYTES * 2)
         .on_upgrade(move |socket| async move {
             let _permit = permit;
-            client(socket, session).await;
+            client(socket, session, adapter).await;
         }))
 }
 
 async fn revoke_session(
-    State(session): State<Session>,
+    State(AppState { session, .. }): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
 ) -> Result<StatusCode, StatusCode> {
@@ -280,11 +416,241 @@ struct SyntheticInput {
     fixture: SyntheticFixture,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum SyntheticFixture {
     Hello,
     Stream,
+}
+
+impl SyntheticFixture {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Hello => "hello",
+            Self::Stream => "stream",
+        }
+    }
+
+    /// Fixed, repository-defined model instruction. No caller text is admitted.
+    fn model_prompt(self) -> &'static str {
+        match self {
+            Self::Hello => {
+                "Reply with one short, friendly sentence confirming that the local Neura engine link works."
+            }
+            Self::Stream => "In about 80 words of plain prose, explain how ocean tides work.",
+        }
+    }
+
+    fn model_payload(self) -> Value {
+        json!({
+            "model": local_model::LOCAL_MODEL,
+            "messages": [
+                {"role": "system", "content": FIXTURE_SYSTEM},
+                {"role": "user", "content": self.model_prompt()},
+            ],
+            "stream": true,
+            "keep_alive": 0,
+            "options": {"num_ctx": 2048, "num_predict": 192, "num_thread": 2, "temperature": 0.2},
+        })
+    }
+}
+
+/// Start a local run, or `None` while another client's run holds the permit.
+fn spawn_local(
+    fixture: SyntheticFixture,
+    out: Outbound,
+    local: Arc<LocalAdapter>,
+) -> Option<OwnedTask> {
+    let permit = local.runs.clone().try_acquire_owned().ok()?;
+    // Dropped on completion or abort; abort (cancel/revoke) records "cancelled".
+    let mut run = RunGuard {
+        local: local.clone(),
+        _permit: permit,
+        fixture: fixture.name(),
+        started: Instant::now(),
+        ttft: None,
+        output_bytes: 0,
+        outcome: "cancelled",
+    };
+    Some(OwnedTask(tokio::spawn(async move {
+        // Re-verify before every run: a tag can be replaced after diagnostics.
+        // There is no echo or cloud fallback when the pinned model is missing.
+        let verified = tokio::select! {
+            biased;
+            _ = out.session.revoked() => return,
+            _ = out.ended() => return,
+            result = local.probe() => result,
+        };
+        if let Err(reason) = verified {
+            run.finish("unavailable");
+            out.send(frame(
+                "error",
+                json!({"message":"model adapter unavailable","code":reason.code()}),
+            ));
+            return;
+        }
+        let Ok(client) = local_model::LoopbackClient::new(&local.endpoint, LOCAL_RUN_DEADLINE)
+        else {
+            run.finish("failed");
+            out.send(frame("error", json!({"message":"model request failed"})));
+            return;
+        };
+        let id = Uuid::new_v4().to_string();
+        let payload = fixture.model_payload();
+        let limits = StreamLimits {
+            max_line: MAX_MODEL_LINE,
+            max_output: MAX_MODEL_OUTPUT,
+            max_response: MAX_MODEL_RESPONSE,
+        };
+        let mut pending = String::new();
+        // None until the first delta, which is always delivered immediately.
+        let mut last_flush: Option<Instant> = None;
+        let mut oversized = false;
+        let result = {
+            // Metrics are written into the guard as deltas arrive, so a run
+            // cancelled mid-stream still reports its TTFT and output size.
+            let run = &mut run;
+            let stream = local_model::stream_chat(&client, &payload, limits, |delta| {
+                run.ttft.get_or_insert_with(|| run.started.elapsed());
+                run.output_bytes += delta.len();
+                pending.push_str(delta);
+                // Coalesce token-sized deltas so a fast model cannot fill the
+                // bounded outbound queue faster than the eager writer drains it.
+                if pending.len() < DELTA_FLUSH_BYTES
+                    && last_flush.is_some_and(|at| at.elapsed() < DELTA_FLUSH_INTERVAL)
+                {
+                    return true;
+                }
+                last_flush = Some(Instant::now());
+                let delta = frame(
+                    "speak_delta",
+                    json!({"utterance_id":id,"delta":std::mem::take(&mut pending)}),
+                );
+                // JSON escaping can grow text past the frame budget; report it
+                // as a budget error instead of letting delivery close the client.
+                if delta.len() > MAX_MESSAGE_BYTES {
+                    oversized = true;
+                    return false;
+                }
+                out.send(delta)
+            });
+            tokio::select! {
+                biased;
+                _ = out.session.revoked() => return,
+                _ = out.ended() => return,
+                result = tokio::time::timeout(LOCAL_RUN_DEADLINE, stream) => result,
+            }
+        };
+        let exhausted = |run: &mut RunGuard| {
+            run.finish("exhausted");
+            out.send(frame(
+                "error",
+                json!({"message":"model output exceeded budget"}),
+            ));
+        };
+        match result {
+            Ok(Ok(text)) => {
+                if !pending.is_empty() {
+                    let tail = frame(
+                        "speak_delta",
+                        json!({"utterance_id":id,"delta":std::mem::take(&mut pending)}),
+                    );
+                    if tail.len() > MAX_MESSAGE_BYTES {
+                        return exhausted(&mut run);
+                    }
+                    if !out.send(tail) {
+                        return;
+                    }
+                }
+                let done = frame("speak", json!({"utterance_id":id,"text":text.as_str()}));
+                if done.len() > MAX_MESSAGE_BYTES {
+                    return exhausted(&mut run);
+                }
+                if out.send(done) {
+                    run.finish("completed");
+                }
+            }
+            Ok(Err(StreamError::Stopped)) if oversized => exhausted(&mut run),
+            Ok(Err(StreamError::Stopped)) => {}
+            Ok(Err(StreamError::Exhausted)) => exhausted(&mut run),
+            Ok(Err(StreamError::Transport | StreamError::Protocol)) => {
+                run.finish("failed");
+                out.send(frame("error", json!({"message":"model request failed"})));
+            }
+            Err(_) => {
+                run.finish("exhausted");
+                out.send(frame("error", json!({"message":"model request timed out"})));
+            }
+        }
+    })))
+}
+
+/// Result of checking the configured adapter for diagnostics.
+#[derive(Clone, Copy)]
+enum AdapterStatus {
+    Echo,
+    Local,
+    Unavailable(ModelUnavailable),
+}
+
+fn diagnostics(status: AdapterStatus, last_run: Option<RunRecord>) -> Value {
+    let (mode, streaming, model) = match status {
+        AdapterStatus::Echo => (
+            "echo",
+            "Bounded synthetic deltas; cancel closes this connection.",
+            json!({"name":"Model adapter","status":"degraded","remedy":"Use Neura's primary chat or install a reviewed sidecar model adapter.","detail":"Safe local echo provider is active."}),
+        ),
+        AdapterStatus::Local => (
+            "local",
+            "Bounded local-model deltas; cancel closes this connection and aborts the model request.",
+            json!({"name":"Model adapter","status":"ok","remedy":"None","detail":"Pinned local model verified on loopback Ollama; fixed synthetic prompts only."}),
+        ),
+        AdapterStatus::Unavailable(reason) => (
+            "unavailable",
+            "No model work is admitted while the adapter is unavailable.",
+            json!({"name":"Model adapter","status":"unavailable","code":reason.code(),
+                "remedy":"Start Ollama and install the pinned model yourself; Neura never downloads models or falls back to a cloud provider.",
+                "detail":"The opted-in local model adapter could not be verified."}),
+        ),
+    };
+    let mut data = json!({
+        "generated_at": now_iso8601(),
+        "input_scope":"synthetic-only",
+        "model_mode": mode,
+        "checks":[
+            {"name":"WebSocket","status":"ok","remedy":"None","detail":"Authenticated loopback control channel connected."},
+            {"name":"Streaming","status":"ok","remedy":"None","detail":streaming},
+            model,
+        ]
+    });
+    if !matches!(status, AdapterStatus::Echo) {
+        data["model"] = json!({
+            "tag": local_model::MODEL,
+            "family": local_model::FAMILY,
+            "parameter_size": local_model::PARAMETER_SIZE,
+            "quantization": local_model::QUANTIZATION,
+        });
+        data["last_run"] = last_run.map_or(Value::Null, |run| {
+            json!({"fixture":run.fixture,"outcome":run.outcome,"ttft_ms":run.ttft_ms,
+                "total_ms":run.total_ms,"output_bytes":run.output_bytes})
+        });
+    }
+    data
+}
+
+fn spawn_diagnostics(out: Outbound, local: Arc<LocalAdapter>) -> OwnedTask {
+    OwnedTask(tokio::spawn(async move {
+        let status = tokio::select! {
+            biased;
+            _ = out.session.revoked() => return,
+            _ = out.ended() => return,
+            result = local.probe() => match result {
+                Ok(()) => AdapterStatus::Local,
+                Err(reason) => AdapterStatus::Unavailable(reason),
+            },
+        };
+        out.send(frame("diagnostics", diagnostics(status, local.last_run())));
+    }))
 }
 
 fn spawn_echo(fixture: SyntheticFixture, out: Outbound) -> OwnedTask {
@@ -312,7 +678,7 @@ fn spawn_echo(fixture: SyntheticFixture, out: Outbound) -> OwnedTask {
     }))
 }
 
-async fn client(socket: WebSocket, session: Session) {
+async fn client(socket: WebSocket, session: Session, adapter: Adapter) {
     // Recheck after the asynchronous HTTP upgrade, including revocation races.
     if !session.is_active() {
         return;
@@ -322,6 +688,7 @@ async fn client(socket: WebSocket, session: Session) {
     let writer_out = out.clone();
     let writer = OwnedTask(tokio::spawn(write_outbound(socket_tx, out_rx, writer_out)));
     let mut generation: Option<OwnedTask> = None;
+    let mut probe: Option<OwnedTask> = None;
 
     loop {
         let message = tokio::select! {
@@ -350,7 +717,7 @@ async fn client(socket: WebSocket, session: Session) {
             "hello" => {
                 out.send(frame(
                     "hello",
-                    json!({"service":"neura-api","version":"0.3.0","protocol_version":1,"input_scope":"synthetic-only"}),
+                    json!({"service":"neura-api","version":"0.4.0","protocol_version":1,"input_scope":"synthetic-only","model_adapter":adapter.name()}),
                 ));
             }
             "room_entered" => {
@@ -362,20 +729,21 @@ async fn client(socket: WebSocket, session: Session) {
                 };
                 out.send(frame("set_tone", json!({"tone":tone})));
             }
-            "diagnostics_request" => {
-                out.send(frame(
-                    "diagnostics",
-                    json!({
-                        "generated_at": now_iso8601(),
-                        "input_scope":"synthetic-only",
-                        "checks":[
-                            {"name":"WebSocket","status":"ok","remedy":"None","detail":"Authenticated loopback control channel connected."},
-                            {"name":"Streaming","status":"ok","remedy":"None","detail":"Bounded synthetic deltas; cancel closes this connection."},
-                            {"name":"Model adapter","status":"degraded","remedy":"Use Neura's primary chat or install a reviewed sidecar model adapter.","detail":"Safe local echo provider is active."}
-                        ]
-                    }),
-                ));
-            }
+            "diagnostics_request" => match &adapter {
+                Adapter::Echo => {
+                    out.send(frame("diagnostics", diagnostics(AdapterStatus::Echo, None)));
+                }
+                Adapter::Local(local) => {
+                    if probe.as_ref().is_some_and(|task| !task.0.is_finished()) {
+                        out.send(frame(
+                            "error",
+                            json!({"message":"diagnostics already active"}),
+                        ));
+                        continue;
+                    }
+                    probe = Some(spawn_diagnostics(out.clone(), local.clone()));
+                }
+            },
             "synthetic_input" => {
                 if generation
                     .as_ref()
@@ -388,7 +756,23 @@ async fn client(socket: WebSocket, session: Session) {
                     continue;
                 }
                 match serde_json::from_value::<SyntheticInput>(input.data) {
-                    Ok(input) => generation = Some(spawn_echo(input.fixture, out.clone())),
+                    Ok(input) => {
+                        generation = Some(match &adapter {
+                            Adapter::Echo => spawn_echo(input.fixture, out.clone()),
+                            Adapter::Local(local) => {
+                                match spawn_local(input.fixture, out.clone(), local.clone()) {
+                                    Some(task) => task,
+                                    None => {
+                                        out.send(frame(
+                                            "error",
+                                            json!({"message":"local model busy"}),
+                                        ));
+                                        continue;
+                                    }
+                                }
+                            }
+                        })
+                    }
                     Err(_) => {
                         out.send(frame(
                             "error",
@@ -412,6 +796,9 @@ async fn client(socket: WebSocket, session: Session) {
     if let Some(task) = generation {
         task.stop().await;
     }
+    if let Some(task) = probe {
+        task.stop().await;
+    }
     writer.stop().await;
 }
 
@@ -424,7 +811,8 @@ fn now_iso8601() -> String {
         .to_string()
 }
 
-// Fixed async echo fixtures need one scheduler thread, independent of CPU count.
+// Fixed echo fixtures and the single loopback model request need one scheduler
+// thread, independent of CPU count.
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -438,6 +826,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let token = std::env::var("NEURA_API_SESSION_TOKEN")
         .map_err(|_| "NEURA_API_SESSION_TOKEN is required for an explicit synthetic session")?;
     let session = Session::new(token)?;
+    // Absent means the default echo adapter. Any other value than the two
+    // supported names fails closed; the value itself is never logged.
+    let adapter = match std::env::var(MODEL_ADAPTER_ENV) {
+        Ok(value) => Adapter::from_setting(Some(&value))?,
+        Err(std::env::VarError::NotPresent) => Adapter::Echo,
+        Err(_) => Adapter::from_setting(Some(""))?,
+    };
     let listener = bind_local(&address).await?;
     let address = listener.local_addr()?;
     // Only a trusted child pipe carries this bounded, credential-free startup
@@ -448,10 +843,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         writeln!(std::io::stdout(), "NEURA_IPC_READY {address}")?;
         std::io::stdout().flush()?;
     }
-    info!(%address, "Neura synthetic local brain listening");
+    info!(%address, adapter = adapter.name(), "Neura synthetic local brain listening");
     axum::serve(
         listener,
-        app(session).into_make_service_with_connect_info::<SocketAddr>(),
+        app_with(session, adapter).into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await?;
     Ok(())
