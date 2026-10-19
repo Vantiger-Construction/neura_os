@@ -632,7 +632,10 @@ jobs:
     name: validate
     needs: reclaim-runner-space
     runs-on: [self-hosted, Windows, X64, neura]
-    timeout-minutes: 90
+    # The self-hosted laptop needs 60-95 minutes for this job depending on
+    # load and power state; 90 minutes cancelled otherwise-green runs during
+    # release publishing.
+    timeout-minutes: 150
     env:
       NEURA_FLUTTER_VOLUME: ${{ needs.reclaim-runner-space.outputs.flutter_volume }}
       NEURA_RUST_VOLUME: ${{ needs.reclaim-runner-space.outputs.rust_volume }}
@@ -996,6 +999,9 @@ jobs:
       - name: Publish required Windows release assets
         if: steps.client_config.outputs.configured == 'true'
         id: release_delivery
+        # Bound a stalled upload so it fails on its own instead of consuming
+        # the job budget; observed successful runs take 6-7 minutes.
+        timeout-minutes: 25
         env:
           GITHUB_TOKEN: ${{ github.token }}
           NEURA_RELEASE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
