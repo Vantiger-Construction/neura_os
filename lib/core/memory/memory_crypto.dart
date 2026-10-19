@@ -19,7 +19,7 @@ class MemoryCrypto {
   static bool _suspended = false;
 
   SecretKey? _key;
-  int _generationAtCreation;
+  final int _generationAtCreation;
   final AesGcm _algo = AesGcm.with256bits();
 
   MemoryCrypto._(this._key) : _generationAtCreation = _generation;
@@ -190,8 +190,9 @@ class MemoryCrypto {
   }
 
   Future<String> encryptJson(Map<String, dynamic> json) async {
-    final key = await _activeKey();
     final generation = _generation;
+    final key = await _activeKey();
+    _ensureGeneration(generation);
     final nonce = _algo.newNonce();
     final clear = utf8.encode(jsonEncode(json));
     final secretBox = await _algo.encrypt(clear, secretKey: key, nonce: nonce);
@@ -206,8 +207,9 @@ class MemoryCrypto {
   }
 
   Future<Map<String, dynamic>> decryptJson(String blob) async {
-    final key = await _activeKey();
     final generation = _generation;
+    final key = await _activeKey();
+    _ensureGeneration(generation);
     final m = jsonDecode(blob) as Map<String, dynamic>;
     final nonce = base64Decode(m['n'] as String);
     final cipher = base64Decode(m['c'] as String);
@@ -229,8 +231,9 @@ class MemoryCrypto {
   static const int _macLength = 16;
 
   Future<Uint8List> encryptBytes(Uint8List clear) async {
-    final key = await _activeKey();
     final generation = _generation;
+    final key = await _activeKey();
+    _ensureGeneration(generation);
     final nonce = _algo.newNonce();
     final secretBox = await _algo.encrypt(clear, secretKey: key, nonce: nonce);
     _ensureGeneration(generation);
@@ -245,8 +248,9 @@ class MemoryCrypto {
   }
 
   Future<Uint8List> decryptBytes(Uint8List blob) async {
-    final key = await _activeKey();
     final generation = _generation;
+    final key = await _activeKey();
+    _ensureGeneration(generation);
     final headerLen = _magic.length + 1 + _nonceLength + _macLength;
     if (blob.length < headerLen) {
       throw const FormatException('Encrypted blob too short.');
@@ -275,20 +279,25 @@ class MemoryCrypto {
   }
 
   Future<SecretKey> _activeKey() async {
+    requireActiveKey();
     final key = _key;
-    if (key != null && _generationAtCreation == _generation) return key;
-    final refreshed = await MemoryCrypto.demo();
-    final freshKey = refreshed._key;
-    if (freshKey == null) {
+    if (key == null) {
       throw StateError('No active Neura memory key is available.');
     }
-    _key = freshKey;
-    _generationAtCreation = _generation;
-    return freshKey;
+    return key;
+  }
+
+  /// A destroyed key handle never acquires the authority of a later key.
+  /// Consumers holding decrypted caches must check this before returning data.
+  void requireActiveKey() {
+    _ensureGeneration(_generationAtCreation);
+    if (_key == null) {
+      throw StateError('No active Neura memory key is available.');
+    }
   }
 
   void _ensureGeneration(int generation) {
-    if (generation != _generation) {
+    if (_suspended || generation != _generation) {
       throw StateError('The memory key was invalidated during this operation.');
     }
   }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../core/memory/memory_crypto.dart';
 import '../living_intelligence/neura_safety_policy.dart';
 import '../startup/neura_prefs_cache.dart';
@@ -19,7 +21,10 @@ final class MemoryCryptoDurableAdapter implements EncryptedMemoryDurableCrypto {
   final Object _authorityToken;
 
   @override
-  Object get authorityToken => _authorityToken;
+  Object get authorityToken {
+    crypto.requireActiveKey();
+    return _authorityToken;
+  }
 
   @override
   Future<Map<String, dynamic>> decryptJson(String blob) =>
@@ -50,21 +55,35 @@ final class EncryptedMemoryDurableScopedAdapter {
     required this.safetyPolicy,
     required this.keyLifecycle,
     Future<EncryptedMemoryDurableCrypto> Function()? loadCrypto,
+    DateTime Function()? utcNow,
     this.storageKey = defaultStorageKey,
   })  : _loadCrypto = loadCrypto ?? _loadDefaultCrypto,
+        _utcNow = utcNow ?? (() => DateTime.now().toUtc()),
         _state = _DurableScopedStorageRegistry.stateFor(storageKey);
 
   static const defaultStorageKey = 'neura.encrypted_memory.scoped.v1';
-  static final Object _defaultCryptoAuthority = Object();
 
   static void debugResetStorageRegistryForTesting() {
     _DurableScopedStorageRegistry.resetForTesting();
   }
 
+  /// Revoke access synchronously, before the full-wipe coordinator awaits I/O.
+  /// Only process restart creates a new storage registry after this boundary.
+  static void suspendAllForDataWipe() {
+    _DurableScopedStorageRegistry.suspendAllForDataWipe();
+  }
+
+  static Future<void> drainAllForDataWipe() =>
+      _DurableScopedStorageRegistry.drainAllForDataWipe();
+
+  /// Called only after MemoryCrypto verifies destruction of the OS device key.
+  static void confirmDeviceKeyDestroyedForDataWipe() {
+    _DurableScopedStorageRegistry.confirmDeviceKeyDestroyedForDataWipe();
+  }
+
   static Future<EncryptedMemoryDurableCrypto> _loadDefaultCrypto() async {
     return MemoryCryptoDurableAdapter(
       await MemoryCrypto.demo(),
-      authorityToken: _defaultCryptoAuthority,
     );
   }
 
@@ -72,6 +91,7 @@ final class EncryptedMemoryDurableScopedAdapter {
   final EncryptedMemoryKeyLifecycle keyLifecycle;
   final Future<EncryptedMemoryDurableCrypto> Function() _loadCrypto;
   final String storageKey;
+  final DateTime Function() _utcNow;
   final _DurableScopedStorageState _state;
   EncryptedMemoryDurableCrypto? _attachedCrypto;
   Object? _attachedCryptoAuthority;
@@ -151,6 +171,7 @@ final class EncryptedMemoryDurableScopedAdapter {
         _requireAvailable(safetyContext, expectedKeyGeneration);
         _requireUtc(nowUtc);
         _requireRestorable(record, expectedKeyGeneration);
+        _requireLeaseTime(lease, nowUtc);
         final loadedCrypto = _records.isEmpty && _quarantine.isEmpty
             ? await _loadVerifiedCryptoAuthority()
             : null;
@@ -172,6 +193,8 @@ final class EncryptedMemoryDurableScopedAdapter {
         }
         await _persist(
           crypto: crypto,
+          lease: lease,
+          requestedAtUtc: nowUtc,
           safetyContext: safetyContext,
           expectedKeyGeneration: expectedKeyGeneration,
         );
@@ -200,6 +223,12 @@ final class EncryptedMemoryDurableScopedAdapter {
     }
     _requireAvailable(safetyContext, expectedKeyGeneration);
     _requireUtc(nowUtc);
+    if (_records.isNotEmpty || _quarantine.isNotEmpty) {
+      _requireAttachedAuthority();
+    }
+    if (_state.pendingMutations != 0) {
+      throw const EncryptedMemoryPolicyViolation('durable_mutation_pending');
+    }
     lease.consumeFor(
       operation: EncryptedMemoryOperation.recall,
       requestedOwnerId: ownerId,
@@ -208,7 +237,7 @@ final class EncryptedMemoryDurableScopedAdapter {
       memoryClass: memoryClass,
       source: source,
       sensitivity: sensitivity,
-      nowUtc: nowUtc,
+      nowUtc: _leaseTime(nowUtc),
     );
     if (_records.isEmpty && _quarantine.isEmpty) return null;
     _requireAttachedAuthority();
@@ -255,7 +284,7 @@ final class EncryptedMemoryDurableScopedAdapter {
           memoryClass: memoryClass,
           source: source,
           sensitivity: sensitivity,
-          nowUtc: nowUtc,
+          nowUtc: _leaseTime(nowUtc),
         );
         final record = _records[recordId];
         if (record == null ||
@@ -285,6 +314,8 @@ final class EncryptedMemoryDurableScopedAdapter {
         );
         await _persist(
           crypto: crypto,
+          lease: lease,
+          requestedAtUtc: nowUtc,
           safetyContext: safetyContext,
           expectedKeyGeneration: expectedKeyGeneration,
         );
@@ -316,7 +347,7 @@ final class EncryptedMemoryDurableScopedAdapter {
           memoryClass: memoryClass,
           source: source,
           sensitivity: sensitivity,
-          nowUtc: nowUtc,
+          nowUtc: _leaseTime(nowUtc),
         );
         final removed = _removeMatching(
           recordId,
@@ -331,6 +362,8 @@ final class EncryptedMemoryDurableScopedAdapter {
         if (removed) {
           await _persist(
             crypto: crypto,
+            lease: lease,
+            requestedAtUtc: nowUtc,
             safetyContext: safetyContext,
             expectedKeyGeneration: expectedKeyGeneration,
           );
@@ -364,7 +397,7 @@ final class EncryptedMemoryDurableScopedAdapter {
           memoryClass: memoryClass,
           source: source,
           sensitivity: sensitivity,
-          nowUtc: nowUtc,
+          nowUtc: _leaseTime(nowUtc),
         );
         _records.removeWhere(
           (_, record) => _matches(
@@ -392,6 +425,8 @@ final class EncryptedMemoryDurableScopedAdapter {
         );
         await _persist(
           crypto: crypto,
+          lease: lease,
+          requestedAtUtc: nowUtc,
           safetyContext: safetyContext,
           expectedKeyGeneration: expectedKeyGeneration,
         );
@@ -424,7 +459,7 @@ final class EncryptedMemoryDurableScopedAdapter {
           memoryClass: memoryClass,
           source: source,
           sensitivity: sensitivity,
-          nowUtc: nowUtc,
+          nowUtc: _leaseTime(nowUtc),
         );
         final record = _quarantine[recordId];
         if (record == null ||
@@ -462,6 +497,8 @@ final class EncryptedMemoryDurableScopedAdapter {
         }
         await _persist(
           crypto: crypto,
+          lease: lease,
+          requestedAtUtc: nowUtc,
           safetyContext: safetyContext,
           expectedKeyGeneration: expectedKeyGeneration,
         );
@@ -514,6 +551,7 @@ final class EncryptedMemoryDurableScopedAdapter {
     final attached = _attachedCryptoAuthority;
     if (crypto == null ||
         attached == null ||
+        !identical(crypto.authorityToken, attached) ||
         !_state.matchesAuthority(
           safetyPolicy: safetyPolicy,
           keyLifecycle: keyLifecycle,
@@ -579,6 +617,16 @@ final class EncryptedMemoryDurableScopedAdapter {
     Future<T> Function() action, {
     bool allowReconciliation = false,
   }) {
+    // Register the owner before the first asynchronous crypto or storage call.
+    // Crypto attachment still requires successful verification and persistence.
+    try {
+      _state.attachOrVerifyOwner(
+        safetyPolicy: safetyPolicy,
+        keyLifecycle: keyLifecycle,
+      );
+    } catch (error, stackTrace) {
+      return Future<T>.error(error, stackTrace);
+    }
     final previous = _state.mutationTail;
     _state.startMutation();
     final result = previous.then((_) async {
@@ -598,10 +646,10 @@ final class EncryptedMemoryDurableScopedAdapter {
       } catch (error, stackTrace) {
         _records
           ..clear()
-          ..addAll(recordsBefore);
+          ..addAll(_state.suspendedForDataWipe ? const {} : recordsBefore);
         _quarantine
           ..clear()
-          ..addAll(quarantineBefore);
+          ..addAll(_state.suspendedForDataWipe ? const {} : quarantineBefore);
         Error.throwWithStackTrace(error, stackTrace);
       }
     });
@@ -613,14 +661,18 @@ final class EncryptedMemoryDurableScopedAdapter {
 
   Future<void> _persist({
     required EncryptedMemoryDurableCrypto crypto,
+    required EncryptedMemoryConsentLease lease,
+    required DateTime requestedAtUtc,
     required NeuraSafetyContext safetyContext,
     required int expectedKeyGeneration,
   }) async {
     _requireAvailable(safetyContext, expectedKeyGeneration);
+    _requireLeaseTime(lease, requestedAtUtc);
     if (_records.isEmpty && _quarantine.isEmpty) {
       var removeAttempted = false;
       try {
         _requireAvailable(safetyContext, expectedKeyGeneration);
+        _requireLeaseTime(lease, requestedAtUtc);
         removeAttempted = true;
         final removed = await NeuraPrefsCache.prefs.remove(storageKey);
         await NeuraPrefsCache.prefs.reload();
@@ -628,6 +680,7 @@ final class EncryptedMemoryDurableScopedAdapter {
           throw const EncryptedMemoryPolicyViolation('durable_remove_failed');
         }
         _requireAvailable(safetyContext, expectedKeyGeneration);
+        _requireLeaseTime(lease, requestedAtUtc);
       } catch (error, stackTrace) {
         if (removeAttempted) _state.requireReconciliation();
         try {
@@ -644,6 +697,7 @@ final class EncryptedMemoryDurableScopedAdapter {
     };
     final blob = await crypto.encryptJson(clear);
     _requireAvailable(safetyContext, expectedKeyGeneration);
+    _requireLeaseTime(lease, requestedAtUtc);
     var writeAttempted = false;
     try {
       writeAttempted = true;
@@ -653,12 +707,32 @@ final class EncryptedMemoryDurableScopedAdapter {
         throw const EncryptedMemoryPolicyViolation('durable_write_failed');
       }
       _requireAvailable(safetyContext, expectedKeyGeneration);
+      _requireLeaseTime(lease, requestedAtUtc);
     } catch (error, stackTrace) {
       if (writeAttempted) _state.requireReconciliation();
       try {
         await NeuraPrefsCache.prefs.reload();
       } catch (_) {}
       Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  DateTime _leaseTime(DateTime requestedAtUtc) {
+    _requireUtc(requestedAtUtc);
+    final current = _utcNow();
+    _requireUtc(current);
+    if (current.isBefore(requestedAtUtc)) {
+      throw const EncryptedMemoryPolicyViolation('consent_clock_rollback');
+    }
+    return current;
+  }
+
+  void _requireLeaseTime(
+    EncryptedMemoryConsentLease lease,
+    DateTime requestedAtUtc,
+  ) {
+    if (!lease.isWithinLifetime(_leaseTime(requestedAtUtc))) {
+      throw const EncryptedMemoryPolicyViolation('consent_not_authorized');
     }
   }
 
@@ -676,7 +750,7 @@ final class EncryptedMemoryDurableScopedAdapter {
       memoryClass: record.memoryClass,
       source: record.provenance.source,
       sensitivity: record.sensitivity,
-      nowUtc: nowUtc,
+      nowUtc: _leaseTime(nowUtc),
     );
   }
 
@@ -684,6 +758,9 @@ final class EncryptedMemoryDurableScopedAdapter {
     NeuraSafetyContext context,
     int expectedKeyGeneration,
   ) {
+    if (_state.suspendedForDataWipe) {
+      throw const EncryptedMemoryPolicyViolation('durable_memory_suspended');
+    }
     if (safetyPolicy.safeModeActive) {
       throw const EncryptedMemoryPolicyViolation('safe_mode_blocked');
     }
@@ -712,12 +789,71 @@ final class EncryptedMemoryDurableScopedAdapter {
 
 final class _DurableScopedStorageRegistry {
   static final Map<String, _DurableScopedStorageState> _states = {};
+  static bool _suspendedForDataWipe = false;
 
-  static _DurableScopedStorageState stateFor(String storageKey) =>
-      _states.putIfAbsent(storageKey, _DurableScopedStorageState.new);
+  static _DurableScopedStorageState stateFor(String storageKey) {
+    final state = _states.putIfAbsent(
+      storageKey,
+      _DurableScopedStorageState.new,
+    );
+    if (_suspendedForDataWipe) state.suspendForDataWipe();
+    return state;
+  }
+
+  static void suspendAllForDataWipe() {
+    _suspendedForDataWipe = true;
+    for (final state in _states.values) {
+      state.suspendForDataWipe();
+    }
+  }
+
+  static Future<void> drainAllForDataWipe() async {
+    await Future.wait(_states.entries.map(_drainAndRemove), eagerError: true);
+  }
+
+  static Future<void> _drainAndRemove(
+    MapEntry<String, _DurableScopedStorageState> entry,
+  ) async {
+    final drain = entry.value.mutationTail;
+    Future<void> remove() async {
+      final prefs = NeuraPrefsCache.prefs;
+      final removed = await prefs.remove(entry.key);
+      await prefs.reload();
+      if (!removed || prefs.containsKey(entry.key)) {
+        throw const EncryptedMemoryPolicyViolation('durable_remove_failed');
+      }
+    }
+
+    // One deadline includes the writer, native removal and verification reload.
+    // Timeout is a failed wipe, but must not prevent device-key deletion later.
+    final cleanup = drain.then((_) => remove());
+    try {
+      await cleanup.timeout(const Duration(seconds: 3));
+    } catch (_) {
+      // Timeout does not cancel native I/O. After it settles, remove once more
+      // in case a late write recreated ciphertext. Never upgrade the failed
+      // wipe to success, even if this best-effort bounded cleanup succeeds.
+      unawaited(cleanup
+          .then<void>((_) {}, onError: (Object error, StackTrace stackTrace) {})
+          .then((_) => remove().timeout(const Duration(seconds: 3)))
+          .catchError((_) {}));
+      rethrow;
+    }
+  }
+
+  static void confirmDeviceKeyDestroyedForDataWipe() {
+    for (final state in _states.values) {
+      final lifecycle = state.keyLifecycleAuthority;
+      if (lifecycle is EncryptedMemoryKeyLifecycle &&
+          lifecycle.state != EncryptedMemoryKeyState.destroyed) {
+        lifecycle.destroyVerifiedKey();
+      }
+    }
+  }
 
   static void resetForTesting() {
     _states.clear();
+    _suspendedForDataWipe = false;
   }
 }
 
@@ -729,7 +865,20 @@ final class _DurableScopedStorageState {
   Object? keyLifecycleAuthority;
   Object? cryptoAuthority;
   bool reconciliationRequired = false;
+  bool suspendedForDataWipe = false;
   int pendingMutations = 0;
+
+  void suspendForDataWipe() {
+    suspendedForDataWipe = true;
+    records.clear();
+    quarantine.clear();
+    final lifecycle = keyLifecycleAuthority;
+    if (lifecycle is EncryptedMemoryKeyLifecycle &&
+        (lifecycle.state == EncryptedMemoryKeyState.active ||
+            lifecycle.state == EncryptedMemoryKeyState.rotating)) {
+      lifecycle.suspend();
+    }
+  }
 
   void startMutation() {
     pendingMutations++;
@@ -747,28 +896,34 @@ final class _DurableScopedStorageState {
     reconciliationRequired = false;
   }
 
+  void attachOrVerifyOwner({
+    required Object safetyPolicy,
+    required Object keyLifecycle,
+  }) {
+    requireOwnerAuthorityOrEmpty(
+      safetyPolicy: safetyPolicy,
+      keyLifecycle: keyLifecycle,
+    );
+    safetyPolicyAuthority = safetyPolicy;
+    keyLifecycleAuthority = keyLifecycle;
+    if (suspendedForDataWipe) suspendForDataWipe();
+  }
+
   void attachOrVerifyAuthority({
     required Object safetyPolicy,
     required Object keyLifecycle,
     required Object cryptoAuthority,
   }) {
-    if (safetyPolicyAuthority == null &&
-        keyLifecycleAuthority == null &&
-        this.cryptoAuthority == null) {
-      safetyPolicyAuthority = safetyPolicy;
-      keyLifecycleAuthority = keyLifecycle;
-      this.cryptoAuthority = cryptoAuthority;
-      return;
-    }
-    if (!matchesAuthority(
+    verifyAuthority(
       safetyPolicy: safetyPolicy,
       keyLifecycle: keyLifecycle,
       cryptoAuthority: cryptoAuthority,
-    )) {
-      throw const EncryptedMemoryPolicyViolation(
-        'durable_authority_mismatch',
-      );
-    }
+    );
+    attachOrVerifyOwner(
+      safetyPolicy: safetyPolicy,
+      keyLifecycle: keyLifecycle,
+    );
+    this.cryptoAuthority = cryptoAuthority;
   }
 
   void verifyAuthority({
@@ -776,16 +931,12 @@ final class _DurableScopedStorageState {
     required Object keyLifecycle,
     required Object cryptoAuthority,
   }) {
-    if (safetyPolicyAuthority == null &&
-        keyLifecycleAuthority == null &&
-        this.cryptoAuthority == null) {
-      return;
-    }
-    if (!matchesAuthority(
+    requireOwnerAuthorityOrEmpty(
       safetyPolicy: safetyPolicy,
       keyLifecycle: keyLifecycle,
-      cryptoAuthority: cryptoAuthority,
-    )) {
+    );
+    if (this.cryptoAuthority != null &&
+        !identical(this.cryptoAuthority, cryptoAuthority)) {
       throw const EncryptedMemoryPolicyViolation(
         'durable_authority_mismatch',
       );

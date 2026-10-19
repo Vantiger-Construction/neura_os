@@ -1,0 +1,110 @@
+name: Neura memory release contracts
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths:
+      - 'lib/core/memory/**'
+      - 'lib/encrypted_memory/**'
+      - 'lib/src/core/data_wipe_service.dart'
+      - 'test/core/**'
+      - 'test/encrypted_memory/**'
+      - 'test/data_wipe*'
+      - 'test/helpers/scoped_wipe_native_contract.dart'
+      - 'test/fixtures/pr133-terminal-key-revocation.patch'
+      - '.github/workflows/neura-memory-release-contracts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-memory-contracts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Synthetic memory contracts (${{ matrix.source }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [current, with-wipe-pr133]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # This is a disposable working-tree integration, never a PR merge or push.
+      # Keep the candidate immutable so the evidence has an exact source scope.
+      # Retire this extra lane when #133's final integration is reviewed.
+      - name: Integrate the reviewed wipe candidate in this disposable checkout
+        if: matrix.source == 'with-wipe-pr133'
+        env:
+          WIPE_HEAD: b822c48be5a871d5a5e8e88825205d70534216d0
+        run: |
+          git fetch --no-tags origin "$WIPE_HEAD"
+          if ! git -c user.name='Synthetic validation' -c user.email='validation@localhost' \
+            merge --no-commit --no-ff "$WIPE_HEAD"; then
+            # Both PRs added this fixture. The reviewed current version retains
+            # #133's complete confinement and adds only held preference hooks.
+            # Resolve that exact pair only; any other conflict must fail closed.
+            fixture=test/helpers/data_wipe_fixture.dart
+            test "$(git diff --name-only --diff-filter=U)" = "$fixture"
+            test "$(git rev-parse ":2:$fixture")" = 383624734a80fa3716b8b3b9fee0cf49390aa49d
+            test "$(git rev-parse ":3:$fixture")" = d4f533ee6905694296ae8124947f2bca8f98b467
+            git checkout --ours -- "$fixture"
+            git add -- "$fixture"
+          fi
+          # #133 expected authentication failure from a refreshed old handle.
+          # The stronger contract rejects that destroyed handle before decrypt.
+          git apply --index test/fixtures/pr133-terminal-key-revocation.patch
+      - name: Record source identity
+        env:
+          REVIEW_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_HEAD: ${{ github.event.pull_request.base.sha || github.sha }}
+        run: |
+          mkdir -p validation/memory
+          git rev-parse HEAD > validation/memory/checkout-commit.txt
+          echo "$REVIEW_HEAD" > validation/memory/review-head.txt
+          echo "$BASE_HEAD" > validation/memory/base-head.txt
+          git write-tree > validation/memory/tested-tree.txt
+          git diff --cached --stat > validation/memory/integration-diff.txt
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Restore locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Focused memory and full-wipe regressions
+        run: |
+          set -o pipefail
+          flutter test --no-pub --reporter expanded --concurrency 2 --timeout 2m \
+            test/core test/encrypted_memory test/data_wipe*test.dart \
+            2>&1 | tee validation/memory/tests.txt
+      - name: Strict memory analysis
+        if: ${{ !cancelled() }}
+        run: |
+          flutter analyze --fatal-infos \
+            lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
+            test/data_wipe_memory_contracts_test.dart test/data_wipe_scoped_*test.dart test/helpers/data_wipe_fixture.dart test/helpers/scoped_wipe_native_contract.dart \
+            lib/src/core/data_wipe_service.dart
+      - name: Canonical memory formatting
+        if: ${{ !cancelled() }}
+        run: |
+          dart format lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
+            test/data_wipe_memory_contracts_test.dart test/data_wipe_scoped_*test.dart test/helpers/data_wipe_fixture.dart test/helpers/scoped_wipe_native_contract.dart \
+            lib/src/core/data_wipe_service.dart
+          git diff --exit-code -- lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
+            test/data_wipe_memory_contracts_test.dart test/data_wipe_scoped_*test.dart test/helpers/data_wipe_fixture.dart test/helpers/scoped_wipe_native_contract.dart \
+            lib/src/core/data_wipe_service.dart
+      - name: Preserve synthetic evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: neura-memory-contracts-${{ matrix.source }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: validation/memory/
+          if-no-files-found: warn
+          retention-days: 14
