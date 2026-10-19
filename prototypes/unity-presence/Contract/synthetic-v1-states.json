@@ -1,0 +1,56 @@
+[
+  {
+    "v": 1,
+    "room_id": "penthouse",
+    "phase": "idle",
+    "stance": "welcoming",
+    "motion": "still",
+    "scale": "compact",
+    "safe_mode": false
+  },
+  {
+    "v": 1,
+    "room_id": "reflection_bay",
+    "phase": "thinking",
+    "stance": "reflective",
+    "motion": "subtle",
+    "scale": "standard",
+    "safe_mode": false
+  },
+  {
+    "v": 1,
+    "room_id": "joy_lounge",
+    "phase": "speaking",
+    "stance": "playful",
+    "motion": "expressive",
+    "scale": "large",
+    "safe_mode": false
+  },
+  {
+    "v": 1,
+    "room_id": "mood_den",
+    "phase": "listening",
+    "stance": "grounding",
+    "motion": "still",
+    "scale": "compact",
+    "safe_mode": false
+  },
+  {
+    "v": 1,
+    "room_id": "dream_atrium",
+    "phase": "safeMode",
+    "stance": "dreaming",
+    "motion": "still",
+    "scale": "standard",
+    "safe_mode": true
+  },
+  {
+    "v": 1,
+    "room_id": "legacy_vault",
+    "phase": "idle",
+    "stance": "guardian",
+    "motion": "expressive",
+    "scale": "large",
+    "safe_mode": false
+  }
+]

@@ -1,0 +1,7 @@
+{
+  "name": "Neura.Presence.TestCases",
+  "references": ["Neura.Presence.Core"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false,
+  "noEngineReferences": true
+}
