@@ -176,7 +176,7 @@ void main() {
     'default crypto authority restores and can write after empty durable state',
     () async {
       final subject = EncryptedMemoryDurableScopedAdapter(
-      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
+        utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: keys,
       );
@@ -189,7 +189,7 @@ void main() {
       );
 
       final restarted = EncryptedMemoryDurableScopedAdapter(
-      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
+        utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: keys,
       );
@@ -236,7 +236,7 @@ void main() {
         nowUtc: issuedAt.add(const Duration(seconds: 3)),
       );
       final afterEmptyRestart = EncryptedMemoryDurableScopedAdapter(
-      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
+        utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: keys,
       );
@@ -345,7 +345,7 @@ void main() {
       EncryptedMemoryDurableCrypto freshWrapper() =>
           _FreshWrapperDurableCrypto(inner, authority);
       final seeded = EncryptedMemoryDurableScopedAdapter(
-      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
+        utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: keys,
         loadCrypto: () async => freshWrapper(),
@@ -359,7 +359,7 @@ void main() {
       );
 
       final failedRestore = EncryptedMemoryDurableScopedAdapter(
-      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
+        utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: keys,
         loadCrypto: () async => _FailingDecryptDurableCrypto(authority),
@@ -402,7 +402,7 @@ void main() {
       EncryptedMemoryDurableCrypto freshWrapper() =>
           _FreshWrapperDurableCrypto(inner, authority);
       final seeded = EncryptedMemoryDurableScopedAdapter(
-      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
+        utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: keys,
         loadCrypto: () async => freshWrapper(),
@@ -420,7 +420,7 @@ void main() {
         authority,
       );
       final pendingRestore = EncryptedMemoryDurableScopedAdapter(
-      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
+        utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: keys,
         loadCrypto: () async => delayedCrypto,
@@ -887,7 +887,7 @@ void main() {
 
       final wrongKeys = EncryptedMemoryKeyLifecycle()..provisionVerifiedKey();
       final wrongLifecycle = EncryptedMemoryDurableScopedAdapter(
-      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
+        utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: wrongKeys,
         loadCrypto: () async => _ThrowingDurableCrypto(),
@@ -925,7 +925,7 @@ void main() {
       );
 
       final wrongCrypto = EncryptedMemoryDurableScopedAdapter(
-      utcNow: () => issuedAt.add(const Duration(seconds: 30)),
+        utcNow: () => issuedAt.add(const Duration(seconds: 30)),
         safetyPolicy: safety,
         keyLifecycle: keys,
         loadCrypto: () async => _ThrowingDurableCrypto(),

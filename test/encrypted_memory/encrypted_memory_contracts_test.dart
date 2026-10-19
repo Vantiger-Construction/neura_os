@@ -13,7 +13,8 @@ void main() {
   );
 
   group('encrypted memory consent and retrieval scope', () {
-    test('the 15-minute maximum includes neither pre-issue nor expiry access', () {
+    test('the 15-minute maximum includes neither pre-issue nor expiry access',
+        () {
       final lease = EncryptedMemoryConsentLease(
         id: 'maximum-lifetime',
         scope: scope,
@@ -32,19 +33,26 @@ void main() {
             sensitivity: EncryptedMemorySensitivity.personal,
             nowUtc: time,
           );
-      expect(permits(issuedAt.subtract(const Duration(microseconds: 1))), isFalse);
+      expect(
+          permits(issuedAt.subtract(const Duration(microseconds: 1))), isFalse);
       expect(permits(issuedAt), isTrue);
-      expect(permits(lease.expiresAtUtc.subtract(const Duration(microseconds: 1))), isTrue);
+      expect(
+          permits(lease.expiresAtUtc.subtract(const Duration(microseconds: 1))),
+          isTrue);
       expect(permits(lease.expiresAtUtc), isFalse);
-      expect(permits(lease.expiresAtUtc.add(const Duration(microseconds: 1))), isFalse);
-      expect(() => EncryptedMemoryConsentLease(
-        id: 'over-maximum',
-        scope: scope,
-        operations: const {EncryptedMemoryOperation.recall},
-        issuedAtUtc: issuedAt,
-        expiresAtUtc: lease.expiresAtUtc.add(const Duration(microseconds: 1)),
-        directUserGesture: true,
-      ), throwsA(isA<EncryptedMemoryPolicyViolation>()));
+      expect(permits(lease.expiresAtUtc.add(const Duration(microseconds: 1))),
+          isFalse);
+      expect(
+          () => EncryptedMemoryConsentLease(
+                id: 'over-maximum',
+                scope: scope,
+                operations: const {EncryptedMemoryOperation.recall},
+                issuedAtUtc: issuedAt,
+                expiresAtUtc:
+                    lease.expiresAtUtc.add(const Duration(microseconds: 1)),
+                directUserGesture: true,
+              ),
+          throwsA(isA<EncryptedMemoryPolicyViolation>()));
     });
 
     test('is exact-scope, short-lived, direct, and single-use', () {

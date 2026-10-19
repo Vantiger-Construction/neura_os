@@ -10,6 +10,7 @@ on:
       - 'test/core/**'
       - 'test/encrypted_memory/**'
       - 'test/data_wipe*'
+      - 'test/fixtures/pr133-terminal-key-revocation.patch'
       - '.github/workflows/neura-memory-release-contracts.yml'
   workflow_dispatch:
 
@@ -45,10 +46,18 @@ jobs:
           git fetch --no-tags origin "$WIPE_HEAD"
           git -c user.name='Synthetic validation' -c user.email='validation@localhost' \
             merge --no-commit --no-ff "$WIPE_HEAD"
+          # #133 expected authentication failure from a refreshed old handle.
+          # The stronger contract rejects that destroyed handle before decrypt.
+          git apply --index test/fixtures/pr133-terminal-key-revocation.patch
       - name: Record source identity
+        env:
+          REVIEW_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_HEAD: ${{ github.event.pull_request.base.sha || github.sha }}
         run: |
           mkdir -p validation/memory
           git rev-parse HEAD > validation/memory/checkout-commit.txt
+          echo "$REVIEW_HEAD" > validation/memory/review-head.txt
+          echo "$BASE_HEAD" > validation/memory/base-head.txt
           git write-tree > validation/memory/tested-tree.txt
           git diff --cached --stat > validation/memory/integration-diff.txt
       - uses: subosito/flutter-action@v2
@@ -68,12 +77,15 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           flutter analyze --fatal-infos \
-            lib/core/memory lib/encrypted_memory test/core test/encrypted_memory
+            lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
+            test/data_wipe_memory_contracts_test.dart test/helpers/data_wipe_fixture.dart
       - name: Canonical memory formatting
         if: ${{ !cancelled() }}
         run: |
-          dart format lib/core/memory lib/encrypted_memory test/core test/encrypted_memory
-          git diff --exit-code -- lib/core/memory lib/encrypted_memory test/core test/encrypted_memory
+          dart format lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
+            test/data_wipe_memory_contracts_test.dart test/helpers/data_wipe_fixture.dart
+          git diff --exit-code -- lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
+            test/data_wipe_memory_contracts_test.dart test/helpers/data_wipe_fixture.dart
       - name: Preserve synthetic evidence
         if: always()
         uses: actions/upload-artifact@v6

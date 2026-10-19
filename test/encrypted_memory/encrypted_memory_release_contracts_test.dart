@@ -28,7 +28,8 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await NeuraPrefsCache.init();
     await NeuraPrefsCache.prefs.clear();
-    binding.defaultBinaryMessenger.setMockMethodCallHandler(secure, (call) async {
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(secure,
+        (call) async {
       final args = call.arguments as Map;
       final key = args['key'] as String;
       switch (call.method) {
@@ -77,7 +78,8 @@ void main() {
         directUserGesture: true,
       );
 
-  EncryptedMemoryDurableScopedAdapter adapter({bool useDefaultCrypto = false}) =>
+  EncryptedMemoryDurableScopedAdapter adapter(
+          {bool useDefaultCrypto = false}) =>
       EncryptedMemoryDurableScopedAdapter(
         safetyPolicy: safety,
         keyLifecycle: keys,
@@ -152,7 +154,8 @@ void main() {
         replacementValue: 'synthetic replacement',
       );
 
-  test('expired recall cannot backdate access using its request timestamp', () async {
+  test('expired recall cannot backdate access using its request timestamp',
+      () async {
     final subject = adapter();
     await seed(subject);
     final consent = lease('recall', EncryptedMemoryOperation.recall);
@@ -163,28 +166,38 @@ void main() {
       throwsA(isA<EncryptedMemoryPolicyViolation>()),
     );
     expect(consent.isConsumed, isFalse);
-    expect(recall(subject, lease('fresh-recall', EncryptedMemoryOperation.recall))?.value, value);
+    expect(
+        recall(subject, lease('fresh-recall', EncryptedMemoryOperation.recall))
+            ?.value,
+        value);
   });
 
-  test('expiry during encryption rolls back and blocks a queued expired mutation', () async {
+  test(
+      'expiry during encryption rolls back and blocks a queued expired mutation',
+      () async {
     final subject = adapter();
     await seed(subject);
     final before = NeuraPrefsCache.prefs.getString(storage);
     crypto.pauseEncryption = true;
     final correction = lease('correct', EncryptedMemoryOperation.correct);
     final pending = correct(subject, correction);
-    final rejected = expectLater(pending, throwsA(isA<EncryptedMemoryPolicyViolation>()));
+    final rejected =
+        expectLater(pending, throwsA(isA<EncryptedMemoryPolicyViolation>()));
     await crypto.started.future;
     final read = lease('read-during-commit', EncryptedMemoryOperation.recall);
     expect(
       () => recall(subject, read),
       throwsA(isA<EncryptedMemoryPolicyViolation>().having(
-        (e) => e.code, 'code', 'durable_mutation_pending',
+        (e) => e.code,
+        'code',
+        'durable_mutation_pending',
       )),
     );
     expect(read.isConsumed, isFalse);
-    final queuedConsent = lease('queued-correct', EncryptedMemoryOperation.correct);
-    final queued = expectLater(correct(subject, queuedConsent), throwsA(isA<EncryptedMemoryPolicyViolation>()));
+    final queuedConsent =
+        lease('queued-correct', EncryptedMemoryOperation.correct);
+    final queued = expectLater(correct(subject, queuedConsent),
+        throwsA(isA<EncryptedMemoryPolicyViolation>()));
     now = correction.expiresAtUtc;
     crypto.release();
     await rejected;
@@ -192,11 +205,15 @@ void main() {
     expect(correction.isConsumed, isTrue);
     expect(queuedConsent.isConsumed, isFalse);
     expect(NeuraPrefsCache.prefs.getString(storage), before);
-    expect(recall(subject, lease('fresh-recall', EncryptedMemoryOperation.recall))?.value, value);
+    expect(
+        recall(subject, lease('fresh-recall', EncryptedMemoryOperation.recall))
+            ?.value,
+        value);
   });
 
   for (final operation in ['correction', 'restore']) {
-    test('device-key destruction cancels pending $operation and cached recall', () async {
+    test('device-key destruction cancels pending $operation and cached recall',
+        () async {
       final subject = adapter();
       await seed(subject);
       final before = NeuraPrefsCache.prefs.getString(storage);
@@ -204,7 +221,8 @@ void main() {
       crypto.pauseDecryption = operation == 'restore';
       final Future<Object?> pending = operation == 'correction'
           ? correct(subject, lease('correct', EncryptedMemoryOperation.correct))
-          : subject.restore(safetyContext: context, expectedKeyGeneration: keys.generation);
+          : subject.restore(
+              safetyContext: context, expectedKeyGeneration: keys.generation);
       final rejected = expectLater(pending, throwsStateError);
       await crypto.started.future;
       // Deliberately keep the policy lifecycle active: the real device-key
@@ -213,26 +231,37 @@ void main() {
       crypto.release();
       await rejected;
       expect(NeuraPrefsCache.prefs.getString(storage), before);
-      expect(() => recall(subject, lease('recall', EncryptedMemoryOperation.recall)), throwsStateError);
+      expect(
+          () =>
+              recall(subject, lease('recall', EncryptedMemoryOperation.recall)),
+          throwsStateError);
     });
   }
 
-  test('default crypto revokes cached access after successful cleanup and rekey', () async {
+  test(
+      'default crypto revokes cached access after successful cleanup and rekey',
+      () async {
     final subject = adapter(useDefaultCrypto: true);
     await seed(subject);
     await MemoryCrypto.clearDeviceKey();
     MemoryCrypto.resumeAfterDataWipe();
     final fresh = await MemoryCrypto.demo();
-    final freshBlob = await fresh.encryptJson({'value': 'fresh synthetic data'});
-    expect(() => recall(subject, lease('recall', EncryptedMemoryOperation.recall)), throwsStateError);
+    final freshBlob =
+        await fresh.encryptJson({'value': 'fresh synthetic data'});
+    expect(
+        () => recall(subject, lease('recall', EncryptedMemoryOperation.recall)),
+        throwsStateError);
     await expectLater(crypto.inner.decryptJson(freshBlob), throwsStateError);
     await expectLater(
-      adapter(useDefaultCrypto: true).restore(safetyContext: context, expectedKeyGeneration: keys.generation),
+      adapter(useDefaultCrypto: true).restore(
+          safetyContext: context, expectedKeyGeneration: keys.generation),
       throwsA(isA<EncryptedMemoryPolicyViolation>()),
     );
   });
 
-  test('corrupt authenticated storage installs no partial records and can be retried', () async {
+  test(
+      'corrupt authenticated storage installs no partial records and can be retried',
+      () async {
     final subject = adapter();
     await seed(subject);
     final original = NeuraPrefsCache.prefs.getString(storage)!;
@@ -246,30 +275,40 @@ void main() {
     EncryptedMemoryDurableScopedAdapter.debugResetStorageRegistryForTesting();
     final restarted = adapter();
     await expectLater(
-      restarted.restore(safetyContext: context, expectedKeyGeneration: keys.generation),
+      restarted.restore(
+          safetyContext: context, expectedKeyGeneration: keys.generation),
       throwsA(isA<Exception>()),
     );
     expect(restarted.recordCount, 0);
     expect(restarted.quarantinedRecordCount, 0);
     expect(NeuraPrefsCache.prefs.getString(storage), corrupt);
-    expect(recall(restarted, lease('missing', EncryptedMemoryOperation.recall)), isNull);
+    expect(recall(restarted, lease('missing', EncryptedMemoryOperation.recall)),
+        isNull);
     await NeuraPrefsCache.prefs.setString(storage, original);
-    await restarted.restore(safetyContext: context, expectedKeyGeneration: keys.generation);
-    expect(recall(restarted, lease('recovered', EncryptedMemoryOperation.recall))?.value, value);
+    await restarted.restore(
+        safetyContext: context, expectedKeyGeneration: keys.generation);
+    expect(
+        recall(restarted, lease('recovered', EncryptedMemoryOperation.recall))
+            ?.value,
+        value);
   });
 
-  test('Safe Mode during a pending restore blocks publication and recall', () async {
+  test('Safe Mode during a pending restore blocks publication and recall',
+      () async {
     final subject = adapter();
     await seed(subject);
     crypto.pauseDecryption = true;
-    final pending = subject.restore(safetyContext: context, expectedKeyGeneration: keys.generation);
-    final rejected = expectLater(pending, throwsA(isA<EncryptedMemoryPolicyViolation>()));
+    final pending = subject.restore(
+        safetyContext: context, expectedKeyGeneration: keys.generation);
+    final rejected =
+        expectLater(pending, throwsA(isA<EncryptedMemoryPolicyViolation>()));
     await crypto.started.future;
     safeMode = true;
     crypto.release();
     await rejected;
     final read = lease('recall-safe', EncryptedMemoryOperation.recall);
-    expect(() => recall(subject, read), throwsA(isA<EncryptedMemoryPolicyViolation>()));
+    expect(() => recall(subject, read),
+        throwsA(isA<EncryptedMemoryPolicyViolation>()));
     expect(read.isConsumed, isFalse);
   });
 }
