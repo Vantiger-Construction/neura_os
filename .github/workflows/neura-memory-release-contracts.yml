@@ -78,14 +78,17 @@ jobs:
         run: |
           flutter analyze --fatal-infos \
             lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
-            test/data_wipe_memory_contracts_test.dart test/helpers/data_wipe_fixture.dart
+            test/data_wipe_memory_contracts_test.dart test/helpers/data_wipe_fixture.dart \
+            lib/src/core/data_wipe_service.dart
       - name: Canonical memory formatting
         if: ${{ !cancelled() }}
         run: |
           dart format lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
-            test/data_wipe_memory_contracts_test.dart test/helpers/data_wipe_fixture.dart
+            test/data_wipe_memory_contracts_test.dart test/helpers/data_wipe_fixture.dart \
+            lib/src/core/data_wipe_service.dart
           git diff --exit-code -- lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
-            test/data_wipe_memory_contracts_test.dart test/helpers/data_wipe_fixture.dart
+            test/data_wipe_memory_contracts_test.dart test/helpers/data_wipe_fixture.dart \
+            lib/src/core/data_wipe_service.dart
       - name: Preserve synthetic evidence
         if: always()
         uses: actions/upload-artifact@v6

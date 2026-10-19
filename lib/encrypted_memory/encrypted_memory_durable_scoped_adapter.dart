@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../core/memory/memory_crypto.dart';
 import '../living_intelligence/neura_safety_policy.dart';
 import '../startup/neura_prefs_cache.dart';
@@ -63,6 +65,20 @@ final class EncryptedMemoryDurableScopedAdapter {
 
   static void debugResetStorageRegistryForTesting() {
     _DurableScopedStorageRegistry.resetForTesting();
+  }
+
+  /// Revoke access synchronously, before the full-wipe coordinator awaits I/O.
+  /// Only process restart creates a new storage registry after this boundary.
+  static void suspendAllForDataWipe() {
+    _DurableScopedStorageRegistry.suspendAllForDataWipe();
+  }
+
+  static Future<void> drainAllForDataWipe() =>
+      _DurableScopedStorageRegistry.drainAllForDataWipe();
+
+  /// Called only after MemoryCrypto verifies destruction of the OS device key.
+  static void confirmDeviceKeyDestroyedForDataWipe() {
+    _DurableScopedStorageRegistry.confirmDeviceKeyDestroyedForDataWipe();
   }
 
   static Future<EncryptedMemoryDurableCrypto> _loadDefaultCrypto() async {
@@ -620,10 +636,10 @@ final class EncryptedMemoryDurableScopedAdapter {
       } catch (error, stackTrace) {
         _records
           ..clear()
-          ..addAll(recordsBefore);
+          ..addAll(_state.suspendedForDataWipe ? const {} : recordsBefore);
         _quarantine
           ..clear()
-          ..addAll(quarantineBefore);
+          ..addAll(_state.suspendedForDataWipe ? const {} : quarantineBefore);
         Error.throwWithStackTrace(error, stackTrace);
       }
     });
@@ -732,6 +748,9 @@ final class EncryptedMemoryDurableScopedAdapter {
     NeuraSafetyContext context,
     int expectedKeyGeneration,
   ) {
+    if (_state.suspendedForDataWipe) {
+      throw const EncryptedMemoryPolicyViolation('durable_memory_suspended');
+    }
     if (safetyPolicy.safeModeActive) {
       throw const EncryptedMemoryPolicyViolation('safe_mode_blocked');
     }
@@ -760,12 +779,65 @@ final class EncryptedMemoryDurableScopedAdapter {
 
 final class _DurableScopedStorageRegistry {
   static final Map<String, _DurableScopedStorageState> _states = {};
+  static bool _suspendedForDataWipe = false;
 
-  static _DurableScopedStorageState stateFor(String storageKey) =>
-      _states.putIfAbsent(storageKey, _DurableScopedStorageState.new);
+  static _DurableScopedStorageState stateFor(String storageKey) {
+    final state = _states.putIfAbsent(
+      storageKey,
+      _DurableScopedStorageState.new,
+    );
+    if (_suspendedForDataWipe) state.suspendForDataWipe();
+    return state;
+  }
+
+  static void suspendAllForDataWipe() {
+    _suspendedForDataWipe = true;
+    for (final state in _states.values) {
+      state.suspendForDataWipe();
+    }
+  }
+
+  static Future<void> drainAllForDataWipe() async {
+    await Future.wait(_states.entries.map(_drainAndRemove));
+  }
+
+  static Future<void> _drainAndRemove(
+    MapEntry<String, _DurableScopedStorageState> entry,
+  ) async {
+    final drain = entry.value.mutationTail;
+    Future<void> remove() async {
+      final prefs = NeuraPrefsCache.prefs;
+      final removed = await prefs.remove(entry.key);
+      await prefs.reload();
+      if (!removed || prefs.containsKey(entry.key)) {
+        throw const EncryptedMemoryPolicyViolation('durable_remove_failed');
+      }
+    }
+
+    try {
+      await drain.timeout(const Duration(seconds: 3));
+      await remove();
+    } catch (_) {
+      // A timed-out native write may finish after the coordinator clears prefs.
+      // Delete its result again, while retaining the failed-wipe outcome.
+      unawaited(drain.then((_) => remove()).catchError((_) {}));
+      rethrow;
+    }
+  }
+
+  static void confirmDeviceKeyDestroyedForDataWipe() {
+    for (final state in _states.values) {
+      final lifecycle = state.keyLifecycleAuthority;
+      if (lifecycle is EncryptedMemoryKeyLifecycle &&
+          lifecycle.state != EncryptedMemoryKeyState.destroyed) {
+        lifecycle.destroyVerifiedKey();
+      }
+    }
+  }
 
   static void resetForTesting() {
     _states.clear();
+    _suspendedForDataWipe = false;
   }
 }
 
@@ -777,7 +849,20 @@ final class _DurableScopedStorageState {
   Object? keyLifecycleAuthority;
   Object? cryptoAuthority;
   bool reconciliationRequired = false;
+  bool suspendedForDataWipe = false;
   int pendingMutations = 0;
+
+  void suspendForDataWipe() {
+    suspendedForDataWipe = true;
+    records.clear();
+    quarantine.clear();
+    final lifecycle = keyLifecycleAuthority;
+    if (lifecycle is EncryptedMemoryKeyLifecycle &&
+        (lifecycle.state == EncryptedMemoryKeyState.active ||
+            lifecycle.state == EncryptedMemoryKeyState.rotating)) {
+      lifecycle.suspend();
+    }
+  }
 
   void startMutation() {
     pendingMutations++;

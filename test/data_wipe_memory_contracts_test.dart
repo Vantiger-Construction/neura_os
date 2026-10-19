@@ -17,7 +17,9 @@ void main() {
 
   // Like the other full-wipe regressions, this file has a dedicated isolate.
   // Production writer/credential suspension is terminal for this process.
-  test('full wipe revokes a pending scoped write through failed deletion and retry', () async {
+  test(
+      'full wipe revokes a pending scoped write through failed deletion and retry',
+      () async {
     final f = await DataWipeFixture.create();
     await f.run(() async {
       final now = DateTime.utc(2026, 10, 19, 12);
@@ -30,7 +32,8 @@ void main() {
         sources: const {EncryptedMemorySource.authenticatedUser},
         sensitivity: EncryptedMemorySensitivity.personal,
       );
-      EncryptedMemoryConsentLease consent(String id, EncryptedMemoryOperation op) =>
+      EncryptedMemoryConsentLease consent(
+              String id, EncryptedMemoryOperation op) =>
           EncryptedMemoryConsentLease(
             id: id,
             scope: scope,
@@ -92,51 +95,69 @@ void main() {
         nowUtc: now,
         replacementValue: 'synthetic late correction',
       );
-      final rejected = expectLater(pending, throwsA(anyOf(
-        isA<StateError>(), isA<EncryptedMemoryPolicyViolation>(),
-      )));
+      final rejected = expectLater(
+          pending,
+          throwsA(anyOf(
+            isA<StateError>(),
+            isA<EncryptedMemoryPolicyViolation>(),
+          )));
       await held.started.future;
       f.ignoredSecretDeletes.add(DataWipeFixture.memoryKey);
       try {
         await expectLater(
           NeuraDataWipeService.wipeAllLocalData(),
           throwsA(isA<NeuraDataWipeException>().having(
-            (e) => e.failedSteps, 'failed steps', contains('device encryption key deletion'),
+            (e) => e.failedSteps,
+            'failed steps',
+            contains('device encryption key deletion'),
           )),
         );
         expect(SafeBoot.instance.safeMode.value, isTrue);
+        expect(subject.recordCount, 0);
+        expect(subject.quarantinedRecordCount, 0);
+        expect(keys.state, EncryptedMemoryKeyState.suspended);
         await expectLater(MemoryCrypto.demo(), throwsStateError);
-        expect(NeuraPrefsCache.prefs.containsKey(
-          EncryptedMemoryDurableScopedAdapter.defaultStorageKey,
-        ), isFalse);
+        expect(
+            NeuraPrefsCache.prefs.containsKey(
+              EncryptedMemoryDurableScopedAdapter.defaultStorageKey,
+            ),
+            isFalse);
       } finally {
         held.release.complete();
       }
       await rejected;
+      expect(subject.recordCount, 0);
       f.ignoredSecretDeletes.clear();
       await NeuraDataWipeService.wipeAllLocalData();
       await NeuraDataWipeService.wipeAllLocalData();
       expect(SafeBoot.instance.safeMode.value, isTrue);
+      expect(keys.state, EncryptedMemoryKeyState.destroyed);
+      expect(subject.recordCount, 0);
       expect(f.secrets.containsKey(DataWipeFixture.memoryKey), isFalse);
-      expect(NeuraPrefsCache.prefs.containsKey(
-        EncryptedMemoryDurableScopedAdapter.defaultStorageKey,
-      ), isFalse);
+      expect(
+          NeuraPrefsCache.prefs.containsKey(
+            EncryptedMemoryDurableScopedAdapter.defaultStorageKey,
+          ),
+          isFalse);
       await expectLater(held.inner.decryptJson(ciphertext), throwsStateError);
-      await expectLater(held.inner.encryptJson({'value': 'late'}), throwsStateError);
+      await expectLater(
+          held.inner.encryptJson({'value': 'late'}), throwsStateError);
       final read = consent('recall', EncryptedMemoryOperation.recall);
-      expect(() => subject.recall(
-        lease: read,
-        safetyContext: context,
-        recordId: 'record',
-        ownerId: 'owner',
-        deviceId: 'device',
-        capsuleId: 'personal',
-        memoryClass: EncryptedMemoryClass.explicitPreference,
-        source: EncryptedMemorySource.authenticatedUser,
-        sensitivity: EncryptedMemorySensitivity.personal,
-        expectedKeyGeneration: keys.generation,
-        nowUtc: now,
-      ), throwsA(isA<EncryptedMemoryPolicyViolation>()));
+      expect(
+          () => subject.recall(
+                lease: read,
+                safetyContext: context,
+                recordId: 'record',
+                ownerId: 'owner',
+                deviceId: 'device',
+                capsuleId: 'personal',
+                memoryClass: EncryptedMemoryClass.explicitPreference,
+                source: EncryptedMemorySource.authenticatedUser,
+                sensitivity: EncryptedMemorySensitivity.personal,
+                expectedKeyGeneration: keys.generation,
+                nowUtc: now,
+              ),
+          throwsA(isA<EncryptedMemoryPolicyViolation>()));
       expect(read.isConsumed, isFalse);
       f.expectIsolation();
     });
@@ -167,5 +188,6 @@ final class _HeldMemoryCrypto implements EncryptedMemoryDurableCrypto {
   }
 
   @override
-  Future<Map<String, dynamic>> decryptJson(String blob) => inner.decryptJson(blob);
+  Future<Map<String, dynamic>> decryptJson(String blob) =>
+      inner.decryptJson(blob);
 }

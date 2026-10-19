@@ -10,6 +10,7 @@ import 'package:neuro_companion/encrypted_memory/encrypted_memory_session_adapte
 import 'package:neuro_companion/living_intelligence/neura_safety_policy.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
@@ -170,6 +171,72 @@ void main() {
         recall(subject, lease('fresh-recall', EncryptedMemoryOperation.recall))
             ?.value,
         value);
+  });
+
+  test('clock rollback cannot reuse the original request time', () async {
+    final subject = adapter();
+    await seed(subject);
+    final consent = lease('recall', EncryptedMemoryOperation.recall);
+    final requestedAt = now;
+    now = now.subtract(const Duration(microseconds: 1));
+    expect(
+      () => recall(subject, consent, requestedAt: requestedAt),
+      throwsA(isA<EncryptedMemoryPolicyViolation>().having(
+        (e) => e.code,
+        'code',
+        'consent_clock_rollback',
+      )),
+    );
+    expect(consent.isConsumed, isFalse);
+  });
+
+  test('expiry after a platform write requires explicit reconciliation', () async {
+    final subject = adapter();
+    await seed(subject);
+    final prefs = NeuraPrefsCache.prefs;
+    final before = prefs.getString(storage);
+    final originalPlatform = SharedPreferencesStorePlatform.instance;
+    final platform = _PausedPreferencesStore({
+      for (final key in prefs.getKeys()) 'flutter.$key': prefs.get(key)!,
+    });
+    SharedPreferencesStorePlatform.instance = platform;
+    addTearDown(() async {
+      platform.release();
+      SharedPreferencesStorePlatform.instance = originalPlatform;
+      await prefs.reload();
+    });
+    await prefs.reload();
+    final correction = lease('correct', EncryptedMemoryOperation.correct);
+    final rejected = expectLater(
+      correct(subject, correction),
+      throwsA(isA<EncryptedMemoryPolicyViolation>()),
+    );
+    await platform.started.future;
+    now = correction.expiresAtUtc;
+    platform.release();
+    await rejected;
+    // An already-issued native write cannot be recalled. Its encrypted result
+    // must remain unreadable until an explicit restore reconciles disk state.
+    expect(prefs.getString(storage), isNot(before));
+    expect(prefs.getString(storage), isNot(contains('synthetic replacement')));
+    final read = lease('unreconciled', EncryptedMemoryOperation.recall);
+    expect(
+      () => recall(subject, read),
+      throwsA(isA<EncryptedMemoryPolicyViolation>().having(
+        (e) => e.code,
+        'code',
+        'durable_reconciliation_required',
+      )),
+    );
+    expect(read.isConsumed, isFalse);
+    await subject.restore(
+      safetyContext: context,
+      expectedKeyGeneration: keys.generation,
+    );
+    expect(
+      recall(subject, lease('fresh', EncryptedMemoryOperation.recall))?.value,
+      'synthetic replacement',
+    );
   });
 
   test(
@@ -347,5 +414,43 @@ final class _PausedRealCrypto implements EncryptedMemoryDurableCrypto {
   Future<Map<String, dynamic>> decryptJson(String blob) async {
     if (pauseDecryption) await _pause();
     return inner.decryptJson(blob);
+  }
+}
+
+final class _PausedPreferencesStore extends SharedPreferencesStorePlatform {
+  _PausedPreferencesStore(this.data);
+
+  final Map<String, Object> data;
+  final started = Completer<void>();
+  final _released = Completer<void>();
+
+  void release() {
+    if (!_released.isCompleted) _released.complete();
+  }
+
+  @override
+  bool get isMock => true;
+
+  @override
+  Future<bool> clear() async {
+    data.clear();
+    return true;
+  }
+
+  @override
+  Future<Map<String, Object>> getAll() async => Map<String, Object>.from(data);
+
+  @override
+  Future<bool> remove(String key) async {
+    data.remove(key);
+    return true;
+  }
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    if (!started.isCompleted) started.complete();
+    await _released.future;
+    data[key] = value;
+    return true;
   }
 }
