@@ -1,0 +1,35 @@
+name: Read local model digest (one-off)
+
+# Temporary, read-only: asks the self-hosted runner's own Ollama which digest
+# its installed qwen3:4b-instruct has, so Neura can pin it. Removed after use.
+on:
+  push:
+    branches: [engine/m2-model-digest-pin]
+    paths: ['.github/workflows/read-local-model-digest.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  digest:
+    runs-on: [self-hosted, Windows, X64, neura]
+    timeout-minutes: 5
+    steps:
+      - name: Report installed qwen3:4b-instruct digest
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          try {
+            $tags = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 10
+          } catch {
+            Write-Output "::warning title=Ollama unreachable::Ollama did not answer on 127.0.0.1:11434"
+            exit 0
+          }
+          $names = ($tags.models | ForEach-Object { $_.name }) -join ', '
+          Write-Output "::notice title=Installed model tags::$names"
+          $model = $tags.models | Where-Object { $_.name -eq 'qwen3:4b-instruct' } | Select-Object -First 1
+          if (-not $model) {
+            Write-Output "::warning title=qwen3 digest::qwen3:4b-instruct is not installed"
+            exit 0
+          }
+          Write-Output ("::notice title=qwen3 digest::{0} size={1}" -f $model.digest, $model.size)
