@@ -63,6 +63,7 @@ bool FlutterWindow::OnCreate() {
   speech_recognizer_ =
       std::make_unique<NeuraSpeechRecognizer>(engine->messenger());
   if (!is_mascot_) {
+    local_tts_ = std::make_unique<NeuraWindowsTts>(engine->messenger());
     on_device_asr_ =
         std::make_unique<NeuraOnDeviceAsr>(engine->messenger(), GetHandle());
     if (window_id_ == 0) {
@@ -90,6 +91,7 @@ bool FlutterWindow::OnCreate() {
 
 
 void FlutterWindow::OnDestroy() {
+  local_tts_.reset();
   local_conversation_.reset();
   engine_session_.reset();
   // Both custom channel owners retain the engine's BinaryMessenger. Release
@@ -118,6 +120,7 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
        (message == WM_SHOWWINDOW && !wparam) ||
        (message == WM_POWERBROADCAST && wparam == PBT_APMSUSPEND) ||
        message == WM_CLOSE) {
+    if (local_tts_) local_tts_->Background();
     if (local_conversation_) local_conversation_->Background();
     if (engine_session_) engine_session_->Background();
   }

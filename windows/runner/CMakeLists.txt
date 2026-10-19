@@ -34,6 +34,7 @@ add_executable(${BINARY_NAME} WIN32
   "neura_engine_session.cpp"
   "neura_local_conversation.cpp"
   "neura_speech_recognizer.cpp"
+  "neura_windows_tts.cpp"
   "neura_window_role.cpp"
   "utils.cpp"
   "win32_window.cpp"
@@ -70,6 +71,7 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "sapi.lib" "ole32.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # --- Optional verified-local Windows ASR prototype -------------------------

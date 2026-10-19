@@ -11,6 +11,7 @@
 #include "neura_local_conversation.h"
 #include "neura_speech_recognizer.h"
 #include "neura_window_role.h"
+#include "neura_windows_tts.h"
 #include "win32_window.h"
 
 // A window that does nothing but host a Flutter view.
@@ -48,6 +49,7 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<NeuraOnDeviceAsr> on_device_asr_;
   std::unique_ptr<NeuraEngineSession> engine_session_;
   std::unique_ptr<NeuraLocalConversation> local_conversation_;
+  std::unique_ptr<NeuraWindowsTts> local_tts_;
 
   int window_id_;
   bool is_mascot_;
