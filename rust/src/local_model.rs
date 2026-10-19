@@ -114,6 +114,11 @@ impl LoopbackClient {
         })
     }
 
+    /// GET a fixed daemon API path such as `/api/tags`.
+    pub fn get(&self, path: &'static str) -> reqwest::RequestBuilder {
+        self.inner.get(format!("{}{path}", self.endpoint))
+    }
+
     /// POST a JSON body to a fixed daemon API path such as `/api/chat`.
     pub fn post_json(&self, path: &'static str, body: &Value) -> reqwest::RequestBuilder {
         self.inner

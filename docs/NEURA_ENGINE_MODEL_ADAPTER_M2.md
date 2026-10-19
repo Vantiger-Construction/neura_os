@@ -167,11 +167,41 @@ the frame budget. Flutter tests cover the acknowledgement gate, argument-free
 calls, the `model_unavailable` stop, Safe Mode clearing the acknowledgement, and
 the Console checkbox.
 
+## Collecting device evidence
+
+`tools/Collect-NeuraEngineEvidence.ps1` gathers the hardware measurements this
+milestone needs with one command. Start Ollama yourself, then run:
+
+```text
+.\tools\Collect-NeuraEngineEvidence.ps1 -ConfirmLocalModel -Runs 3
+```
+
+It builds `neura_api` and the `neura_engine_evidence` tool in release mode,
+launches a sidecar with the local adapter and a fresh credential, and writes a
+JSON report. The same tool runs on its own with
+`neura_engine_evidence --confirm-local-model [--runs N] [--out FILE] [--sidecar PATH]`.
+
+| Report field | What it records |
+| --- | --- |
+| `host` | OS, architecture, logical CPUs, total and available memory, mains power and battery percentage. |
+| `model.installed` | Size and digest of the installed pinned tag from Ollama's `/api/tags`, or `null` if absent. |
+| `model_mode` | `local`, or `unavailable` with `unavailable_code` (exit code 2, nothing measured). |
+| `runs[]` | Per run of each fixture: outcome, client and sidecar time to first token and total time, delta frames, output bytes, peak drop in available memory, power state. |
+| `summary` | Min, median and max of completed runs per fixture. |
+| `cancellation` | Cancel at the first streamed delta: time until the connection closed, the recorded outcome, and time until the adapter accepted new work. |
+
+The sidecar requests the model with `keep_alive: 0`, so every run is a cold
+load; the timings are the ones an operator sees. The tool refuses to start
+without the explicit confirmation, never downloads a model or starts Ollama,
+and records counts and timings only, never prompt or model text. Its tests run
+against a mock sidecar and, where no daemon can answer, the real sidecar; they
+never load a real model.
+
 ## Remaining milestone 2 gates
 
 - Record target-hardware evidence on supported Windows devices with the pinned
-  model installed: `last_run` latency, peak memory, disk footprint, power, and
-  cancellation latency for both fixtures. Mock tests are not device evidence.
+  model installed, using `tools/Collect-NeuraEngineEvidence.ps1`, on mains
+  power and on battery. Mock tests are not device evidence.
 - Confirm the model license and storage footprint review that the vision
   requires before selection is treated as final.
 - Run the Console local model check on supported Windows hardware with the
