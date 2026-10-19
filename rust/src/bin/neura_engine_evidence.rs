@@ -31,7 +31,7 @@ const MAX_RUNS: u32 = 20;
 const READY_TIMEOUT: Duration = Duration::from_secs(5);
 const RUN_TIMEOUT: Duration = Duration::from_secs(90);
 const MEMORY_SAMPLE: Duration = Duration::from_millis(200);
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 
 const CONSENT: &str = "\
 neura_engine_evidence measures the pinned local model (qwen3:4b-instruct) in
@@ -387,7 +387,8 @@ async fn measure_run(socket: &mut Socket, fixture: &'static str) -> Result<Value
 }
 
 /// Cancel a streaming run at its first delta and time the teardown, then time
-/// how long until the adapter accepts new work again.
+/// time to the next verified output (includes the follow-up's model latency).
+/// The protocol has no acceptance acknowledgement, so this is not permit latency.
 async fn measure_cancel(sidecar: &Endpoint) -> Result<Value, String> {
     let mut socket = sidecar.connect().await?;
     send(&mut socket, "synthetic_input", json!({"fixture":"stream"})).await?;
@@ -408,7 +409,7 @@ async fn measure_cancel(sidecar: &Endpoint) -> Result<Value, String> {
 
     let mut socket = sidecar.connect().await?;
     let last = request(&mut socket, "diagnostics_request", "diagnostics").await?;
-    let accept_ms = loop {
+    let next_output_ms = loop {
         send(&mut socket, "synthetic_input", json!({"fixture":"hello"})).await?;
         let frame = receive(&mut socket).await?.ok_or("sidecar closed")?;
         if frame["kind"] == "error" && frame["data"]["message"] == "local model busy" {
@@ -418,14 +419,25 @@ async fn measure_cancel(sidecar: &Endpoint) -> Result<Value, String> {
             tokio::time::sleep(Duration::from_millis(50)).await;
             continue;
         }
+        match frame["kind"].as_str() {
+            Some("speak_delta")
+                if frame["data"]["delta"]
+                    .as_str()
+                    .is_some_and(|s| !s.is_empty()) => {}
+            Some("speak")
+                if frame["data"]["text"]
+                    .as_str()
+                    .is_some_and(|s| !s.trim().is_empty()) => {}
+            _ => return Err("the follow-up run produced no verified output after cancel".into()),
+        }
         break cancelled.elapsed().as_millis() as u64;
     };
-    // End the follow-up run immediately; it only proves the permit was released.
+    // End the follow-up run immediately; output proves that new work ran.
     let _ = send(&mut socket, "cancel", json!({})).await;
     Ok(json!({
         "outcome": last["last_run"]["outcome"],
         "cancel_to_close_ms": close_ms,
-        "cancel_to_next_accept_ms": accept_ms,
+        "cancel_to_next_output_ms": next_output_ms,
     }))
 }
 
@@ -492,6 +504,9 @@ async fn collect(options: &Options) -> Result<(Value, u8), String> {
         },
         "model": {
             "tag": local_model::MODEL,
+            "request_model": local_model::LOCAL_MODEL,
+            "reviewed_manifest_digest": local_model::MANIFEST_DIGEST,
+            "minimum_ollama_version": local_model::MIN_OLLAMA_VERSION,
             "family": local_model::FAMILY,
             "parameter_size": local_model::PARAMETER_SIZE,
             "quantization": local_model::QUANTIZATION,
@@ -649,7 +664,7 @@ mod tests {
     /// Loopback stand-in for a local-mode sidecar. `hello` completes at once;
     /// `stream` keeps streaming until the client cancels. After a cancel the
     /// next request is refused as busy once, like the adapter-wide permit.
-    async fn mock_sidecar() -> (Endpoint, Arc<AtomicU64>) {
+    async fn mock_sidecar(fail_followup: bool) -> (Endpoint, Arc<AtomicU64>) {
         use tokio_tungstenite::tungstenite::Message as M;
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -683,6 +698,11 @@ mod tests {
                                 ws.send(frame("error", data)).await.unwrap();
                             }
                             "synthetic_input" => {
+                                if fail_followup && chats.load(Ordering::SeqCst) > 0 {
+                                    let data = json!({"message":"model adapter unavailable","code":"not_installed"});
+                                    ws.send(frame("error", data)).await.unwrap();
+                                    continue;
+                                }
                                 chats.fetch_add(1, Ordering::SeqCst);
                                 let fixture = request["data"]["fixture"].clone();
                                 if fixture == "stream" {
@@ -729,7 +749,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_measured_run_records_counts_and_timings_but_no_text() {
-        let (endpoint, _) = mock_sidecar().await;
+        let (endpoint, _) = mock_sidecar(false).await;
         let mut socket = endpoint.connect().await.unwrap();
         let run = measure_run(&mut socket, "hello").await.unwrap();
         assert_eq!(run["fixture"], "hello");
@@ -747,15 +767,22 @@ mod tests {
 
     #[tokio::test]
     async fn cancellation_is_timed_and_waits_for_the_permit() {
-        let (endpoint, chats) = mock_sidecar().await;
+        let (endpoint, chats) = mock_sidecar(false).await;
         let cancel = measure_cancel(&endpoint).await.unwrap();
         assert!(cancel["cancel_to_close_ms"].is_u64());
         let close = cancel["cancel_to_close_ms"].as_u64().unwrap();
-        let accept = cancel["cancel_to_next_accept_ms"].as_u64().unwrap();
+        let next_output = cancel["cancel_to_next_output_ms"].as_u64().unwrap();
         // The first follow-up was refused as busy and retried.
-        assert!(accept >= close);
+        assert!(next_output >= close);
+        assert!(cancel.get("cancel_to_next_accept_ms").is_none());
         // One streamed run plus one accepted follow-up; the busy refusal ran nothing.
         assert_eq!(chats.load(Ordering::SeqCst), 2);
         assert!(!cancel.to_string().contains("wave"));
+    }
+
+    #[tokio::test]
+    async fn failed_followup_is_not_reported_as_cancellation_recovery() {
+        let (endpoint, _) = mock_sidecar(true).await;
+        assert!(measure_cancel(&endpoint).await.is_err());
     }
 }

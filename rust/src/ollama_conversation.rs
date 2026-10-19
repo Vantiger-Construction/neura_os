@@ -390,11 +390,11 @@ mod tests {
         std::sync::Arc<std::sync::atomic::AtomicUsize>,
         tokio::task::JoinHandle<()>,
     ) {
-        use axum::{routing::post, Json, Router};
+        use axum::{routing::post, Json};
         use std::sync::atomic::{AtomicUsize, Ordering};
         let calls = Arc::new(AtomicUsize::new(0));
         let counter = calls.clone();
-        let router = Router::new()
+        let router = crate::local_model::tests::metadata_router()
             .route("/api/show", post(move || async move { Json(info) }))
             .route(
                 "/api/chat",
@@ -446,8 +446,8 @@ mod tests {
     }
     #[tokio::test]
     async fn never_follows_redirects() {
-        use axum::{response::Redirect, routing::post, Router};
-        let router = Router::new().route(
+        use axum::{response::Redirect, routing::post};
+        let router = crate::local_model::tests::metadata_router().route(
             "/api/show",
             post(|| async { Redirect::temporary("http://127.0.0.1:1/forbidden") }),
         );

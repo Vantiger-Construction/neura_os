@@ -6,7 +6,7 @@ Collects content-free milestone 2 evidence for the pinned local model.
 .DESCRIPTION
 Builds the Neura Engine sidecar and the evidence tool in release mode, then
 measures the pinned qwen3:4b-instruct model in your own Ollama: time to first
-token, total time, peak memory use, power state, model size and digest, and
+token, total time, sampled system-memory delta, power state, model size and digest, and
 how quickly a cancel takes effect.
 
 The tool loads the model several times using only Neura's fixed synthetic

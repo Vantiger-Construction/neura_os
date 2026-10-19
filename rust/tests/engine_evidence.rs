@@ -42,7 +42,7 @@ fn reports_an_unavailable_model_as_content_free_json() {
     let text = std::fs::read_to_string(&report).unwrap();
     let _ = std::fs::remove_file(&report);
     let value: serde_json::Value = serde_json::from_str(&text).unwrap();
-    assert_eq!(value["schema_version"], 1);
+    assert_eq!(value["schema_version"], 2);
     assert_eq!(value["model_mode"], "unavailable");
     assert!(value["unavailable_code"].is_string());
     assert_eq!(value["model"]["tag"], "qwen3:4b-instruct");

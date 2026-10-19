@@ -34,7 +34,8 @@ pub(crate) const MODEL_UNAVAILABLE: i32 = 8;
 const START_TIMEOUT: Duration = Duration::from_secs(3);
 const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
 const MAX_FIXTURE_FRAMES: usize = 16;
-// A cold local model load plus the sidecar's own 60-second run deadline.
+// Outer allowance for diagnostics/preflight and the sidecar's 60-second
+// request deadline, which already includes cold model loading.
 pub(crate) const LOCAL_PROBE_TIMEOUT: Duration = Duration::from_secs(75);
 // The sidecar caps the fixture at 192 predicted tokens; a slow model can send
 // each token as its own delta, plus the completion frame.

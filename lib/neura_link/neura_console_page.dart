@@ -45,9 +45,9 @@ class _NeuraConsolePageState extends State<NeuraConsolePage> {
   }
 
   String _modelUnavailableText() {
-    return 'Your local model is not available. Start Ollama and install '
-        'qwen3:4b-instruct yourself, then try again. Neura never downloads '
-        'models or falls back to a cloud service.';
+    return 'Your local model could not be verified. Use Ollama 0.18.0 or newer '
+        'with the reviewed qwen3:4b-instruct model installed, then try again. '
+        'Neura never downloads models or falls back to a cloud service.';
   }
 
   @override

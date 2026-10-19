@@ -606,41 +606,61 @@ fn pinned_info() -> Value {
 
 impl MockOllama {
     async fn start(info: Value, body: ChatBody) -> Self {
+        Self::with_identity(info, body, "0.18.0", local_model::MANIFEST_DIGEST).await
+    }
+
+    async fn with_identity(info: Value, body: ChatBody, version: &str, digest: &str) -> Self {
         use axum::{body::Body, Json};
+        let version = json!({"version":version});
+        let tags = json!({"models":[{"name":local_model::MODEL,"digest":digest}]});
         let chats = Arc::new(AtomicUsize::new(0));
         let requests = Arc::new(Mutex::new(Vec::new()));
         let response_dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let body = Arc::new(body);
         let (counter, seen, dropped) = (chats.clone(), requests.clone(), response_dropped.clone());
         let router = Router::new()
+            .route("/api/version", get(move || async move { Json(version) }))
+            .route("/api/tags", get(move || async move { Json(tags) }))
             .route(
                 "/api/show",
-                post(move |Json(request): Json<Value>| async move {
-                    assert_eq!(request, json!({"model": local_model::MODEL}));
-                    Json(info)
-                }),
+                post(
+                    move |headers: HeaderMap, Json(request): Json<Value>| async move {
+                        assert!(
+                            !headers.contains_key(header::AUTHORIZATION),
+                            "the IPC credential must never reach Ollama"
+                        );
+                        assert_eq!(request, json!({"model": local_model::LOCAL_MODEL}));
+                        Json(info)
+                    },
+                ),
             )
             .route(
                 "/api/chat",
-                post(move |Json(request): Json<Value>| async move {
-                    counter.fetch_add(1, Ordering::SeqCst);
-                    seen.lock().unwrap().push(request);
-                    match &*body {
-                        ChatBody::Lines(lines) => Body::from(lines.concat()),
-                        ChatBody::Hang => {
-                            let guard = DropFlag(dropped);
-                            let first = futures_util::stream::once(async {
-                                Ok::<_, std::io::Error>(ndjson("Thinking ", false))
-                            });
-                            Body::from_stream(first.chain(futures_util::stream::pending()).map(
-                                move |item| {
-                                    let _ = &guard;
-                                    item
-                                },
-                            ))
+                post(
+                    move |headers: HeaderMap, Json(request): Json<Value>| async move {
+                        assert!(
+                            !headers.contains_key(header::AUTHORIZATION),
+                            "the IPC credential must never reach Ollama"
+                        );
+                        counter.fetch_add(1, Ordering::SeqCst);
+                        seen.lock().unwrap().push(request);
+                        match &*body {
+                            ChatBody::Lines(lines) => Body::from(lines.concat()),
+                            ChatBody::Hang => {
+                                let guard = DropFlag(dropped);
+                                let first = futures_util::stream::once(async {
+                                    Ok::<_, std::io::Error>(ndjson("Thinking ", false))
+                                });
+                                Body::from_stream(first.chain(futures_util::stream::pending()).map(
+                                    move |item| {
+                                        let _ = &guard;
+                                        item
+                                    },
+                                ))
+                            }
                         }
-                    }
-                }),
+                    },
+                ),
             );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let endpoint = format!("http://{}", listener.local_addr().unwrap());
@@ -659,6 +679,38 @@ impl MockOllama {
     fn adapter(&self) -> (Adapter, Arc<LocalAdapter>) {
         let local = Arc::new(LocalAdapter::new(self.endpoint.clone(), || true));
         (Adapter::Local(local.clone()), local)
+    }
+}
+
+#[tokio::test]
+async fn unsupported_or_retargeted_model_never_receives_fixture() {
+    for (version, digest, code) in [
+        (
+            "0.17.0",
+            local_model::MANIFEST_DIGEST,
+            "unsupported_version",
+        ),
+        ("0.18.0", "sha256:unreviewed", "model_mismatch"),
+    ] {
+        let ollama = MockOllama::with_identity(
+            pinned_info(),
+            ChatBody::Lines(vec![ndjson("must not run", true)]),
+            version,
+            digest,
+        )
+        .await;
+        let (adapter, _) = ollama.adapter();
+        let server = Server::start_with(adapter).await;
+        let mut socket = server.connect().await;
+        let (_, result) = run_fixture(&mut socket, "hello").await;
+        assert_eq!(result["kind"], "error");
+        assert_eq!(result["data"]["code"], code);
+        send(&mut socket, "diagnostics_request", json!({})).await;
+        let diagnostics = receive(&mut socket).await;
+        assert_eq!(diagnostics["data"]["model_mode"], "unavailable");
+        assert_eq!(diagnostics["data"]["checks"][2]["code"], code);
+        assert_eq!(ollama.chats.load(Ordering::SeqCst), 0);
+        assert!(ollama.requests.lock().unwrap().is_empty());
     }
 }
 

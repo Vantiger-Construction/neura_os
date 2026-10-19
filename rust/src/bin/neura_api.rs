@@ -609,7 +609,7 @@ fn diagnostics(status: AdapterStatus, last_run: Option<RunRecord>) -> Value {
             "unavailable",
             "No model work is admitted while the adapter is unavailable.",
             json!({"name":"Model adapter","status":"unavailable","code":reason.code(),
-                "remedy":"Start Ollama and install the pinned model yourself; Neura never downloads models or falls back to a cloud provider.",
+                "remedy":"Use a supported stable Ollama release and the reviewed pinned model; Neura never downloads models or falls back to a cloud provider.",
                 "detail":"The opted-in local model adapter could not be verified."}),
         ),
     };
@@ -626,6 +626,8 @@ fn diagnostics(status: AdapterStatus, last_run: Option<RunRecord>) -> Value {
     if !matches!(status, AdapterStatus::Echo) {
         data["model"] = json!({
             "tag": local_model::MODEL,
+            "manifest_digest": local_model::MANIFEST_DIGEST,
+            "minimum_ollama_version": local_model::MIN_OLLAMA_VERSION,
             "family": local_model::FAMILY,
             "parameter_size": local_model::PARAMETER_SIZE,
             "quantization": local_model::QUANTIZATION,
