@@ -1,0 +1,5 @@
+{
+  "name": "Neura.Presence.Runtime",
+  "rootNamespace": "Neura.Presence",
+  "references": ["Neura.Presence.Core"]
+}

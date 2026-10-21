@@ -31,7 +31,11 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
 
   @override
   void dispose() {
-    NeuraTtsService.instance.restoreSelectedVoice();
+    final service = NeuraTtsService.instance;
+    unawaited(service
+        .stop()
+        .then((_) => service.restoreSelectedVoice())
+        .catchError((Object _) {}));
     super.dispose();
   }
 

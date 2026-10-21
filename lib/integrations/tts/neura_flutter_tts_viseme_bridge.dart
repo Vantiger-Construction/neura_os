@@ -13,7 +13,7 @@ import '../../core/neura_events.dart';
 import '../../core/neura_events_extra.dart';
 
 class NeuraFlutterTtsVisemeBridge {
-  static bool _attached = false;
+  static final _attached = Expando<bool>();
 
   /// [onCompletion], [onCancel], and [onError] run alongside the bridge's
   /// event-bus emissions. flutter_tts supports only one handler of each kind,
@@ -26,7 +26,7 @@ class NeuraFlutterTtsVisemeBridge {
     void Function()? onCancel,
     void Function(dynamic message)? onError,
   }) async {
-    if (_attached) return;
+    if (_attached[tts] == true) return;
 
     final eventBus = bus ?? NeuraEventBus.I;
 
@@ -82,7 +82,7 @@ class NeuraFlutterTtsVisemeBridge {
 
     // Mark attached only after every callback registration succeeds so a
     // transient plugin failure can be retried later in this process.
-    _attached = true;
+    _attached[tts] = true;
   }
 
   static void _emitRestState(NeuraEventBus bus) {
