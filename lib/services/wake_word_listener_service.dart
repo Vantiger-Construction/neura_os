@@ -98,10 +98,9 @@ class WakeWordListenerService {
     final stt = _stt ??= NeuraSpeechToTextService.instance;
     if (!stt.isListening) {
       // Wait for the mascot window's own native engine/window creation to
-      // settle first -- same "two native engines/windows starting close
-      // together" hazard documented on MascotWindowService.initialCreationSettled
-      // and already worked around in AmbientListeningService.greetAndStartListening
-      // for the TTS path; this is the same wait for the wake-word mic path.
+      // settle first as a best-effort plugin startup barrier. This ordering
+      // does not fix issue #32: its native TTS crash reproduced without a
+      // mascot window. Keep the independent microphone ordering precaution.
       // Already-resolved after the first real boot, so this is a no-op on
       // pause()/resume() cycles.
       await MascotWindowService.I.initialCreationSettled;

@@ -1,0 +1,56 @@
+name: Neura Help guidance
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths:
+      - 'lib/screens/help_screen.dart'
+      - 'test/screens/help_screen_test.dart'
+      - '.github/workflows/neura-help-guidance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-help-guidance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  help:
+    name: Help formatting, analysis and widgets
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the reviewed head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Use the repository Flutter version
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Restore locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Check Help formatting
+        run: >-
+          dart format --output=none --set-exit-if-changed
+          lib/screens/help_screen.dart test/screens/help_screen_test.dart
+      - name: Analyze Help and its regression tests
+        run: >-
+          flutter analyze --no-pub --fatal-infos
+          lib/screens/help_screen.dart test/screens/help_screen_test.dart
+      - name: Test Help and its existing feature contracts
+        run: >-
+          flutter test --no-pub --reporter expanded --concurrency 2 --timeout 2m
+          test/screens/help_screen_test.dart
+          test/screens/journal_save_workflow_test.dart
+          test/modules/support/guided_support_test.dart
+          test/modules/navigation/presence_navigation_shell_test.dart
+          test/neura_shell/neura_room_test.dart
+          test/startup/native_speech_safe_mode_test.dart
+          test/services/neura_cloud_transaction_test.dart
+          test/services/neura_ollama_chat_test.dart

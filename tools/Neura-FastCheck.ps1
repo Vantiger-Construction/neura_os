@@ -7,7 +7,9 @@ param(
     [switch]$BuildWindows,
     [string]$DartDefineFile = $env:NEURA_DART_DEFINE_FILE,
     [ValidateRange(1, 32)]
-    [int]$TestConcurrency = [Math]::Min([Environment]::ProcessorCount, 8)
+    [int]$TestConcurrency = [Math]::Min([Environment]::ProcessorCount, 8),
+    [ValidateSet('All', 'Prepare', 'Analyze', 'Tests', 'WindowsBuild', 'WindowsPackage')]
+    [string]$Phase = 'All'
 )
 
 Set-StrictMode -Version Latest
@@ -20,9 +22,15 @@ function Invoke-Checked {
     )
 
     Write-Host "`n=== $Label ===" -ForegroundColor Cyan
-    & $Command
-    if ($LASTEXITCODE -ne 0) {
-        throw "$Label failed with exit code $LASTEXITCODE."
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        & $Command
+        if ($LASTEXITCODE -ne 0) {
+            throw "$Label failed with exit code $LASTEXITCODE."
+        }
+    } finally {
+        $timer.Stop()
+        Write-Host ("{0} elapsed: {1:N1} seconds" -f $Label, $timer.Elapsed.TotalSeconds)
     }
 }
 
@@ -247,6 +255,9 @@ if (-not (Test-Path -LiteralPath $pubspec -PathType Leaf)) {
 if (-not (Get-Command flutter -ErrorAction SilentlyContinue)) {
     throw 'Flutter is not available on PATH.'
 }
+if ($Phase -in @('WindowsBuild', 'WindowsPackage') -and -not $BuildWindows) {
+    throw "$Phase requires -BuildWindows."
+}
 
 $cacheDir = Join-Path $Root '.dart_tool\neura'
 $fingerprintFile = Join-Path $cacheDir 'dependency_fingerprint.txt'
@@ -257,48 +268,52 @@ $previousFingerprint = if (Test-Path -LiteralPath $fingerprintFile) {
 
 Push-Location $Root
 try {
-    Write-Host "`n=== unresolved merge marker check ===" -ForegroundColor Cyan
-    Assert-NoMergeMarkers -ProjectRoot $Root
+    if ($Phase -in @('All', 'Prepare')) {
+        Write-Host "`n=== unresolved merge marker check ===" -ForegroundColor Cyan
+        Assert-NoMergeMarkers -ProjectRoot $Root
 
-    $packagesFile = Join-Path $Root '.dart_tool\package_config.json'
-    $needsPubGet = $ForcePubGet -or
-        -not (Test-Path -LiteralPath $packagesFile -PathType Leaf) -or
-        $currentFingerprint -ne $previousFingerprint
+        $packagesFile = Join-Path $Root '.dart_tool\package_config.json'
+        $needsPubGet = $ForcePubGet -or
+            -not (Test-Path -LiteralPath $packagesFile -PathType Leaf) -or
+            $currentFingerprint -ne $previousFingerprint
 
-    if ($needsPubGet) {
-        Invoke-Checked 'flutter pub get' { flutter pub get }
-        New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
-        Set-Content -LiteralPath $fingerprintFile -Value $currentFingerprint -NoNewline
-    } else {
-        Write-Host "`n=== flutter pub get ===" -ForegroundColor Cyan
-        Write-Host 'Skipped: dependency inputs are unchanged.' -ForegroundColor DarkGray
+        if ($needsPubGet) {
+            Invoke-Checked 'flutter pub get' { flutter pub get }
+            New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+            Set-Content -LiteralPath $fingerprintFile -Value $currentFingerprint -NoNewline
+        } else {
+            Write-Host "`n=== flutter pub get ===" -ForegroundColor Cyan
+            Write-Host 'Skipped: dependency inputs are unchanged.' -ForegroundColor DarkGray
+        }
+
+        Write-Host "`n=== local API PowerShell syntax ===" -ForegroundColor Cyan
+        Assert-LocalApiClientScripts -ProjectRoot $Root
+
+        Write-Host "`n=== Windows on-device ASR offline/lifecycle contract ===" `
+            -ForegroundColor Cyan
+        & (Join-Path $Root 'tools\Test-NeuraWindowsOnDeviceAsrContract.ps1') `
+            -Root $Root -RunNativeHarness:$BuildWindows
+
+        Invoke-Checked 'dart format check' {
+            dart format --output=none --set-exit-if-changed `
+                lib `
+                test `
+                tools/local_api_client/dart
+        }
+
+        if ($BuildWindows) {
+            Write-Host "`n=== authored Windows runner contract ===" -ForegroundColor Cyan
+            Assert-AuthoredWindowsRunner -ProjectRoot $Root
+        }
     }
 
-    Write-Host "`n=== local API PowerShell syntax ===" -ForegroundColor Cyan
-    Assert-LocalApiClientScripts -ProjectRoot $Root
-
-    Write-Host "`n=== Windows on-device ASR offline/lifecycle contract ===" `
-        -ForegroundColor Cyan
-    & (Join-Path $Root 'tools\Test-NeuraWindowsOnDeviceAsrContract.ps1') `
-        -Root $Root -RunNativeHarness:$BuildWindows
-
-    Invoke-Checked 'dart format check' {
-        dart format --output=none --set-exit-if-changed `
-            lib `
-            test `
-            tools/local_api_client/dart
+    if ($Phase -in @('All', 'Analyze')) {
+        Invoke-Checked 'flutter analyze --fatal-infos' {
+            flutter analyze --no-pub --fatal-infos
+        }
     }
 
-    Invoke-Checked 'flutter analyze --fatal-infos' {
-        flutter analyze --no-pub --fatal-infos
-    }
-
-    if ($BuildWindows) {
-        Write-Host "`n=== authored Windows runner contract ===" -ForegroundColor Cyan
-        Assert-AuthoredWindowsRunner -ProjectRoot $Root
-    }
-
-    if (-not $SkipTests) {
+    if ($Phase -in @('All', 'Tests') -and -not $SkipTests) {
         Invoke-Checked 'startup state matrix' {
             flutter test --no-pub --timeout 60s `
                 test/startup/startup_platform_policy_test.dart `
@@ -316,7 +331,7 @@ try {
         }
     }
 
-    if ($BuildWindows) {
+    if ($BuildWindows -and $Phase -in @('All', 'WindowsBuild')) {
         $buildArguments = @('build', 'windows', '--release', '--no-pub')
         if (-not [string]::IsNullOrWhiteSpace($DartDefineFile)) {
             if (-not (Test-Path -LiteralPath $DartDefineFile -PathType Leaf)) {
@@ -327,7 +342,9 @@ try {
         Invoke-Checked 'flutter build windows --release' {
             flutter @buildArguments
         }
+    }
 
+    if ($BuildWindows -and $Phase -in @('All', 'WindowsPackage')) {
         Write-Host "`n=== packaged Windows launch self-test ===" -ForegroundColor Cyan
         Assert-PackagedWindowsLaunch -ProjectRoot $Root
     }
@@ -335,4 +352,4 @@ try {
     Pop-Location
 }
 
-Write-Host "`nNeura fast validation completed successfully." -ForegroundColor Green
+Write-Host "`nNeura $Phase validation completed successfully." -ForegroundColor Green

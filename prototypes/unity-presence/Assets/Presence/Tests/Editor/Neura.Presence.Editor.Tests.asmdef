@@ -1,0 +1,7 @@
+{
+  "name": "Neura.Presence.Editor.Tests",
+  "references": ["Neura.Presence.Core", "Neura.Presence.Runtime", "Neura.Presence.TestCases"],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false
+}
