@@ -668,7 +668,12 @@ try {
         if (($stampItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
             throw "Refusing linked build stamp: $stampFile"
         }
-        ([string](Get-Content -LiteralPath $stampFile -Raw)).Trim()
+        $stampText = Get-Content -LiteralPath $stampFile -Raw
+        if ($null -eq $stampText) {
+            ''
+        } else {
+            ([string]$stampText).Trim()
+        }
     } else {
         ''
     }
