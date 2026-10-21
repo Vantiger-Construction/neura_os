@@ -19,9 +19,11 @@ describe a dedicated engine for ongoing reflection and learning from approved
 information, with user control over memory and actions. The
 [milestone 1 synthetic IPC slice](docs/NEURA_ENGINE_IPC_M1.md) now includes an
 authenticated Rust sidecar and a Windows Console session with explicit
-start, pause, resume, and stop controls. It remains a synthetic-only echo check;
-milestone 1 is incomplete, and reflection, personal sources, and a real local
-model are not enabled.
+start, pause, resume, and stop controls. It remains a synthetic-only check that
+uses the echo adapter by default; an explicit `ollama-local` opt-in can run the
+same fixed fixtures on a pinned local model
+([milestone 2 slice](docs/NEURA_ENGINE_MODEL_ADAPTER_M2.md)). Milestones 1 and 2
+are incomplete, and reflection and personal sources are not enabled.
 
 ## Quick start (Windows)
 1. Install Flutter (and Android Studio if you want APK builds)
