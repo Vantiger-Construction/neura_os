@@ -299,7 +299,7 @@ if ($AutoFixStringLiterals -and -not $WhatIfPreference) {
         }
         foreach ($item in $passChanged) { $autoFixed.Add($item) }
         $baseline = $after
-        Write-Status "Auto-fix pass $pass: analyzer errors = $($after.ErrorCount)" Yellow
+        Write-Status "Auto-fix pass ${pass}: analyzer errors = $($after.ErrorCount)" Yellow
     }
     $finalAnalyzer = $baseline
 } elseif ($baseline) {
