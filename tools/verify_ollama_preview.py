@@ -20,6 +20,7 @@ import zipfile
 EXPORTS = (
     "neura_ollama_begin", "neura_ollama_poll", "neura_ollama_cancel",
     "neura_ollama_foreground", "neura_ollama_block", "neura_ollama_shutdown",
+    "neura_ollama_timing", "neura_ollama_clear_timing",
 )
 REQUIRED = (
     "app/neuro_companion.exe", "app/flutter_windows.dll", "app/neura_swarm.dll",
@@ -73,6 +74,9 @@ def check_native_exports(dll: Path) -> None:
     library.neura_ollama_begin.restype = ctypes.c_int64
     library.neura_ollama_block.restype = None
     library.neura_ollama_shutdown.restype = None
+    library.neura_ollama_timing.argtypes = [ctypes.c_int64, ctypes.POINTER(ctypes.c_uint64), ctypes.c_size_t]
+    library.neura_ollama_timing.restype = ctypes.c_int
+    library.neura_ollama_clear_timing.restype = None
     raw = b'{"system":"Synthetic ABI check","messages":[{"role":"user","content":"Hello"}]}'
     buffer = ctypes.create_string_buffer(raw)
     try:
@@ -83,6 +87,10 @@ def check_native_exports(dll: Path) -> None:
         library.neura_ollama_foreground(1)
         if library.neura_ollama_begin(buffer, len(raw)) != -2:
             raise RuntimeError("Blocked ABI admission did not fail closed")
+        timing = (ctypes.c_uint64 * 7)()
+        if library.neura_ollama_timing(1, timing, len(timing)) != 0:
+            raise RuntimeError("Blocked timing read did not fail closed")
+        library.neura_ollama_clear_timing()
     finally:
         library.neura_ollama_shutdown()
         # The test starts no worker. Release before deleting the temporary DLL.
@@ -164,3 +172,4 @@ if __name__ == "__main__":
     parser.add_argument("--run-id", required=True)
     args = parser.parse_args()
     print(verify(args.dist, args.head, args.run_id))
+
