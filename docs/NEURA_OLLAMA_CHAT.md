@@ -67,10 +67,13 @@ Offline Ollama selected.
 
 ## Boundaries
 
-- Only `http://127.0.0.1:11434/api/show` and `/api/chat` are used. Rust disables
+- Only `http://127.0.0.1:11434` endpoints `/api/version`, `/api/tags`,
+  `/api/show` and `/api/chat` are used. Rust disables
   HTTP proxies and redirects. No model download, authentication, cloud fallback,
   browser, web search or tool execution is implemented in this adapter.
-- The model is fixed to `qwen3:4b-instruct`. A metadata preflight rejects remote
+- The model is fixed to `qwen3:4b-instruct`. A preflight requires stable Ollama
+  >=0.18.0 and the reviewed manifest digest in
+  [the shared model contract](NEURA_ENGINE_MODEL_ADAPTER_M2.md#the-pinned-model), then rejects remote
   model tags and non-Qwen3/4.0B/Q4_K_M models before conversation submission.
   Inference uses Ollama's explicit `:local` source suffix to reject remote
   aliases at execution time. Older daemons lacking this syntax must be updated;

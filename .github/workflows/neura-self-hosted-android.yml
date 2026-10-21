@@ -40,7 +40,9 @@ jobs:
   android:
     name: Build installable Android debug APK
     runs-on: [self-hosted, Windows, X64, neura]
-    timeout-minutes: 180
+    # Cold self-hosted builds plus download-verified release delivery and
+    # bounded cleanup can exceed three hours; keep a four-hour job ceiling.
+    timeout-minutes: 240
 
     steps:
       - name: Select bounded Android build volumes
