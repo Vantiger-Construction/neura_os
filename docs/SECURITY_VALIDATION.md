@@ -90,13 +90,15 @@ no permissions are broadened automatically to repair failures.
 
 Successful CodeQL upload is also insufficient when extraction is partial. The
 workflow rejects missing/unsuccessful SARIF invocations and error-level tool
-diagnostics, while retaining the reports. Initial execution exposed the malformed
-legacy root `package.json` in JavaScript extraction and compiler errors in three
-Unity-dependent C# files. Those coverage errors remain visible failures pending
-reviewed manifest/Unity infrastructure repairs; they are not suppressed or
-treated as vulnerability findings. Unresolved NuGet access further limits the
-C# analysis. Medium Actions alerts remain visible under the existing, unchanged
-High-or-higher repository alert threshold.
+diagnostics and reported C/C++ compiler-error metrics, while retaining the reports.
+Initial execution exposed the malformed legacy root `package.json` in JavaScript
+extraction, compiler errors in three Unity-dependent C# files, and missing Windows
+SDK/Flutter/C++ headers in the heuristic C/C++ extraction. Those coverage errors
+remain visible failures pending reviewed manifest/Unity/native-build infrastructure
+repairs; they are not suppressed or treated as vulnerability findings. Unresolved
+NuGet access further limits the C# analysis. A traced Windows build with genuine
+Flutter headers is needed to improve native coverage. Medium Actions alerts remain
+visible under the existing, unchanged High-or-higher repository alert threshold.
 
 OSV reads only the three named committed lockfiles, with no dependency install,
 transitive manifest resolution or call analysis. It contacts OSV/its public

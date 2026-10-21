@@ -99,6 +99,9 @@ jobs:
               if not runs:
                   errors.append('No CodeQL runs in ' + path.name)
               for run in runs:
+                  for metric in run.get('properties', {}).get('metricResults', []):
+                      if metric.get('ruleId') == 'cpp/telemetry/compiler-errors' and metric.get('value', 0) > 0:
+                          errors.append('C/C++ compiler errors; inspect missing headers and parse failures')
                   invocations = run.get('invocations', [])
                   if not invocations or any(not i.get('executionSuccessful') for i in invocations):
                       errors.append('Missing or unsuccessful CodeQL invocation')
