@@ -206,6 +206,17 @@ class MemoryCrypto {
     return jsonEncode(blob);
   }
 
+  /// New companion memory cannot use the legacy preference-backed fallback.
+  /// Existing journal recovery keeps its separate migration behavior.
+  void requireOsBackedKey() {
+    requireActiveKey();
+    final prefs = NeuraPrefsCache.prefs;
+    if (prefs.getBool(_secureKeyMarker) != true ||
+        prefs.containsKey(_legacyKeySeed)) {
+      throw StateError('A verified OS-backed memory key is required.');
+    }
+  }
+
   Future<Map<String, dynamic>> decryptJson(String blob) async {
     final generation = _generation;
     final key = await _activeKey();

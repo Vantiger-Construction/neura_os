@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import '../core/memory/memory_crypto.dart';
 import '../living_intelligence/neura_safety_policy.dart';
@@ -256,6 +257,53 @@ final class EncryptedMemoryDurableScopedAdapter {
       return null;
     }
     return record;
+  }
+
+  /// Bounded review of one exact scope. Authorization precedes lookup; this
+  /// never exposes quarantine, other scopes or a legacy-history query.
+  List<EncryptedMemorySessionRecord> recallScope({
+    required EncryptedMemoryConsentLease lease,
+    required NeuraSafetyContext safetyContext,
+    required EncryptedMemoryAccessScope scope,
+    required int expectedKeyGeneration,
+    required DateTime nowUtc,
+    int limit = 100,
+  }) {
+    if (limit < 1 || limit > 100) {
+      throw const EncryptedMemoryPolicyViolation('invalid_recall_limit');
+    }
+    // Use the same authority, mutation, lifetime and single-use boundary as
+    // selected-record recall, even when the requested scope is empty.
+    recall(
+      lease: lease,
+      safetyContext: safetyContext,
+      recordId: '',
+      ownerId: scope.ownerId,
+      deviceId: scope.deviceId,
+      capsuleId: scope.capsuleId,
+      memoryClass: scope.classes.single,
+      source: scope.sources.single,
+      sensitivity: scope.sensitivity,
+      expectedKeyGeneration: expectedKeyGeneration,
+      nowUtc: nowUtc,
+    );
+    final selected = ListQueue<EncryptedMemorySessionRecord>();
+    for (final record in _records.values) {
+      if (!_matches(
+          record,
+          scope.ownerId,
+          scope.deviceId,
+          scope.capsuleId,
+          scope.classes.single,
+          scope.sources.single,
+          scope.sensitivity,
+          expectedKeyGeneration)) {
+        continue;
+      }
+      if (selected.length == limit) selected.removeFirst();
+      selected.addLast(record);
+    }
+    return List.unmodifiable(selected.toList().reversed);
   }
 
   Future<bool> correct({

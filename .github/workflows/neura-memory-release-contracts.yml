@@ -6,6 +6,16 @@ on:
     paths:
       - 'lib/core/memory/**'
       - 'lib/encrypted_memory/**'
+      - 'lib/persona/services/neura_prompt_builder.dart'
+      - 'lib/modules/chat/neura_chat_screen.dart'
+      - 'lib/modules/memory/memory_screen.dart'
+      - 'lib/modules/therapy/therapy_reflection_screen.dart'
+      - 'lib/mirror/screens/mirror_mode_screen.dart'
+      - 'lib/modules/navigation/enhanced_navigation.dart'
+      - 'lib/services/neura_ai_service.dart'
+      - 'lib/services/wake_word_listener_service.dart'
+      - 'test/helpers/companion_memory_fixture.dart'
+      - 'test/modules/chat/neura_voice_commands_test.dart'
       - 'lib/src/core/data_wipe_service.dart'
       - 'test/core/**'
       - 'test/encrypted_memory/**'
@@ -42,7 +52,7 @@ jobs:
       - name: Integrate the reviewed wipe candidate in this disposable checkout
         if: matrix.source == 'with-wipe-pr133'
         env:
-          WIPE_HEAD: b822c48be5a871d5a5e8e88825205d70534216d0
+          WIPE_HEAD: 258ff8785e85882c5905eaded85969b93db48544
         run: |
           git fetch --no-tags origin "$WIPE_HEAD"
           if ! git -c user.name='Synthetic validation' -c user.email='validation@localhost' \
@@ -83,22 +93,36 @@ jobs:
           set -o pipefail
           flutter test --no-pub --reporter expanded --concurrency 2 --timeout 2m \
             test/core test/encrypted_memory test/data_wipe*test.dart \
+            test/persona/neura_prompt_builder_test.dart test/persona/neura_offline_prompt_test.dart \
+            test/screens/journal_save_workflow_test.dart test/services/local_journal_store_test.dart test/services/neura_model_router_test.dart test/modules/chat/neura_voice_commands_test.dart \
             2>&1 | tee validation/memory/tests.txt
       - name: Strict memory analysis
         if: ${{ !cancelled() }}
         run: |
           flutter analyze --fatal-infos \
             lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
-            test/data_wipe_memory_contracts_test.dart test/data_wipe_scoped_*test.dart test/helpers/data_wipe_fixture.dart test/helpers/scoped_wipe_native_contract.dart \
+            test/data_wipe_memory_contracts_test.dart test/data_wipe_companion_memory_test.dart test/data_wipe_scoped_*test.dart test/helpers/data_wipe_fixture.dart test/helpers/scoped_wipe_native_contract.dart \
+            lib/persona/services/neura_prompt_builder.dart lib/modules/chat/neura_chat_screen.dart \
+            lib/modules/memory/memory_screen.dart lib/modules/therapy/therapy_reflection_screen.dart \
+            lib/mirror/screens/mirror_mode_screen.dart lib/modules/navigation/enhanced_navigation.dart \
+            lib/services/neura_ai_service.dart lib/services/wake_word_listener_service.dart test/helpers/companion_memory_fixture.dart test/modules/chat/neura_voice_commands_test.dart \
             lib/src/core/data_wipe_service.dart
       - name: Canonical memory formatting
         if: ${{ !cancelled() }}
         run: |
           dart format lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
-            test/data_wipe_memory_contracts_test.dart test/data_wipe_scoped_*test.dart test/helpers/data_wipe_fixture.dart test/helpers/scoped_wipe_native_contract.dart \
+            test/data_wipe_memory_contracts_test.dart test/data_wipe_companion_memory_test.dart test/data_wipe_scoped_*test.dart test/helpers/data_wipe_fixture.dart test/helpers/scoped_wipe_native_contract.dart \
+            lib/persona/services/neura_prompt_builder.dart lib/modules/chat/neura_chat_screen.dart \
+            lib/modules/memory/memory_screen.dart lib/modules/therapy/therapy_reflection_screen.dart \
+            lib/mirror/screens/mirror_mode_screen.dart lib/modules/navigation/enhanced_navigation.dart \
+            lib/services/neura_ai_service.dart lib/services/wake_word_listener_service.dart test/helpers/companion_memory_fixture.dart test/modules/chat/neura_voice_commands_test.dart \
             lib/src/core/data_wipe_service.dart
           git diff --exit-code -- lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
-            test/data_wipe_memory_contracts_test.dart test/data_wipe_scoped_*test.dart test/helpers/data_wipe_fixture.dart test/helpers/scoped_wipe_native_contract.dart \
+            test/data_wipe_memory_contracts_test.dart test/data_wipe_companion_memory_test.dart test/data_wipe_scoped_*test.dart test/helpers/data_wipe_fixture.dart test/helpers/scoped_wipe_native_contract.dart \
+            lib/persona/services/neura_prompt_builder.dart lib/modules/chat/neura_chat_screen.dart \
+            lib/modules/memory/memory_screen.dart lib/modules/therapy/therapy_reflection_screen.dart \
+            lib/mirror/screens/mirror_mode_screen.dart lib/modules/navigation/enhanced_navigation.dart \
+            lib/services/neura_ai_service.dart lib/services/wake_word_listener_service.dart test/helpers/companion_memory_fixture.dart test/modules/chat/neura_voice_commands_test.dart \
             lib/src/core/data_wipe_service.dart
       - name: Preserve synthetic evidence
         if: always()

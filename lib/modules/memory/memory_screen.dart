@@ -1,167 +1,261 @@
 import 'package:flutter/material.dart';
 
 import '../../core/memory/memory_graph_service.dart';
+import '../../encrypted_memory/companion_memory_service.dart';
+import '../../encrypted_memory/encrypted_memory_session_adapter.dart';
+import '../../startup/neura_prefs_cache.dart';
 
-/// View/search what's actually stored in [MemoryGraphService] - the same
-/// encrypted, on-device store that now backs Neura's chat recall and
-/// therapy-journal reflections. Read-only aside from the reset action;
-/// nothing here writes new memories.
+/// Explicitly authored, scoped companion notes. Opening this route does not
+/// decrypt memory. Legacy histories remain deletable but are never imported.
 class MemoryScreen extends StatefulWidget {
-  const MemoryScreen({super.key});
+  const MemoryScreen({super.key, this.memoryService});
+
+  final CompanionMemoryService? memoryService;
 
   @override
   State<MemoryScreen> createState() => _MemoryScreenState();
 }
 
 class _MemoryScreenState extends State<MemoryScreen> {
-  final _searchController = TextEditingController();
-  List<Map<String, dynamic>> _all = const [];
-  List<Map<String, dynamic>> _filtered = const [];
-  bool _loading = true;
+  final _search = TextEditingController();
+  final _note = TextEditingController();
+  CompanionMemoryService? _memory;
+  CompanionMemoryPermission? _viewPermission;
+  CompanionMemoryPermission? _activePermission;
+  List<EncryptedMemorySessionRecord> _records = const [];
+  bool _busy = false;
+  String? _status;
 
-  @override
-  void initState() {
-    super.initState();
-    _load();
-    _searchController.addListener(_applyFilter);
+  Future<CompanionMemoryService> _service() async {
+    if (_memory != null) return _memory!;
+    final memory = widget.memoryService ?? await CompanionMemoryService.local();
+    if (!mounted) throw StateError('Memory screen closed.');
+    _memory = memory;
+    memory.addListener(_onRevoked);
+    return memory;
   }
 
-  Future<void> _load() async {
-    final nodes = await MemoryGraphService.I.recentNodes(limit: 500);
+  void _onRevoked() {
     if (!mounted) return;
-    setState(() {
-      _all = nodes;
-      _filtered = nodes;
-      _loading = false;
-    });
+    try {
+      if (_memory?.isAvailable != true) {
+        _note.clear();
+        _search.clear();
+        throw StateError('Memory unavailable.');
+      }
+      _viewPermission?.requireCurrent();
+    } catch (_) {
+      setState(() {
+        _records = const [];
+        _status = 'Memory access ended. Review again to continue.';
+      });
+    }
   }
 
-  void _applyFilter() {
-    final query = _searchController.text.trim().toLowerCase();
-    setState(() {
-      _filtered = query.isEmpty
-          ? _all
-          : _all.where((n) {
-              final payload = n['payload'] as Map<String, dynamic>? ?? {};
-              final haystack = [
-                n['type'],
-                payload['text'],
-                payload['promptTitle'],
-              ].whereType<String>().join(' ').toLowerCase();
-              return haystack.contains(query);
-            }).toList();
-    });
+  Future<void> _review() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final memory = await _service();
+      _viewPermission?.revoke();
+      final permission = memory.authorize(
+        CompanionMemoryUse.review,
+        directUserGesture: true,
+      );
+      _activePermission = permission;
+      final records = await memory.recall(
+        permission,
+        use: CompanionMemoryUse.review,
+      );
+      if (!mounted) return;
+      permission.requireCurrent();
+      _viewPermission = permission;
+      setState(() {
+        _records = records;
+        _status = records.isEmpty ? 'No companion notes saved.' : null;
+      });
+    } catch (_) {
+      _activePermission?.revoke();
+      if (mounted) {
+        setState(() {
+          _records = const [];
+          _status = 'Memory access was not authorized or is unavailable.';
+        });
+      }
+    } finally {
+      _activePermission = null;
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _remember() async {
+    if (_busy || _note.text.trim().isEmpty) return;
+    final note = _note.text.trim();
+    setState(() => _busy = true);
+    try {
+      final memory = await _service();
+      final permission = memory.authorize(
+        CompanionMemoryUse.remember,
+        directUserGesture: true,
+      );
+      _activePermission = permission;
+      await memory.remember(permission, note);
+      if (!mounted) return;
+      setState(() {
+        _note.clear();
+        _status =
+            'Note saved, encrypted on this device. Review to see saved notes.';
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () =>
+              _status = 'Could not confirm the save. Your draft is still here.',
+        );
+      }
+    } finally {
+      _activePermission?.revoke();
+      _activePermission = null;
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _confirmClear() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear all memory?'),
+        title: const Text('Clear all companion memory?'),
         content: const Text(
-          'This permanently deletes everything Neura remembers from past '
-          'conversations and reflections. This cannot be undone.',
+          'Permanently delete saved companion notes, legacy conversation '
+          'memory and its old profile summary on this device. '
+          'Your local journals and saved therapy reflections stay in their own stores.',
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () => Navigator.pop(context, true),
             child: const Text('Clear everything'),
           ),
         ],
       ),
     );
-    if (confirmed != true) return;
-    await MemoryGraphService.I.resetAll();
-    await _load();
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final memory = await _service();
+      final permission = memory.authorize(
+        CompanionMemoryUse.wipe,
+        directUserGesture: true,
+      );
+      _activePermission = permission;
+      await memory.wipeNotes(permission);
+      await MemoryGraphService.I.resetAll();
+      final prefs = NeuraPrefsCache.prefs;
+      if (!await prefs.remove('neura.memory_profile.v1')) {
+        throw StateError('Profile deletion failed.');
+      }
+      await prefs.reload();
+      if (prefs.containsKey('neura.memory_profile.v1')) {
+        throw StateError('Profile remains.');
+      }
+      if (mounted) {
+        setState(() {
+          _records = const [];
+          _status = 'Companion memory cleared.';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _status = 'Memory deletion could not be fully confirmed.',
+        );
+      }
+    } finally {
+      _activePermission?.revoke();
+      _activePermission = null;
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _memory?.removeListener(_onRevoked);
+    _activePermission?.revoke();
+    _viewPermission?.revoke();
+    _search.dispose();
+    _note.dispose();
     super.dispose();
-  }
-
-  String _label(Map<String, dynamic> node) {
-    final type = node['type'] as String? ?? '';
-    final payload = node['payload'] as Map<String, dynamic>? ?? {};
-    if (type == 'ACTION:CHAT_MESSAGE') {
-      return 'You said: ${payload['text'] ?? ''}';
-    }
-    if (type == 'SUGGESTION:CHAT_REPLY') {
-      return 'Neura said: ${payload['text'] ?? ''}';
-    }
-    if (type == 'ACTION:THERAPY_REFLECTION') {
-      return '${payload['promptTitle'] ?? 'Reflection'}: ${payload['text'] ?? ''}';
-    }
-    return type;
-  }
-
-  IconData _icon(String type) {
-    if (type == 'ACTION:CHAT_MESSAGE') return Icons.person_outline;
-    if (type == 'SUGGESTION:CHAT_REPLY') return Icons.smart_toy_outlined;
-    if (type == 'ACTION:THERAPY_REFLECTION') {
-      return Icons.self_improvement_outlined;
-    }
-    return Icons.circle_outlined;
   }
 
   @override
   Widget build(BuildContext context) {
+    final query = _search.text.trim().toLowerCase();
+    final filtered =
+        _records.where((r) => r.value.toLowerCase().contains(query)).toList();
     return Scaffold(
       appBar: AppBar(
         title: const Text('What Neura Remembers'),
         actions: [
           IconButton(
-            tooltip: 'Clear all memory',
-            onPressed: _all.isEmpty ? null : _confirmClear,
+            tooltip: 'Clear all companion memory',
+            onPressed: _busy ? null : _confirmClear,
             icon: const Icon(Icons.delete_outline),
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              controller: _searchController,
+      body: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            const Text(
+              'Only notes you explicitly save are used as companion memory. '
+              'Chats, journals and therapy reflections are not copied here. '
+              'Chat recall and any cloud request need separate approval.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _note,
+              maxLength: 1000,
+              enabled: !_busy,
               decoration: const InputDecoration(
-                hintText: 'Search memories…',
-                prefixIcon: Icon(Icons.search),
+                labelText: 'Write a companion note',
                 border: OutlineInputBorder(),
               ),
             ),
-          ),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _filtered.isEmpty
-                    ? Center(
-                        child: Text(
-                          _all.isEmpty
-                              ? "Nothing remembered yet - talk to Neura or\nsave a reflection to get started."
-                              : 'No matches.',
-                          textAlign: TextAlign.center,
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: _filtered.length,
-                        itemBuilder: (context, i) {
-                          final node = _filtered[i];
-                          final type = node['type'] as String? ?? '';
-                          return ListTile(
-                            leading: Icon(_icon(type)),
-                            title: Text(_label(node),
-                                maxLines: 3, overflow: TextOverflow.ellipsis),
-                            subtitle: Text(node['ts']?.toString() ?? ''),
-                          );
-                        },
-                      ),
-          ),
-        ],
+            FilledButton(
+              onPressed: _busy ? null : _remember,
+              child: const Text('Remember this note on this device'),
+            ),
+            TextButton(
+              onPressed: _busy ? null : _review,
+              child: const Text('Review saved notes on this device'),
+            ),
+            if (_busy) const LinearProgressIndicator(),
+            if (_status != null) Text(_status!, textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _search,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                hintText: 'Search reviewed notes…',
+                prefixIcon: Icon(Icons.search),
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                itemCount: filtered.length,
+                itemBuilder: (context, i) => ListTile(
+                  leading: const Icon(Icons.note_outlined),
+                  title: Text(filtered[i].value),
+                  subtitle: Text(filtered[i].createdAtUtc.toLocal().toString()),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
