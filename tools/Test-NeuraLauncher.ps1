@@ -120,7 +120,7 @@ $shortcutText = Get-Content -LiteralPath (
 foreach ($shortcutContract in @(
     'neura_shortcut.lock',
     '$existing.Arguments',
-    "$link.Arguments = ''",
+    '$link.Arguments = ',
     '$existing.Description',
     '$existing.WindowStyle'
 )) {
