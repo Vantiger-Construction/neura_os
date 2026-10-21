@@ -189,3 +189,6 @@ try {
 }
 
 Write-Host 'Neura launcher syntax, freshness, payload, path, and exit-code contracts passed.'
+# The last fixture deliberately exits 1; don't leak that $LASTEXITCODE to the
+# caller (GitHub's PowerShell step wrapper exits with it).
+exit 0
