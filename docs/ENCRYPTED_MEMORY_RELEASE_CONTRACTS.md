@@ -5,26 +5,128 @@ This is an engineering verification record for the existing P1 task
 Synthetic automated validation does not complete physical-device acceptance or
 approve a public release. PR #133 and this review branch require human review.
 
+## Production consent integration — October 21, 2026
+
+Implementation and tests: `2927656e3b0ec71b4b8f4a28ff3c73f7c6ace5c9`,
+tree `107953058d26e9337f7c0bb6d50d8e9490228d88`, based on the existing #141
+head `1459d13bff73e6305088fc2e5cf073edbfe0084f`. Later edits to this evidence
+file do not change those code/test inputs. This candidate stays draft.
+
+### Actual authorization paths
+
+| Entry point | Earlier effective authorization and gap | Integrated behavior |
+| --- | --- | --- |
+| Chat `NeuraChatScreen` → `NeuraAiService.streamReply` | Private-room restrictions, next-reply opt-in, private-context tracking, cancellation and separate cloud approval were effective. A room's `persistMemory` flag was not a lease; ordinary turns were automatically logged. | A direct checkbox gesture creates a prompt-destination, single-use recall grant. Send transfers it to exactly that turn. Raw user/reply logging is removed, receipts report no automatic long-term save, and visible working history remains available. |
+| `NeuraPromptBuilder.buildSystemMessage` | AI chat callers supplied a room/opt-in boolean, and summaries explicitly passed false. The builder itself defaulted true and read the legacy graph/profile without foundation consent. | Defaults false; a boolean alone never reads memory. A valid prompt permission recalls only admitted notes through the scoped owner. Legacy/profile reads are removed. Notes are marked untrusted context, not action authority. |
+| `MemoryScreen` | Opening the route automatically decrypted up to 500 mixed legacy nodes. Clear had an explicit confirmation. | Opening performs no memory I/O. Review requires its own grant, search uses that authorized RAM result, and Remember persists only text explicitly entered as a companion note. Review is not prompt consent. Confirmed clear removes scoped notes plus legacy history/profile while preserving journal stores. |
+| Therapy reflection save | Explicit Save authorized the encrypted local reflection store, but also copied raw text into the graph without a separate memory lease. | The encrypted reflection save/history workflow remains; the companion-memory copy is removed. |
+| Mirror check-in | Done saved mood and raw reflection into the graph without a memory lease. | An explicit Save check-in locally control saves the reflection to the existing encrypted local reflection journal. Mood presentation remains; save failure retains the draft. No raw graph copy is made. |
+| Typed/voice journal screens → `LocalJournalStore` | Explicit saves, durable confirmation, draft retention and revision/conflict behavior already belonged to the local journal. | Unchanged local authority and storage behavior. No automatic conversion into a scoped memory class; sync remains separate. |
+| Wake-word reply path | Voice opt-in/Safe Mode/cancellation protected capture; these were not memory consent. Cloud requests without a visible approval handler already failed closed. | Automatic raw chat-memory copies are removed. Voice commands cannot create memory grants; exclude-memories revokes an existing one, and unrelated context commands preserve the user's pending selection. |
+| App-open consolidation | Fresh-cloud approval prevented unattended cloud submission, but the hook still attempted unscoped local graph recall. | The app-open hook and prompt's legacy profile read are removed. The old class is retained for compatibility/wipe cleanup and has no current production recall caller. |
+
+`CompanionMemoryService` is the production owner. It constructs the existing
+durable adapter only when an explicit memory control is used, after verifying
+an OS-backed key. A random non-secret local-profile identifier scopes owner and
+device; it is not hardware identification or a cloud account identity. Missing
+identity alongside existing scoped ciphertext fails closed instead of adopting
+old data. A preference-backed legacy-key fallback can still serve existing
+journal recovery, but cannot back new production companion notes.
+
+The single admitted production scope is user-authored note / direct local user /
+personal sensitivity / companion-notes capsule. Notes are independently entered
+in the memory screen, never automatically derived from chats or journals. Values
+are bounded to 1,000 characters, scope review returns a newest-first tail of at
+most 100 records, and prompts include at most eight notes. Payloads/provenance
+remain AES-GCM ciphertext in the existing local envelope. No background collection, sync,
+model or cloud call is added by the memory owner.
+
+Every permission is transient, destination-bound, single-use and five minutes
+long (within the existing 15-minute maximum). Scope/operation/owner and current
+lifetime are checked before I/O, after restore and at persistence boundaries.
+Revocation remains effective after consumption for outstanding asynchronous work.
+Expiry, background, Safe Mode/recovery, screen disposal, active chat cancellation,
+explicit exclusion and full wipe invalidate the relevant permissions. Full wipe
+also suspends the production owners synchronously and reuses #141's registry
+cache clearing, bounded drain and late-write cleanup.
+
+Cloud authorization stays independent: the existing sensitive-content-local
+constitution still blocks memory-bearing cloud requests by default. If the user
+has separately permitted that category, each exact request still needs fresh
+preview approval. Permission is rechecked before/after that preview and during
+streaming; expiry/revocation prevents a pending submission. Model-generated
+instructions cannot create or widen a grant.
+
+A native write already issued under valid consent cannot be recalled. If consent
+expires or is revoked before completion, the caller receives no success and the
+adapter requires reconciliation; encrypted bytes may have reached storage. A
+fresh, separately authorized review can reconcile them. Revocation is not a
+promise to erase an already-admitted native write; explicit scoped/full wipe has
+its own verified deletion contract.
+
+Persona/current-mood presentation settings, local safety checks, recap analytics,
+joy metrics and proactivity outcome metadata remain independent feature stores
+or legacy graph users. They are not represented as compliant scoped-note memory.
+No raw-history migration, automatic collection or change to those permissions is
+implied. Physical-device acceptance, key-store/restart recovery and the broader
+release requirements below remain open.
+
+### New regression evidence
+
+The 33 new integration cases use synthetic fixtures, real AES-GCM and mocked OS
+stores. Tests cover absent/expired/revoked/pre-issue permissions, exact scope and
+destination mismatches, replay, bounded ordering, cold restore, revoked native
+completion, Safe Mode/recovery/background, route disposal, idle expiry, actual
+full-wipe orchestration, production local-owner provisioning, local journal and
+encrypted reflection preservation, and fresh cloud approval/cancellation. No real
+journal, microphone, model, credential or external network is used as a fixture.
+
+| Local validation on Flutter 3.47.5 / Dart 3.13.4, Linux | Confirmed result |
+| --- | --- |
+| Complete current-source Flutter suite | 906 passed |
+| Complete Flutter suite with current #133 head `258ff87` | 924 passed |
+| Expanded current-source memory/journal/prompt/router/voice-command suite | 182 passed |
+| Same expanded suite with current #133 head `258ff87` | 200 passed |
+| Strict analysis | Current source and combined source: no issues |
+| Canonical formatting | Current source: 36 files, zero changes; combined: 42 files, zero changes |
+
+The current-source tree is `107953058d26e9337f7c0bb6d50d8e9490228d88`.
+The disposable combined tree is `3adef3fac0fb1eae772b4972281c5b0401ba069b`.
+Only the known add/add fixture conflict was resolved, after verifying ours
+`383624734a80fa3716b8b3b9fee0cf49390aa49d` and theirs
+`d4f533ee6905694296ae8124947f2bca8f98b467`. The tracked terminal-key assertion
+adaptation was applied to the disposable index. #133's branch was not edited.
+The 182 tests are included in the 200; these are not 382 distinct tests.
+
+Reproduction uses locked dependencies, `flutter test --no-pub --reporter expanded --concurrency 2 --timeout 2m` for the complete suite, and the explicit expanded
+file list in the updated memory-release workflow for each focused lane. That
+workflow now covers the production owners, journal preservation and voice-command
+regression, and pins the current #133 commit. Local test results do not transfer
+older hosted/CodeQL/Windows/Android statuses to this new head. Required hosted
+checks and physical-device acceptance remain separate pending gates.
+
+No physical Windows/Android result or merge approval is inferred from these tests.
+
 ## Source boundaries
 
 - Reviewed default: [`08fd9493038ef2aa6274c3a12402d96299b5b1bb`](https://github.com/Vantiger-Construction/neura_os/commit/08fd9493038ef2aa6274c3a12402d96299b5b1bb).
 - Merged history work: [PR #113](https://github.com/Vantiger-Construction/neura_os/pull/113),
   merge [`5395a0457b51f0d1da048b6526680d12218615f3`](https://github.com/Vantiger-Construction/neura_os/commit/5395a0457b51f0d1da048b6526680d12218615f3).
   Its graph, tail helper and graph tests are unchanged in the reviewed default.
-- Unmerged wipe candidate: [PR #133](https://github.com/Vantiger-Construction/neura_os/pull/133),
+- Historical wipe-candidate pin: [PR #133](https://github.com/Vantiger-Construction/neura_os/pull/133),
   [`b822c48be5a871d5a5e8e88825205d70534216d0`](https://github.com/Vantiger-Construction/neura_os/commit/b822c48be5a871d5a5e8e88825205d70534216d0).
-- Latest #133 head: `d7ca9118e6d3425f251ee7e8c55d88a99cecbefe`, an empty
-  CI-trigger commit whose full tree is identical to `b822c48`:
-  `22e936ff9ddd7516fecbb1a572892fae811b19a9`. Local three-way merges with either
-  head produce identical trees; the immutable test pin remains `b822c48`.
+- Current #133 head and new CI integration pin: `258ff8785e85882c5905eaded85969b93db48544`.
+  This merges current default `08fd949` into prior head `d7ca911`. The earlier
+  `b822c48` / `d7ca911` pins below belong to historical validation; the new local
+  combined validation uses `258ff87` directly. Neither PR was merged.
 - Corrections and new regressions: [draft PR #141](https://github.com/Vantiger-Construction/neura_os/pull/141).
 
-These are separate implementations: the legacy JSONL graph, a RAM-only scoped
-session adapter, and a durable scoped adapter storing one encrypted envelope.
-The scoped adapters have no production construction sites outside their own
-libraries. Legacy graph queries do not acquire the foundation's consent leases.
-The graph's raw chat history must not be relabeled as an admitted foundation
-memory class: the foundation explicitly excludes raw conversations and journals.
+The legacy JSONL graph, RAM-only session seam and durable scoped envelope remain
+separate implementations. The production `CompanionMemoryService` now owns the
+durable adapter for explicitly authored companion notes. It never imports or
+relabels raw chat, journals, therapy, mood notes or the old consolidated profile.
+Legacy graph analytics remain separate APIs without foundation leases; they are
+not a source for companion prompts or the companion-memory review screen.
 
 ## Requirement mapping
 
@@ -88,7 +190,7 @@ in the disposable checkout; #133 itself remains unchanged. Its
 `path` is declared as a direct development dependency, at its existing locked
 version, to analyze that reused fixture without suppressions.
 
-## Validation record
+## Historical component validation record
 
 [Run 39234170927](https://github.com/Vantiger-Construction/neura_os/actions/runs/39234170927)
 passed both lanes on reviewed code/test head
@@ -131,10 +233,11 @@ October 17 UTC and was reconciled on October 18.
    gates, then validate that exact combined tree. A focused candidate-integration
    pass does not merge #133, transfer its CodeQL result, or certify every app
    workflow. Re-run if either candidate or the default changes materially.
-2. Complete the scoped memory runtime design: map admitted data classes and
-   actual read/write entry points to consent, clear the RAM-only session seam
-   through its owner, and verify actual rotation/selected export if shipped.
-   Existing legacy chat/journal behavior cannot be called foundation compliance.
+2. Review and physically accept the production companion-note path below.
+   Independent legacy analytics and persona/current-mood settings are not scoped
+   note records and are not certified by this integration. The unused RAM-only
+   session seam still needs an owner if activated. Verify actual rotation and
+   selected export if shipped; raw journal/history migration is not authorized.
 3. Define and verify crash/restart handling for an incomplete full wipe. These
    regressions prove same-process suspension, failed deletion and retry; they do
    not establish a persistent wipe-intent/recovery protocol after process death.
