@@ -88,6 +88,16 @@ still allow the workflow. A denied upload or missing extractor is **incomplete**
 not a security pass. Raw SARIF is preserved when available even if upload fails;
 no permissions are broadened automatically to repair failures.
 
+Successful CodeQL upload is also insufficient when extraction is partial. The
+workflow rejects missing/unsuccessful SARIF invocations and error-level tool
+diagnostics, while retaining the reports. Initial execution exposed the malformed
+legacy root `package.json` in JavaScript extraction and compiler errors in three
+Unity-dependent C# files. Those coverage errors remain visible failures pending
+reviewed manifest/Unity infrastructure repairs; they are not suppressed or
+treated as vulnerability findings. Unresolved NuGet access further limits the
+C# analysis. Medium Actions alerts remain visible under the existing, unchanged
+High-or-higher repository alert threshold.
+
 OSV reads only the three named committed lockfiles, with no dependency install,
 transitive manifest resolution or call analysis. It contacts OSV/its public
 package metadata services using public dependency identities. This is CI

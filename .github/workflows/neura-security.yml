@@ -83,6 +83,34 @@ jobs:
         with:
           category: /neura-security/language:${{ matrix.language }}
           output: ${{ runner.temp }}/neura-codeql-results
+      - name: Reject incomplete CodeQL extraction
+        shell: python
+        env:
+          SARIF_DIR: ${{ runner.temp }}/neura-codeql-results
+        run: |
+          import json, os
+          from pathlib import Path
+          reports = list(Path(os.environ['SARIF_DIR']).glob('*.sarif'))
+          if not reports:
+              raise SystemExit('Incomplete: CodeQL did not produce SARIF evidence')
+          errors = []
+          for path in reports:
+              runs = json.loads(path.read_text(encoding='utf-8'))['runs']
+              if not runs:
+                  errors.append('No CodeQL runs in ' + path.name)
+              for run in runs:
+                  invocations = run.get('invocations', [])
+                  if not invocations or any(not i.get('executionSuccessful') for i in invocations):
+                      errors.append('Missing or unsuccessful CodeQL invocation')
+                  for invocation in invocations:
+                      for key in ('toolExecutionNotifications', 'toolConfigurationNotifications'):
+                          for note in invocation.get(key, []):
+                              if note.get('level') == 'error':
+                                  errors.append(note.get('descriptor', {}).get('id', 'CodeQL diagnostic error'))
+          if errors:
+              with Path(os.environ['GITHUB_STEP_SUMMARY']).open('a', encoding='utf-8') as summary:
+                  summary.write('\nIncomplete source extraction: ' + ', '.join(sorted(set(errors))) + '. See SARIF artifact.\n')
+              raise SystemExit('Incomplete source extraction; retain diagnostics and repair coverage before acceptance')
       - name: Preserve SARIF even if upload fails
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
