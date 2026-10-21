@@ -17,6 +17,15 @@ function Get-TestTextSha256([string]$Text) {
     }
 }
 
+function Invoke-QuietNative {
+    param([Parameter(Mandatory)][scriptblock]$Command)
+
+    # Windows PowerShell 5.1 turns redirected native stderr (git hints and
+    # warnings) into a terminating error under ErrorActionPreference Stop.
+    $ErrorActionPreference = 'Continue'
+    & $Command 2>&1
+}
+
 function Invoke-LauncherFixture {
     param(
         [Parameter(Mandatory)][string]$Script,
@@ -156,7 +165,9 @@ try {
     Push-Location $batchRoot
     try {
         $batchOutput = @(
-            & $env:ComSpec /d /c 'echo.| call RUN_NEURA_LOCAL_BRAIN.bat -NoLaunch' 2>&1
+            Invoke-QuietNative {
+                & $env:ComSpec /d /c 'echo.| call RUN_NEURA_LOCAL_BRAIN.bat -NoLaunch'
+            }
         )
         $batchExit = $LASTEXITCODE
     } finally {
@@ -422,13 +433,14 @@ try {
     $readmePath = Join-Path $sourceRoot 'README.md'
     Set-Content -LiteralPath $readmePath -Value 'unrelated fixture' -Encoding ASCII
     Remove-Item -LiteralPath (Join-Path $fakeBin 'git.cmd') -Force
-    & git -C $sourceRoot init 2>$null | Out-Null
+    Invoke-QuietNative { & git -C $sourceRoot init } | Out-Null
     Assert-True ($LASTEXITCODE -eq 0) 'Could not initialize the launcher Git fixture.'
-    & git -C $sourceRoot add -- . 2>$null
+    Invoke-QuietNative { & git -C $sourceRoot add -- . } | Out-Null
     Assert-True ($LASTEXITCODE -eq 0) 'Could not stage the launcher Git fixture.'
-    & git -C $sourceRoot -c user.name='Neura CI' `
-        -c user.email='neura-ci@example.invalid' commit -m 'fixture baseline' `
-        2>$null | Out-Null
+    Invoke-QuietNative {
+        & git -C $sourceRoot -c user.name='Neura CI' `
+            -c user.email='neura-ci@example.invalid' commit -m 'fixture baseline'
+    } | Out-Null
     Assert-True ($LASTEXITCODE -eq 0) 'Could not commit the launcher Git fixture.'
 
     Remove-Item -LiteralPath $stampPath -Force
@@ -463,7 +475,7 @@ try {
     Assert-True ($unstaged.ToolLog -match 'build windows --release') 'An unstaged source change did not force a rebuild.'
 
     Set-Content -LiteralPath $sourceFile -Value 'void main() { print("staged"); }' -Encoding ASCII
-    & git -C $sourceRoot add -- lib/main.dart 2>$null
+    Invoke-QuietNative { & git -C $sourceRoot add -- lib/main.dart } | Out-Null
     Assert-True ($LASTEXITCODE -eq 0) 'Could not stage the launcher source fixture.'
     Remove-Item -LiteralPath $toolLog -Force -ErrorAction SilentlyContinue
     $staged = Invoke-LauncherFixture -Script $fixtureLauncher -ToolLog $toolLog -ExpectedExit 0
@@ -476,7 +488,7 @@ try {
     Assert-True ($untracked.ToolLog -match 'build windows --release') 'An untracked source input did not force a rebuild.'
 
     Set-Content -LiteralPath $sourceFile -Value 'void main() { print("changed"); }' -Encoding ASCII
-    & git -C $sourceRoot add -- lib/main.dart 2>$null
+    Invoke-QuietNative { & git -C $sourceRoot add -- lib/main.dart } | Out-Null
     Assert-True ($LASTEXITCODE -eq 0) 'Could not restore the tracked launcher source fixture.'
     Remove-Item -LiteralPath $untrackedSource -Force
     Remove-Item -LiteralPath $toolLog -Force -ErrorAction SilentlyContinue

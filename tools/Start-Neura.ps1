@@ -95,28 +95,38 @@ function Get-FilesystemSourceStamp {
     return ('files:{0}' -f (Get-TextSha256 -Text ($lines -join [Environment]::NewLine)))
 }
 
+function Invoke-QuietNative {
+    param([Parameter(Mandatory)][scriptblock]$Command)
+
+    # Windows PowerShell 5.1 turns redirected native stderr (git hints,
+    # warnings, "fatal: not a git repository") into a terminating error under
+    # ErrorActionPreference Stop. Callers check $LASTEXITCODE instead.
+    $ErrorActionPreference = 'Continue'
+    & $Command 2>$null
+}
+
 function Get-SourceStamp {
     if (Get-Command git -ErrorAction SilentlyContinue) {
-        $headOutput = @(& git -C $root rev-parse HEAD 2>$null)
+        $headOutput = @(Invoke-QuietNative { & git -C $root rev-parse HEAD 2>$null })
         if ($LASTEXITCODE -eq 0 -and $headOutput.Count -gt 0) {
-            $tree = @(
+            $tree = @(Invoke-QuietNative {
                 & git -C $root -c core.quotepath=false ls-tree -r `
                     --full-tree HEAD -- $sourcePaths 2>$null
-            )
+            })
             if ($LASTEXITCODE -ne 0) {
                 return (Get-FilesystemSourceStamp)
             }
-            $changed = @(
+            $changed = @(Invoke-QuietNative {
                 & git -C $root -c core.quotepath=false diff --no-ext-diff `
                     --name-only HEAD -- $sourcePaths 2>$null
-            )
+            })
             if ($LASTEXITCODE -ne 0) {
                 return (Get-FilesystemSourceStamp)
             }
-            $untracked = @(
+            $untracked = @(Invoke-QuietNative {
                 & git -C $root -c core.quotepath=false ls-files --others `
                     -- $sourcePaths 2>$null
-            )
+            })
             if ($LASTEXITCODE -ne 0) {
                 return (Get-FilesystemSourceStamp)
             }
