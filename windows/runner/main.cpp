@@ -43,7 +43,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   RecordNeuraNativeBreadcrumb("primary_window_create_started");
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"neuro_companion", origin, size)) {
+  if (!window.Create(L"Neura", origin, size)) {
     RecordNeuraNativeBreadcrumb("primary_window_create_failed");
     return EXIT_FAILURE;
   }
@@ -82,7 +82,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
             sub_project, sub_window_id, /*is_mascot=*/true);
         Win32Window::Point sub_origin(10, 10);
         Win32Window::Size sub_size(1280, 720);
-        if (sub_window->Create(L"neuro_companion", sub_origin, sub_size)) {
+        if (sub_window->Create(L"Neura", sub_origin, sub_size)) {
           RecordNeuraNativeBreadcrumb("secondary_window_created");
           sub_window->Show();
           sub_window->SetQuitOnClose(false);

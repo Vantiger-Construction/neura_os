@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.neurocompanion" "\0"
-            VALUE "FileDescription", "neuro_companion" "\0"
+            VALUE "FileDescription", "Neura" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "neuro_companion" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2025 com.neurocompanion. All rights reserved." "\0"
             VALUE "OriginalFilename", "neuro_companion.exe" "\0"
-            VALUE "ProductName", "neuro_companion" "\0"
+            VALUE "ProductName", "Neura" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
