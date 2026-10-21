@@ -1,10 +1,13 @@
 @echo off
 setlocal
-rem One-click Neura: builds the engine and app when needed, then starts Neura.
+rem One-click Neura: reconcile shortcuts, verify/build, then start Neura.
 set "ROOT=%~dp0"
-if not exist "%USERPROFILE%\Desktop\Neura.lnk" (
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\Install-NeuraShortcut.ps1" -Quiet
-)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\Install-NeuraShortcut.ps1" -Quiet
+if errorlevel 1 echo [Neura] Shortcut repair failed; continuing with startup.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\Start-Neura.ps1" %*
-if errorlevel 1 pause
-endlocal
+set "NEURA_EXIT=%ERRORLEVEL%"
+if not "%NEURA_EXIT%"=="0" (
+  echo [Neura] Startup failed with exit code %NEURA_EXIT%.
+  pause
+)
+endlocal & exit /b %NEURA_EXIT%

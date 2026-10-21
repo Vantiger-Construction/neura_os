@@ -1,8 +1,8 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-Creates "Neura" shortcuts, with Neura's avatar icon, on the Desktop and in the
-Start menu. Each one runs the launcher (Neura.bat).
+Ensures owned "Neura" shortcuts exist on the shell-resolved Desktop and Start
+menu. Correct shortcuts are left unchanged; stale Neura shortcuts are repaired.
 #>
 [CmdletBinding()]
 param(
@@ -16,23 +16,84 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $launcher = Join-Path $root 'Neura.bat'
 $icon = Join-Path $root 'windows\runner\resources\app_icon.ico'
 
+function Get-NormalizedShortcutPath {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) { return '' }
+    try {
+        return [IO.Path]::GetFullPath(
+            [Environment]::ExpandEnvironmentVariables($Path)
+        ).TrimEnd('\')
+    } catch {
+        return $Path.TrimEnd('\')
+    }
+}
+
 $targets = @(
-    [Environment]::GetFolderPath('Desktop'),
-    (Join-Path ([Environment]::GetFolderPath('Programs')) 'Neura')
+    [PSCustomObject]@{
+        Label = 'Desktop'
+        Directory = [Environment]::GetFolderPath('Desktop')
+    },
+    [PSCustomObject]@{
+        Label = 'Start menu'
+        Directory = Join-Path ([Environment]::GetFolderPath('Programs')) 'Neura'
+    }
 )
 
 $shell = New-Object -ComObject WScript.Shell
-foreach ($dir in $targets) {
-    if (-not (Test-Path -LiteralPath $dir)) {
-        New-Item -ItemType Directory -Path $dir | Out-Null
+foreach ($target in $targets) {
+    $dir = [string]$target.Directory
+    if ([string]::IsNullOrWhiteSpace($dir)) {
+        Write-Warning "$($target.Label) folder is unavailable; shortcut was not changed."
+        continue
     }
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+
     $path = Join-Path $dir 'Neura.lnk'
-    $link = $shell.CreateShortcut($path)
-    $link.TargetPath = $launcher
-    $link.WorkingDirectory = $root
-    $link.IconLocation = "$icon,0"
-    $link.Description = 'Start Neura'
-    $link.WindowStyle = 1
-    $link.Save()
-    if (-not $Quiet) { Write-Host "[Neura] Shortcut created: $path" -ForegroundColor Magenta }
+    $needsWrite = $true
+    if (Test-Path -LiteralPath $path) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            Write-Warning "Keeping non-file shortcut path: $path"
+            continue
+        }
+        $shortcutItem = Get-Item -LiteralPath $path -Force
+        if (($shortcutItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Write-Warning "Keeping linked shortcut path: $path"
+            continue
+        }
+        $existing = $shell.CreateShortcut($path)
+        $owned = (
+            $existing.Description -ceq 'Start Neura' -or
+            [IO.Path]::GetFileName($existing.TargetPath) -ieq 'Neura.bat'
+        )
+        if (-not $owned) {
+            Write-Warning "Keeping unrelated existing shortcut: $path"
+            continue
+        }
+
+        $needsWrite = (
+            (Get-NormalizedShortcutPath $existing.TargetPath) -ine
+                (Get-NormalizedShortcutPath $launcher) -or
+            (Get-NormalizedShortcutPath $existing.WorkingDirectory) -ine
+                (Get-NormalizedShortcutPath $root) -or
+            $existing.IconLocation -ine "$icon,0"
+        )
+    }
+
+    if ($needsWrite) {
+        $link = $shell.CreateShortcut($path)
+        $link.TargetPath = $launcher
+        $link.WorkingDirectory = $root
+        $link.IconLocation = "$icon,0"
+        $link.Description = 'Start Neura'
+        $link.WindowStyle = 1
+        $link.Save()
+        if (-not $Quiet) {
+            Write-Host "[Neura] Shortcut created or repaired: $path" -ForegroundColor Magenta
+        }
+    } elseif (-not $Quiet) {
+        Write-Host "[Neura] Shortcut already current: $path" -ForegroundColor DarkGray
+    }
 }

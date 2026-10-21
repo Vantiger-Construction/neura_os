@@ -2,6 +2,7 @@
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
+#include <memory>
 #include <string>
 
 #include "flutter_window.h"
@@ -9,6 +10,20 @@
 #include "utils.h"
 
 #include "window_manager_plus/window_manager_plus_plugin.h"
+
+namespace {
+
+struct HandleCloser {
+  void operator()(void *handle) const noexcept {
+    if (handle != nullptr) {
+      ::CloseHandle(handle);
+    }
+  }
+};
+
+using UniqueHandle = std::unique_ptr<void, HandleCloser>;
+
+}  // namespace
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
@@ -18,6 +33,17 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     if (argument == "--launch-smoke-test") {
       return 73;
     }
+  }
+
+  HANDLE raw_instance_mutex = ::CreateMutexW(
+      nullptr, FALSE, L"Local\\NeuraCompanionPrimaryInstance-v1");
+  const DWORD mutex_result = ::GetLastError();
+  UniqueHandle instance_mutex(raw_instance_mutex);
+  if (!instance_mutex) {
+    return EXIT_FAILURE;
+  }
+  if (mutex_result == ERROR_ALREADY_EXISTS) {
+    return EXIT_SUCCESS;
   }
 
   InitializeNeuraNativeDiagnostics();

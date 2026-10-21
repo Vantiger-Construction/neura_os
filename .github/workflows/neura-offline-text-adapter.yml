@@ -13,6 +13,12 @@ on:
       - 'test/modules/chat/**'
       - 'test/neura_link/**'
       - 'windows/runner/**'
+      - 'Neura.bat'
+      - 'RUN_NEURA_LOCAL_BRAIN.bat'
+      - 'tools/Start-Neura.ps1'
+      - 'tools/Install-NeuraShortcut.ps1'
+      - 'tools/Build-Neura-LocalBrain.ps1'
+      - 'tools/Test-NeuraLauncher.ps1'
       - 'tools/offline_text_native_check/**'
       - 'tools/*NeuraLocalConversation*'
       - 'docs/NEURA_OFFLINE_CONVERSATION.md'
@@ -53,7 +59,9 @@ jobs:
       - name: Check Windows preflight policy and launcher syntax
         if: runner.os == 'Windows'
         shell: powershell
-        run: '& .\tools\Test-NeuraLocalConversationPolicy.ps1'
+        run: |
+          & .\tools\Test-NeuraLocalConversationPolicy.ps1
+          & .\tools\Test-NeuraLauncher.ps1
 
   flutter:
     name: Flutter chat and lifecycle (${{ matrix.os }})

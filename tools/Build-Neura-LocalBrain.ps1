@@ -23,9 +23,9 @@ try {
     $exe = Join-Path $root 'rust\target\release\neura_api.exe'
     Write-Host "[OK] Local brain built: $exe" -ForegroundColor Green
     if ($Run) {
-        # neura_api refuses to run without the per-session credential the app
-        # issues, so start Neura (which starts its own engine) instead.
-        & (Join-Path $PSScriptRoot 'Start-Neura.ps1')
+        # Force the canonical Flutter/CMake package path to copy and verify the
+        # engine that was just built before Neura starts it with a fresh token.
+        & (Join-Path $PSScriptRoot 'Start-Neura.ps1') -Rebuild
     }
 } finally {
     Pop-Location
