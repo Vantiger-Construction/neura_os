@@ -61,7 +61,15 @@ jobs:
         shell: powershell
         run: |
           & .\tools\Test-NeuraLocalConversationPolicy.ps1
-          & .\tools\Test-NeuraLauncher.ps1
+          try {
+            & .\tools\Test-NeuraLauncher.ps1
+          } catch {
+            # Surface the failing contract as an annotation on the PR.
+            $message = (($_ | Out-String) + $_.ScriptStackTrace).Trim()
+            $message = $message.Replace('%', '%25').Replace("`r", '').Replace("`n", '%0A')
+            Write-Host "::error title=Neura launcher contract::$message"
+            throw
+          }
 
   flutter:
     name: Flutter chat and lifecycle (${{ matrix.os }})
