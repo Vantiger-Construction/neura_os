@@ -15,6 +15,8 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $launcher = Join-Path $root 'Neura.bat'
 $icon = Join-Path $root 'windows\runner\resources\app_icon.ico'
+$buildDir = Join-Path $root 'build'
+$shortcutLockFile = Join-Path $buildDir 'neura_shortcut.lock'
 
 function Get-NormalizedShortcutPath {
     param([string]$Path)
@@ -28,6 +30,40 @@ function Get-NormalizedShortcutPath {
         return $Path.TrimEnd('\')
     }
 }
+
+if (Test-Path -LiteralPath $buildDir) {
+    $buildItem = Get-Item -LiteralPath $buildDir -Force
+    if (-not $buildItem.PSIsContainer -or
+        ($buildItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Refusing unsafe build directory: $buildDir"
+    }
+} else {
+    New-Item -ItemType Directory -Path $buildDir | Out-Null
+}
+if (Test-Path -LiteralPath $shortcutLockFile) {
+    $lockItem = Get-Item -LiteralPath $shortcutLockFile -Force
+    if ($lockItem.PSIsContainer -or
+        ($lockItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Refusing unsafe shortcut lock: $shortcutLockFile"
+    }
+}
+$shortcutLock = $null
+try {
+    $shortcutLock = [IO.File]::Open(
+        $shortcutLockFile,
+        [IO.FileMode]::OpenOrCreate,
+        [IO.FileAccess]::ReadWrite,
+        [IO.FileShare]::None
+    )
+} catch [IO.IOException] {
+    if (-not $Quiet) {
+        Write-Host '[Neura] Shortcut repair is already in progress.' `
+            -ForegroundColor DarkGray
+    }
+    return
+}
+
+try {
 
 $targets = @(
     [PSCustomObject]@{
@@ -78,7 +114,10 @@ foreach ($target in $targets) {
                 (Get-NormalizedShortcutPath $launcher) -or
             (Get-NormalizedShortcutPath $existing.WorkingDirectory) -ine
                 (Get-NormalizedShortcutPath $root) -or
-            $existing.IconLocation -ine "$icon,0"
+            $existing.IconLocation -ine "$icon,0" -or
+            -not [string]::IsNullOrWhiteSpace([string]$existing.Arguments) -or
+            $existing.Description -cne 'Start Neura' -or
+            [int]$existing.WindowStyle -ne 1
         )
     }
 
@@ -87,6 +126,7 @@ foreach ($target in $targets) {
         $link.TargetPath = $launcher
         $link.WorkingDirectory = $root
         $link.IconLocation = "$icon,0"
+        $link.Arguments = ''
         $link.Description = 'Start Neura'
         $link.WindowStyle = 1
         $link.Save()
@@ -96,4 +136,7 @@ foreach ($target in $targets) {
     } elseif (-not $Quiet) {
         Write-Host "[Neura] Shortcut already current: $path" -ForegroundColor DarkGray
     }
+}
+} finally {
+    $shortcutLock.Dispose()
 }
