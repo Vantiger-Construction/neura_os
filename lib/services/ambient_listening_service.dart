@@ -17,10 +17,10 @@ import 'neura_tts_service.dart';
 
 /// Whether [AmbientListeningService.greetAndStartListening] speaks at boot.
 ///
-/// It remains disabled pending a physical Windows confirmation of the
-/// Dart-side completion workaround in [NeuraTtsService]. Debugging for issue
-/// #32 disproved the earlier mascot-window race theory and isolated the native
-/// flutter_tts speak/completion path as the likely crash source. Keeping the
+/// It remains disabled pending physical Windows acceptance of the owned SAPI
+/// speech path in [NeuraTtsService]. Debugging for issue #32 reproduced the crash
+/// without the mascot window and implicated the native flutter_tts
+/// speak/completion path. Keeping the
 /// greeting off prevents an unverified native audio path from expanding into a
 /// startup failure while normal opt-in ambient capture remains available.
 const bool kEnableProactiveGreetingTts = false;

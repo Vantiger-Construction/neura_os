@@ -1,0 +1,5 @@
+{
+  "name": "Neura.Presence.Core",
+  "rootNamespace": "Neura.Presence",
+  "noEngineReferences": true
+}

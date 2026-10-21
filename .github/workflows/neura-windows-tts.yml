@@ -1,0 +1,83 @@
+name: Windows local speech safety
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths:
+      - 'lib/integrations/tts/**'
+      - 'lib/services/neura_tts_service.dart'
+      - 'windows/runner/neura*tts*'
+      - 'windows/runner/flutter_window.*'
+      - 'windows/runner/CMakeLists.txt'
+      - 'tools/windows_tts_native_check/**'
+      - 'test/services/neura_windows_tts_test.dart'
+      - 'test/services/neura_windows_tts_routing_test.dart'
+      - 'test/services/neura_tts_lifecycle_test.dart'
+      - '.github/workflows/neura-windows-tts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-windows-tts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Restore locked dependencies
+        run: |
+          flutter pub get
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --exit-code -- pubspec.lock
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Analyze speech code
+        run: |
+          flutter analyze --no-pub lib/integrations/tts lib/services/neura_tts_service.dart test/services/neura_windows_tts_test.dart test/services/neura_windows_tts_routing_test.dart test/services/neura_tts_lifecycle_test.dart
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Synthetic Dart speech tests only
+        run: |
+          flutter test --no-pub --reporter expanded test/services/neura_windows_tts_test.dart test/services/neura_windows_tts_routing_test.dart test/services/neura_tts_lifecycle_test.dart test/screens/neura_voice_settings_lifecycle_test.dart test/modules/chat/neura_voice_commands_test.dart test/modules/chat/neura_offline_chat_test.dart
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile real Windows owner and run audio-free ownership tests
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sdk = $env:FLUTTER_ROOT
+          if ([string]::IsNullOrWhiteSpace($sdk)) {
+            $sdk = Split-Path -Parent (Split-Path -Parent (Get-Command flutter).Source)
+          }
+          flutter precache --windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $includes = Join-Path $sdk 'engine\src\flutter\shell\platform\common\client_wrapper\include'
+          if (-not (Test-Path (Join-Path $includes 'flutter\method_channel.h'))) {
+            $header = Get-ChildItem (Join-Path $sdk 'bin\cache\artifacts\engine') -Filter method_channel.h -Recurse |
+              Where-Object { $_.Directory.Name -eq 'flutter' } | Select-Object -First 1
+            if (-not $header) { throw 'Genuine Flutter wrapper headers were not found.' }
+            $includes = Split-Path -Parent $header.Directory.FullName
+          }
+          $engine = Join-Path $sdk 'bin\cache\artifacts\engine'
+          $library = Get-ChildItem $engine -Filter flutter_windows.dll.lib -Recurse |
+            Where-Object { $_.FullName -match 'windows-x64' } | Select-Object -First 1
+          if (-not $library) { throw 'Genuine Flutter engine import library was not found.' }
+          $dll = Join-Path $library.Directory.FullName 'flutter_windows.dll'
+          $api = Join-Path $sdk 'engine\src\flutter\shell\platform\common\public'
+          if (-not (Test-Path (Join-Path $api 'flutter_messenger.h'))) {
+            $apiHeader = Get-ChildItem $library.Directory.FullName -Filter flutter_messenger.h -Recurse | Select-Object -First 1
+            if (-not $apiHeader) { throw 'Genuine Flutter engine API headers were not found.' }
+            $api = $apiHeader.Directory.FullName
+          }
+          cmake -S tools/windows_tts_native_check -B build/windows-tts-native-check "-DFLUTTER_WRAPPER_INCLUDE=$includes" "-DFLUTTER_ENGINE_INCLUDE=$api" "-DFLUTTER_ENGINE_LIBRARY=$($library.FullName)" "-DFLUTTER_ENGINE_DLL=$dll"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build/windows-tts-native-check --config Debug
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir build/windows-tts-native-check -C Debug --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

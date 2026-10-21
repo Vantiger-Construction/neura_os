@@ -1,0 +1,13 @@
+/Library/
+/Temp/
+/Obj/
+/Logs/
+/UserSettings/
+/Builds/
+/TestResults/
+/*.csproj
+/*.sln
+/*.slnx
+/ProjectSettings/*
+!/ProjectSettings/ProjectVersion.txt
+!/ProjectSettings/EditorBuildSettings.asset
