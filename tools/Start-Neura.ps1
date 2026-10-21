@@ -537,6 +537,7 @@ function Ensure-NeuraRuntimeLibraries {
     if (-not $selected) {
         throw 'A complete Visual C++ x64 runtime set was not found.'
     }
+    Write-Step "Packaging the Visual C++ runtime from $($selected.Directory.FullName)"
 
     foreach ($runtimeName in $runtimeNames) {
         $source = Join-Path $selected.Directory.FullName $runtimeName

@@ -183,7 +183,9 @@ try {
     $fakeBin = Join-Path $sourceRoot 'fake-bin'
     $fakeProgramFiles = Join-Path $sourceRoot 'fake-program-files'
     $fakeRedist = Join-Path $fakeProgramFiles (
-        'Microsoft Visual Studio\2022\BuildTools\VC\Redist\MSVC\14.40' +
+        # Versioned above any real toolset so a Visual Studio install on the
+        # host can never outrank the fixture runtime set.
+        'Microsoft Visual Studio\2022\BuildTools\VC\Redist\MSVC\99.99.99999' +
         '\x64\Microsoft.VC143.CRT'
     )
     $release = Join-Path $sourceRoot 'build\windows\x64\runner\Release'
@@ -391,6 +393,10 @@ try {
     Remove-Item -LiteralPath $toolLog -Force -ErrorAction SilentlyContinue
     $staleRuntime = Invoke-LauncherFixture -Script $fixtureLauncher -ToolLog $toolLog -ExpectedExit 0
     Assert-True ($staleRuntime.ToolLog -match 'build windows --release') 'A modified runtime DLL did not force repair.'
+    Assert-True ($staleRuntime.Output.Contains($fakeRedist)) (
+        'The rebuild packaged a runtime set other than the verified fixture.' +
+        [Environment]::NewLine + $staleRuntime.Output
+    )
     foreach ($runtimeName in @(
         'msvcp140.dll',
         'vcruntime140.dll',
