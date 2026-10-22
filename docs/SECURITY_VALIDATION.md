@@ -2,8 +2,8 @@
 
 This path adds dedicated security analysis alongside the existing managed
 CodeQL **Code Quality** checks. It does not replace application tests, consent
-and privacy regressions, or maintainer review. No runtime or dependency version
-is changed by this work.
+and privacy regressions, or maintainer review. The October 22 repair updates four locked Rust packages to patched versions.
+Runtime policy and consent boundaries remain unchanged.
 
 ## What was already operating
 
@@ -179,3 +179,30 @@ safety. If a false positive is established, record its rule/advisory ID, source
 commit, reasoning, owner and review/expiry date in a reviewed change or alert
 discussion. This PR adds no dismissals, severity exclusions, query suppressions,
 reachability exemptions or automatic fixes/merges. Keep raw findings available.
+
+## PR failure repairs — October 22, 2026
+
+The root `package.json` was an unused TOML placeholder; it is now a valid private
+repository manifest with no npm dependencies. The real Rust manifest remains
+`rust/Cargo.toml`; npm test tooling retains its separate lockfile.
+
+Cargo resolved only four patch updates: quinn-proto 0.11.18, rustls 0.23.46,
+rustls-webpki 0.103.16 and webpki-roots 1.0.10. A fresh checksum-verified
+OSV-Scanner 2.7.0 audit of the modified working tree extracted 227 Dart/SDK,
+212 Cargo and one npm entry, and returned zero known advisory matches. The
+receipt checkout SHA is the pre-edit parent; its lockfile hashes identify the
+modified input. This local result does not replace current-head hosted evidence.
+Seven audit-helper regression tests passed.
+
+C/C++ now uses manual CodeQL extraction around a real Windows release compile
+with checksum-verified Flutter 3.47.5, Windows SDK and restored locked plugins.
+The existing completeness gate remains enforced. A successful hosted run is
+required before accepting this infrastructure change; native output is not
+published or launched by this security workflow. Other platform configurations
+and firmware remain outside this traced Windows build.
+
+C# remains blocked by unresolved genuine Unity editor/test assemblies and
+NuGet extraction diagnostics. This repair does not exclude Unity files, create
+API stubs, suppress diagnostics or claim complete C# coverage. A compatible
+Unity 6000.6.6f1 reference/build environment is still required for acceptance.
+Earlier tables and run identities above are historical evidence.

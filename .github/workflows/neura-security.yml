@@ -20,7 +20,7 @@ jobs:
   codeql:
     name: CodeQL Security (${{ matrix.language }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
+    timeout-minutes: 90
     permissions:
       contents: read
       security-events: write
@@ -32,6 +32,7 @@ jobs:
             os: ubuntu-latest
           - language: c-cpp
             os: windows-latest
+            build-mode: manual
           - language: csharp
             os: ubuntu-latest
           - language: javascript-typescript
@@ -53,7 +54,7 @@ jobs:
         run: |
           {
             echo '### CodeQL security source'
-            echo "Language: ${{ matrix.language }}; build mode: none; queries: security-extended"
+            echo "Language: ${{ matrix.language }}; build mode: ${{ matrix.build-mode || 'none' }}; queries: security-extended"
             echo "Checkout commit: $(git rev-parse HEAD)"
             echo "Checkout tree: $(git rev-parse 'HEAD^{tree}')"
             echo "Event commit: $GITHUB_SHA; PR head: $PR_HEAD; PR base: $PR_BASE"
@@ -68,16 +69,43 @@ jobs:
           cargo --version
           cargo metadata --manifest-path rust/Cargo.toml --locked --format-version 1 > "$RUNNER_TEMP/neura-cargo-metadata.json"
           git diff --exit-code -- rust/Cargo.lock
+      - name: Install verified Flutter SDK for native extraction
+        if: matrix.language == 'c-cpp'
+        shell: pwsh
+        run: |
+          & ./tools/Enable-NeuraFlutter.ps1 -Version '3.47.5' -ExpectedSha256 '0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8'
+      - name: Prepare genuine Flutter headers and locked plugins
+        if: matrix.language == 'c-cpp'
+        shell: pwsh
+        run: |
+          flutter config --enable-windows-desktop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          flutter precache --windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          flutter pub get
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --exit-code -- pubspec.lock rust/Cargo.lock
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Initialize dedicated security queries
         uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           languages: ${{ matrix.language }}
-          build-mode: none
+          build-mode: ${{ matrix.build-mode || 'none' }}
           queries: security-extended
           # Do not inherit the separate managed Code Quality configuration.
           config: |
             name: Neura security queries
             disable-default-queries: false
+      - name: Trace the Windows application build
+        if: matrix.language == 'c-cpp'
+        shell: pwsh
+        run: |
+          # Build after CodeQL init so MSVC compilation is traced with real
+          # Windows SDK, Flutter and plugin headers. Never substitute stubs.
+          flutter build windows --release --no-pub
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --exit-code -- pubspec.lock rust/Cargo.lock windows/runner
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Analyze and upload security results
         uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
