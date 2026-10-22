@@ -638,7 +638,10 @@ jobs:
     name: validate
     needs: reclaim-runner-space
     runs-on: [self-hosted, Windows, X64, neura]
-    timeout-minutes: 90
+    # The self-hosted laptop needs 60-95 minutes for this job depending on
+    # load and power state; 90 minutes cancelled otherwise-green runs during
+    # release publishing.
+    timeout-minutes: 150
     env:
       NEURA_FLUTTER_VOLUME: ${{ needs.reclaim-runner-space.outputs.flutter_volume }}
       NEURA_RUST_VOLUME: ${{ needs.reclaim-runner-space.outputs.rust_volume }}
@@ -927,6 +930,10 @@ jobs:
             Write-Host ("{0} free: {1:N2} GB" -f $root, ($drive.Free / 1GB))
           }
 
+      - name: Test Visual C++ discovery guards
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        run: '& "$env:NEURA_SOURCE_ROOT\tools\VisualCppDiscovery.Tests.ps1"'
+
       - name: Ensure existing Visual C++ build tools
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
@@ -940,10 +947,16 @@ jobs:
 
           # This workflow must use the toolchain already present on the runner.
           # Do not mutate the Visual Studio installation during CI.
-          $installationPath = & $vswhere -latest -products * `
+          # Drain native stdout before selecting: early pipeline termination can
+          # kill vswhere and leave -1 for the runner's LASTEXITCODE footer.
+          $installationPaths = @(& $vswhere -latest -products * `
             -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
-            -property installationPath |
-            Select-Object -First 1
+            -property installationPath)
+          $locatorExitCode = $LASTEXITCODE
+          if ($locatorExitCode -ne 0) {
+            throw "Visual Studio locator failed with exit code $locatorExitCode."
+          }
+          $installationPath = $installationPaths | Select-Object -First 1
           if ([string]::IsNullOrWhiteSpace($installationPath)) {
             throw 'A Visual Studio C++ toolchain installation is required for the Windows build.'
           }
@@ -1002,6 +1015,9 @@ jobs:
       - name: Publish required Windows release assets
         if: steps.client_config.outputs.configured == 'true'
         id: release_delivery
+        # Bound a stalled upload so it fails on its own instead of consuming
+        # the job budget; observed successful runs take 6-7 minutes.
+        timeout-minutes: 25
         env:
           GITHUB_TOKEN: ${{ github.token }}
           NEURA_RELEASE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
