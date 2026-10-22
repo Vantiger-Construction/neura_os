@@ -28,9 +28,28 @@ pub(crate) const UNAVAILABLE: i32 = 4;
 pub(crate) const BLOCKED: i32 = 5;
 pub(crate) const WORKING: i32 = 6;
 pub(crate) const PAUSED: i32 = 7;
+/// The explicitly selected local model could not be verified or used. Distinct
+/// from ERROR so the Console can say what the operator needs to install.
+pub(crate) const MODEL_UNAVAILABLE: i32 = 8;
 const START_TIMEOUT: Duration = Duration::from_secs(3);
 const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
 const MAX_FIXTURE_FRAMES: usize = 16;
+// Outer allowance for diagnostics/preflight and the sidecar's 60-second
+// request deadline, which already includes cold model loading.
+pub(crate) const LOCAL_PROBE_TIMEOUT: Duration = Duration::from_secs(75);
+// The sidecar caps the fixture at 192 predicted tokens; a slow model can send
+// each token as its own delta, plus the completion frame.
+pub(crate) const LOCAL_MAX_FIXTURE_FRAMES: usize = 200;
+
+/// Which adapter a session's single fixed check runs on. Chosen only by the
+/// fixed native entry point that started the session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CheckMode {
+    /// Default repository echo text.
+    Echo,
+    /// The pinned model on the operator's own loopback Ollama daemon.
+    Local,
+}
 const REVOKE_TIMEOUT: Duration = Duration::from_millis(250);
 
 struct Snapshot {
@@ -86,6 +105,8 @@ impl RuntimeState {
 pub(crate) enum ProbeFailure {
     Failed,
     Exhausted,
+    /// The sidecar reported the selected local model as unavailable.
+    ModelUnavailable,
 }
 
 impl From<tokio_tungstenite::tungstenite::Error> for ProbeFailure {
@@ -116,6 +137,7 @@ struct Active {
 
 pub(crate) struct Launcher {
     executable: Option<PathBuf>,
+    mode: CheckMode,
     foreground: bool,
     blocked: bool,
     state: Arc<RuntimeState>,
@@ -126,6 +148,7 @@ impl Launcher {
     pub(crate) fn new(executable: Option<PathBuf>) -> Self {
         Self {
             executable,
+            mode: CheckMode::Echo,
             foreground: false,
             blocked: false,
             state: Arc::new(RuntimeState::new()),
@@ -138,6 +161,21 @@ impl Launcher {
     }
 
     pub(crate) fn start(&mut self) -> i32 {
+        self.begin(CheckMode::Echo)
+    }
+
+    /// Explicit Console opt-in: run the fixed check on the pinned local model.
+    pub(crate) fn start_local(&mut self) -> i32 {
+        self.begin(CheckMode::Local)
+    }
+
+    // Read by the native lifecycle tests, which include this file directly.
+    #[allow(dead_code)]
+    pub(crate) fn mode(&self) -> CheckMode {
+        self.mode
+    }
+
+    fn begin(&mut self, mode: CheckMode) -> i32 {
         if self.blocked || !self.foreground {
             return BLOCKED;
         }
@@ -145,7 +183,7 @@ impl Launcher {
         if self.status() == PAUSED {
             return PAUSED;
         }
-        self.launch()
+        self.launch(mode)
     }
 
     pub(crate) fn resume(&mut self) -> i32 {
@@ -157,11 +195,12 @@ impl Launcher {
         }
         // Budget exhaustion can publish Paused just before teardown finishes.
         // Join that owner before creating a new generation or credential.
+        // Resume keeps the adapter the paused session was explicitly started on.
         self.end(PAUSED);
-        self.launch()
+        self.launch(self.mode)
     }
 
-    fn launch(&mut self) -> i32 {
+    fn launch(&mut self, mode: CheckMode) -> i32 {
         let Some(executable) = self.executable.clone() else {
             return UNAVAILABLE;
         };
@@ -170,9 +209,11 @@ impl Launcher {
             .as_ref()
             .is_some_and(|session| !session.worker.is_finished())
         {
+            // A running session keeps its adapter; nothing is queued.
             return self.status();
         }
         self.stop();
+        self.mode = mode;
         let (cancel, receiver) = watch::channel(false);
         let state = self.state.clone();
         let generation = self.state.invalidate(STARTING);
@@ -191,6 +232,7 @@ impl Launcher {
                         || {
                             runtime.block_on(run_session(
                                 executable,
+                                mode,
                                 receiver.clone(),
                                 state.clone(),
                                 generation,
@@ -303,6 +345,7 @@ impl Drop for SessionOwner {
 
 pub(crate) async fn run_session(
     executable: PathBuf,
+    mode: CheckMode,
     mut cancel: watch::Receiver<bool>,
     state: Arc<RuntimeState>,
     generation: u64,
@@ -311,7 +354,7 @@ pub(crate) async fn run_session(
         return Ok(None);
     }
     let token = fresh_token()?;
-    let (child, pipe) = process::spawn(&executable, &token)?;
+    let (child, pipe) = process::spawn(&executable, &token, mode == CheckMode::Local)?;
     let mut owner = SessionOwner {
         child,
         reader: None,
@@ -343,7 +386,7 @@ pub(crate) async fn run_session(
     let probe = tokio::select! {
         biased;
         _ = cancelled(&mut cancel) => None,
-        result = bounded_probe(address, &token, &state, generation) => Some(result),
+        result = bounded_probe(address, &token, mode, &state, generation) => Some(result),
     };
     if probe == Some(Ok(())) && !*cancel.borrow() && !owner.child.is_running() {
         return Err(());
@@ -366,6 +409,9 @@ pub(crate) async fn run_session(
     // Even failed diagnostics must end the authenticated session. Do not
     // redirect, use proxies, flush queued output, or retry a stopped session.
     let revoked = owner.child.is_running() && revoke(address, &token).await.is_ok();
+    if probe == Some(Err(ProbeFailure::ModelUnavailable)) && !*cancel.borrow() {
+        state.publish(generation, MODEL_UNAVAILABLE);
+    }
     if probe == Some(Err(ProbeFailure::Failed)) {
         Err(())
     } else {
@@ -376,19 +422,27 @@ pub(crate) async fn run_session(
 pub(crate) async fn bounded_probe(
     address: SocketAddr,
     token: &str,
+    mode: CheckMode,
     state: &RuntimeState,
     generation: u64,
 ) -> Result<(), ProbeFailure> {
-    let result = tokio::time::timeout(PROBE_TIMEOUT, probe(address, token))
-        .await
-        .unwrap_or(Err(ProbeFailure::Exhausted));
+    let result = match mode {
+        CheckMode::Echo => tokio::time::timeout(PROBE_TIMEOUT, probe(address, token)).await,
+        CheckMode::Local => {
+            tokio::time::timeout(LOCAL_PROBE_TIMEOUT, probe_local(address, token)).await
+        }
+    }
+    .unwrap_or(Err(ProbeFailure::Exhausted));
     if result == Err(ProbeFailure::Exhausted) {
         state.exhaust(generation);
     }
     result
 }
 
-async fn probe(address: SocketAddr, token: &str) -> Result<(), ProbeFailure> {
+type ProbeSocket =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+async fn connect(address: SocketAddr, token: &str) -> Result<ProbeSocket, ProbeFailure> {
     let mut request = format!("ws://{address}/")
         .into_client_request()
         .map_err(|_| ProbeFailure::Failed)?;
@@ -403,9 +457,98 @@ async fn probe(address: SocketAddr, token: &str) -> Result<(), ProbeFailure> {
         max_frame_size: Some(4096),
         ..Default::default()
     };
-    let (mut socket, _) = tokio_tungstenite::connect_async_with_config(request, Some(config), true)
+    let (socket, _) = tokio_tungstenite::connect_async_with_config(request, Some(config), true)
         .await
         .map_err(ProbeFailure::from)?;
+    Ok(socket)
+}
+
+/// Send one argument-free control or fixed fixture request.
+async fn send_fixed(socket: &mut ProbeSocket, kind: &str, data: Value) -> Result<(), ProbeFailure> {
+    socket
+        .send(Message::Text(
+            json!({"v":1,"kind":kind,"data":data}).to_string(),
+        ))
+        .await
+        .map_err(ProbeFailure::from)
+}
+
+/// Receive one bounded protocol-v1 envelope.
+async fn receive(socket: &mut ProbeSocket) -> Result<Value, ProbeFailure> {
+    let frame = socket
+        .next()
+        .await
+        .ok_or(ProbeFailure::Failed)?
+        .map_err(ProbeFailure::from)?;
+    let Message::Text(text) = frame else {
+        return Err(ProbeFailure::Failed);
+    };
+    let value: Value = serde_json::from_str(&text).map_err(|_| ProbeFailure::Failed)?;
+    if value["v"] != 1 {
+        return Err(ProbeFailure::Failed);
+    }
+    Ok(value)
+}
+
+/// The local-model check: hello, then diagnostics (so an unavailable model is
+/// reported before any fixture is submitted), then the fixed hello fixture.
+/// Model text is checked only for presence and is never retained or delivered.
+async fn probe_local(address: SocketAddr, token: &str) -> Result<(), ProbeFailure> {
+    let mut socket = connect(address, token).await?;
+    send_fixed(&mut socket, "hello", json!({})).await?;
+    let hello = receive(&mut socket).await?;
+    if hello["kind"] != "hello"
+        || hello["data"]["input_scope"] != "synthetic-only"
+        || hello["data"]["model_adapter"] != "ollama-local"
+    {
+        return Err(ProbeFailure::Failed);
+    }
+    drop(hello);
+    send_fixed(&mut socket, "diagnostics_request", json!({})).await?;
+    let diagnostics = receive(&mut socket).await?;
+    if diagnostics["kind"] != "diagnostics"
+        || diagnostics["data"]["input_scope"] != "synthetic-only"
+    {
+        return Err(ProbeFailure::Failed);
+    }
+    match diagnostics["data"]["model_mode"].as_str() {
+        Some("local") => {}
+        Some("unavailable") => return Err(ProbeFailure::ModelUnavailable),
+        _ => return Err(ProbeFailure::Failed),
+    }
+    drop(diagnostics);
+    send_fixed(&mut socket, "synthetic_input", json!({"fixture":"hello"})).await?;
+    for _ in 0..LOCAL_MAX_FIXTURE_FRAMES {
+        let value = receive(&mut socket).await?;
+        match value["kind"].as_str() {
+            Some("speak_delta") => {}
+            Some("speak")
+                if value["data"]["text"]
+                    .as_str()
+                    .is_some_and(|text| !text.trim().is_empty()) =>
+            {
+                return Ok(());
+            }
+            // The model can disappear between diagnostics and the run.
+            Some("error") if value["data"].get("code").is_some() => {
+                return Err(ProbeFailure::ModelUnavailable);
+            }
+            Some("error")
+                if matches!(
+                    value["data"]["message"].as_str(),
+                    Some("model output exceeded budget" | "model request timed out")
+                ) =>
+            {
+                return Err(ProbeFailure::Exhausted);
+            }
+            _ => return Err(ProbeFailure::Failed),
+        }
+    }
+    Err(ProbeFailure::Exhausted)
+}
+
+async fn probe(address: SocketAddr, token: &str) -> Result<(), ProbeFailure> {
+    let mut socket = connect(address, token).await?;
     // These are the entire client protocol. No user text, room, model, memory,
     // voice, action, source or reflection arguments can enter this path.
     for (kind, expected) in [("hello", "hello"), ("diagnostics_request", "diagnostics")] {
@@ -526,6 +669,14 @@ pub extern "C" fn neura_engine_start_synthetic() -> i32 {
         .lock()
         .unwrap_or_else(|poison| poison.into_inner())
         .start()
+}
+/// Argument-free: the adapter is fixed by this entry point, never by a caller value.
+#[no_mangle]
+pub extern "C" fn neura_engine_start_local_check() -> i32 {
+    native_launcher()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .start_local()
 }
 #[no_mangle]
 pub extern "C" fn neura_engine_synthetic_status() -> i32 {
