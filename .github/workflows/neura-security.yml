@@ -30,8 +30,10 @@ jobs:
         include:
           - language: actions
             os: ubuntu-latest
+          # CodeQL documents Microsoft extensions through VS 2022.
+          # windows-latest currently selects unsupported MSVC 19.51 (VS 2026).
           - language: c-cpp
-            os: windows-latest
+            os: windows-2022
             build-mode: manual
           - language: csharp
             os: ubuntu-latest
