@@ -107,10 +107,7 @@ impl LocalConversation {
     /// Dropping/cancelling this future closes the in-flight HTTP response. The
     /// host must also terminate its owned server to stop server-side generation.
     /// Only completed, still-approved turns enter session context.
-    pub async fn reply(
-        &mut self,
-        text: &str,
-    ) -> Result<Zeroizing<String>, LocalConversationError> {
+    pub async fn reply(&mut self, text: &str) -> Result<Zeroizing<String>, LocalConversationError> {
         if !self.grant.is_active() {
             self.stop();
             return Err(LocalConversationError::Revoked);
@@ -147,7 +144,10 @@ impl LocalConversation {
     }
 
     fn history_bytes(&self) -> usize {
-        self.turns.iter().map(|t| t.user.len() + t.assistant.len()).sum()
+        self.turns
+            .iter()
+            .map(|t| t.user.len() + t.assistant.len())
+            .sum()
     }
 
     fn messages(&self, text: &str) -> Value {
@@ -163,14 +163,25 @@ impl LocalConversation {
     async fn generate(&mut self, text: &str) -> Result<Zeroizing<String>, LocalConversationError> {
         let messages = loop {
             let messages = self.messages(text);
-            let template = self.post("/apply-template", &json!({"messages": messages})).await?;
-            let prompt = template["prompt"].as_str().ok_or(LocalConversationError::InvalidResponse)?;
+            let template = self
+                .post("/apply-template", &json!({"messages": messages}))
+                .await?;
+            let prompt = template["prompt"]
+                .as_str()
+                .ok_or(LocalConversationError::InvalidResponse)?;
             // Count the model's actual tokenization of its rendered chat template.
             // Byte/character estimates are unsafe for multilingual conversations.
-            let tokens = self.post("/tokenize", &json!({
-                "content": prompt, "add_special": true, "parse_special": true,
-            })).await?;
-            let count = tokens["tokens"].as_array().ok_or(LocalConversationError::InvalidResponse)?;
+            let tokens = self
+                .post(
+                    "/tokenize",
+                    &json!({
+                        "content": prompt, "add_special": true, "parse_special": true,
+                    }),
+                )
+                .await?;
+            let count = tokens["tokens"]
+                .as_array()
+                .ok_or(LocalConversationError::InvalidResponse)?;
             if count.is_empty() || !count.iter().all(|token| token.as_u64().is_some()) {
                 return Err(LocalConversationError::InvalidResponse);
             }
@@ -182,14 +193,21 @@ impl LocalConversation {
                 return Err(LocalConversationError::ContextLimit);
             }
         };
-        let response = self.post("/v1/chat/completions", &json!({
-            "model": "neura-local", "messages": messages,
-            "stream": false, "n": 1, "max_tokens": REPLY_TOKENS,
-            "temperature": 0.7, "top_p": 0.9, "top_k": 20, "min_p": 0.0,
-            "presence_penalty": 1.5, "cache_prompt": false,
-            "chat_template_kwargs": {"enable_thinking": false},
-        })).await?;
-        let choices = response["choices"].as_array().ok_or(LocalConversationError::InvalidResponse)?;
+        let response = self
+            .post(
+                "/v1/chat/completions",
+                &json!({
+                    "model": "neura-local", "messages": messages,
+                    "stream": false, "n": 1, "max_tokens": REPLY_TOKENS,
+                    "temperature": 0.7, "top_p": 0.9, "top_k": 20, "min_p": 0.0,
+                    "presence_penalty": 1.5, "cache_prompt": false,
+                    "chat_template_kwargs": {"enable_thinking": false},
+                }),
+            )
+            .await?;
+        let choices = response["choices"]
+            .as_array()
+            .ok_or(LocalConversationError::InvalidResponse)?;
         if choices.len() != 1 {
             return Err(LocalConversationError::InvalidResponse);
         }
@@ -198,12 +216,16 @@ impl LocalConversation {
         if !matches!(choice["finish_reason"].as_str(), Some("stop" | "length"))
             || message["role"] != "assistant"
             || (!message["tool_calls"].is_null()
-                && message["tool_calls"].as_array().is_none_or(|calls| !calls.is_empty()))
+                && message["tool_calls"]
+                    .as_array()
+                    .is_none_or(|calls| !calls.is_empty()))
             || !message["function_call"].is_null()
         {
             return Err(LocalConversationError::InvalidResponse);
         }
-        let text = message["content"].as_str().ok_or(LocalConversationError::InvalidResponse)?;
+        let text = message["content"]
+            .as_str()
+            .ok_or(LocalConversationError::InvalidResponse)?;
         if text.is_empty() || text.len() > MAX_REPLY_BYTES {
             return Err(LocalConversationError::ResponseLimit);
         }
@@ -214,24 +236,37 @@ impl LocalConversation {
         if !self.grant.is_active() {
             return Err(LocalConversationError::Revoked);
         }
-        let mut response = self.client.post(format!("{}{path}", self.endpoint))
+        let mut response = self
+            .client
+            .post(format!("{}{path}", self.endpoint))
             .bearer_auth(self.token.as_str())
             .json(body)
-            .send().await.map_err(|_| LocalConversationError::Unavailable)?;
+            .send()
+            .await
+            .map_err(|_| LocalConversationError::Unavailable)?;
         if !response.status().is_success() {
             return Err(LocalConversationError::Unavailable);
         }
-        if response.headers().get(header::CONTENT_TYPE)
+        if response
+            .headers()
+            .get(header::CONTENT_TYPE)
             .and_then(|h| h.to_str().ok())
             .is_none_or(|h| !h.starts_with("application/json"))
         {
             return Err(LocalConversationError::InvalidResponse);
         }
-        if response.content_length().is_some_and(|n| n > MAX_RESPONSE_BYTES as u64) {
+        if response
+            .content_length()
+            .is_some_and(|n| n > MAX_RESPONSE_BYTES as u64)
+        {
             return Err(LocalConversationError::ResponseLimit);
         }
         let mut bytes = Zeroizing::new(Vec::new());
-        while let Some(chunk) = response.chunk().await.map_err(|_| LocalConversationError::Unavailable)? {
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|_| LocalConversationError::Unavailable)?
+        {
             if bytes.len() + chunk.len() > MAX_RESPONSE_BYTES {
                 return Err(LocalConversationError::ResponseLimit);
             }

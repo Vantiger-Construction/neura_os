@@ -489,4 +489,124 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     },
   );
+
+  testWidgets('local check needs acknowledgement and sends no arguments', (
+    tester,
+  ) async {
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      calls.add(call);
+      return switch (call.method) {
+        'startLocalCheck' => 'starting',
+        'syntheticStatus' => 'idle',
+        _ => 'disabled',
+      };
+    });
+    final session = create();
+    expect(session.canStartLocal, isFalse);
+    await session.startLocal();
+    expect(calls, isEmpty);
+    session.acknowledgeLocalModel(true);
+    expect(session.canStartLocal, isTrue);
+    await session.startLocal();
+    expect(session.mode, EngineCheckMode.local);
+    await tester.pump(const Duration(seconds: 1));
+    expect(session.state, EngineSessionState.idle);
+    expect(calls.map((call) => call.method), [
+      'startLocalCheck',
+      'syntheticStatus',
+    ]);
+    expect(calls.every((call) => call.arguments == null), isTrue);
+    await session.stop();
+    await session.start();
+    expect(session.mode, EngineCheckMode.echo);
+    session.dispose();
+    await tester.pump();
+  });
+
+  testWidgets('model unavailable stops the session and allows a new start', (
+    tester,
+  ) async {
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      calls.add(call);
+      return switch (call.method) {
+        'startLocalCheck' => 'starting',
+        'syntheticStatus' => 'model_unavailable',
+        _ => 'disabled',
+      };
+    });
+    final session = create();
+    session.acknowledgeLocalModel(true);
+    await session.startLocal();
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump();
+    expect(session.state, EngineSessionState.modelUnavailable);
+    expect(calls.last.method, 'stopSynthetic');
+    expect(session.canStart, isTrue);
+    expect(session.canStartLocal, isTrue);
+    session.dispose();
+    await tester.pump();
+  });
+
+  testWidgets('Safe Mode clears the local model acknowledgement', (
+    tester,
+  ) async {
+    final session = create();
+    session.acknowledgeLocalModel(true);
+    safe.value = true;
+    await tester.pump();
+    expect(session.localAcknowledged, isFalse);
+    session.acknowledgeLocalModel(true);
+    expect(session.localAcknowledged, isFalse);
+    await session.startLocal();
+    expect(calls.where((call) => call.method == 'startLocalCheck'), isEmpty);
+    session.dispose();
+    await tester.pump();
+  });
+
+  testWidgets('Console local check needs the acknowledgement checkbox', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      calls.add(call);
+      return switch (call.method) {
+        'startLocalCheck' => 'starting',
+        'syntheticStatus' => 'idle',
+        _ => 'disabled',
+      };
+    });
+    await tester.pumpWidget(const MaterialApp(home: NeuraConsolePage()));
+    final start = find.text('Start local model check');
+    await tester.ensureVisible(start);
+    await tester.tap(start);
+    await tester.pump();
+    expect(calls, isEmpty);
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+    await tester.tap(start);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls.map((call) => call.method), [
+      'startLocalCheck',
+      'syntheticStatus',
+    ]);
+    expect(
+      find.text(
+        'Idle. Your local model answered the fixed hello. '
+        'Nothing was kept or sent anywhere.',
+      ),
+      findsOneWidget,
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    expect(calls.last.method, 'stopSynthetic');
+    expect(calls.every((call) => call.arguments == null), isTrue);
+    debugDefaultTargetPlatformOverride = null;
+  });
 }

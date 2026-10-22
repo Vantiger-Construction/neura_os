@@ -22,6 +22,7 @@ const char* StateName(int state) {
     case 5: return "blocked";
     case 6: return "working";
     case 7: return "paused";
+    case 8: return "model_unavailable";
     default: return "error";
   }
 }
@@ -137,7 +138,8 @@ NeuraEngineSession::NeuraEngineSession(flutter::BinaryMessenger* messenger,
     } else if (method == "pauseSynthetic") {
       result->Success(flutter::EncodableValue(
           blocked_ ? "blocked" : (pause_ ? StateName(pause_()) : "disabled")));
-    } else if (method == "startSynthetic" || method == "resumeSynthetic") {
+    } else if (method == "startSynthetic" || method == "startLocalCheck" ||
+               method == "resumeSynthetic") {
       if (blocked_) {
         result->Success(flutter::EncodableValue("blocked"));
         return;
@@ -149,8 +151,12 @@ NeuraEngineSession::NeuraEngineSession(flutter::BinaryMessenger* messenger,
       const bool visible = IsWindowVisible(window_) && !IsIconic(window_) &&
                            GetForegroundWindow() == window_;
       foreground_(visible ? 1 : 0);
-      result->Success(flutter::EncodableValue(
-          StateName(method == "startSynthetic" ? start_() : resume_())));
+      // The local adapter is chosen only by this fixed, argument-free method;
+      // Resume keeps whichever adapter the paused session was started on.
+      const int state = method == "startSynthetic"    ? start_()
+                        : method == "startLocalCheck" ? start_local_()
+                                                      : resume_();
+      result->Success(flutter::EncodableValue(StateName(state)));
     } else if (method == "syntheticStatus") {
       result->Success(flutter::EncodableValue(
           blocked_ ? "blocked" : (status_ ? StateName(status_()) : "disabled")));
@@ -173,6 +179,7 @@ bool NeuraEngineSession::Load() {
       LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
   if (!library_) return false;
   start_ = Lookup<StateFunction>(library_, "neura_engine_start_synthetic");
+  start_local_ = Lookup<StateFunction>(library_, "neura_engine_start_local_check");
   pause_ = Lookup<StateFunction>(library_, "neura_engine_pause_synthetic");
   resume_ = Lookup<StateFunction>(library_, "neura_engine_resume_synthetic");
   status_ = Lookup<StateFunction>(library_, "neura_engine_synthetic_status");
@@ -188,11 +195,12 @@ bool NeuraEngineSession::Load() {
   ollama_foreground_ = Lookup<ForegroundFunction>(library_, "neura_ollama_foreground");
   ollama_block_ = Lookup<StopFunction>(library_, "neura_ollama_block");
   ollama_shutdown_ = Lookup<StopFunction>(library_, "neura_ollama_shutdown");
-  if (start_ && pause_ && resume_ && status_ && stop_ && block_ && foreground_ &&
+  if (start_ && start_local_ && pause_ && resume_ && status_ && stop_ && block_ && foreground_ &&
       ollama_begin_ && ollama_poll_ && ollama_cancel_ && ollama_foreground_ && ollama_block_ && ollama_shutdown_) return true;
   FreeLibrary(library_);
   library_ = nullptr;
   start_ = nullptr;
+  start_local_ = nullptr;
   pause_ = nullptr;
   resume_ = nullptr;
   status_ = nullptr;
