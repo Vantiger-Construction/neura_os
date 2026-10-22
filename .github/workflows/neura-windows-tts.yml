@@ -9,6 +9,9 @@ on:
       - 'windows/runner/neura*tts*'
       - 'windows/runner/flutter_window.*'
       - 'windows/runner/CMakeLists.txt'
+      - 'windows/CMakeLists.txt'
+      - 'windows/cmake/NeuraWindowsPlugins.cmake'
+      - 'tools/test_windows_plugin_filter.py'
       - 'tools/windows_tts_native_check/**'
       - 'test/services/neura_windows_tts_test.dart'
       - 'test/services/neura_windows_tts_routing_test.dart'
@@ -26,7 +29,7 @@ concurrency:
 jobs:
   compile-and-test:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
@@ -34,6 +37,8 @@ jobs:
           flutter-version: '3.47.5'
           channel: stable
           cache: true
+      - name: Verify legacy TTS plugin is excluded after regeneration
+        run: python tools/test_windows_plugin_filter.py
       - name: Restore locked dependencies
         run: |
           flutter pub get
@@ -81,3 +86,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ctest --test-dir build/windows-tts-native-check -C Debug --output-on-failure
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build Windows app without the legacy TTS plugin
+        run: |
+          flutter build windows --release --no-pub
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $legacy = Get-ChildItem build/windows -Recurse -Filter flutter_tts_plugin.dll
+          if ($legacy) { throw 'Legacy flutter_tts plugin unexpectedly bundled in Windows output' }
