@@ -8,11 +8,10 @@ pub mod agents;
 pub mod anthropic_client;
 pub mod api;
 mod engine_session;
-mod ollama_conversation;
-mod ollama_latency;
 mod frb_generated;
 pub mod local_conversation;
+pub mod local_model;
 mod local_session;
+mod ollama_conversation;
+mod ollama_latency;
 pub mod orchestrator;
-
-
