@@ -104,10 +104,14 @@ money, goals, clinical-support, notifications, Legacy, and Swarm modules.
 
 ## Run and release
 
-For local-brain protocol testing, run `RUN_NEURA_LOCAL_BRAIN.bat`, then
-`RUN_NEURA_LOCAL.bat`, and use Settings > Local Brain Console. The local-brain
-executable uses a safe echo adapter; Neura's primary chat remains on its secure
-provider path.
+To start Neura on Windows, double-click `Neura.bat` (or the **Neura** desktop
+shortcut it creates on first run). The launcher builds the Rust engine and the
+app when they are missing or the source changed (`-Rebuild` forces it), then
+starts the app, which starts its own engine with a per-session credential; the
+engine is never started on its own. For local-brain protocol testing, use
+Settings > Local Brain Console. The local-brain executable uses a safe echo
+adapter; Neura's primary chat remains on its secure provider path.
+`RUN_NEURA_LOCAL_BRAIN.bat` now runs the same launcher.
 
 The GitHub recovery workflow derives Windows and Android artifact names and
 versions from `pubspec.yaml`. It installs Flutter, restores dependencies,
