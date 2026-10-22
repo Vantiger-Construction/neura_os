@@ -60,7 +60,18 @@ NeuraEngineSession::NeuraEngineSession(flutter::BinaryMessenger* messenger,
       else result->Success(flutter::EncodableValue(id));
       return;
     }
-    if (method == "pollOllama" || method == "cancelOllama") {
+    if (method == "clearOllamaTiming") {
+      if (call.arguments() &&
+          !std::holds_alternative<std::monostate>(*call.arguments())) {
+        result->Error("invalid_request", "Timing clear accepts no arguments.");
+        return;
+      }
+      if (ollama_clear_timing_) ollama_clear_timing_();
+      result->Success();
+      return;
+    }
+    if (method == "pollOllama" || method == "cancelOllama" ||
+        method == "readOllamaTiming") {
       const auto* id = call.arguments() == nullptr ? nullptr :
           std::get_if<int64_t>(call.arguments());
       // StandardMethodCodec encodes small Dart ints as int32_t.
@@ -71,6 +82,29 @@ NeuraEngineSession::NeuraEngineSession(flutter::BinaryMessenger* messenger,
         return;
       }
       const int64_t generation = id ? *id : *small_id;
+      if (method == "readOllamaTiming") {
+        const bool visible = IsWindowVisible(window_) && !IsIconic(window_) &&
+                             GetForegroundWindow() == window_;
+        if (!visible) Background();
+        uint64_t values[7] = {};
+        if (blocked_ || !visible || !ollama_timing_ ||
+            ollama_timing_(generation, values, 7) != 7 || values[0] != 1 ||
+            values[1] > 4) {
+          result->Success();
+          return;
+        }
+        // Fixed numeric ABI only: no daemon strings, errors or request text.
+        const char* keys[] = {"version", "outcome", "preflightUs", "inferenceUs",
+                              "deliveryUs", "cancellationUs", "totalUs"};
+        flutter::EncodableMap timing;
+        for (size_t index = 0; index < 7; ++index) {
+          timing[flutter::EncodableValue(keys[index])] = values[index] == UINT64_MAX
+              ? flutter::EncodableValue()
+              : flutter::EncodableValue(static_cast<int64_t>(values[index]));
+        }
+        result->Success(flutter::EncodableValue(timing));
+        return;
+      }
       if (method == "cancelOllama") {
         ollama_cancel_(generation);
         result->Success();
@@ -155,6 +189,9 @@ bool NeuraEngineSession::Load() {
   ollama_begin_ = Lookup<OllamaBegin>(library_, "neura_ollama_begin");
   ollama_poll_ = Lookup<OllamaPoll>(library_, "neura_ollama_poll");
   ollama_cancel_ = Lookup<OllamaCancel>(library_, "neura_ollama_cancel");
+  // Optional for compatibility with an older packaged Rust DLL.
+  ollama_timing_ = Lookup<OllamaTiming>(library_, "neura_ollama_timing");
+  ollama_clear_timing_ = Lookup<StopFunction>(library_, "neura_ollama_clear_timing");
   ollama_foreground_ = Lookup<ForegroundFunction>(library_, "neura_ollama_foreground");
   ollama_block_ = Lookup<StopFunction>(library_, "neura_ollama_block");
   ollama_shutdown_ = Lookup<StopFunction>(library_, "neura_ollama_shutdown");
@@ -173,6 +210,8 @@ bool NeuraEngineSession::Load() {
   ollama_begin_ = nullptr;
   ollama_poll_ = nullptr;
   ollama_cancel_ = nullptr;
+  ollama_timing_ = nullptr;
+  ollama_clear_timing_ = nullptr;
   ollama_foreground_ = nullptr;
   ollama_block_ = nullptr;
   ollama_shutdown_ = nullptr;
@@ -190,4 +229,5 @@ NeuraEngineSession::~NeuraEngineSession() {
   if (ollama_shutdown_) ollama_shutdown_();
   if (library_) FreeLibrary(library_);
 }
+
 

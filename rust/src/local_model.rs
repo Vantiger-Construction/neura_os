@@ -143,7 +143,12 @@ impl LoopbackClient {
 /// Read a whole JSON body within `limit` bytes; the buffer is zeroized.
 #[allow(clippy::result_unit_err)]
 pub async fn bounded_json(mut response: reqwest::Response, limit: usize) -> Result<Value, ()> {
-    if !response.status().is_success() {
+    // Refuse an advertised oversize body before waiting on any of it.
+    if !response.status().is_success()
+        || response
+            .content_length()
+            .is_some_and(|bytes| bytes > limit as u64)
+    {
         return Err(());
     }
     let mut bytes = Zeroizing::new(Vec::new());
