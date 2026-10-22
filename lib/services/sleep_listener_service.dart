@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
@@ -15,6 +15,7 @@ class SleepListenerService {
 
   final AudioRecorder _recorder = AudioRecorder();
   bool _recording = false;
+  bool _shutdownUnverified = false;
   String? _currentPath;
   Future<void>? _startInFlight;
   int _dataGeneration = 0;
@@ -118,8 +119,16 @@ class SleepListenerService {
     for (final service in services) {
       service._dataGeneration += 1;
     }
+    var shutdownFailed = false;
     for (final service in services) {
-      await service._resetAfterDataWipe();
+      try {
+        await service._resetAfterDataWipe();
+      } catch (_) {
+        shutdownFailed = true;
+      }
+    }
+    if (shutdownFailed) {
+      throw StateError('Sleep recorder shutdown could not be verified.');
     }
   }
 
@@ -136,11 +145,13 @@ class SleepListenerService {
     final paths = <String>{
       if (_currentPath != null && _currentPath!.isNotEmpty) _currentPath!,
     };
-    if (_recording || drainFailure != null) {
+    if (_recording || drainFailure != null || _shutdownUnverified) {
       _recording = false;
+      _shutdownUnverified = true;
       try {
         final stoppedPath =
             await _recorder.stop().timeout(const Duration(seconds: 3));
+        _shutdownUnverified = false;
         if (stoppedPath != null && stoppedPath.isNotEmpty) {
           paths.add(stoppedPath);
         }

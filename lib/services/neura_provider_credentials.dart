@@ -73,10 +73,10 @@ class NeuraProviderCredentials {
   Future<void> _operationQueue = Future<void>.value();
 
   bool get isInitialized => _initialized;
-  bool get hasKey => _apiKey.isNotEmpty;
+  bool get hasKey => !_writesSuspended && _apiKey.isNotEmpty;
 
   /// Returns the in-memory key. It is intentionally never exposed by the UI.
-  String get apiKey => _apiKey;
+  String get apiKey => _writesSuspended ? '' : _apiKey;
 
   Future<void> initialize() {
     if (_writesSuspended || _clearInProgress) {
@@ -172,7 +172,22 @@ class NeuraProviderCredentials {
   /// A restart is the only resume boundary after a full local-data wipe.
   Future<void> clearForDataWipe() {
     _writesSuspended = true;
-    return _enqueueMutation(_clearNow);
+    _revokeCachedCredential();
+    return _enqueueMutation(() async {
+      try {
+        await _clearNow();
+      } finally {
+        // A queued mutation may have completed after the synchronous revoke.
+        // Failed OS deletion must never retain a usable in-process secret.
+        _revokeCachedCredential();
+      }
+    });
+  }
+
+  void _revokeCachedCredential() {
+    _apiKey = '';
+    _initialized = true;
+    configured.value = false;
   }
 
   Future<void> _clearNow() async {

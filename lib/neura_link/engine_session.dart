@@ -16,7 +16,14 @@ enum EngineSessionState {
   error,
   unavailable,
   blocked,
+
+  /// The explicitly selected local model could not be verified or used.
+  modelUnavailable,
 }
+
+/// Which adapter the single fixed check runs on. The local model is used only
+/// after an explicit, per-screen acknowledgement that is never persisted.
+enum EngineCheckMode { echo, local }
 
 /// Native code owns the credential and client. No credential, executable, URL,
 /// free-form input or action argument crosses this interface.
@@ -52,15 +59,23 @@ class EngineSession extends ChangeNotifier with WidgetsBindingObserver {
   bool _blocked = false;
   bool _disposed = false;
   bool _pausing = false;
+  EngineCheckMode _mode = EngineCheckMode.echo;
+  bool _localAcknowledged = false;
 
   EngineSessionState get state => _state;
+
+  /// The adapter of the current or most recent session.
+  EngineCheckMode get mode => _mode;
+  bool get localAcknowledged => _localAcknowledged;
   bool get canStart =>
       !_disposed &&
       !_blocked &&
       _foreground &&
       (_state == EngineSessionState.disabled ||
           _state == EngineSessionState.error ||
-          _state == EngineSessionState.unavailable);
+          _state == EngineSessionState.unavailable ||
+          _state == EngineSessionState.modelUnavailable);
+  bool get canStartLocal => canStart && _localAcknowledged;
   bool get canPause =>
       !_disposed &&
       !_blocked &&
@@ -75,15 +90,33 @@ class EngineSession extends ChangeNotifier with WidgetsBindingObserver {
       !_pausing &&
       _state == EngineSessionState.paused;
 
-  Future<void> start() async {
+  /// Record the operator's explicit choice to run the check on the model they
+  /// installed. Kept only for this screen; Safe Mode or recovery clears it.
+  void acknowledgeLocalModel(bool value) {
+    if (_disposed) return;
+    _localAcknowledged = value && !_blocked;
+    notifyListeners();
+  }
+
+  Future<void> start() => _begin(EngineCheckMode.echo, 'startSynthetic');
+
+  /// Run the fixed check on the pinned local model. Does nothing without the
+  /// explicit acknowledgement; the native method takes no arguments.
+  Future<void> startLocal() async {
+    if (!_localAcknowledged) return;
+    await _begin(EngineCheckMode.local, 'startLocalCheck');
+  }
+
+  Future<void> _begin(EngineCheckMode mode, String method) async {
     if (!canStart) return;
     if (!_supported) {
       _update(EngineSessionState.unavailable);
       return;
     }
+    _mode = mode;
     final generation = ++_generation;
     _update(EngineSessionState.starting);
-    await _requestState('startSynthetic', generation);
+    await _requestState(method, generation);
   }
 
   Future<void> pause() async {
@@ -127,6 +160,7 @@ class EngineSession extends ChangeNotifier with WidgetsBindingObserver {
         'paused' => EngineSessionState.paused,
         'blocked' => EngineSessionState.blocked,
         'unavailable' => EngineSessionState.unavailable,
+        'model_unavailable' => EngineSessionState.modelUnavailable,
         _ => EngineSessionState.error,
       };
     } catch (_) {
@@ -139,7 +173,8 @@ class EngineSession extends ChangeNotifier with WidgetsBindingObserver {
     // Recheck before scheduling a poll or stopping a replacement generation.
     if (!_isCurrent(generation)) return;
     if (next == EngineSessionState.error ||
-        next == EngineSessionState.unavailable) {
+        next == EngineSessionState.unavailable ||
+        next == EngineSessionState.modelUnavailable) {
       await stop();
       if (!_disposed && generation + 1 == _generation && !_blocked) {
         _update(next);
@@ -187,6 +222,7 @@ class EngineSession extends ChangeNotifier with WidgetsBindingObserver {
   void _onSafetyChanged() {
     if (_safeMode.value || _recovery.value != null) {
       _blocked = true;
+      _localAcknowledged = false;
       unawaited(_end('blockSynthetic'));
     }
   }

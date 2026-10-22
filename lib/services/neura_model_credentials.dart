@@ -54,18 +54,30 @@ class NeuraModelCredentials {
 
   Future<void> initialize() {
     return _enqueue(() async {
+      _requireReadable();
       final available = <NeuraModelProvider>{};
       for (final provider in NeuraModelProvider.values) {
         final value = (await _storage.read(key: _keys[provider]!) ?? '').trim();
         if (value.isNotEmpty) available.add(provider);
       }
+      _requireReadable();
       configured.value = Set.unmodifiable(available);
     });
   }
 
   Future<String?> read(NeuraModelProvider provider) async {
+    _requireReadable();
     final value = (await _storage.read(key: _keys[provider]!) ?? '').trim();
+    // Recheck after the platform await: an already-started read may return
+    // stale bytes after a concurrent wipe revoked credential access.
+    _requireReadable();
     return value.isEmpty ? null : value;
+  }
+
+  void _requireReadable() {
+    if (_writesSuspended) {
+      throw StateError('Model credential access is suspended.');
+    }
   }
 
   Future<void> save(NeuraModelProvider provider, String value) {
@@ -96,17 +108,22 @@ class NeuraModelCredentials {
 
   Future<void> clearForDataWipe() {
     _writesSuspended = true;
+    configured.value = const <NeuraModelProvider>{};
     return _enqueue(() async {
-      final failures = <NeuraModelProvider>[];
-      for (final provider in NeuraModelProvider.values) {
-        try {
-          await _deleteAndVerify(provider);
-        } catch (_) {
-          failures.add(provider);
+      try {
+        final failures = <NeuraModelProvider>[];
+        for (final provider in NeuraModelProvider.values) {
+          try {
+            await _deleteAndVerify(provider);
+          } catch (_) {
+            failures.add(provider);
+          }
         }
-      }
-      if (failures.isNotEmpty) {
-        throw StateError('Model credential deletion could not be verified.');
+        if (failures.isNotEmpty) {
+          throw StateError('Model credential deletion could not be verified.');
+        }
+      } finally {
+        configured.value = const <NeuraModelProvider>{};
       }
     });
   }

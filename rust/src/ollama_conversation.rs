@@ -1,5 +1,6 @@
 //! Opt-in Windows chat adapter. The operator owns the separately installed
 //! Ollama daemon; Neura owns only its cancellable request, never that process.
+use crate::ollama_latency::{RequestTiming, TIMING_FIELDS};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -10,29 +11,10 @@ use std::{
 use tokio::sync::watch;
 use zeroize::Zeroizing;
 
-const MODEL: &str = "qwen3:4b-instruct";
-// Current Ollama's explicit source suffix rejects remote aliases at request
-// execution time, including a tag replacement after metadata preflight.
-const LOCAL_MODEL: &str = "qwen3:4b-instruct:local";
-const ENDPOINT: &str = "http://127.0.0.1:11434";
+use crate::local_model::{bounded_json, memory_admitted, ENDPOINT, LOCAL_MODEL};
 const MAX_REQUEST: usize = 16_384;
 const MAX_RESPONSE: usize = 32_768;
 const MAX_REPLY: usize = 8_192;
-
-#[cfg(windows)]
-fn memory_admitted() -> bool {
-    use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
-    // SAFETY: MEMORYSTATUSEX is a plain output structure initialized with its size.
-    let mut memory: MEMORYSTATUSEX = unsafe { std::mem::zeroed() };
-    memory.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
-    (unsafe { GlobalMemoryStatusEx(&mut memory) != 0 })
-        && memory.ullTotalPhys >= 7 * 1024 * 1024 * 1024
-        && memory.ullAvailPhys >= 3584 * 1024 * 1024
-}
-#[cfg(not(windows))]
-fn memory_admitted() -> bool {
-    false
-}
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -82,58 +64,35 @@ fn prepare(raw: &[u8]) -> Result<Value, ()> {
     let mut messages = vec![json!({"role":"system", "content": request.system})];
     messages.extend(retained.into_iter().map(|t| json!(t)));
     Ok(
-        json!({"model": LOCAL_MODEL, "messages": messages, "stream": false,
+        json!({"model": LOCAL_MODEL, "messages": messages, "stream": false, "think": false,
         "keep_alive": 0, "options": {"num_ctx":2048,"num_predict":256,
         "num_thread":2,"temperature":0.6}}),
     )
 }
 
-async fn bounded_json(mut response: reqwest::Response, limit: usize) -> Result<Value, ()> {
-    if !response.status().is_success() {
-        return Err(());
-    }
-    let mut bytes = Zeroizing::new(Vec::new());
-    while let Some(chunk) = response.chunk().await.map_err(|_| ())? {
-        if bytes.len() + chunk.len() > limit {
-            return Err(());
-        }
-        bytes.extend_from_slice(&chunk);
-    }
-    serde_json::from_slice(&bytes).map_err(|_| ())
+#[cfg(test)]
+async fn inference(endpoint: &str, payload: Value) -> Result<String, ()> {
+    timed_inference(endpoint, payload, &Mutex::new(RequestTiming::default())).await
 }
 
-async fn inference(endpoint: &str, payload: Value) -> Result<String, ()> {
-    let client = reqwest::Client::builder()
-        .no_proxy()
-        .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_secs(2))
-        .timeout(Duration::from_secs(90))
-        .build()
-        .map_err(|_| ())?;
+async fn timed_inference(
+    endpoint: &str,
+    payload: Value,
+    timing: &Mutex<RequestTiming>,
+) -> Result<String, ()> {
+    let client = crate::local_model::LoopbackClient::new(endpoint, Duration::from_secs(90))?;
     // Fail before submitting conversation text if this tag is a remote model
     // or has been replaced with a different family/size/quantization.
-    let info = bounded_json(
-        client
-            .post(format!("{endpoint}/api/show"))
-            .json(&json!({"model":MODEL}))
-            .send()
-            .await
-            .map_err(|_| ())?,
-        131_072,
-    )
-    .await?;
-    if info.get("remote_host").is_some()
-        || info.get("remote_model").is_some()
-        || info["details"]["family"] != "qwen3"
-        || info["details"]["parameter_size"] != "4.0B"
-        || info["details"]["quantization_level"] != "Q4_K_M"
-    {
-        return Err(());
-    }
+    crate::local_model::verify_pinned_model(&client)
+        .await
+        .map_err(|_| ())?;
+    timing
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .preflight_done();
     let response = bounded_json(
         client
-            .post(format!("{endpoint}/api/chat"))
-            .json(&payload)
+            .post_json("/api/chat", &payload)
             .send()
             .await
             .map_err(|_| ())?,
@@ -158,6 +117,18 @@ async fn inference(endpoint: &str, payload: Value) -> Result<String, ()> {
     Ok(text.to_owned())
 }
 
+async fn cancellable_inference(
+    endpoint: &str,
+    payload: Value,
+    timing: &Mutex<RequestTiming>,
+    receiver: &mut watch::Receiver<bool>,
+) -> Result<String, ()> {
+    tokio::select! { biased;
+        _ = receiver.changed() => Err(()),
+        result = tokio::time::timeout(Duration::from_secs(90), timed_inference(endpoint, payload, timing)) => result.map_err(|_| ())?,
+    }
+}
+
 #[derive(Default)]
 struct State {
     generation: i64,
@@ -165,6 +136,7 @@ struct State {
     blocked: bool,
     status: i32,
     reply: Option<Zeroizing<Vec<u8>>>,
+    timing: Option<(i64, Arc<Mutex<RequestTiming>>)>,
 }
 struct Active {
     cancel: watch::Sender<bool>,
@@ -178,6 +150,9 @@ struct Session {
 impl Session {
     fn cancel(&mut self) {
         let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((_, timing)) = &state.timing {
+            timing.lock().unwrap_or_else(|p| p.into_inner()).cancel();
+        }
         state.generation += 1;
         state.reply = None;
         state.status = -2;
@@ -186,13 +161,16 @@ impl Session {
         }
     }
     fn begin(&mut self, payload: Value) -> i64 {
+        self.begin_checked(payload, memory_admitted)
+    }
+    fn begin_checked(&mut self, payload: Value, admit_memory: impl FnOnce() -> bool) -> i64 {
         {
             let state = self.state.lock().unwrap_or_else(|p| p.into_inner());
             if state.blocked || !state.foreground {
                 return -2;
             }
         }
-        if !memory_admitted() {
+        if !admit_memory() {
             return -4;
         }
         if self
@@ -206,37 +184,65 @@ impl Session {
             let _ = active.worker.join();
         }
         self.cancel();
+        let timing = Arc::new(Mutex::new(RequestTiming::default()));
         let generation = {
             let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
             state.status = 0;
+            state.timing = Some((state.generation, timing.clone()));
             state.generation
         };
         let (cancel, mut receiver) = watch::channel(false);
         let state = self.state.clone();
-        let worker = std::thread::Builder::new().name("neura-ollama".into()).spawn(move || {
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|_| ())?;
-                tracing::subscriber::with_default(tracing::subscriber::NoSubscriber::default(), || runtime.block_on(async {
-                    tokio::select! { biased;
-                        _ = receiver.changed() => Err(()),
-                        result = tokio::time::timeout(Duration::from_secs(90), inference(ENDPOINT, payload)) => result.map_err(|_| ())?,
+        let worker = std::thread::Builder::new()
+            .name("neura-ollama".into())
+            .spawn(move || {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let runtime = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .map_err(|_| ())?;
+                    tracing::subscriber::with_default(
+                        tracing::subscriber::NoSubscriber::default(),
+                        || {
+                            runtime.block_on(cancellable_inference(
+                                ENDPOINT,
+                                payload,
+                                &timing,
+                                &mut receiver,
+                            ))
+                        },
+                    )
+                }));
+                let mut state = state.lock().unwrap_or_else(|p| p.into_inner());
+                timing
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .worker_done(matches!(&result, Ok(Ok(_))));
+                if generation != state.generation || state.blocked || !state.foreground {
+                    return;
+                }
+                match result {
+                    Ok(Ok(text)) => {
+                        state.reply = Some(Zeroizing::new(text.into_bytes()));
+                        state.status = 1;
                     }
-                }))
-            }));
-            let mut state = state.lock().unwrap_or_else(|p| p.into_inner());
-            if generation != state.generation || state.blocked || !state.foreground { return; }
-            match result {
-                Ok(Ok(text)) => { state.reply = Some(Zeroizing::new(text.into_bytes())); state.status = 1; }
-                _ => state.status = -1,
-            }
-        });
+                    _ => state.status = -1,
+                }
+            });
         match worker {
             Ok(worker) => {
                 self.active = Some(Active { cancel, worker });
                 generation
             }
             Err(_) => {
-                self.state.lock().unwrap_or_else(|p| p.into_inner()).status = -1;
+                let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+                state.status = -1;
+                if let Some((_, timing)) = &state.timing {
+                    timing
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .worker_done(false);
+                }
                 -1
             }
         }
@@ -287,6 +293,9 @@ pub unsafe extern "C" fn neura_ollama_poll(id: i64, buffer: *mut u8, capacity: u
     unsafe {
         std::ptr::copy_nonoverlapping(reply.as_ptr(), buffer, len);
     }
+    if let Some((_, timing)) = &state.timing {
+        timing.lock().unwrap_or_else(|p| p.into_inner()).delivered();
+    }
     state.reply = None;
     state.status = -2;
     len as i32
@@ -303,6 +312,45 @@ pub extern "C" fn neura_ollama_cancel(id: i64) {
         session.cancel();
     }
 }
+
+/// Read the latest numeric request timing without starting or waiting for work.
+/// A cancelled request keeps its original id solely for a foreground read.
+/// # Safety
+/// `buffer` must point to `capacity` aligned, writable u64 elements.
+#[no_mangle]
+pub unsafe extern "C" fn neura_ollama_timing(id: i64, buffer: *mut u64, capacity: usize) -> i32 {
+    if buffer.is_null() || capacity < TIMING_FIELDS {
+        return 0;
+    }
+    let session = session().lock().unwrap_or_else(|p| p.into_inner());
+    let state = session.state.lock().unwrap_or_else(|p| p.into_inner());
+    if state.blocked || !state.foreground {
+        return 0;
+    }
+    let Some((request_id, timing)) = &state.timing else {
+        return 0;
+    };
+    if *request_id != id {
+        return 0;
+    }
+    let values = timing.lock().unwrap_or_else(|p| p.into_inner()).snapshot();
+    // SAFETY: caller supplies a separate, aligned buffer with sufficient space.
+    unsafe {
+        std::ptr::copy_nonoverlapping(values.as_ptr(), buffer, TIMING_FIELDS);
+    }
+    TIMING_FIELDS as i32
+}
+
+#[no_mangle]
+pub extern "C" fn neura_ollama_clear_timing() {
+    session()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .state
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .timing = None;
+}
 #[no_mangle]
 pub extern "C" fn neura_ollama_foreground(value: i32) {
     let mut session = session().lock().unwrap_or_else(|p| p.into_inner());
@@ -313,6 +361,11 @@ pub extern "C" fn neura_ollama_foreground(value: i32) {
         .foreground = value == 1;
     if value != 1 {
         session.cancel();
+        session
+            .state
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .timing = None;
     }
 }
 #[no_mangle]
@@ -324,6 +377,11 @@ pub extern "C" fn neura_ollama_block() {
         .unwrap_or_else(|p| p.into_inner())
         .blocked = true;
     session.cancel();
+    session
+        .state
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .timing = None;
 }
 
 /// Join the request worker before the owning DLL handle can be released.
@@ -336,6 +394,11 @@ pub extern "C" fn neura_ollama_shutdown() {
         .unwrap_or_else(|p| p.into_inner())
         .blocked = true;
     session.cancel();
+    session
+        .state
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .timing = None;
     if let Some(active) = session.active.take() {
         let _ = active.worker.join();
     }
@@ -354,6 +417,7 @@ mod tests {
         assert_eq!(payload["messages"][0]["content"], "Neura charter");
         assert_eq!(payload["options"]["num_ctx"], 2048);
         assert_eq!(payload["keep_alive"], 0);
+        assert_eq!(payload["think"], false);
         assert!(payload.get("tools").is_none());
     }
     #[test]
@@ -388,6 +452,15 @@ mod tests {
     }
 
     #[test]
+    fn memory_rejection_creates_neither_worker_nor_timing() {
+        let mut s = Session::default();
+        s.state.lock().unwrap().foreground = true;
+        assert_eq!(s.begin_checked(json!({}), || false), -4);
+        assert!(s.active.is_none());
+        assert!(s.state.lock().unwrap().timing.is_none());
+    }
+
+    #[test]
     fn stale_cancel_cannot_wipe_a_replacement_and_revoked_reply_cannot_be_read() {
         {
             let s = session().lock().unwrap();
@@ -397,6 +470,10 @@ mod tests {
             state.blocked = false;
             state.status = 1;
             state.reply = Some(Zeroizing::new(b"reply".to_vec()));
+            let mut timing = RequestTiming::default();
+            timing.preflight_done();
+            timing.worker_done(true);
+            state.timing = Some((99, Arc::new(Mutex::new(timing))));
         }
         neura_ollama_cancel(98);
         let mut buffer = [0u8; 8];
@@ -428,10 +505,52 @@ mod tests {
             .unwrap()
             .reply
             .is_none());
+        let mut values = [0u64; TIMING_FIELDS];
+        // SAFETY: all timing calls below advertise this live aligned array.
+        unsafe {
+            assert_eq!(
+                neura_ollama_timing(98, values.as_mut_ptr(), values.len()),
+                0
+            );
+            assert_eq!(
+                neura_ollama_timing(99, std::ptr::null_mut(), values.len()),
+                0
+            );
+            assert_eq!(neura_ollama_timing(99, values.as_mut_ptr(), 1), 0);
+            assert_eq!(
+                neura_ollama_timing(99, values.as_mut_ptr(), values.len()),
+                7
+            );
+        }
+        assert_eq!(values[1], 3); // Cancellation of ready reply, no delivery.
+        assert_eq!(values[4], u64::MAX);
+        neura_ollama_foreground(0);
+        neura_ollama_foreground(1);
+        // SAFETY: same live output array; backgrounding erased the record.
+        assert_eq!(
+            unsafe { neura_ollama_timing(99, values.as_mut_ptr(), values.len()) },
+            0
+        );
+        {
+            let s = session().lock().unwrap();
+            s.state.lock().unwrap().timing =
+                Some((100, Arc::new(Mutex::new(RequestTiming::default()))));
+        }
+        neura_ollama_block();
+        assert!(session()
+            .lock()
+            .unwrap()
+            .state
+            .lock()
+            .unwrap()
+            .timing
+            .is_none());
+        // Reset the test fixture without reopening a real blocked session.
+        *session().lock().unwrap() = Session::default();
     }
 
     fn local_info() -> Value {
-        json!({"details":{"family":"qwen3","parameter_size":"4.0B","quantization_level":"Q4_K_M"}})
+        crate::local_model::tests::pinned_info()
     }
     fn payload() -> Value {
         prepare(br#"{"system":"Neura charter","messages":[{"role":"user","content":"Hello"}]}"#)
@@ -445,11 +564,11 @@ mod tests {
         std::sync::Arc<std::sync::atomic::AtomicUsize>,
         tokio::task::JoinHandle<()>,
     ) {
-        use axum::{routing::post, Json, Router};
+        use axum::{routing::post, Json};
         use std::sync::atomic::{AtomicUsize, Ordering};
         let calls = Arc::new(AtomicUsize::new(0));
         let counter = calls.clone();
-        let router = Router::new()
+        let router = crate::local_model::tests::metadata_router()
             .route("/api/show", post(move || async move { Json(info) }))
             .route(
                 "/api/chat",
@@ -457,6 +576,7 @@ mod tests {
                     counter.fetch_add(1, Ordering::SeqCst);
                     assert_eq!(request["model"], LOCAL_MODEL);
                     assert_eq!(request["keep_alive"], 0);
+                    assert_eq!(request["think"], false);
                     assert!(request.get("tools").is_none());
                     Json(answer)
                 }),
@@ -486,6 +606,54 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 0);
         task.abort();
     }
+
+    #[tokio::test]
+    async fn cancelling_stalled_inference_finishes_without_delivery() {
+        use axum::{routing::post, Json};
+        let (reached, mut observed) = watch::channel(false);
+        let router = crate::local_model::tests::metadata_router()
+            .route("/api/show", post(|| async { Json(local_info()) }))
+            .route(
+                "/api/chat",
+                post(move || async move {
+                    reached.send_replace(true);
+                    std::future::pending::<Json<Value>>().await
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let timing = Arc::new(Mutex::new(RequestTiming::default()));
+        let worker_timing = timing.clone();
+        let (cancel, mut receiver) = watch::channel(false);
+        let request = tokio::spawn(async move {
+            let result =
+                cancellable_inference(&endpoint, payload(), &worker_timing, &mut receiver).await;
+            worker_timing.lock().unwrap().worker_done(result.is_ok());
+            result
+        });
+        // Synchronize on entry to inference, never on an arbitrary sleep.
+        tokio::time::timeout(Duration::from_secs(2), observed.changed())
+            .await
+            .unwrap()
+            .unwrap();
+        timing.lock().unwrap().cancel();
+        cancel.send_replace(true);
+        assert!(tokio::time::timeout(Duration::from_secs(2), request)
+            .await
+            .unwrap()
+            .unwrap()
+            .is_err());
+        let values = timing.lock().unwrap().snapshot();
+        assert_eq!(values[1], 3);
+        assert_ne!(values[2], u64::MAX);
+        assert_ne!(values[3], u64::MAX);
+        assert_eq!(values[4], u64::MAX);
+        assert_ne!(values[5], u64::MAX);
+        server.abort();
+    }
     #[tokio::test]
     async fn rejects_tool_calls_incomplete_and_oversized_replies() {
         for answer in [
@@ -500,9 +668,44 @@ mod tests {
         }
     }
     #[tokio::test]
-    async fn never_follows_redirects() {
-        use axum::{response::Redirect, routing::post, Router};
+    async fn rejects_advertised_oversize_without_waiting_for_body() {
+        use axum::{body::Body, http::Response, routing::get, Router};
         let router = Router::new().route(
+            "/",
+            get(|| async {
+                let body = Body::from_stream(futures_util::stream::pending::<
+                    Result<String, std::io::Error>,
+                >());
+                Response::builder()
+                    .header("content-length", "1000000")
+                    .body(body)
+                    .unwrap()
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let response = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
+            .get(endpoint)
+            .send()
+            .await
+            .unwrap();
+        let result =
+            tokio::time::timeout(Duration::from_secs(2), bounded_json(response, MAX_RESPONSE))
+                .await;
+        task.abort();
+        assert!(result.unwrap().is_err());
+    }
+
+    #[tokio::test]
+    async fn never_follows_redirects() {
+        use axum::{response::Redirect, routing::post};
+        let router = crate::local_model::tests::metadata_router().route(
             "/api/show",
             post(|| async { Redirect::temporary("http://127.0.0.1:1/forbidden") }),
         );

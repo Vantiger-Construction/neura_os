@@ -25,10 +25,12 @@ class NeuraEngineSession {
   using OllamaBegin = int64_t (*)(const unsigned char*, size_t);
   using OllamaPoll = int (*)(int64_t, unsigned char*, size_t);
   using OllamaCancel = void (*)(int64_t);
+  using OllamaTiming = int (*)(int64_t, uint64_t*, size_t);
   bool Load();
   HWND window_;
   HMODULE library_ = nullptr;
   StateFunction start_ = nullptr;
+  StateFunction start_local_ = nullptr;
   StateFunction pause_ = nullptr;
   StateFunction resume_ = nullptr;
   StateFunction status_ = nullptr;
@@ -39,9 +41,12 @@ class NeuraEngineSession {
   OllamaBegin ollama_begin_ = nullptr;
   OllamaPoll ollama_poll_ = nullptr;
   OllamaCancel ollama_cancel_ = nullptr;
+  OllamaTiming ollama_timing_ = nullptr;
+  StopFunction ollama_clear_timing_ = nullptr;
   ForegroundFunction ollama_foreground_ = nullptr;
   StopFunction ollama_block_ = nullptr;
   StopFunction ollama_shutdown_ = nullptr;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> channel_;
 };
+
 
