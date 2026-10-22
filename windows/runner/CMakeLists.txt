@@ -38,7 +38,7 @@ add_executable(${BINARY_NAME} WIN32
   "neura_window_role.cpp"
   "utils.cpp"
   "win32_window.cpp"
-  "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
+  "${NEURA_WINDOWS_PLUGIN_REGISTRANT}"
   "Runner.rc"
   "runner.exe.manifest"
 )
@@ -72,7 +72,7 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "sapi.lib" "ole32.lib")
-target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
+target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}" "${FLUTTER_MANAGED_DIR}")
 
 # --- Optional verified-local Windows ASR prototype -------------------------
 # OFF is intentional. Enabling the backend requires SDK paths supplied by the

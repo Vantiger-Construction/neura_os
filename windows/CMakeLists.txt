@@ -61,13 +61,21 @@ endfunction()
 set(FLUTTER_MANAGED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/flutter")
 add_subdirectory(${FLUTTER_MANAGED_DIR})
 
+# Do not load or bundle the legacy flutter_tts Windows implementation.
+include(cmake/NeuraWindowsPlugins.cmake)
+neura_prepare_windows_plugins(
+  "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
+  "${FLUTTER_MANAGED_DIR}/generated_plugins.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/neura_plugins"
+)
+
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
 
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
-include(flutter/generated_plugins.cmake)
+include("${NEURA_WINDOWS_PLUGIN_LIST}")
 
 # flutter_sound is not in pubspec (stubbed for beta); this alias is kept as a
 # no-op guard in case the package is re-added later.
