@@ -89,9 +89,9 @@ void main() {
           isFalse);
       expect(f.secrets.containsKey(DataWipeFixture.providerKey), isFalse);
       expect(f.secrets.containsKey(DataWipeFixture.modelKey), isFalse);
-      // Fresh ciphertext is never mistaken for private data from the old key.
-      await expectLater(
-          crypto.decryptJson(oldCiphertext), throwsA(isA<Exception>()));
+      // A destroyed handle stays revoked after successful cleanup; only a
+      // freshly loaded crypto authority may use a replacement device key.
+      await expectLater(crypto.decryptJson(oldCiphertext), throwsStateError);
       f.expectIsolation();
     });
   }, timeout: const Timeout(Duration(seconds: 30)));
