@@ -30,13 +30,12 @@ jobs:
         include:
           - language: actions
             os: ubuntu-latest
-          # CodeQL documents Microsoft extensions through VS 2022.
-          # windows-latest currently selects unsupported MSVC 19.51 (VS 2026).
           - language: c-cpp
             os: windows-2022
             build-mode: manual
           - language: csharp
             os: ubuntu-latest
+            build-mode: manual
           - language: javascript-typescript
             os: ubuntu-latest
           - language: python
@@ -88,6 +87,21 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git diff --exit-code -- pubspec.lock rust/Cargo.lock
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Enable reviewed .NET SDK for C# source compilation
+        if: matrix.language == 'csharp'
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '8.0.426'
+      - name: Prepare verified Unity references and unmodified test-framework assembly
+        if: matrix.language == 'csharp'
+        shell: bash
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+        run: |
+          python3 tools/security/prepare_csharp.py --output "$RUNNER_TEMP/neura-csharp"
+          dotnet build "$RUNNER_TEMP/neura-csharp/framework/framework.csproj" --nologo
+          dotnet restore "$RUNNER_TEMP/neura-csharp/authored/neura.csproj" --nologo
+          sha256sum "$RUNNER_TEMP/neura-csharp/framework/bin/Debug/net8.0/UnityEngine.TestRunner.dll" >> "$GITHUB_STEP_SUMMARY"
       - name: Initialize dedicated security queries
         uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
@@ -108,6 +122,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git diff --exit-code -- pubspec.lock rust/Cargo.lock windows/runner
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Trace every tracked Neura C# source with genuine Unity references
+        if: matrix.language == 'csharp'
+        shell: bash
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+        run: |
+          dotnet build "$RUNNER_TEMP/neura-csharp/authored/neura.csproj" --no-restore --no-incremental -p:UseSharedCompilation=false --nologo
+          git diff --exit-code
       - name: Analyze and upload security results
         uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
@@ -144,6 +166,14 @@ jobs:
               with Path(os.environ['GITHUB_STEP_SUMMARY']).open('a', encoding='utf-8') as summary:
                   summary.write('\nIncomplete source extraction: ' + ', '.join(sorted(set(errors))) + '. See SARIF artifact.\n')
               raise SystemExit('Incomplete source extraction; retain diagnostics and repair coverage before acceptance')
+      - name: Preserve C# source and reference identities
+        if: always() && matrix.language == 'csharp'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: neura-csharp-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/neura-csharp/csharp-source-receipt.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Preserve SARIF even if upload fails
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

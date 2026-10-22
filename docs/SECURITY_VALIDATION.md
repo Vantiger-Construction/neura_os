@@ -206,3 +206,35 @@ NuGet extraction diagnostics. This repair does not exclude Unity files, create
 API stubs, suppress diagnostics or claim complete C# coverage. A compatible
 Unity 6000.6.6f1 reference/build environment is still required for acceptance.
 Earlier tables and run identities above are historical evidence.
+
+## Native extraction repair — October 22 follow-up
+
+The traced Windows build succeeded, but CodeQL 2.27.3 reported WinRT/coroutine
+parse errors with MSVC 19.51 (VS 2026). CodeQL's supported-language matrix
+currently lists Microsoft extensions through VS 2022. The security lane now
+uses `windows-2022`; compiler diagnostics remain fatal. This is an analysis
+toolchain choice, not an application source change or a coverage waiver.
+
+C# now uses a manual compile harness over **every Git-tracked `.cs` file**.
+`prepare_csharp.py` downloads the official Unity 6000.6.6f1 Linux archive and
+verifies SHA-256 `64ea1568976f4e470a9da4db2576116807798c710523f4d0fe13e27fb8635a44`
+(also locally matched Unity's published archive MD5). It extracts genuine
+managed assemblies, bundled Test Framework 1.8.0 and Custom NUnit 2.1.0,
+compiles the unmodified framework dependency before CodeQL init, and generates
+a .NET 8 source-analysis project containing all nine authored C# files.
+The prototype's test manifest is aligned to bundled Test Framework 1.8.0.
+The authored project is compiled after init without incremental/shared
+compilation; the existing completeness gate still rejects compiler errors.
+No authored source is omitted, and no API stubs, editor activation, Unity
+launch, play-mode test, microphone or native Windows API call is performed.
+
+A local compile of all nine authored files against the genuine references and
+unmodified framework succeeded with zero warnings/errors. The .NET 8 harness
+is a source-analysis build, not a substitute for Unity editor/player builds,
+assembly-definition boundaries or physical-device acceptance. The retained
+receipt records every authored source and reference hash. A fresh hosted
+CodeQL run must confirm extraction before accepting this repair.
+
+Authoritative sources: [CodeQL supported compilers](https://codeql.github.com/docs/codeql-overview/supported-languages-and-frameworks/),
+[Unity release](https://unity.com/releases/editor/whats-new/6000.6.6f1),
+[Unity release metadata](https://services.api.unity.com/unity/editor/release/v1/releases?version=6000.6.6f1).
