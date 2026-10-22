@@ -1,0 +1,213 @@
+name: Neura vulnerability validation
+
+on:
+  pull_request:
+    branches: [Neura]
+  push:
+    branches: [Neura]
+  schedule:
+    - cron: '23 10 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codeql:
+    name: CodeQL Security (${{ matrix.language }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            os: ubuntu-latest
+          - language: c-cpp
+            os: windows-2022
+            build-mode: manual
+          - language: csharp
+            os: ubuntu-latest
+            build-mode: manual
+          - language: javascript-typescript
+            os: ubuntu-latest
+          - language: python
+            os: ubuntu-latest
+          - language: rust
+            os: ubuntu-latest
+    steps:
+      - name: Check out the analyzed revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Record source identity
+        shell: bash
+        env:
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          {
+            echo '### CodeQL security source'
+            echo "Language: ${{ matrix.language }}; build mode: ${{ matrix.build-mode || 'none' }}; queries: security-extended"
+            echo "Checkout commit: $(git rev-parse HEAD)"
+            echo "Checkout tree: $(git rev-parse 'HEAD^{tree}')"
+            echo "Event commit: $GITHUB_SHA; PR head: $PR_HEAD; PR base: $PR_BASE"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Prepare Rust extraction
+        if: matrix.language == 'rust'
+        shell: bash
+        run: |
+          rustup toolchain install 1.99.0 --profile minimal
+          rustup default 1.99.0
+          rustc --version
+          cargo --version
+          cargo metadata --manifest-path rust/Cargo.toml --locked --format-version 1 > "$RUNNER_TEMP/neura-cargo-metadata.json"
+          git diff --exit-code -- rust/Cargo.lock
+      - name: Install verified Flutter SDK for native extraction
+        if: matrix.language == 'c-cpp'
+        shell: pwsh
+        run: |
+          & ./tools/Enable-NeuraFlutter.ps1 -Version '3.47.5' -ExpectedSha256 '0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8'
+      - name: Prepare genuine Flutter headers and locked plugins
+        if: matrix.language == 'c-cpp'
+        shell: pwsh
+        run: |
+          flutter config --enable-windows-desktop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          flutter precache --windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          flutter pub get
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --exit-code -- pubspec.lock rust/Cargo.lock
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Enable reviewed .NET SDK for C# source compilation
+        if: matrix.language == 'csharp'
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '8.0.426'
+      - name: Prepare verified Unity references and unmodified test-framework assembly
+        if: matrix.language == 'csharp'
+        shell: bash
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+        run: |
+          python3 tools/security/prepare_csharp.py --output "$RUNNER_TEMP/neura-csharp"
+          dotnet build "$RUNNER_TEMP/neura-csharp/framework/framework.csproj" --nologo
+          dotnet restore "$RUNNER_TEMP/neura-csharp/authored/neura.csproj" --nologo
+          sha256sum "$RUNNER_TEMP/neura-csharp/framework/bin/Debug/net8.0/UnityEngine.TestRunner.dll" >> "$GITHUB_STEP_SUMMARY"
+      - name: Initialize dedicated security queries
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode || 'none' }}
+          queries: security-extended
+          # Do not inherit the separate managed Code Quality configuration.
+          config: |
+            name: Neura security queries
+            disable-default-queries: false
+      - name: Trace the Windows application build
+        if: matrix.language == 'c-cpp'
+        shell: pwsh
+        run: |
+          # Build after CodeQL init so MSVC compilation is traced with real
+          # Windows SDK, Flutter and plugin headers. Never substitute stubs.
+          flutter build windows --release --no-pub
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --exit-code -- pubspec.lock rust/Cargo.lock windows/runner
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Trace every tracked Neura C# source with genuine Unity references
+        if: matrix.language == 'csharp'
+        shell: bash
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+        run: |
+          dotnet build "$RUNNER_TEMP/neura-csharp/authored/neura.csproj" --no-restore --no-incremental -p:UseSharedCompilation=false --nologo
+          git diff --exit-code
+      - name: Analyze and upload security results
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          category: /neura-security/language:${{ matrix.language }}
+          output: ${{ runner.temp }}/neura-codeql-results
+      - name: Reject incomplete CodeQL extraction
+        shell: python
+        env:
+          SARIF_DIR: ${{ runner.temp }}/neura-codeql-results
+        run: |
+          import json, os
+          from pathlib import Path
+          reports = list(Path(os.environ['SARIF_DIR']).glob('*.sarif'))
+          if not reports:
+              raise SystemExit('Incomplete: CodeQL did not produce SARIF evidence')
+          errors = []
+          for path in reports:
+              runs = json.loads(path.read_text(encoding='utf-8'))['runs']
+              if not runs:
+                  errors.append('No CodeQL runs in ' + path.name)
+              for run in runs:
+                  for metric in run.get('properties', {}).get('metricResults', []):
+                      if metric.get('ruleId') == 'cpp/telemetry/compiler-errors' and metric.get('value', 0) > 0:
+                          errors.append('C/C++ compiler errors; inspect missing headers and parse failures')
+                  invocations = run.get('invocations', [])
+                  if not invocations or any(not i.get('executionSuccessful') for i in invocations):
+                      errors.append('Missing or unsuccessful CodeQL invocation')
+                  for invocation in invocations:
+                      for key in ('toolExecutionNotifications', 'toolConfigurationNotifications'):
+                          for note in invocation.get(key, []):
+                              if note.get('level') == 'error':
+                                  errors.append(note.get('descriptor', {}).get('id', 'CodeQL diagnostic error'))
+          if errors:
+              with Path(os.environ['GITHUB_STEP_SUMMARY']).open('a', encoding='utf-8') as summary:
+                  summary.write('\nIncomplete source extraction: ' + ', '.join(sorted(set(errors))) + '. See SARIF artifact.\n')
+              raise SystemExit('Incomplete source extraction; retain diagnostics and repair coverage before acceptance')
+      - name: Preserve C# source and reference identities
+        if: always() && matrix.language == 'csharp'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: neura-csharp-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/neura-csharp/csharp-source-receipt.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Preserve SARIF even if upload fails
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: neura-codeql-security-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/neura-codeql-results/*.sarif
+          if-no-files-found: warn
+          retention-days: 14
+
+  dependencies:
+    name: Locked dependency vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Test incomplete-scan and finding handling
+        run: python3 -m unittest discover -s tools/security -p 'test_*.py' -v
+      - name: Install checksum-pinned OSV-Scanner
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --location --retry 2 --max-time 120 \
+            https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64 \
+            --output "$RUNNER_TEMP/osv-scanner"
+          echo "160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b  $RUNNER_TEMP/osv-scanner" | sha256sum --check --strict
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+      - name: Scan exact Dart, Rust and npm locks without building Neura
+        run: python3 tools/security/scan_dependencies.py --scanner "$RUNNER_TEMP/osv-scanner" --output "$RUNNER_TEMP/neura-dependency-audit"
+      - name: Preserve scan results and source receipt, including failures
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: neura-dependency-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/neura-dependency-audit/
+          if-no-files-found: error
+          retention-days: 14

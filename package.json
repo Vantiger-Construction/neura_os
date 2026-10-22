@@ -1,12 +1,5 @@
-# This file needs to be created in project root
-[package]
-name = "neura_os_core"
-version = "1.0.0"
-edition = "2021"
-
-[lib]
-crate-type = ["cdylib"]
-
-[dependencies]
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+{
+  "name": "neura-companion-os",
+  "private": true,
+  "description": "Neura Companion OS source repository; npm test tooling lives in tools/sync_tests"
+}
