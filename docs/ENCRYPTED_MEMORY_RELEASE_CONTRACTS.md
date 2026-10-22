@@ -251,3 +251,21 @@ October 17 UTC and was reconciled on October 18.
    and observed result. Never use a user's real journal as a wipe fixture.
 
 No Windows/Android physical result or public-release approval is recorded here.
+
+## October 22 PR repair checkpoint
+
+Integrated default branch `889edf5` (merged engine, launcher, Ollama and full-wipe
+work) into this draft. The only merge conflict was the previously documented
+shared wipe fixture. Retained the complete PR fixture, including all preference
+hooks; applied the tracked terminal-key assertion adaptation to the now-merged
+lifecycle regression. Successful wipe cannot revive an old crypto handle.
+
+PR #133 is now on the default branch. Its wipe tests run directly alongside
+consent-memory tests; the redundant synthetic PR #133 merge lane is retired.
+The tests and completeness/consent gates remain enabled. Previous two-lane
+results above describe their original source, not this repair.
+
+Also carried the four reviewed security lock repairs from PR #143: quinn-proto
+0.11.18, rustls 0.23.46, rustls-webpki 0.103.16 and webpki-roots 1.0.10.
+No other locked versions changed. Current combined-source tests must be
+recorded before release acceptance; keep this PR draft and unmerged.

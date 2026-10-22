@@ -2,6 +2,7 @@
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
+#include <memory>
 #include <string>
 
 #include "flutter_window.h"
@@ -9,6 +10,20 @@
 #include "utils.h"
 
 #include "window_manager_plus/window_manager_plus_plugin.h"
+
+namespace {
+
+struct HandleCloser {
+  void operator()(void *handle) const noexcept {
+    if (handle != nullptr) {
+      ::CloseHandle(handle);
+    }
+  }
+};
+
+using UniqueHandle = std::unique_ptr<void, HandleCloser>;
+
+}  // namespace
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
@@ -18,6 +33,17 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     if (argument == "--launch-smoke-test") {
       return 73;
     }
+  }
+
+  HANDLE raw_instance_mutex = ::CreateMutexW(
+      nullptr, FALSE, L"Local\\NeuraCompanionPrimaryInstance-v1");
+  const DWORD mutex_result = ::GetLastError();
+  UniqueHandle instance_mutex(raw_instance_mutex);
+  if (!instance_mutex) {
+    return EXIT_FAILURE;
+  }
+  if (mutex_result == ERROR_ALREADY_EXISTS) {
+    return EXIT_SUCCESS;
   }
 
   InitializeNeuraNativeDiagnostics();
@@ -43,7 +69,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   RecordNeuraNativeBreadcrumb("primary_window_create_started");
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"neuro_companion", origin, size)) {
+  if (!window.Create(L"Neura", origin, size)) {
     RecordNeuraNativeBreadcrumb("primary_window_create_failed");
     return EXIT_FAILURE;
   }
@@ -82,7 +108,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
             sub_project, sub_window_id, /*is_mascot=*/true);
         Win32Window::Point sub_origin(10, 10);
         Win32Window::Size sub_size(1280, 720);
-        if (sub_window->Create(L"neuro_companion", sub_origin, sub_size)) {
+        if (sub_window->Create(L"Neura", sub_origin, sub_size)) {
           RecordNeuraNativeBreadcrumb("secondary_window_created");
           sub_window->Show();
           sub_window->SetQuitOnClose(false);

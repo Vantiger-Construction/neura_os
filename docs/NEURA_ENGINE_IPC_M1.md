@@ -5,7 +5,9 @@ adds a trusted launcher, a synthetic-only Console session, and explicit
 pause/resume with generation-guarded, bounded execution.
 These slices do not complete milestone 1, enable reflection, install a model,
 or admit personal sources.
-The adapter remains the degraded local echo provider.
+The adapter remains the degraded local echo provider by default; the opt-in
+pinned local model adapter is described in
+[milestone 2's first slice](NEURA_ENGINE_MODEL_ADAPTER_M2.md).
 
 ## Explicit session startup
 
@@ -99,7 +101,8 @@ The old generic BrainLink remains separate and receives no session credential.
 | Argument-free operation | Effect |
 | --- | --- |
 | `startSynthetic` | Explicit foreground Windows start; fixed hello/diagnostics only. |
-| `syntheticStatus` | Returns only `disabled`, `starting`, `working`, `idle`, `paused`, `error`, `unavailable`, or `blocked`. |
+| `startLocalCheck` | The same explicit start on the pinned local model, after the Console acknowledgement. See [milestone 2](NEURA_ENGINE_MODEL_ADAPTER_M2.md#console-local-model-check). |
+| `syntheticStatus` | Returns only `disabled`, `starting`, `working`, `idle`, `paused`, `error`, `unavailable`, `blocked`, or `model_unavailable`. |
 | `pauseSynthetic` | Invalidates pending work, revokes/terminates the child, and retains `paused`. |
 | `resumeSynthetic` | Explicit foreground resume from `paused`; joins the previous owner and creates a fresh session/check. |
 | `stopSynthetic` | Invalidates the session, attempts authenticated revocation, and terminates/reaps the owned child; returns to `disabled` unless safety-blocked. |
@@ -114,7 +117,8 @@ Start cannot bypass Pause; after Stop or foreground loss, Resume does nothing
 and a new explicit Start is required. Safe Mode/recovery still requires app restart.
 
 The native integer contract retains slots 0/1/2/3/4/5 for
-disabled/starting/idle/error/unavailable/blocked and adds 6/7 for working/paused.
+disabled/starting/idle/error/unavailable/blocked, adds 6/7 for working/paused,
+and adds 8 for `model_unavailable` (milestone 2 local check).
 The old `stopped`/`ready` labels are replaced by `disabled`/`idle` in the bundled
 DLL, Windows bridge, and Flutter controller together. The bridge requires both
 new pause/resume exports; an older DLL fails closed as unavailable.

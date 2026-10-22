@@ -106,5 +106,8 @@ class ScheduledBackupSettings {
     await NeuraPrefsCache.prefs.remove(_keyLastOutcome);
     await NeuraPrefsCache.prefs.remove(_keyLastError);
     await _storage.delete(key: _keyPassphrase);
+    if ((await _storage.read(key: _keyPassphrase) ?? '').isNotEmpty) {
+      throw StateError('The scheduled backup passphrase could not be deleted.');
+    }
   }
 }

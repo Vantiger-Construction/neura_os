@@ -40,36 +40,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        source: [current, with-wipe-pr133]
+        source: [current]
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           persist-credentials: false
-      # This is a disposable working-tree integration, never a PR merge or push.
-      # Keep the candidate immutable so the evidence has an exact source scope.
-      # Retire this extra lane when #133's final integration is reviewed.
-      - name: Integrate the reviewed wipe candidate in this disposable checkout
-        if: matrix.source == 'with-wipe-pr133'
-        env:
-          WIPE_HEAD: 258ff8785e85882c5905eaded85969b93db48544
-        run: |
-          git fetch --no-tags origin "$WIPE_HEAD"
-          if ! git -c user.name='Synthetic validation' -c user.email='validation@localhost' \
-            merge --no-commit --no-ff "$WIPE_HEAD"; then
-            # Both PRs added this fixture. The reviewed current version retains
-            # #133's complete confinement and adds only held preference hooks.
-            # Resolve that exact pair only; any other conflict must fail closed.
-            fixture=test/helpers/data_wipe_fixture.dart
-            test "$(git diff --name-only --diff-filter=U)" = "$fixture"
-            test "$(git rev-parse ":2:$fixture")" = 383624734a80fa3716b8b3b9fee0cf49390aa49d
-            test "$(git rev-parse ":3:$fixture")" = d4f533ee6905694296ae8124947f2bca8f98b467
-            git checkout --ours -- "$fixture"
-            git add -- "$fixture"
-          fi
-          # #133 expected authentication failure from a refreshed old handle.
-          # The stronger contract rejects that destroyed handle before decrypt.
-          git apply --index test/fixtures/pr133-terminal-key-revocation.patch
+      # PR #133 is merged into Neura. Its wipe regressions now run directly
+      # below with the consent-memory source; no synthetic second merge lane.
       - name: Record source identity
         env:
           REVIEW_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}

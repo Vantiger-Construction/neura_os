@@ -212,7 +212,10 @@ try {
             $_.FullName -notmatch '[\\/](build|\.dart_tool|\.git|dist|upgrade_backups)[\\/]' -and
             $_.Length -lt 5MB
         } |
-        Select-String -Pattern 'sk-ant-[A-Za-z0-9_-]{20,}' -ErrorAction SilentlyContinue
+        Select-String -Pattern 'sk-ant-[A-Za-z0-9_-]{20,}' -ErrorAction SilentlyContinue |
+        # Tests use clearly labelled fake keys such as
+        # 'sk-ant-synthetic-provider-credential-fixture'; never real ones.
+        Where-Object { $_.Matches[0].Value -notmatch '-(synthetic|fixture)(-|$)' }
     if ($secretHits) {
         $paths = ($secretHits | Select-Object -ExpandProperty Path -Unique) -join "`n  "
         throw "Possible provider secret found. Revoke/remove it before building:`n  $paths"

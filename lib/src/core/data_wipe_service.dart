@@ -328,7 +328,13 @@ class NeuraDataWipeService {
 
     await _attempt(failures, 'preferences deletion', () async {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.clear();
+      if (!await prefs.clear()) {
+        throw StateError('SharedPreferences deletion was rejected.');
+      }
+      // The SDK clears its in-memory cache before awaiting the platform.
+      // Reload durable state so a stale/failed platform clear cannot look
+      // successful merely because that cache is now empty.
+      await prefs.reload();
       if (prefs.getKeys().isNotEmpty) {
         throw StateError('SharedPreferences deletion could not be verified.');
       }
