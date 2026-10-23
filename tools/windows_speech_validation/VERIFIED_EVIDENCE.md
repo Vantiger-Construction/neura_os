@@ -24,14 +24,19 @@
 - Existing fixed-text harness and acceptance procedure were reused. No new
   speech engine, microphone path or application runtime change was introduced.
 
-## New local helper verification (Linux, synthetic only)
+## New helper verification (synthetic only)
 
-PowerShell 7.4.7 helper assertions: **41 passed** at preparation. They exercise
+PowerShell 7.4.7 helper assertions: **44 passed** at preparation. They exercise
 file/identity inspection, redaction and simulated input, with no Windows app
 execution. The original CMake fixtures were rerun: **3 passed**. The original
 native ownership/escaping executable was compiled with g++ C++17 and strict
-warnings: **17 assertions passed**, with no COM voice or audio. Genuine Windows
-PowerShell 5.1 execution of the new helper remains pending its PR workflow.
+warnings: **17 assertions passed**, with no COM voice or audio. The initial
+helper at `f7aa232b120f920b86e7acd770586375799d792f` also passed its 41 assertions
+under genuine Windows PowerShell 5.1 in
+[run 39941432498](https://github.com/Vantiger-Construction/neura_os/actions/runs/39941432498).
+The follow-up adds Flutter payload identity/missing-payload checks (44 local
+assertions); current-head Windows status is tracked on PR #145. This is all
+synthetic CI evidence, not physical playback.
 
 ## Actual physical Windows results
 

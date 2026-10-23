@@ -37,15 +37,25 @@ try {
         Require (@($errors).Count -eq 0) 'PowerShell syntax failure.'
     }
     $bundle = Join-Path $scratch 'bundle'
-    [void](New-Item -ItemType Directory -Path (Join-Path $bundle 'data') -Force)
+    [void](New-Item -ItemType Directory -Path (Join-Path $bundle 'data/flutter_assets') -Force)
     $exe = Join-Path $bundle 'neuro_companion.exe'
     Write-Fixture $exe
     Write-Fixture (Join-Path $bundle 'flutter_windows.dll') -MissingSapi
     [IO.File]::WriteAllText((Join-Path $bundle 'data/icudtl.dat'), 'synthetic')
+    $payloadPath = Join-Path $bundle 'data/flutter_assets/kernel_blob.bin'
+    [IO.File]::WriteAllText($payloadPath, 'synthetic debug payload')
+    [IO.File]::WriteAllText((Join-Path $bundle 'data/flutter_assets/AssetManifest.bin'), 'synthetic asset manifest')
     $result = Get-NeuraBundleEvidence $exe
     Require ($result.status -eq 'PASS') 'Clean static SAPI fixture should match.'
     Require ($result.commit_provenance -eq 'UNVERIFIED') 'Static bytes must not invent commit provenance.'
     Require ($result.executable.sha256.Length -eq 64) 'Executable identity was not hashed.'
+    $payloadHash = (Get-FileHash -LiteralPath $payloadPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    Require (@($result.native_files | Where-Object { $_.sha256 -eq $payloadHash }).Count -eq 1) 'Debug/AOT payload must be part of the bundle identity.'
+    Remove-Item -LiteralPath $payloadPath
+    Require ((Get-NeuraBundleEvidence $exe).status -eq 'FAIL') 'A bundle with no Flutter code payload must not pass preflight.'
+    [IO.File]::WriteAllText($payloadPath, 'changed synthetic payload')
+    $changed = Get-NeuraBundleEvidence $exe
+    Require (@($changed.native_files | Where-Object { $_.sha256 -eq $payloadHash }).Count -eq 0) 'Changed Flutter code must alter the bundle identity.'
     Write-Fixture $exe -MissingSapi
     Require ((Get-NeuraBundleEvidence $exe).status -eq 'FAIL') 'Old/non-SAPI executable must fail.'
     Write-Fixture $exe -Legacy

@@ -87,6 +87,10 @@ function Get-NeuraBundleEvidence([string]$ExePath) {
     $legacyIndicator = $binary.legacy_indicators
     $visited = 0
     $nativeCount = 0
+    $payloadPaths = @('data/app.so', 'data/flutter_assets/kernel_blob.bin',
+        'data/flutter_assets/AssetManifest.bin', 'data/icudtl.dat') | ForEach-Object {
+            [IO.Path]::GetFullPath((Join-Path $exe.DirectoryName $_))
+        }
     while ($queue.Count -gt 0) {
         $directory = $queue.Dequeue()
         foreach ($child in Get-ChildItem -LiteralPath $directory.FullName -Force) {
@@ -97,9 +101,7 @@ function Get-NeuraBundleEvidence([string]$ExePath) {
             }
             if ($child.PSIsContainer) { $queue.Enqueue($child); continue }
             if ($child.Name -ieq 'flutter_tts_plugin.dll') { $legacyFile = $true }
-            if ($child.Extension -notin @('.exe', '.dll', '.pdb') -and
-                $child.FullName -notin @((Join-Path $exe.DirectoryName 'data/app.so'),
-                    (Join-Path $exe.DirectoryName 'data/flutter_assets/kernel_blob.bin'))) { continue }
+            if ($child.Extension -notin @('.exe', '.dll', '.pdb') -and $child.FullName -notin $payloadPaths) { continue }
             $nativeCount++
             if ($nativeCount -gt 256 -or $child.Length -gt 256MB) {
                 throw 'Native files exceed the inspection bound.'
@@ -120,13 +122,19 @@ function Get-NeuraBundleEvidence([string]$ExePath) {
     }
     $enginePresent = Test-Path -LiteralPath (Join-Path $exe.DirectoryName 'flutter_windows.dll') -PathType Leaf
     $dataPresent = Test-Path -LiteralPath (Join-Path $exe.DirectoryName 'data/icudtl.dat') -PathType Leaf
+    $payloadPresent = $false
+    foreach ($path in $payloadPaths[0..1]) {
+        if ((Test-Path -LiteralPath $path -PathType Leaf) -and (Get-Item -LiteralPath $path).Length -gt 0) { $payloadPresent = $true }
+    }
+    $assetsPresent = Test-Path -LiteralPath $payloadPaths[2] -PathType Leaf
     return [pscustomobject]@{
         status = $(if ($binary.static_sapi_match -and -not $legacyFile -and -not $legacyIndicator -and
-            $enginePresent -and $dataPresent) { 'PASS' } else { 'FAIL' })
+            $enginePresent -and $dataPresent -and $payloadPresent -and $assetsPresent) { 'PASS' } else { 'FAIL' })
         scope = 'Static bundle fingerprint; no runtime or provenance acceptance'
         executable = $binary; legacy_dll_bundled = $legacyFile
         legacy_registration_or_import_indicators = $legacyIndicator
         flutter_engine_present = $enginePresent; flutter_data_present = $dataPresent
+        flutter_payload_present = $payloadPresent; flutter_asset_manifest_present = $assetsPresent
         native_files = @($files.ToArray()); commit_provenance = 'UNVERIFIED'
     }
 }

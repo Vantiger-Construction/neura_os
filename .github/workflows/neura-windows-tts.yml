@@ -33,6 +33,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
+      - name: Verify read-only evidence helper with synthetic fixtures (no speech)
+        shell: powershell
+        run: tools/windows_speech_validation/Test-EvidenceHelper.ps1
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.5'
@@ -40,9 +43,6 @@ jobs:
           cache: true
       - name: Verify legacy TTS plugin is excluded after regeneration
         run: python tools/test_windows_plugin_filter.py
-      - name: Verify read-only evidence helper with synthetic fixtures (no speech)
-        shell: powershell
-        run: tools/windows_speech_validation/Test-EvidenceHelper.ps1
       - name: Restore locked dependencies
         run: |
           flutter pub get
