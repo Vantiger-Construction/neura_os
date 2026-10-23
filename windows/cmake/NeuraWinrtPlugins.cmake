@@ -9,7 +9,7 @@ function(neura_prepare_media_source source output_dir)
   string(REPLACE [=[    winrt::com_ptr<IMFMediaEngineEx> mediaEngineEx =
         m_mediaEngine.as<IMFMediaEngineEx>();]=]
     [=[    winrt::com_ptr<IMFMediaEngineEx> mediaEngineEx;
-    THROW_IF_FAILED(m_mediaEngine->QueryInterface(
+    winrt::check_hresult(m_mediaEngine->QueryInterface(
         __uuidof(IMFMediaEngineEx), mediaEngineEx.put_void()));]=]
     patched "${original}")
   file(MAKE_DIRECTORY "${output_dir}")
