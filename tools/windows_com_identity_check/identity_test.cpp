@@ -9,13 +9,13 @@ int destroyed = 0;
 
 // Exercise the actual C++/WinRT QueryInterface and ownership implementation.
 // These in-memory test objects never activate notifications or audio devices.
-struct AudioCallback final : winrt::implements<AudioCallback, IMFAsyncCallback> {
+struct AudioCallback : winrt::implements<AudioCallback, IMFAsyncCallback> {
   ~AudioCallback() { ++destroyed; }
   HRESULT __stdcall GetParameters(DWORD*, DWORD*) noexcept final { return E_NOTIMPL; }
   HRESULT __stdcall Invoke(IMFAsyncResult*) noexcept final { return E_NOTIMPL; }
 };
 
-struct NotificationCallback final
+struct NotificationCallback
     : winrt::implements<NotificationCallback, INotificationActivationCallback> {
   ~NotificationCallback() { ++destroyed; }
   HRESULT __stdcall Activate(LPCWSTR, LPCWSTR,
