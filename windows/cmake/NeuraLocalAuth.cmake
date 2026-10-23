@@ -44,6 +44,7 @@ function(neura_configure_local_auth output_dir)
   endif()
   get_target_property(plugin_dir ${plugin} SOURCE_DIR)
   neura_prepare_local_auth_source("${plugin_dir}/local_auth_plugin.cpp" "${output_dir}")
+  configure_file("${plugin_dir}/../LICENSE" "${output_dir}/LICENSE" COPYONLY)
 
   get_target_property(sources ${plugin} SOURCES)
   list(FIND sources "local_auth_plugin.cpp" source_index)

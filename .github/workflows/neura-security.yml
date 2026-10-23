@@ -112,6 +112,16 @@ jobs:
           config: |
             name: Neura security queries
             disable-default-queries: false
+      - name: Trace and test genuine SDK COM identity handling
+        if: matrix.language == 'c-cpp'
+        shell: pwsh
+        run: |
+          cmake -S tools/windows_com_identity_check -B build/windows-com-identity-check -G "Visual Studio 17 2022" -A x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build/windows-com-identity-check --config Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir build/windows-com-identity-check -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Trace the Windows application build
         if: matrix.language == 'c-cpp'
         shell: pwsh
@@ -180,6 +190,9 @@ jobs:
             build/windows/x64/CMakeFiles/*/CMakeCXXCompiler.cmake
             build/windows/x64/neura_plugins/local_auth/local_auth_source_receipt.txt
             build/windows/x64/neura_plugins/local_auth/local_auth_plugin.cpp
+            build/windows/x64/neura_plugins/local_auth/LICENSE
+            build/windows/x64/neura_plugins/media/
+            build/windows-com-identity-check/Testing/Temporary/LastTest.log
           if-no-files-found: warn
           retention-days: 14
       - name: Preserve C# source and reference identities

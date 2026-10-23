@@ -299,3 +299,43 @@ the resulting commit.** Linux checks do not establish Windows or device acceptan
 API/toolchain references:
 [RoGetActivationFactory](https://learn.microsoft.com/en-us/windows/win32/api/roapi/nf-roapi-rogetactivationfactory),
 [standard and legacy coroutine modes](https://learn.microsoft.com/en-us/cpp/build/reference/await-enable-coroutine-support?view=msvc-170).
+
+
+### Follow-up from retained native diagnostics
+
+[Run 39903675973](https://github.com/Vantiger-Construction/neura_os/actions/runs/39903675973)
+for repair head `b36469529daecbb3db72b061c572b5dd315a57a4` completed its real
+Windows build, but still rejected extraction: compiler errors decreased from 48
+to 28, with 40 of 41 compilations without errors. All six other security jobs
+passed. The separate Windows speech workflow passed a full MSVC 19.51.36260.0
+release build, 73 Dart tests and its audio-free native ownership test. These are
+historical results for that exact revision, not acceptance of the next correction.
+
+The newly retained
+[native diagnostics](https://github.com/Vantiger-Construction/neura_os/actions/runs/39903675973/artifacts/12481280664)
+identify failures that were outside the SARIF source-root warning locations:
+`permission_handler_windows` still combined `/await` and C++20, while media and
+notification COM implementations instantiated constexpr GUID conversions from
+SDK headers. Neither issue is repaired by excluding those dependencies.
+
+The permissions target now retains its C++20 mode without legacy `/await`;
+its genuine source already uses standard `co_return`. Media and notifications
+use Microsoft's documented public
+[`winrt::is_guid_of` specialization point](https://learn.microsoft.com/en-us/uwp/cpp-ref-for-winrt/is-guid-of)
+to compare each requested identity with the real SDK interface's `__uuidof`
+at runtime. Each accepts exactly the same IID as the default implementation.
+SDK interfaces, WinRT implementation templates and QueryInterface remain genuine.
+No `winrt::impl` internals, hard-coded UUIDs or replacement SDK headers are added.
+
+The media balance call uses genuine QueryInterface with HRESULT checking and an
+owned COM pointer. Its build-local correction is bounded by upstream source
+SHA-256 `24d5d72bbb96836b83a5dd851399a8e00eadf37a957a827c24eeb442499098ac`.
+All remaining source is retained; package-cache changes are prohibited and upstream
+drift stops configuration. Both corrected-source receipts retain package licenses.
+
+A small Windows SDK check builds after CodeQL init, before the application. It
+checks the complete six-by-six IID acceptance/rejection matrix and real C++/WinRT
+QueryInterface rejection and reference ownership using in-memory COM objects.
+It never activates notification registration, media devices, microphones or
+Windows Hello. Hosted build, execution and extraction results are still required
+for the revision containing this follow-up; the fail-closed gate is unchanged.
