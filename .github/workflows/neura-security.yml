@@ -118,7 +118,8 @@ jobs:
         run: |
           # Build after CodeQL init so MSVC compilation is traced with real
           # Windows SDK, Flutter and plugin headers. Never substitute stubs.
-          flutter build windows --release --no-pub
+          flutter build windows --release --no-pub --verbose 2>&1 |
+            Tee-Object -FilePath "$env:RUNNER_TEMP/neura-native-build.log"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git diff --exit-code -- pubspec.lock rust/Cargo.lock windows/runner
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -166,6 +167,21 @@ jobs:
               with Path(os.environ['GITHUB_STEP_SUMMARY']).open('a', encoding='utf-8') as summary:
                   summary.write('\nIncomplete source extraction: ' + ', '.join(sorted(set(errors))) + '. See SARIF artifact.\n')
               raise SystemExit('Incomplete source extraction; retain diagnostics and repair coverage before acceptance')
+      - name: Preserve native extraction and compiler diagnostics
+        if: always() && matrix.language == 'c-cpp'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: neura-native-extraction-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/neura-native-build.log
+            ${{ runner.temp }}/codeql_databases/cpp/log/
+            ${{ runner.temp }}/codeql_databases/cpp/diagnostic/
+            build/windows/x64/CMakeCache.txt
+            build/windows/x64/CMakeFiles/*/CMakeCXXCompiler.cmake
+            build/windows/x64/neura_plugins/local_auth/local_auth_source_receipt.txt
+            build/windows/x64/neura_plugins/local_auth/local_auth_plugin.cpp
+          if-no-files-found: warn
+          retention-days: 14
       - name: Preserve C# source and reference identities
         if: always() && matrix.language == 'csharp'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

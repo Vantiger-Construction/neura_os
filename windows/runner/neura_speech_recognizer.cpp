@@ -62,15 +62,11 @@ using winrt::Windows::Media::SpeechRecognition::SpeechRecognitionScenario;
 using winrt::Windows::Media::SpeechRecognition::SpeechRecognitionTopicConstraint;
 using winrt::Windows::Media::SpeechRecognition::SpeechRecognizer;
 
-winrt::Windows::Foundation::IAsyncAction NeuraSpeechRecognizer::EnsureInitialized() {
-  if (initialized_) {
-    co_return;
-  }
-
-  recognizer_ = SpeechRecognizer();
-  recognizer_.Constraints().Append(
-      SpeechRecognitionTopicConstraint(SpeechRecognitionScenario::Dictation, L"dictation"));
-
+// Keep generic event callbacks outside the coroutine. CodeQL 2.27.3 loses
+// their `this` capture when instantiating lambdas declared in a coroutine.
+// Registration still occurs before CompileConstraintsAsync, with identical
+// event handlers and ownership.
+void NeuraSpeechRecognizer::RegisterRecognitionCallbacks() {
   result_token_ = recognizer_.ContinuousRecognitionSession().ResultGenerated(
       [this](auto&&, SpeechContinuousRecognitionResultGeneratedEventArgs const& args) {
         auto text = winrt::to_string(args.Result().Text());
@@ -118,6 +114,18 @@ winrt::Windows::Foundation::IAsyncAction NeuraSpeechRecognizer::EnsureInitialize
         listening_ = false;
         channel_->InvokeMethod("onStopped", nullptr);
       });
+}
+
+winrt::Windows::Foundation::IAsyncAction NeuraSpeechRecognizer::EnsureInitialized() {
+  if (initialized_) {
+    co_return;
+  }
+
+  recognizer_ = SpeechRecognizer();
+  recognizer_.Constraints().Append(
+      SpeechRecognitionTopicConstraint(SpeechRecognitionScenario::Dictation, L"dictation"));
+
+  RegisterRecognitionCallbacks();
 
   try {
     auto compilation = co_await recognizer_.CompileConstraintsAsync();

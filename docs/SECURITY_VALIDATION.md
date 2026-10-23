@@ -47,8 +47,8 @@ integration containing the workflow. Results never transfer between commits.
 
 | Component | New analysis | Limits |
 | --- | --- | --- |
-| Native C/C++ | CodeQL `security-extended`, Windows runner, build mode `none` | Heuristic dependency/macro resolution; not a fully traced Windows release build or binary scan |
-| C# helpers and Unity prototype | CodeQL `security-extended`, build mode `none` | Unity assemblies and generated sources may be unresolved; not a Unity runtime audit |
+| Native C/C++ | CodeQL `security-extended`, `windows-2022`, manual Flutter Windows release build | Completeness remains required; not a binary scan or all optional/platform configurations |
+| C# helpers and Unity prototype | CodeQL `security-extended`, manual compilation of all nine tracked C# files against verified Unity references | Source-analysis harness; not Unity editor/player/device acceptance |
 | JavaScript/TypeScript | CodeQL `security-extended` | Includes repository tooling and authored TypeScript; no claim about remotely imported dependencies |
 | Python tools | CodeQL `security-extended` | Source analysis only; no Python dependency lock exists to establish installed-version coverage |
 | Rust services | CodeQL `security-extended`, build mode `none`, Rust 1.99.0 | Requires rustup/cargo; rust-analyzer can execute dependency build scripts/procedural macros on a disposable runner. Linux extraction is not all Windows feature/target combinations |
@@ -64,8 +64,8 @@ supports `none` for C/C++, C# and Rust. Kotlin requires a build; this minimal pa
 does not claim Android Kotlin or Apple Swift coverage. Android Gradle/plugin
 dependencies, Flutter/Dart SDKs, downloaded ONNX/native libraries, checked-in
 DLLs, Unity assemblies, Deno URL imports and release binaries remain separate
-inventory/scanning work. Root `package.json` contains legacy TOML rather than a
-valid npm manifest; it is not treated as an installed npm dependency inventory.
+inventory/scanning work. Root `package.json` is now a private, dependency-free
+npm manifest; it is not an additional installed dependency inventory.
 
 ### Permissions, isolation and results
 
@@ -93,11 +93,11 @@ workflow rejects missing/unsuccessful SARIF invocations and error-level tool
 diagnostics and reported C/C++ compiler-error metrics, while retaining the reports.
 Initial execution exposed the malformed legacy root `package.json` in JavaScript
 extraction, compiler errors in three Unity-dependent C# files, and missing Windows
-SDK/Flutter/C++ headers in the heuristic C/C++ extraction. Those coverage errors
-remain visible failures pending reviewed manifest/Unity/native-build infrastructure
-repairs; they are not suppressed or treated as vulnerability findings. Unresolved
-NuGet access further limits the C# analysis. A traced Windows build with genuine
-Flutter headers is needed to improve native coverage. Medium Actions alerts remain
+SDK/Flutter/C++ headers in the heuristic C/C++ extraction. The manifest and Unity-reference
+repairs subsequently passed their hosted lanes. The October 23 UTC Windows run
+still failed native completeness after a successful traced build; its specific
+errors and correction are recorded below. Extraction errors are not suppressed
+or treated as vulnerability findings. Medium Actions alerts remain
 visible under the existing, unchanged High-or-higher repository alert threshold.
 
 OSV reads only the three named committed lockfiles, with no dependency install,
@@ -167,8 +167,8 @@ Use a separate reviewable update to resolve the four packages to patched version
 inspect `cargo tree --locked -e features --target ...` for each shipped target,
 rerun the audit and existing Rust/Flutter/native/privacy gates, and reconcile the
 final release lockfile/binary identity. Do not remove optional dependencies or
-add ignores solely to turn the audit green. This scanning PR leaves versions
-unchanged and retains the finding failure for review.
+add ignores solely to turn the audit green. The initial scan retained the finding failure for review; the October 22 repair
+below subsequently updated those four locked versions.
 
 ## Finding triage
 
@@ -238,3 +238,64 @@ CodeQL run must confirm extraction before accepting this repair.
 Authoritative sources: [CodeQL supported compilers](https://codeql.github.com/docs/codeql-overview/supported-languages-and-frameworks/),
 [Unity release](https://unity.com/releases/editor/whats-new/6000.6.6f1),
 [Unity release metadata](https://services.api.unity.com/unity/editor/release/v1/releases?version=6000.6.6f1).
+
+
+## Current C/C++ completeness repair — October 23 UTC evidence
+
+PR head `c5d37d669b1a6c4bed66076f6bca223d824710cc` triggered
+[run 39896106628](https://github.com/Vantiger-Construction/neura_os/actions/runs/39896106628).
+The checkout was GitHub's PR merge commit
+`cb3acf59606592e19a5fa17668434ace14b1349e`, not the PR head itself.
+The locked-dependency audit and C#, JavaScript/TypeScript, Actions, Rust and
+Python CodeQL jobs passed. These results describe that run's source identity,
+not any subsequent repair commit. PR #143 has been restored to draft.
+
+The genuine Flutter Windows release build and CodeQL analysis both completed.
+[Job 120226832028](https://github.com/Vantiger-Construction/neura_os/actions/runs/39896106628/job/120226832028)
+then correctly failed completeness. Retained
+[SARIF artifact 12478245086](https://github.com/Vantiger-Construction/neura_os/actions/runs/39896106628/artifacts/12478245086)
+(ZIP SHA-256 `15882623b5f92531edeb0c9ecd95905f9146e8c190bbbdf393590b0e2e626e9f`)
+records CodeQL 2.27.3, MSVC 19.44.35229, 48 compiler errors, and 38 of 41
+compilations without errors. Windows Server 2022 alone did not resolve extraction.
+
+Inspection identified three concrete causes:
+
+- `local_auth_windows` 1.0.11 requests C++20 **and** legacy `/await`. Its
+  `<pplawait.h>`/WinRT includes take inconsistent standard/legacy coroutine paths
+  in extraction, leaving `std::coroutine_handle`, coroutine traits and suspend
+  types unresolved. Its coroutine also uses legacy `return consent_result`.
+- Its `IUserConsentVerifierInterop` activation instantiates a constexpr WinRT
+  `guid_v` from `__uuidof(T)`. CodeQL rejects the conversion as accessing runtime
+  storage; an isolated CodeQL 2.27.3 reproduction confirmed this parser failure.
+- The speech recognizer's generic event lambdas inside `EnsureInitialized` lose
+  their `this` capture during extraction, producing five member-access errors.
+
+`NeuraLocalAuth.cmake` applies a bounded correction to a build-local copy of the
+**genuine locked plugin source**, for production and analysis builds alike.
+It verifies the normalized upstream file's SHA-256
+`3bc3e319fc1e5b9a6eb7f538ea232e43fd3a2cfcbe5cd34d74aa576c89a72b7d`,
+removes `/await` while retaining C++20, changes the coroutine to `co_return`, and
+uses the real SDK `RoGetActivationFactory` with the real interface's `__uuidof`
+at runtime. HRESULT checking, COM ownership and Windows Hello verification remain.
+No SDK/header/API replacement or hard-coded IID is used. The package cache and
+lockfile stay unmodified; upstream drift stops configuration for review. Source
+hash receipts identify both upstream and compiled source. Callback registration
+moves to a non-coroutine member with the same event bodies, order and ownership.
+
+The native workflow now retains verbose build output, CodeQL extraction logs and
+diagnostics, compiler configuration and the plugin source receipt for 14 days.
+The existing compiler-error/invocation/diagnostic completeness gate, all queries,
+findings, six other lanes and runtime privacy/consent gates remain enforced.
+The SARIF contains two `cpp/suspicious-pointer-scaling` results in genuine WinRT
+`base.h` copies. They remain available for review; this repair adds no suppression.
+
+Local CMake checks using the published 1.0.11 source verified the exact bounded
+changes, source-list and flag integration, unchanged package bytes, CRLF handling
+and rejection of modified upstream source. Ten security-helper tests and three
+existing Windows-plugin-filter tests passed. **A fresh hosted native build,
+CodeQL extraction/completeness pass and finding review are still required for
+the resulting commit.** Linux checks do not establish Windows or device acceptance.
+
+API/toolchain references:
+[RoGetActivationFactory](https://learn.microsoft.com/en-us/windows/win32/api/roapi/nf-roapi-rogetactivationfactory),
+[standard and legacy coroutine modes](https://learn.microsoft.com/en-us/cpp/build/reference/await-enable-coroutine-support?view=msvc-170).
