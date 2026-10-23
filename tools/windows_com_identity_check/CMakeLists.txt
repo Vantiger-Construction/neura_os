@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.14)
+project(neura_com_identity_check LANGUAGES CXX)
+enable_testing()
+add_executable(neura_com_identity_check identity_test.cpp)
+target_compile_features(neura_com_identity_check PRIVATE cxx_std_20)
+target_include_directories(neura_com_identity_check PRIVATE ../../windows/runner)
+target_link_libraries(neura_com_identity_check PRIVATE windowsapp runtimeobject ole32)
+add_test(NAME native_com_identity COMMAND neura_com_identity_check)
