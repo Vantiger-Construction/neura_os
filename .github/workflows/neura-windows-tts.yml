@@ -12,6 +12,7 @@ on:
       - 'windows/CMakeLists.txt'
       - 'windows/cmake/NeuraWindowsPlugins.cmake'
       - 'tools/test_windows_plugin_filter.py'
+      - 'tools/windows_speech_validation/**'
       - 'tools/windows_tts_native_check/**'
       - 'test/services/neura_windows_tts_test.dart'
       - 'test/services/neura_windows_tts_routing_test.dart'
@@ -39,6 +40,9 @@ jobs:
           cache: true
       - name: Verify legacy TTS plugin is excluded after regeneration
         run: python tools/test_windows_plugin_filter.py
+      - name: Verify read-only evidence helper with synthetic fixtures (no speech)
+        shell: powershell
+        run: tools/windows_speech_validation/Test-EvidenceHelper.ps1
       - name: Restore locked dependencies
         run: |
           flutter pub get

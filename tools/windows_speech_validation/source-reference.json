@@ -1,0 +1,54 @@
+{
+  "reference_commit": "dd6a53f7bc25f751a48e23087e5040c95125a588",
+  "normalization": "UTF-8 text, CRLF normalized to LF",
+  "files": [
+    {
+      "path": "windows/CMakeLists.txt",
+      "sha256_lf": "d9a57ae6b12f322d088a5cf27e486272e5231f7ac0e991794fa1825572021b8d"
+    },
+    {
+      "path": "windows/runner/CMakeLists.txt",
+      "sha256_lf": "fb3dc66cdef2e2ae740396201fede4d0863f86d30e2bb7439be4bbec05a02a34"
+    },
+    {
+      "path": "windows/cmake/NeuraWindowsPlugins.cmake",
+      "sha256_lf": "cebb6fc8f8f3a4fe51c51a97385ef307fb50174f4195a68c851d0b74d93f6974"
+    },
+    {
+      "path": "windows/runner/neura_windows_tts.cpp",
+      "sha256_lf": "9860dfe5ab431c73587bea73655b18a6b2e290154ff22935713f797fa2f19dcf"
+    },
+    {
+      "path": "windows/runner/neura_windows_tts.h",
+      "sha256_lf": "39daa8dddf58ccaedaa3c0814fa80052c296cc6b4e60e5860bae6549fc71b2a1"
+    },
+    {
+      "path": "windows/runner/neura_tts_lifecycle.h",
+      "sha256_lf": "cbee46f1c2dad7a8eddda6b09174e4e088713c0686d79bb3e0f8323962dfedc7"
+    },
+    {
+      "path": "windows/runner/flutter_window.cpp",
+      "sha256_lf": "d3623c3331cd5317900b263bd3039e0d1552e1fe296aac8e4019a386bfb429e7"
+    },
+    {
+      "path": "lib/integrations/tts/neura_windows_tts.dart",
+      "sha256_lf": "f7cbb68fc940e911537449a5b9f48b4d6a564f640f9910142059222decdba864"
+    },
+    {
+      "path": "lib/services/neura_tts_service.dart",
+      "sha256_lf": "182b9fb15f0074a225c9f63b9d6d90a33698cca33ea979a52bbd8b91ce9c6ed5"
+    },
+    {
+      "path": "lib/services/ambient_listening_service.dart",
+      "sha256_lf": "c5194a4b88533360ab9f76176ea10e1de80218b333948150f1876bc52e61c201"
+    },
+    {
+      "path": "tools/windows_tts_smoke.dart",
+      "sha256_lf": "4457f8509e841e829b605bce2fa66e7d3ea6acd1fe5c4d82a6f634b0df83542c"
+    },
+    {
+      "path": "tools/test_windows_plugin_filter.py",
+      "sha256_lf": "0b754bc3a2f7c72615847c4eebc697b6a8886adfa958c4e52e2efe6e92b1bf70"
+    }
+  ]
+}

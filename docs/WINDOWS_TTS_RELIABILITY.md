@@ -1,12 +1,17 @@
 # Windows speech reliability: issue #32
 
-Investigation date: 2026-10-18 UTC. Source baseline:
+Historical investigation date: 2026-10-18 UTC. Source baseline:
 `a4e8c5e793d4aa3764c66a47819c395b555c786b` (`Neura`).
 Windows speech now uses an owned local SAPI channel instead of the
 `flutter_tts` Windows speak/coroutine path. Dart speech ownership is also bounded
 and cancellation-aware. **The original native access violation is not verified
 fixed on a physical device.** `kEnableProactiveGreetingTts` remains `false`.
-Review: [draft PR #139](https://github.com/Vantiger-Construction/neura_os/pull/139).
+Current checkpoint (October 23): [PR #139](https://github.com/Vantiger-Construction/neura_os/pull/139)
+and [PR #144](https://github.com/Vantiger-Construction/neura_os/pull/144) are merged.
+The latter removes legacy plugin registration/bundling. The [read-only Windows
+evidence helper](../tools/windows_speech_validation/README.md) reuses the existing
+speech harness; its [evidence record](../tools/windows_speech_validation/VERIFIED_EVIDENCE.md)
+separates hosted CI from physical results, which remain NOT RUN.
 Issue #32 remains open pending physical Windows acceptance.
 
 ## Evidence and corrected diagnosis
@@ -98,9 +103,10 @@ speech feature is added by this change.
 
 `NeuraWindowsTts` implements the existing Dart speech interface over
 `neura/speech_synthesis`. The primary Flutter window owns the native channel;
-the mascot has no such speech owner. The legacy plugin remains registered for
-compatibility, but Windows service speech/configuration calls do not invoke its
-channel. Missing channel support fails closed; it never falls back to that plugin.
+the mascot has no such speech owner. PR #144 excludes the legacy Windows plugin
+from registration and bundling using build-local filtered generated files.
+Windows service speech/configuration calls use only the owned channel. Missing
+channel support fails closed; it never falls back to the legacy plugin.
 
 Each utterance has a monotonically increasing request ID and a fresh `ISpVoice`
 COM object/event queue. This second boundary matters:
@@ -272,7 +278,8 @@ the disabled greeting flag. Record OS build, audio output/driver, installed voic
 Flutter/Dart versions, plugin version, tested commit and build configuration.
 Reserve at least eight GiB plus space for bounded full dumps.
 
-1. Check out the review branch and record `git rev-parse HEAD`. Confirm a clean
+1. Check out PR #144's merged commit or a later reviewed build and record
+   `git rev-parse HEAD`. Confirm a clean
    worktree, the locked plugin hash above, and
    `kEnableProactiveGreetingTts = false`. Run the regression commands first.
 2. Build the production app (`flutter build windows --debug`). Save the EXE/DLL
