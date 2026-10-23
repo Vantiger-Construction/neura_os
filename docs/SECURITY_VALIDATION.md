@@ -380,3 +380,17 @@ Both media conversions now use real QueryInterface with identical HRESULT
 exception behavior and owned pointers. The source hash guard and full-source
 copy still apply. A fresh run for the resulting revision must pass extraction;
 the historical successful builds above do not establish its acceptance.
+
+The first placement attempt on head `5eb7a2eeef34c497bcaf35f9fa0e28eaa67a77e6`
+([run 39912767004](https://github.com/Vantiger-Construction/neura_os/actions/runs/39912767004))
+passed the six other security lanes, but its SDK check failed compilation:
+the concrete COM types were incomplete when a specialization instantiated the
+base's default-interface helpers. The correction places each specialization
+after the complete class definition, before allocation. Media uses a full
+build-local package copy with every original target source entry mapped
+one-for-one; notifications retain the complete `plugin.cpp` with two bounded
+insertions. Each changed original file has a normalized SHA-256 guard and a
+compiled-source receipt. Local checks reversed every insertion/conversion to
+recover the original files exactly, verified all other media files unchanged,
+and confirmed that changed upstream headers fail configuration. These configure
+checks and the isolated extractor probe do not replace the fresh Windows run.

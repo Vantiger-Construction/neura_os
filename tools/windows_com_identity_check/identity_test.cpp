@@ -5,23 +5,6 @@
 #include <cstdio>
 
 namespace neura_com_test {
-struct AudioCallback;
-struct NotificationCallback;
-}  // namespace neura_com_test
-
-namespace winrt {
-template <>
-inline hstring implements<neura_com_test::AudioCallback, IMFAsyncCallback>::GetRuntimeClassName() const {
-  return neura::NativeComRuntimeName<IMFAsyncCallback>();
-}
-template <>
-inline hstring implements<neura_com_test::NotificationCallback,
-    INotificationActivationCallback>::GetRuntimeClassName() const {
-  return neura::NativeComRuntimeName<INotificationActivationCallback>();
-}
-}  // namespace winrt
-
-namespace neura_com_test {
 namespace {
 int destroyed = 0;
 }  // namespace
@@ -40,6 +23,22 @@ struct NotificationCallback
   HRESULT __stdcall Activate(LPCWSTR, LPCWSTR,
       NOTIFICATION_USER_INPUT_DATA const*, ULONG) noexcept final { return E_NOTIMPL; }
 };
+}  // namespace neura_com_test
+
+// Define these after the implementation types are complete, before allocation.
+namespace winrt {
+template <>
+inline hstring implements<neura_com_test::AudioCallback, IMFAsyncCallback>::GetRuntimeClassName() const {
+  return neura::NativeComRuntimeName<IMFAsyncCallback>();
+}
+template <>
+inline hstring implements<neura_com_test::NotificationCallback,
+    INotificationActivationCallback>::GetRuntimeClassName() const {
+  return neura::NativeComRuntimeName<INotificationActivationCallback>();
+}
+}  // namespace winrt
+
+namespace neura_com_test {
 
 template <typename Callback, typename Interface>
 bool QueryWorks(Callback* object) {
