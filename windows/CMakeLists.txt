@@ -77,6 +77,14 @@ add_subdirectory("runner")
 # them to the application.
 include("${NEURA_WINDOWS_PLUGIN_LIST}")
 
+include(cmake/NeuraLocalAuth.cmake)
+neura_configure_local_auth("${CMAKE_CURRENT_BINARY_DIR}/neura_plugins/local_auth")
+include(cmake/NeuraWinrtPlugins.cmake)
+neura_configure_winrt_plugins(
+  "${CMAKE_CURRENT_BINARY_DIR}/neura_plugins/media"
+  "${CMAKE_CURRENT_SOURCE_DIR}/runner"
+)
+
 # flutter_sound is not in pubspec (stubbed for beta); this alias is kept as a
 # no-op guard in case the package is re-added later.
 if(TARGET taudio_plugin AND NOT TARGET flutter_sound_plugin)

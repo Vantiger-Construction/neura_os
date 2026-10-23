@@ -46,6 +46,7 @@ class NeuraSpeechRecognizer {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> channel_;
 
 #if defined(WINAPI_FAMILY) && (WINAPI_FAMILY == WINAPI_FAMILY_DESKTOP_APP)
+  void RegisterRecognitionCallbacks();
   winrt::Windows::Foundation::IAsyncAction EnsureInitialized();
   winrt::Windows::Foundation::IAsyncAction StartListening();
   winrt::Windows::Foundation::IAsyncAction StopListening();
