@@ -13,6 +13,14 @@ template <typename Interface>
 inline bool MatchesNativeComIdentity(winrt::guid const& id) noexcept {
   return id == winrt::guid{__uuidof(Interface)};
 }
+
+// C++/WinRT's default classic-COM class name is the interface GUID in braces.
+// Use the genuine SDK GUID and formatter at runtime: CodeQL 2.27.3 cannot
+// constant-evaluate the default __uuidof -> guid -> name_v conversion.
+template <typename Interface>
+inline winrt::hstring NativeComRuntimeName() {
+  return winrt::to_hstring(winrt::guid{__uuidof(Interface)});
+}
 }  // namespace neura
 
 // Microsoft explicitly supports specializing is_guid_of. Each specialization

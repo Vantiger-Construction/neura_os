@@ -4,8 +4,27 @@
 #include <array>
 #include <cstdio>
 
+namespace neura_com_test {
+struct AudioCallback;
+struct NotificationCallback;
+}  // namespace neura_com_test
+
+namespace winrt {
+template <>
+inline hstring implements<neura_com_test::AudioCallback, IMFAsyncCallback>::GetRuntimeClassName() const {
+  return neura::NativeComRuntimeName<IMFAsyncCallback>();
+}
+template <>
+inline hstring implements<neura_com_test::NotificationCallback,
+    INotificationActivationCallback>::GetRuntimeClassName() const {
+  return neura::NativeComRuntimeName<INotificationActivationCallback>();
+}
+}  // namespace winrt
+
+namespace neura_com_test {
 namespace {
 int destroyed = 0;
+}  // namespace
 
 // Exercise the actual C++/WinRT QueryInterface and ownership implementation.
 // These in-memory test objects never activate notifications or audio devices.
@@ -33,9 +52,22 @@ bool QueryWorks(Callback* object) {
   return object->QueryInterface(__uuidof(IClassFactory), result.put_void()) == E_NOINTERFACE
       && !result;
 }
-}  // namespace
+
+template <typename Interface>
+bool RuntimeNameWorks() {
+  // Compare with the genuine Win32 formatter, normalizing only hexadecimal
+  // case to C++/WinRT's lowercase, braced GUID convention. No copied UUIDs.
+  wchar_t expected[40]{};
+  if (StringFromGUID2(__uuidof(Interface), expected, 40) != 39) return false;
+  for (auto& c : expected) {
+    if (c >= L'A' && c <= L'F') c += L'a' - L'A';
+  }
+  return neura::NativeComRuntimeName<Interface>() == expected;
+}
+}  // namespace neura_com_test
 
 int main() {
+  using namespace neura_com_test;
   using Check = bool (*)(winrt::guid const&) noexcept;
   const std::array<Check, 6> checks = {
       &winrt::is_guid_of<IUnknown>, &winrt::is_guid_of<IClassFactory>,
@@ -57,6 +89,10 @@ int main() {
         !QueryWorks<NotificationCallback, INotificationActivationCallback>(notification.get())) return 2;
   }
   if (destroyed != 2) return 3;
-  std::puts("SDK IID matrix, QueryInterface rejection and COM ownership passed; no devices activated.");
+  if (!RuntimeNameWorks<IUnknown>() || !RuntimeNameWorks<IClassFactory>() ||
+      !RuntimeNameWorks<IMFAsyncCallback>() || !RuntimeNameWorks<IMFMediaEngineExtension>() ||
+      !RuntimeNameWorks<IMFMediaEngineNotify>() ||
+      !RuntimeNameWorks<INotificationActivationCallback>()) return 4;
+  std::puts("SDK IID matrix, GUID names, QueryInterface rejection and COM ownership passed; no devices activated.");
   return 0;
 }

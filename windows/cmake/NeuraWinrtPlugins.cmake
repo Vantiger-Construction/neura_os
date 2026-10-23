@@ -12,6 +12,34 @@ function(neura_prepare_media_source source output_dir)
     winrt::check_hresult(m_mediaEngine->QueryInterface(
         __uuidof(IMFMediaEngineEx), mediaEngineEx.put_void()));]=]
     patched "${original}")
+  string(REPLACE [=[  winrt::com_ptr<IMFMediaEngineEx> mediaEngineEx =
+      m_mediaEngine.as<IMFMediaEngineEx>();]=]
+    [=[  winrt::com_ptr<IMFMediaEngineEx> mediaEngineEx;
+  winrt::check_hresult(m_mediaEngine->QueryInterface(
+      __uuidof(IMFMediaEngineEx), mediaEngineEx.put_void()));]=]
+    patched "${patched}")
+  string(REPLACE [=[namespace media {
+
+namespace {
+class MediaEngineCallbackHelper]=]
+    [=[namespace media { namespace { class MediaEngineCallbackHelper; } }
+namespace winrt {
+template <>
+inline hstring implements<media::MediaEngineCallbackHelper,
+    IMFMediaEngineNotify>::GetRuntimeClassName() const {
+  return neura::NativeComRuntimeName<IMFMediaEngineNotify>();
+}
+}  // namespace winrt
+
+namespace media {
+
+namespace {
+class MediaEngineCallbackHelper]=]
+    patched "${patched}")
+  if(patched MATCHES "as<IMFMediaEngineEx>" OR
+      NOT patched MATCHES "GetRuntimeClassName")
+    message(FATAL_ERROR "Expected complete media COM correction before building")
+  endif()
   file(MAKE_DIRECTORY "${output_dir}")
   file(WRITE "${output_dir}/MediaEngineWrapper.cpp" "${patched}")
   string(SHA256 patched_sha "${patched}")

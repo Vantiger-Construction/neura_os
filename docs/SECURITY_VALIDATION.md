@@ -210,10 +210,11 @@ Earlier tables and run identities above are historical evidence.
 ## Native extraction repair — October 22 follow-up
 
 The traced Windows build succeeded, but CodeQL 2.27.3 reported WinRT/coroutine
-parse errors with MSVC 19.51 (VS 2026). CodeQL's supported-language matrix
-currently lists Microsoft extensions through VS 2022. The security lane now
-uses `windows-2022`; compiler diagnostics remain fatal. This is an analysis
-toolchain choice, not an application source change or a coverage waiver.
+parse errors with MSVC 19.51 (VS 2026). The earlier repair selected
+`windows-2022` to investigate compiler compatibility. The current supported
+compiler matrix also lists VS 2026; the subsequent MSVC 19.44 failures below
+show that the runner change alone did not fix extraction. Compiler diagnostics
+remain fatal; the runner choice is not evidence of extraction completeness.
 
 C# now uses a manual compile harness over **every Git-tracked `.cs` file**.
 `prepare_csharp.py` downloads the official Unity 6000.6.6f1 Linux archive and
@@ -327,7 +328,7 @@ at runtime. Each accepts exactly the same IID as the default implementation.
 SDK interfaces, WinRT implementation templates and QueryInterface remain genuine.
 No `winrt::impl` internals, hard-coded UUIDs or replacement SDK headers are added.
 
-The media balance call uses genuine QueryInterface with HRESULT checking and an
+The media balance and media-source calls use genuine QueryInterface with HRESULT checking and an
 owned COM pointer. Its build-local correction is bounded by upstream source
 SHA-256 `24d5d72bbb96836b83a5dd851399a8e00eadf37a957a827c24eeb442499098ac`.
 All remaining source is retained; package-cache changes are prohibited and upstream
@@ -339,3 +340,43 @@ QueryInterface rejection and reference ownership using in-memory COM objects.
 It never activates notification registration, media devices, microphones or
 Windows Hello. Hosted build, execution and extraction results are still required
 for the revision containing this follow-up; the fail-closed gate is unchanged.
+
+### Remaining class-name instantiation diagnostics
+
+[Run 39909115257](https://github.com/Vantiger-Construction/neura_os/actions/runs/39909115257)
+on head `c4980e767acd70cd3711d445002c2433ba88aeae` analyzed merge checkout
+`9fbf44a00b0ad6da0fe41b5f47d164e8d3d0d245`. Its tree was the head tree
+`5565166565100f6496cb74b57364cccf9f39b390`. All six other security lanes,
+the instrumented genuine Windows release build and SDK COM identity/ownership
+test passed. Analysis completed, but the gate correctly rejected **13 compiler
+errors**. The separate [Windows speech workflow](https://github.com/Vantiger-Construction/neura_os/actions/runs/39909115301)
+passed its full production build, 73 Dart tests and native ownership test.
+
+The [native diagnostics](https://github.com/Vantiger-Construction/neura_os/actions/runs/39909115257/artifacts/12482253192)
+(ZIP SHA-256 `739fa4338b56eed2dd923f1955557ff8119f92418beb97b58d919127b6718262`)
+and [SARIF](https://github.com/Vantiger-Construction/neura_os/actions/runs/39909115257/artifacts/12483190199)
+(ZIP SHA-256 `8cf0cdf21dc985896a8b5d6a7fb2cb8b2f5761b4cbef0d770d10b09c12f84b08`)
+show ten constant-expression errors and three compilation-failure diagnostics.
+The SDK's default `implements<...>::GetRuntimeClassName` instantiates
+`name_v<COM interface>` and hence the same failing constexpr `__uuidof`
+conversion. This affects the genuine media and notification COM classes and
+two in-memory test classes. A second media `as<IMFMediaEngineEx>()` in
+`SetMediaSource` also still instantiated that conversion.
+
+The follow-up supplies explicit `GetRuntimeClassName` member specializations
+for those concrete classic-COM implementation types, returning the same
+lowercase braced GUID through genuine `__uuidof`, `winrt::guid` and
+`winrt::to_hstring` at runtime. A derived override alone still instantiates the
+failing default virtual body, as verified with an isolated extractor probe.
+This is a narrow SDK-template compatibility dependency, not another documented
+`is_guid_of` extension point: changes to the SDK member signature must compile
+and pass the unchanged gate before acceptance. SDK headers/declarations and
+`winrt::impl` internals are not modified; the genuine `implements` base retains
+its QueryInterface, weak references, agility and lifetime behavior. The SDK test
+also compares all six runtime GUID names with the real Win32 `StringFromGUID2`
+formatter, normalizing hexadecimal case only. It uses no copied UUID constants.
+
+Both media conversions now use real QueryInterface with identical HRESULT
+exception behavior and owned pointers. The source hash guard and full-source
+copy still apply. A fresh run for the resulting revision must pass extraction;
+the historical successful builds above do not establish its acceptance.
