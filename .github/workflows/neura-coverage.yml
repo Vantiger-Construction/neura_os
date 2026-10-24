@@ -50,17 +50,17 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
       - name: Use Python for dependency-free reports
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
       - name: Validate report accuracy and failure handling
         run: python -m unittest discover -s tools/coverage -p 'test_*.py' -v
       - name: Use the existing Flutter version
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -83,7 +83,7 @@ jobs:
             --commit "$GITHUB_SHA" --test-outcome "$COVERAGE_TEST_OUTCOME"
       - name: Preserve Flutter coverage reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: neura-flutter-coverage-${{ github.run_id }}-${{ github.run_attempt }}
           path: coverage/flutter/
@@ -108,11 +108,11 @@ jobs:
       COVERAGE_REPORT_DIR: coverage/rust-${{ matrix.os }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
       - name: Use Python for dependency-free reports
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
       - name: Validate report accuracy and failure handling
@@ -150,7 +150,7 @@ jobs:
             --commit "$GITHUB_SHA" --test-outcome "$COVERAGE_TEST_OUTCOME"
       - name: Preserve Rust coverage reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: neura-rust-coverage-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ env.COVERAGE_REPORT_DIR }}/
