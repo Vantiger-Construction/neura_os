@@ -224,6 +224,12 @@ final class EncryptedMemoryConsentLease {
   final DateTime expiresAtUtc;
   final bool directUserGesture;
   bool _consumed = false;
+  bool _revoked = false;
+
+  /// Revocation also invalidates an operation already waiting on native I/O.
+  void revoke() => _revoked = true;
+
+  bool get isRevoked => _revoked;
 
   bool authorizes({
     required EncryptedMemoryOperation operation,
@@ -237,9 +243,7 @@ final class EncryptedMemoryConsentLease {
   }) {
     if (_consumed ||
         !directUserGesture ||
-        !nowUtc.isUtc ||
-        nowUtc.isBefore(issuedAtUtc) ||
-        !nowUtc.isBefore(expiresAtUtc) ||
+        !isWithinLifetime(nowUtc) ||
         !operations.contains(operation)) {
       return false;
     }
@@ -277,6 +281,14 @@ final class EncryptedMemoryConsentLease {
     }
     _consumed = true;
   }
+
+  /// Lifetime validation remains meaningful after the one permitted use.
+  /// Async adapters recheck it before publishing or committing that operation.
+  bool isWithinLifetime(DateTime nowUtc) =>
+      !_revoked &&
+      nowUtc.isUtc &&
+      !nowUtc.isBefore(issuedAtUtc) &&
+      nowUtc.isBefore(expiresAtUtc);
 
   bool get isConsumed => _consumed;
 }

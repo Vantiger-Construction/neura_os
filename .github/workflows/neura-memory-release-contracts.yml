@@ -1,0 +1,112 @@
+name: Neura memory release contracts
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths:
+      - 'lib/core/memory/**'
+      - 'lib/encrypted_memory/**'
+      - 'lib/persona/services/neura_prompt_builder.dart'
+      - 'lib/modules/chat/neura_chat_screen.dart'
+      - 'lib/modules/memory/memory_screen.dart'
+      - 'lib/modules/therapy/therapy_reflection_screen.dart'
+      - 'lib/mirror/screens/mirror_mode_screen.dart'
+      - 'lib/modules/navigation/enhanced_navigation.dart'
+      - 'lib/services/neura_ai_service.dart'
+      - 'lib/services/wake_word_listener_service.dart'
+      - 'test/helpers/companion_memory_fixture.dart'
+      - 'test/modules/chat/neura_voice_commands_test.dart'
+      - 'lib/src/core/data_wipe_service.dart'
+      - 'test/core/**'
+      - 'test/encrypted_memory/**'
+      - 'test/data_wipe*'
+      - 'test/helpers/scoped_wipe_native_contract.dart'
+      - 'test/fixtures/pr133-terminal-key-revocation.patch'
+      - '.github/workflows/neura-memory-release-contracts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-memory-contracts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Synthetic memory contracts (${{ matrix.source }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [current]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # PR #133 is merged into Neura. Its wipe regressions now run directly
+      # below with the consent-memory source; no synthetic second merge lane.
+      - name: Record source identity
+        env:
+          REVIEW_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_HEAD: ${{ github.event.pull_request.base.sha || github.sha }}
+        run: |
+          mkdir -p validation/memory
+          git rev-parse HEAD > validation/memory/checkout-commit.txt
+          echo "$REVIEW_HEAD" > validation/memory/review-head.txt
+          echo "$BASE_HEAD" > validation/memory/base-head.txt
+          git write-tree > validation/memory/tested-tree.txt
+          git diff --cached --stat > validation/memory/integration-diff.txt
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Restore locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Focused memory and full-wipe regressions
+        run: |
+          set -o pipefail
+          flutter test --no-pub --reporter expanded --concurrency 2 --timeout 2m \
+            test/core test/encrypted_memory test/data_wipe*test.dart \
+            test/persona/neura_prompt_builder_test.dart test/persona/neura_offline_prompt_test.dart \
+            test/screens/journal_save_workflow_test.dart test/services/local_journal_store_test.dart test/services/neura_model_router_test.dart test/modules/chat/neura_voice_commands_test.dart \
+            2>&1 | tee validation/memory/tests.txt
+      - name: Strict memory analysis
+        if: ${{ !cancelled() }}
+        run: |
+          flutter analyze --fatal-infos \
+            lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
+            test/data_wipe_memory_contracts_test.dart test/data_wipe_companion_memory_test.dart test/data_wipe_scoped_*test.dart test/helpers/data_wipe_fixture.dart test/helpers/scoped_wipe_native_contract.dart \
+            lib/persona/services/neura_prompt_builder.dart lib/modules/chat/neura_chat_screen.dart \
+            lib/modules/memory/memory_screen.dart lib/modules/therapy/therapy_reflection_screen.dart \
+            lib/mirror/screens/mirror_mode_screen.dart lib/modules/navigation/enhanced_navigation.dart \
+            lib/services/neura_ai_service.dart lib/services/wake_word_listener_service.dart test/helpers/companion_memory_fixture.dart test/modules/chat/neura_voice_commands_test.dart \
+            lib/src/core/data_wipe_service.dart
+      - name: Canonical memory formatting
+        if: ${{ !cancelled() }}
+        run: |
+          dart format lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
+            test/data_wipe_memory_contracts_test.dart test/data_wipe_companion_memory_test.dart test/data_wipe_scoped_*test.dart test/helpers/data_wipe_fixture.dart test/helpers/scoped_wipe_native_contract.dart \
+            lib/persona/services/neura_prompt_builder.dart lib/modules/chat/neura_chat_screen.dart \
+            lib/modules/memory/memory_screen.dart lib/modules/therapy/therapy_reflection_screen.dart \
+            lib/mirror/screens/mirror_mode_screen.dart lib/modules/navigation/enhanced_navigation.dart \
+            lib/services/neura_ai_service.dart lib/services/wake_word_listener_service.dart test/helpers/companion_memory_fixture.dart test/modules/chat/neura_voice_commands_test.dart \
+            lib/src/core/data_wipe_service.dart
+          git diff --exit-code -- lib/core/memory lib/encrypted_memory test/core test/encrypted_memory \
+            test/data_wipe_memory_contracts_test.dart test/data_wipe_companion_memory_test.dart test/data_wipe_scoped_*test.dart test/helpers/data_wipe_fixture.dart test/helpers/scoped_wipe_native_contract.dart \
+            lib/persona/services/neura_prompt_builder.dart lib/modules/chat/neura_chat_screen.dart \
+            lib/modules/memory/memory_screen.dart lib/modules/therapy/therapy_reflection_screen.dart \
+            lib/mirror/screens/mirror_mode_screen.dart lib/modules/navigation/enhanced_navigation.dart \
+            lib/services/neura_ai_service.dart lib/services/wake_word_listener_service.dart test/helpers/companion_memory_fixture.dart test/modules/chat/neura_voice_commands_test.dart \
+            lib/src/core/data_wipe_service.dart
+      - name: Preserve synthetic evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: neura-memory-contracts-${{ matrix.source }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: validation/memory/
+          if-no-files-found: warn
+          retention-days: 14
