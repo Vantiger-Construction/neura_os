@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../core/memory/memory_graph_service.dart';
-import '../core/app_log.dart';
 import 'therapy_models.dart';
 import 'therapy_response_store.dart';
 
 /// Write a reflection for one [TherapyPrompt], and browse past responses to
 /// it. Saved responses are encrypted at rest (see [TherapyResponseStore])
-/// and also logged to [MemoryGraphService] - a completed reflection is
-/// exactly the kind of thing worth Neura remembering.
+/// and stay in that local journal. Saving is not permission to copy therapy
+/// content into companion memory or a model prompt.
 class TherapyReflectionScreen extends StatefulWidget {
   final TherapyPrompt prompt;
 
@@ -45,20 +43,10 @@ class _TherapyReflectionScreenState extends State<TherapyReflectionScreen> {
     if (text.isEmpty || _saving) return;
     setState(() => _saving = true);
     try {
-      final saved =
-          await TherapyResponseStore.I.save(prompt: widget.prompt, text: text);
-      try {
-        await MemoryGraphService.I.logUserAction(
-          kind: 'THERAPY_REFLECTION',
-          payload: {
-            'method': widget.prompt.method,
-            'promptTitle': widget.prompt.title,
-            'text': text,
-          },
-        );
-      } catch (e, st) {
-        await AppLog.instance.caught('therapy_memory_log_failed', e, st);
-      }
+      final saved = await TherapyResponseStore.I.save(
+        prompt: widget.prompt,
+        text: text,
+      );
       if (!mounted) return;
       setState(() {
         _past = [saved, ..._past];
@@ -84,8 +72,10 @@ class _TherapyReflectionScreenState extends State<TherapyReflectionScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.prompt.instruction,
-                style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              widget.prompt.instruction,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: _controller,
@@ -104,8 +94,10 @@ class _TherapyReflectionScreenState extends State<TherapyReflectionScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            Text('Past reflections',
-                style: Theme.of(context).textTheme.titleSmall),
+            Text(
+              'Past reflections',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
             const Divider(),
             if (_loading)
               const Center(child: CircularProgressIndicator())

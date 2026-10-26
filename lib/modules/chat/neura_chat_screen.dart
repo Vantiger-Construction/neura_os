@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 
-import '../../core/memory/memory_graph_service.dart';
+import '../../encrypted_memory/companion_memory_service.dart';
 import '../../neura_link/reply_speech_queue.dart';
 import '../../neura_link/local_conversation_session.dart';
 import '../../relationships/services/crisis_text_scan.dart';
@@ -29,6 +29,11 @@ import '../../services/neura_context_receipt.dart';
 import '../../services/neura_generation_cancel.dart';
 import '../../services/neura_llm_diagnostics.dart';
 import '../../services/neura_ollama_chat.dart';
+import '../../services/neura_offline_budget.dart';
+import '../../services/neura_companion_presence.dart';
+import '../../widgets/neura_offline_controls.dart';
+import '../../widgets/neura_activity_badge.dart';
+import '../../planning/neura_daily_plan_screen.dart';
 import '../../services/neura_reply_batch.dart';
 import '../../services/neura_speech_to_text_service.dart';
 import '../../services/neura_tone_runtime.dart';
@@ -43,10 +48,11 @@ import '../support/guided_support_screen.dart';
 import 'neura_voice_destinations.dart';
 
 class NeuraChatScreen extends StatefulWidget {
-  const NeuraChatScreen({super.key, this.localSession});
+  const NeuraChatScreen({super.key, this.localSession, this.memoryService});
 
   /// Optional test seam. The screen owns and disposes the supplied session.
   final LocalConversationSession? localSession;
+  final CompanionMemoryService? memoryService;
 
   @override
   State<NeuraChatScreen> createState() => _NeuraChatScreenState();
@@ -70,8 +76,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   NeuraConversationMode _conversationMode = NeuraConversationMode.balanced;
   bool _busy = false;
   bool _localOllama = false;
+  NeuraOfflineBudget _offlineBudget = NeuraOfflineBudget.standard;
   NeuraSelectedContext? _selectedContext;
   bool _includeMemory = false;
+  CompanionMemoryPermission? _memoryPermission;
+  CompanionMemoryService? _memoryOwner;
+  bool _preparingMemory = false;
   bool _privateContextUsed = false;
   ReplySpeechQueue? _replySpeech;
   NeuraReplyBatch? _replyUpdates;
@@ -254,7 +264,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final reply = scan.crisis
         ? '${SupportResources.forLocale(Localizations.localeOf(context).toLanguageTag())}'
             '${playbook == null ? '' : '\n\n${CrisisPlaybookSurface.format(playbook)}'}'
-        : await _localSession.reply(text);
+        : await _replyLocalWithPresence(text);
     if (!mounted ||
         !_localSelected ||
         serial != _localSerial ||
@@ -269,8 +279,20 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     _scrollToEnd();
   }
 
+  Future<String?> _replyLocalWithPresence(String text) async {
+    final thinking = NeuraCompanionPresence.instance.acquireThinking();
+    try {
+      return await _localSession.reply(text);
+    } finally {
+      thinking?.release();
+    }
+  }
+
   void _stopForSafeMode() {
     if (!SafeBoot.instance.safeMode.value) return;
+    _memoryPermission?.revoke();
+    _memoryPermission = null;
+    _includeMemory = false;
     final hadVoice = _continuousMode || _listening || _startingListening;
     _voiceSession++;
     _replyUpdates?.dispose();
@@ -291,6 +313,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) {
+      _memoryPermission?.revoke();
+      _memoryPermission = null;
+      _includeMemory = false;
       unawaited(_endConversation().catchError((_) {}));
     }
   }
@@ -306,6 +331,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
 
   @override
   void dispose() {
+    _memoryOwner?.removeListener(_onPendingMemoryChanged);
+    _memoryPermission?.revoke();
     ++_localSerial;
     _localLines.clear();
     _localSession.removeListener(_onLocalChanged);
@@ -327,6 +354,24 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _openOfflineControls() async {
+    await _endConversation();
+    if (!mounted) return;
+    final budget = await showDialog<NeuraOfflineBudget>(
+      context: context,
+      builder: (_) => NeuraOfflineControls(budget: _offlineBudget),
+    );
+    if (mounted && budget != null) setState(() => _offlineBudget = budget);
+  }
+
+  Future<void> _openDailyPlan() async {
+    await _endConversation();
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => const NeuraDailyPlanScreen()),
+    );
   }
 
   static const _autoSentinel = '__auto__';
@@ -482,7 +527,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     }
   }
 
-  Future<void> _endConversation() async {
+  Future<void> _endConversation({bool revokePendingMemory = true}) async {
+    if (revokePendingMemory) {
+      _memoryPermission?.revoke();
+      _memoryPermission = null;
+      _includeMemory = false;
+    }
     if (_localSelected) {
       _voiceSession++;
       await _localSession.stop();
@@ -518,7 +568,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     // Stop capture and invalidate late native callbacks before acting. A
     // command is never appended to model history or persistent memory.
     final session = _voiceSession;
-    await _endConversation();
+    await _endConversation(revokePendingMemory: false);
     if (!mounted ||
         SafeBoot.instance.safeMode.value ||
         _voiceSession != session + 1 ||
@@ -587,6 +637,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         );
         return;
       case NeuraVoiceCommand.excludeMemories:
+        _memoryPermission?.revoke();
+        _memoryPermission = null;
         setState(() => _includeMemory = false);
         _showVoiceNotice(
           'Memories excluded from the next reply. Existing chat messages remain.',
@@ -914,6 +966,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     }
 
     final room = NeuraShell.of(context).room;
+    if (_localOllama &&
+        utf8.encode(text).length > _offlineBudget.contextBytes) {
+      _showVoiceNotice(
+        'Shorten this message or choose Standard in offline controls.',
+      );
+      return;
+    }
     final conversationMode = _conversationMode;
     final policy = NeuraChatPolicy.forRoom(room.id);
     final localOllama = _localOllama;
@@ -924,8 +983,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     // reset. Keep their privacy restrictions for the lifetime of this chat.
     _privateContextUsed =
         _privateContextUsed || selectedContext != null || includeMemory;
-    final persistMemory =
-        !localOllama && policy.persistMemory && !_privateContextUsed;
+    // Raw conversations are not an admitted scoped-memory class.
+    const persistMemory = false;
+    final memoryPermission = includeMemory ? _memoryPermission : null;
+    if (!includeMemory) _memoryPermission?.revoke();
+    _memoryPermission = null;
     final cloudContextReceipt = NeuraContextReceipt(
       route: localOllama
           ? NeuraReplyRoute.onDevice
@@ -967,9 +1029,6 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       'room': room.id,
       'persist': persistMemory,
     });
-    unawaited(
-      _remember(isUser: true, text: displayText, persistMemory: persistMemory),
-    );
 
     final history = _lines
         .skip(1)
@@ -1045,9 +1104,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         roomId: room.id,
         conversationMode: conversationMode,
         localOllama: localOllama,
+        offlineBudget: _offlineBudget,
         generationId: generationId,
         selectedContext: selectedContext,
         includePermittedMemory: includeMemory,
+        memoryPermission: memoryPermission,
         historyIncludesPrivateContext: _privateContextUsed,
         onToolCommand: (command) => _activeReplyId == generationId
             ? _handleToolCommand(command)
@@ -1069,13 +1130,6 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         'room': room.id,
         'context_receipt': cloudContextReceipt.toMetadata(),
       });
-      unawaited(
-        _remember(
-          isUser: false,
-          text: botLine.text,
-          persistMemory: persistMemory && !_privateContextUsed,
-        ),
-      );
       if (useStreamSpeech) {
         await speech.finish(botLine.text);
       } else if (_speechEnabled &&
@@ -1191,9 +1245,6 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       _activeBotLine = fallbackLine;
     });
     _scrollToEnd();
-    unawaited(
-      _remember(isUser: false, text: reply, persistMemory: persistMemory),
-    );
     if (_speechEnabled &&
         NeuraTtsService.instance.replySpeechMode != NeuraReplySpeechMode.off) {
       await NeuraTtsService.instance.speak(reply);
@@ -1210,28 +1261,57 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     }
   }
 
-  /// Long-term memory writes are skipped entirely in ephemeral room policy.
-  /// The visible conversation still remains in [_lines] for working memory.
-  Future<void> _remember({
-    required bool isUser,
-    required String text,
-    required bool persistMemory,
-  }) async {
-    if (!persistMemory || text.trim().isEmpty) return;
+  Future<void> _setMemoryForNextReply(bool enabled) async {
+    _memoryPermission?.revoke();
+    _memoryPermission = null;
+    setState(() {
+      _includeMemory = false;
+      _preparingMemory = enabled;
+    });
+    if (!enabled) return;
     try {
-      if (isUser) {
-        await MemoryGraphService.I.logUserAction(
-          kind: 'CHAT_MESSAGE',
-          payload: {'text': text},
-        );
-      } else {
-        await MemoryGraphService.I.logSuggestion(
-          kind: 'CHAT_REPLY',
-          payload: {'text': text},
-        );
+      final memory =
+          widget.memoryService ?? await CompanionMemoryService.local();
+      if (!mounted ||
+          _busy ||
+          _localSelected ||
+          _localOllama ||
+          SafeBoot.instance.safeMode.value ||
+          !NeuraChatPolicy.forRoom(NeuraShell.of(context).room.id)
+              .persistMemory) {
+        return;
       }
-    } catch (e, st) {
-      await AppLog.instance.caught('chat_memory_log_failed', e, st);
+      if (!identical(_memoryOwner, memory)) {
+        _memoryOwner?.removeListener(_onPendingMemoryChanged);
+        _memoryOwner = memory;
+        memory.addListener(_onPendingMemoryChanged);
+      }
+      final permission = memory.authorize(
+        CompanionMemoryUse.prompt,
+        directUserGesture: true,
+      );
+      setState(() {
+        _memoryPermission = permission;
+        _includeMemory = true;
+      });
+    } catch (_) {
+      _showVoiceNotice(
+        'Saved notes are unavailable. No memory access was granted.',
+      );
+    } finally {
+      if (mounted) setState(() => _preparingMemory = false);
+    }
+  }
+
+  void _onPendingMemoryChanged() {
+    if (!mounted || _memoryPermission == null) return;
+    try {
+      _memoryPermission!.requireCurrent();
+    } catch (_) {
+      setState(() {
+        _memoryPermission = null;
+        _includeMemory = false;
+      });
     }
   }
 
@@ -1430,14 +1510,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                  _localSelected
-                      ? Icons.chat_bubble_outline
-                      : _activeAgent.icon,
-                  size: 20),
+                _localSelected ? Icons.chat_bubble_outline : _activeAgent.icon,
+                size: 20,
+              ),
               const SizedBox(width: 8),
-              Text(_localSelected
-                  ? 'Neura (offline)'
-                  : _activeAgent.displayName),
+              Text(
+                _localSelected ? 'Neura (offline)' : _activeAgent.displayName,
+              ),
               const SizedBox(width: 4),
               if (!_localSelected) const Icon(Icons.expand_more, size: 20),
             ],
@@ -1463,15 +1542,18 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                     _trimOllamaVisibleHistory();
                   }
                 });
-                _showVoiceNotice(local
-                    ? 'Offline Ollama selected. Text chat stays local; memory and actions are off.'
-                    : 'Cloud replies require approval.');
+                _showVoiceNotice(
+                  local
+                      ? 'Offline Ollama selected. Text chat stays local; memory and actions are off.'
+                      : 'Cloud replies require approval.',
+                );
               },
               itemBuilder: (_) => const [
                 PopupMenuItem(value: true, child: Text('Offline Ollama')),
                 PopupMenuItem(
-                    value: false,
-                    child: Text('Approved cloud / basic local reply')),
+                  value: false,
+                  child: Text('Approved cloud / basic local reply'),
+                ),
               ],
             ),
           if (_localOllama && _busy)
@@ -1494,7 +1576,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
             tooltip: 'Chat options',
             icon: const Icon(Icons.more_vert),
             onSelected: (option) {
-              if (option == 'offline') {
+              if (option == 'daily_plan') {
+                unawaited(_openDailyPlan());
+              } else if (option == 'offline_controls') {
+                unawaited(_openOfflineControls());
+              } else if (option == 'offline') {
                 unawaited(_startLocalChat());
               } else if (option == 'standard') {
                 unawaited(_useStandardChat());
@@ -1505,6 +1591,15 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
               }
             },
             itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'daily_plan',
+                child: Text('Plan my day'),
+              ),
+              if (_localOllama)
+                const PopupMenuItem(
+                  value: 'offline_controls',
+                  child: Text('Offline conversation controls'),
+                ),
               if (_localSession.supported)
                 PopupMenuItem(
                   value: 'offline',
@@ -1549,6 +1644,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       ),
       body: Column(
         children: [
+          NeuraActivityBadge(offline: _localOllama || _localSelected),
           if (_localSelected)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -1690,17 +1786,19 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
             ),
           CheckboxListTile(
             dense: true,
-            title: const Text('Use permitted memories for the next reply'),
+            title: const Text('Use saved companion notes for the next reply'),
             subtitle: const Text(
-              'Private rooms stay private. Review the cloud preview before sending.',
+              'Use only notes you explicitly saved. Expires in 5 minutes. Review the cloud preview before sending.',
             ),
             value: _includeMemory,
             onChanged: _localSelected ||
+                    _localOllama ||
                     _busy ||
+                    _preparingMemory ||
                     !NeuraChatPolicy.forRoom(NeuraShell.of(context).room.id)
                         .persistMemory
                 ? null
-                : (value) => setState(() => _includeMemory = value ?? false),
+                : (value) => _setMemoryForNextReply(value ?? false),
           ),
           SafeArea(
             top: false,
@@ -1718,8 +1816,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                       controller: _controller,
                       inputFormatters: _localSelected
                           ? [
-                              TextInputFormatter.withFunction(
-                                  (oldValue, newValue) {
+                              TextInputFormatter.withFunction((
+                                oldValue,
+                                newValue,
+                              ) {
                                 // Check code units first to avoid encoding an
                                 // unbounded paste or combining-character cluster.
                                 if (newValue.text.length > 2048 ||
@@ -1727,7 +1827,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                                   return oldValue;
                                 }
                                 return newValue;
-                              })
+                              }),
                             ]
                           : _localOllama
                               ? const [NeuraOllamaTextInputFormatter()]
