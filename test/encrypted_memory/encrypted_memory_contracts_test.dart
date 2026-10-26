@@ -13,6 +13,48 @@ void main() {
   );
 
   group('encrypted memory consent and retrieval scope', () {
+    test('the 15-minute maximum includes neither pre-issue nor expiry access',
+        () {
+      final lease = EncryptedMemoryConsentLease(
+        id: 'maximum-lifetime',
+        scope: scope,
+        operations: const {EncryptedMemoryOperation.recall},
+        issuedAtUtc: issuedAt,
+        expiresAtUtc: issuedAt.add(const Duration(minutes: 15)),
+        directUserGesture: true,
+      );
+      bool permits(DateTime time) => lease.authorizes(
+            operation: EncryptedMemoryOperation.recall,
+            requestedOwnerId: 'owner-1',
+            requestedDeviceId: 'device-1',
+            requestedCapsuleId: 'personal',
+            memoryClass: EncryptedMemoryClass.explicitPreference,
+            source: EncryptedMemorySource.authenticatedUser,
+            sensitivity: EncryptedMemorySensitivity.personal,
+            nowUtc: time,
+          );
+      expect(
+          permits(issuedAt.subtract(const Duration(microseconds: 1))), isFalse);
+      expect(permits(issuedAt), isTrue);
+      expect(
+          permits(lease.expiresAtUtc.subtract(const Duration(microseconds: 1))),
+          isTrue);
+      expect(permits(lease.expiresAtUtc), isFalse);
+      expect(permits(lease.expiresAtUtc.add(const Duration(microseconds: 1))),
+          isFalse);
+      expect(
+          () => EncryptedMemoryConsentLease(
+                id: 'over-maximum',
+                scope: scope,
+                operations: const {EncryptedMemoryOperation.recall},
+                issuedAtUtc: issuedAt,
+                expiresAtUtc:
+                    lease.expiresAtUtc.add(const Duration(microseconds: 1)),
+                directUserGesture: true,
+              ),
+          throwsA(isA<EncryptedMemoryPolicyViolation>()));
+    });
+
     test('is exact-scope, short-lived, direct, and single-use', () {
       final lease = EncryptedMemoryConsentLease(
         id: 'lease-1',
