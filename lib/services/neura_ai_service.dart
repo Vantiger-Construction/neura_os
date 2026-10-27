@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:uuid/uuid.dart';
 
+import '../encrypted_memory/companion_memory_service.dart';
 import '../after_storm/models/storm_event.dart';
 import '../weekly/services/weekly_snapshot_bridge.dart';
 import '../guardrails/guardrails.dart';
@@ -33,7 +34,8 @@ import 'neura_provider_credentials.dart';
 import 'neura_ollama_chat.dart';
 
 typedef NeuraToolCommandHandler = FutureOr<bool> Function(
-    NeuraToolCommand command);
+  NeuraToolCommand command,
+);
 
 /// One turn in the conversation, in the shape the Messages API expects.
 /// A user turn may optionally carry an image (base64-encoded) for vision.
@@ -81,18 +83,28 @@ class NeuraChatTurn {
 /// - fallback only before any streamed output, with separate approval
 /// - process-local health diagnostics
 class NeuraAiService {
-  NeuraAiService._();
+  NeuraAiService._()
+      : _modelRouter = NeuraSecureModelRouter(),
+        _configuredReader = null;
+  NeuraAiService.forTesting({
+    required NeuraSecureModelRouter modelRouter,
+    required bool Function() configuredReader,
+  })  : _modelRouter = modelRouter,
+        _configuredReader = configuredReader;
   static final NeuraAiService instance = NeuraAiService._();
 
   static const _maxToolRounds = 4;
 
   final NeuraLlmDiagnostics _diagnostics = NeuraLlmDiagnostics.instance;
-  final NeuraSecureModelRouter _modelRouter = NeuraSecureModelRouter();
+  final NeuraSecureModelRouter _modelRouter;
+  final bool Function()? _configuredReader;
   NeuraGenerationCancel? _activeCancel;
   String? _activeGenerationId;
   NeuraOllamaChat? _ollama;
 
   bool get isConfigured {
+    final configuredReader = _configuredReader;
+    if (configuredReader != null) return configuredReader();
     if (NeuraProviderCredentials.instance.hasKey) return true;
     return NeuraModelCredentials.instance.configured.value.isNotEmpty;
   }
@@ -130,6 +142,7 @@ class NeuraAiService {
     NeuraCloudApprovalHandler? requestCloudApproval,
     NeuraSelectedContext? selectedContext,
     bool includePermittedMemory = false,
+    CompanionMemoryPermission? memoryPermission,
     bool historyIncludesPrivateContext = false,
     NeuraConversationMode conversationMode = NeuraConversationMode.balanced,
     bool localOllama = false,
@@ -144,7 +157,8 @@ class NeuraAiService {
             historyIncludesPrivateContext ||
             history.any((t) => t.imageBase64 != null))) {
       throw StateError(
-          'Offline Ollama currently supports visible text chat only.');
+        'Offline Ollama currently supports visible text chat only.',
+      );
     }
 
     final id = generationId ?? const Uuid().v4();
@@ -157,8 +171,27 @@ class NeuraAiService {
 
     final policy = NeuraChatPolicy.forRoom(roomId);
     final advertisedTools = NeuraChatPolicy.advertisedTools(policy);
+    final useMemory = policy.persistMemory && includePermittedMemory;
+    void checkMemory() {
+      if (!useMemory || memoryPermission == null) return;
+      try {
+        memoryPermission.requireCurrent();
+      } catch (_) {
+        cancel.cancel();
+      }
+    }
+
+    if (useMemory && memoryPermission != null) {
+      memoryPermission.service.addListener(checkMemory);
+      unawaited(cancel.whenCancelled.then((_) => memoryPermission.revoke()));
+    }
 
     try {
+      if (useMemory && memoryPermission == null) {
+        throw StateError(
+          'Authorize companion-note recall for this reply first.',
+        );
+      }
       final blocked = await _checkGuardrails(history);
       cancel.throwIfCancelled();
       if (blocked != null) {
@@ -167,12 +200,12 @@ class NeuraAiService {
       }
       final audience = NeuraAudienceService.instance.currentAudience;
 
-      final useMemory = policy.persistMemory && includePermittedMemory;
       final systemPrompt = await NeuraPromptBuilder.instance.buildSystemMessage(
         agentId: agentId,
         audience: audience,
         module: roomId,
         includePersistentMemory: useMemory,
+        memoryPermission: memoryPermission,
         includeCurrentMood: !localOllama,
         conversationMode: conversationMode,
       );
@@ -188,7 +221,9 @@ class NeuraAiService {
         // independently revalidates the same byte/count caps.
         while (recent.length > 1 &&
             recent.fold<int>(
-                    0, (sum, turn) => sum + utf8.encode(turn.text).length) >
+                  0,
+                  (sum, turn) => sum + utf8.encode(turn.text).length,
+                ) >
                 1500) {
           recent.removeAt(0);
         }
@@ -218,6 +253,7 @@ class NeuraAiService {
       var actionCount = 0;
       final seenCallIds = <String>{};
       while (true) {
+        checkMemory();
         cancel.throwIfCancelled();
         _diagnostics.recordAttempt();
         final latency = Stopwatch()..start();
@@ -238,8 +274,18 @@ class NeuraAiService {
           tools: advertisedTools,
           cancel: cancel,
           provider: activeProvider,
-          requestApproval: requestCloudApproval ?? _denyCloudRequest,
+          requestApproval: (preview) async {
+            checkMemory();
+            cancel.throwIfCancelled();
+            final approved = await (requestCloudApproval ?? _denyCloudRequest)(
+              preview,
+            );
+            checkMemory();
+            cancel.throwIfCancelled();
+            return approved;
+          },
         )) {
+          checkMemory();
           cancel.throwIfCancelled();
           if (event is NeuraTextDelta) {
             if (!firstTokenRecorded && event.text.isNotEmpty) {
@@ -279,7 +325,8 @@ class NeuraAiService {
               !seenCallIds.add(callId) ||
               ++actionCount > 8) {
             throw const NeuraStreamFailure(
-                'The action limit or a duplicate action was reached.');
+              'The action limit or a duplicate action was reached.',
+            );
           }
           final name = block['name']?.toString() ?? '';
           toolResultsArePrivate = toolResultsArePrivate ||
@@ -307,6 +354,10 @@ class NeuraAiService {
       _diagnostics.recordFailure(error);
       rethrow;
     } finally {
+      if (useMemory && memoryPermission != null) {
+        memoryPermission.service.removeListener(checkMemory);
+        memoryPermission.revoke();
+      }
       if (identical(_activeCancel, cancel)) {
         _activeCancel = null;
         _activeGenerationId = null;
