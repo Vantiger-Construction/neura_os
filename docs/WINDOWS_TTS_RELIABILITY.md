@@ -31,10 +31,12 @@ The mascot's eager creation completer closes an early-return ordering gap; its
 eight-second timeout is a best-effort wait, not a native-subsystem safety gate.
 Keep that independent ordering precaution and limited plugin registration. Do
 not use them as explanations or fixes for #32. Launch avoids Dart service
-warm-up and speech. The retained Windows plugin's native registration still
-constructs a WinRT synthesizer/player; the new SAPI voice is created only for
-explicit speech. This change bypasses the old speak path and does not remove
-legacy plugin registration or certify native startup/teardown.
+warm-up and speech. The original SAPI change left the legacy plugin registered at startup. The
+October 22 follow-up removes that remaining Windows registration and build
+entry using build-local filtered copies of Flutter's regenerated files. The
+legacy plugin is neither linked nor bundled; other plugin registrations and
+FFI dependencies remain intact. The SAPI voice is created only for explicit
+speech. This exclusion does not certify physical native startup/teardown.
 Current TTS callers include chat, wake-word replies, jokes, proactive banner
 actions and voice-settings previews. The current Voice Lab uses prerecorded
 `NeuraVoicePack.playAsset` clips; playing those clips does not test this TTS path.
@@ -365,3 +367,40 @@ blocks acceptance. Attach the redacted result against #32. Keep startup speech
 disabled; enabling it needs a later explicit, reviewed startup-specific test and
 rollout decision after ordinary native speech acceptance. Do not auto-merge or
 infer a native fix from these synthetic regressions.
+
+## October 22 follow-up: remove the remaining legacy Windows plugin
+
+PR #139 merged as `7402f3ab9135ae49b96f1f3b126e2e6b07ed95ee`. The old issue
+checkpoint describing it as draft is historical. The default Windows service
+already routes speech through `NeuraWindowsTts` and the local SAPI owner.
+
+`windows/cmake/NeuraWindowsPlugins.cmake` now prepares build-local copies of
+the generated registrant and plugin list, excluding only `flutter_tts` on
+Windows. Flutter regeneration cannot silently reintroduce its constructor,
+registration or bundled DLL. An unfamiliar upstream TTS registration/build
+shape fails configuration for review. The generated source files, Android and
+other platforms retain their normal dependencies; no timing delay, greeting
+enablement or legacy speech fallback is added.
+
+The three executable CMake fixture regressions verify regeneration, all other
+plugin/FFI registrations, changed-format rejection and CRLF input. Hosted
+Windows speech CI additionally builds the complete app and rejects any
+`flutter_tts_plugin.dll` in the fresh output. Those build checks do not run
+actual speech. Use a clean Windows output directory when manually validating
+so stale DLLs from an older build cannot contaminate the result.
+
+### Immediate workaround on an already installed build
+
+In **Voice Settings → Automatic reply speech**, choose **Off** to keep chat
+replies as text. Avoid explicit Speak/sample/preview actions while diagnosing
+speech. This setting controls automatic chat replies; it is not a global mute
+for every explicit speech command. If you need a restricted no-microphone
+session, use Safe Mode and keep voice/wake-word listening off. Startup greeting
+remains disabled. Use installed Microsoft desktop SAPI voices for deliberate
+testing after updating; the old WinRT voice catalogue need not match.
+
+Keep issue #32 open until debug/release physical Windows acceptance records
+first-use and repeated playback, Stop/replacement, Safe Mode, background/close,
+normal mascot lifecycle and matching bundle/dump evidence. The historical
+plugin source-line root cause is unproven; this change removes its Windows
+load path rather than claiming that the old library itself was repaired.
