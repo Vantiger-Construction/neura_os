@@ -42,7 +42,7 @@ jobs:
       matrix:
         source: [current]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -59,7 +59,7 @@ jobs:
           echo "$BASE_HEAD" > validation/memory/base-head.txt
           git write-tree > validation/memory/tested-tree.txt
           git diff --cached --stat > validation/memory/integration-diff.txt
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: '3.47.5'
           channel: stable
@@ -104,7 +104,7 @@ jobs:
             lib/src/core/data_wipe_service.dart
       - name: Preserve synthetic evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: neura-memory-contracts-${{ matrix.source }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: validation/memory/
