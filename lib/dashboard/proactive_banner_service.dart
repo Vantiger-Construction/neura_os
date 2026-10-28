@@ -10,16 +10,19 @@ import '../cognitive/neura_bandwidth_engine.dart';
 import '../cognitive/neura_cognitive_state.dart';
 import '../core/memory/memory_graph_service.dart';
 import '../intelligence/capability_registry.dart';
+import '../intelligence/initiative_source.dart';
 import '../intelligence/intelligence_preferences.dart';
 import '../intelligence/models.dart';
 import '../intelligence/neura_intelligence_controller.dart';
 import '../intelligence/opportunity_radar.dart';
+import '../intelligence/routine_model.dart';
 import '../intelligence/runtime_signal_adapter.dart';
 import '../joy_engine/joy_engine.dart';
 import '../joy_engine/joy_types.dart';
 import '../modules/human/human_prefs_controller.dart';
 import '../modules/mood/mood_store.dart';
 import '../modules/quests/quest_store.dart';
+import '../neura_shell/models/neura_room.dart';
 import '../relationships/models/relationship_profile.dart';
 import '../relationships/services/distress_detector.dart';
 import '../relationships/services/relationship_insight_service.dart';
@@ -35,6 +38,9 @@ enum ProactiveBannerKind {
   focus,
   care,
   dream,
+
+  /// Routine-aware initiative with no destination, such as a welcome back.
+  presence,
 }
 
 class ProactiveBanner {
@@ -93,8 +99,14 @@ class ProactiveBannerService {
   static const _dismissalsBeforeExtendedCooldown = 3;
   static const _stormSuppressWindow = Duration(hours: 24);
 
+  /// Content-free app-open history for routine-aware initiative. Lives in
+  /// the same prefs store the data wipe clears, and is only written through
+  /// [_enqueueWrite] so a wipe in flight cannot resurrect it.
+  static const _routineKey = 'neura.initiative.routine.v1';
+
   final NeuraRuntimeSignalAdapter _signals = const NeuraRuntimeSignalAdapter();
   final NeuraOpportunityRadar _radar = const NeuraOpportunityRadar();
+  final NeuraInitiativeSource _initiative = const NeuraInitiativeSource();
   final NeuraLiveSignalAdapter _liveSignals = NeuraLiveSignalAdapter.instance;
   final NeuraBandwidthEngine _bandwidthEngine = const NeuraBandwidthEngine();
   final NeuraOutcomeStore _outcomeStore = NeuraEncryptedOutcomeStore();
@@ -127,6 +139,13 @@ class ProactiveBannerService {
     await NeuraIntelligenceController.instance.initialize();
     final preferences = NeuraIntelligenceController.instance.preferences;
     final now = DateTime.now();
+    // Snapshot the routine *before* recording this open, so the current
+    // visit is never its own precedent. Recording happens even in quiet
+    // hours or cooldown, otherwise those visits would vanish from routine.
+    final routine = _loadRoutine();
+    if (preferences.allowsProactiveSuggestions) {
+      await _recordAppOpen(now);
+    }
     if (!preferences.allowsProactiveSuggestions || preferences.isQuietAt(now)) {
       return null;
     }
@@ -160,6 +179,7 @@ class ProactiveBannerService {
     final recentMoods = await _recentMoodsOrEmpty();
     final candidates = <_BannerCandidate>[
       ..._radar.scan(snapshot: snapshot, now: now).map(_radarBanner),
+      ..._initiative.scan(routine: routine, now: now).map(_initiativeBanner),
     ];
     final relationship = await _relationshipCandidate(now, recentMoods);
     if (relationship != null) candidates.add(relationship);
@@ -194,6 +214,7 @@ class ProactiveBannerService {
       distressScore: distress,
       bandwidthStrain: cognitive.bandwidthStrain,
       outcomeLoopSuppression: cognitive.outcomeLoopSuppression,
+      roomId: _currentRoomId(),
     );
     if (council.visible.isEmpty) return null;
 
@@ -313,6 +334,55 @@ class ProactiveBannerService {
       _ => ProactiveBannerKind.quest,
     };
     return _BannerCandidate(candidate: candidate, kind: kind);
+  }
+
+  _BannerCandidate _initiativeBanner(NeuraIntelligenceCandidate candidate) {
+    final kind = candidate.payload[NeuraInitiativeSource.kindKey] ==
+            NeuraInitiativeSource.routineShiftKind
+        ? ProactiveBannerKind.wellness
+        : ProactiveBannerKind.presence;
+    return _BannerCandidate(candidate: candidate, kind: kind);
+  }
+
+  NeuraRoutineModel _loadRoutine() {
+    try {
+      final raw = NeuraPrefsCache.prefs.getString(_routineKey);
+      if (raw == null || raw.trim().isEmpty) return NeuraRoutineModel.empty();
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return NeuraRoutineModel.empty();
+      return NeuraRoutineModel.fromJson(Map<String, Object?>.from(decoded));
+    } catch (_) {
+      return NeuraRoutineModel.empty();
+    }
+  }
+
+  /// Records this app open in the routine history, but only when the user
+  /// allows Neura to learn from their usage.
+  Future<void> _recordAppOpen(DateTime now) {
+    return _enqueueWrite((generation) async {
+      if (!HumanPrefsController.instance.prefs.value.allowLearning) return;
+      // Re-read inside the queue so concurrent opens never lose an update.
+      final next = _loadRoutine().recordOpen(now);
+      try {
+        await NeuraPrefsCache.prefs.setString(
+          _routineKey,
+          jsonEncode(next.toJson()),
+        );
+        if (!_isCurrent(generation)) {
+          await NeuraPrefsCache.prefs.remove(_routineKey);
+        }
+      } catch (_) {
+        // Routine learning is optional and must never block the dashboard.
+      }
+    });
+  }
+
+  String? _currentRoomId() {
+    try {
+      return NeuraPrefsCache.prefs.getString(NeuraRoom.currentRoomPrefsKey);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<bool> _inStormContext(DateTime now) async {

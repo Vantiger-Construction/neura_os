@@ -383,6 +383,69 @@ void main() {
     expect(
         _hasReason(receipt, 'passed privacy, attention, and consent'), isTrue);
   });
+
+  group('NeuraAutonomyKernel room attention', () {
+    test('keeps non-urgent candidates silent in a private room', () {
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now, urgency: 0.7),
+        policy: _policy(roomId: 'reflection_bay'),
+        now: now,
+      );
+
+      expect(receipt.outcome, NeuraDecisionOutcome.suppressed);
+      expect(_hasReason(receipt, 'private room'), isTrue);
+    });
+
+    test('lets urgent candidates through a private room', () {
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now, urgency: 0.9),
+        policy: _policy(roomId: 'legacy_vault'),
+        now: now,
+      );
+
+      expect(receipt.outcome, NeuraDecisionOutcome.allow);
+    });
+
+    test('a grounding room admits only low-disruption candidates', () {
+      final gentle = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now, urgency: 0.7, disruption: 0.1),
+        policy: _policy(roomId: 'mood_den'),
+        now: now,
+      );
+      final disruptive = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now, urgency: 0.7, disruption: 0.6),
+        policy: _policy(roomId: 'mood_den'),
+        now: now,
+      );
+
+      expect(gentle.outcome, NeuraDecisionOutcome.allow);
+      expect(disruptive.outcome, NeuraDecisionOutcome.suppressed);
+      expect(_hasReason(disruptive, 'grounding room'), isTrue);
+    });
+
+    test('an open or unknown room changes nothing', () {
+      for (final roomId in <String?>['penthouse', 'not_a_room', null]) {
+        final receipt = NeuraAutonomyKernel().evaluate(
+          candidate: _candidate(now: now, urgency: 0.7),
+          policy: _policy(roomId: roomId),
+          now: now,
+        );
+
+        expect(receipt.outcome, NeuraDecisionOutcome.allow, reason: roomId);
+      }
+    });
+
+    test('a room never loosens an earlier suppression', () {
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now, urgency: 0.9),
+        policy: _policy(roomId: 'penthouse', safeMode: true),
+        now: now,
+      );
+
+      expect(receipt.outcome, NeuraDecisionOutcome.suppressed);
+      expect(_hasReason(receipt, 'Safe Mode'), isTrue);
+    });
+  });
 }
 
 NeuraAutonomyPolicy _policy({
@@ -399,6 +462,7 @@ NeuraAutonomyPolicy _policy({
   NeuraPersonalConstitution constitution = const NeuraPersonalConstitution(),
   double bandwidthStrain = 0,
   bool outcomeLoopSuppression = false,
+  String? roomId,
 }) =>
     NeuraAutonomyPolicy(
       enabled: enabled,
@@ -414,6 +478,7 @@ NeuraAutonomyPolicy _policy({
       specialistReputation: specialistReputation,
       bandwidthStrain: bandwidthStrain,
       outcomeLoopSuppression: outcomeLoopSuppression,
+      roomId: roomId,
     );
 
 NeuraIntelligenceCandidate _candidate({

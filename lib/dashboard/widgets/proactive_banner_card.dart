@@ -226,6 +226,7 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
       ProactiveBannerKind.focus => Icons.center_focus_strong_outlined,
       ProactiveBannerKind.care => Icons.health_and_safety_outlined,
       ProactiveBannerKind.dream => Icons.nights_stay_outlined,
+      ProactiveBannerKind.presence => Icons.wb_sunny_outlined,
     };
     final showWhy =
         NeuraIntelligenceController.instance.preferences.showDecisionReasons;
