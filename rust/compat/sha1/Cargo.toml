@@ -1,0 +1,13 @@
+[package]
+name = "sha1"
+version = "0.10.99"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Neura-local adapter from WebSocket hash calls to RustCrypto sha1 0.11"
+
+[dependencies]
+sha1_upstream = { package = "sha1", version = "=0.11.0" }
+# Enforce the patched floor for upstream digest's transitive buffer dependency.
+block-buffer = "0.12.1"

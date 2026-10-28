@@ -38,6 +38,7 @@ $sourcePaths = @(
     'rust/Cargo.lock',
     'rust/build.rs',
     'rust/src',
+    'rust/compat',
     'rust/tests',
     'windows/CMakeLists.txt',
     'windows/cmake',
