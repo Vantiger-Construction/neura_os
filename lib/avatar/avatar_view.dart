@@ -67,6 +67,12 @@ class AvatarView extends StatelessWidget {
       return _Resolved(AvatarFormat.lottie, idle);
     }
 
+    // No animated asset installed: use her full-body art, animated
+    // procedurally by NeuraAnimatedBody.
+    if (await AssetGuard.exists(kNeuraBodyArt)) {
+      return const _Resolved(AvatarFormat.image, kNeuraBodyArt);
+    }
+
     return const _Resolved(null, null);
   }
 

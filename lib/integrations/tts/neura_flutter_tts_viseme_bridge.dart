@@ -7,6 +7,7 @@
 
 import 'package:flutter_tts/flutter_tts.dart';
 
+import '../../avatar/motion/neura_body_cues.dart';
 import '../../avatar/viseme/neura_viseme_engine.dart';
 import '../../core/neura_event_bus.dart';
 import '../../core/neura_events.dart';
@@ -71,6 +72,7 @@ class NeuraFlutterTtsVisemeBridge {
           word: word,
         );
 
+        NeuraSpeechBeats.instance.progress(safeStart);
         final viseme = NeuraVisemeEngine.inferFromFragment(fragment);
         final open = NeuraVisemeEngine.mouthOpenFromFragment(fragment);
         eventBus.emit(NeuraVisemeEvent(viseme));
@@ -86,6 +88,7 @@ class NeuraFlutterTtsVisemeBridge {
   }
 
   static void _emitRestState(NeuraEventBus bus) {
+    NeuraSpeechBeats.instance.end();
     bus.emit(const NeuraTalkingEvent(false));
     bus.emit(const NeuraMouthOpenEvent(0.0));
     bus.emit(const NeuraVisemeEvent(NeuraViseme.rest));

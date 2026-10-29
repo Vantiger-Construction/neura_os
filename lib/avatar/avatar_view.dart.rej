@@ -1,0 +1,194 @@
+diff a/lib/avatar/avatar_view.dart b/lib/avatar/avatar_view.dart	(rejected hunks)
+@@ -4,22 +4,35 @@ import 'asset_guard.dart';
+ import 'avatar_asset.dart';
+ import 'avatar_controller.dart';
+ import 'avatar_types.dart';
++import 'motion/neura_animated_body.dart';
+ import 'renderers/lottie_avatar_view.dart';
+ import 'renderers/rive_avatar_view.dart';
+ import 'renderers/sprite_avatar_view.dart';
+ 
++/// Neura's full-body artwork. Used whenever no animated asset (Rive/Lottie)
++/// is installed, so she always renders as herself — never a generic icon.
++const String kNeuraBodyArt = 'assets/images/neura_fullbody.png';
++
+ class AvatarView extends StatefulWidget {
+   final AvatarSpec spec;
+   final AvatarController controller;
+   final double size;
+   final BoxFit fit;
+ 
++  /// Layer Neura's live procedural body motion over whatever renders.
++  final bool animateBody;
++
++  /// Soft mood-tinted aura under her feet.
++  final bool showAura;
++
+   const AvatarView({
+     super.key,
+     required this.spec,
+     required this.controller,
+     this.size = 128,
+     this.fit = BoxFit.contain,
++    this.animateBody = true,
++    this.showAura = true,
+   });
+ 
+   @override
+@@ -126,72 +145,93 @@ class _AvatarViewState extends State<AvatarView> {
+         final path = resolved.path;
+         if (format == null || path == null) return fallback;
+ 
+-        switch (format) {
+-          case AvatarFormat.rive:
+-            final adjusted = (path == spec.assetPath)
+-                ? spec
+-                : AvatarSpec(
+-                    id: spec.id,
+-                    name: spec.name,
+-                    format: AvatarFormat.rive,
+-                    assetPath: path,
+-                    fallbackAssetPath: spec.fallbackAssetPath,
+-                    rive: spec.rive,
+-                    lottie: spec.lottie,
+-                    sprite: spec.sprite,
+-                  );
+-            return RiveAvatarView(
+-              spec: adjusted,
+-              controller: controller,
+-              size: size,
+-              fit: fit,
+-              fallback: fallback,
+-            );
+-          case AvatarFormat.lottie:
+-            // Render using spec.lottie variants, but ensure spec.assetPath points to the resolved path.
+-            final adjusted = AvatarSpec(
+-              id: spec.id,
+-              name: spec.name,
+-              format: AvatarFormat.lottie,
+-              assetPath: path,
+-              fallbackAssetPath: spec.fallbackAssetPath,
+-              lottie: spec.lottie,
+-            );
+-            return AnimatedBuilder(
+-              animation: controller,
+-              builder: (_, __) => LottieAvatarView(
+-                spec: adjusted,
+-                controller: controller,
+-                size: size,
+-                fit: fit,
+-                fallback: fallback,
+-              ),
+-            );
+-          case AvatarFormat.sprite:
+-            return SpriteAvatarView(
+-              spec: spec,
+-              size: size,
+-              fit: fit,
+-              fallback: fallback,
+-            );
+-          case AvatarFormat.image:
+-            return SizedBox(
+-              width: size,
+-              height: size,
+-              child: Image.asset(
+-                path,
+-                fit: fit,
+-                cacheWidth:
+-                    (size * MediaQuery.devicePixelRatioOf(context)).round(),
+-                cacheHeight:
+-                    (size * MediaQuery.devicePixelRatioOf(context)).round(),
+-                errorBuilder: (_, __, ___) => fallback,
+-              ),
+-            );
+-        }
++        return _withBody(_render(context, format, path, fallback));
+       },
+     );
+   }
++
++  Widget _withBody(Widget rendered) {
++    if (!widget.animateBody) return rendered;
++    return SizedBox(
++      width: size,
++      height: size,
++      child: NeuraAnimatedBody(
++        showAura: widget.showAura,
++        child: rendered,
++      ),
++    );
++  }
++
++  Widget _render(
++    BuildContext context,
++    AvatarFormat format,
++    String path,
++    Widget fallback,
++  ) {
++    switch (format) {
++      case AvatarFormat.rive:
++        final adjusted = (path == spec.assetPath)
++            ? spec
++            : AvatarSpec(
++                id: spec.id,
++                name: spec.name,
++                format: AvatarFormat.rive,
++                assetPath: path,
++                fallbackAssetPath: spec.fallbackAssetPath,
++                rive: spec.rive,
++                lottie: spec.lottie,
++                sprite: spec.sprite,
++              );
++        return RiveAvatarView(
++          spec: adjusted,
++          controller: controller,
++          size: size,
++          fit: fit,
++          fallback: fallback,
++        );
++      case AvatarFormat.lottie:
++        // Render using spec.lottie variants, but ensure spec.assetPath points to the resolved path.
++        final adjusted = AvatarSpec(
++          id: spec.id,
++          name: spec.name,
++          format: AvatarFormat.lottie,
++          assetPath: path,
++          fallbackAssetPath: spec.fallbackAssetPath,
++          lottie: spec.lottie,
++        );
++        return AnimatedBuilder(
++          animation: controller,
++          builder: (_, __) => LottieAvatarView(
++            spec: adjusted,
++            controller: controller,
++            size: size,
++            fit: fit,
++            fallback: fallback,
++          ),
++        );
++      case AvatarFormat.sprite:
++        return SpriteAvatarView(
++          spec: spec,
++          size: size,
++          fit: fit,
++          fallback: fallback,
++        );
++      case AvatarFormat.image:
++        return SizedBox(
++          width: size,
++          height: size,
++          child: Image.asset(
++            path,
++            fit: fit,
++            // Height-only decode keeps the art's aspect ratio (setting both
++            // cache dimensions squashed tall art into a square).
++            cacheHeight:
++                (size * MediaQuery.devicePixelRatioOf(context)).round(),
++            errorBuilder: (_, __, ___) => fallback,
++          ),
++        );
++    }
++  }
+ }
+ 
+ class _Resolved {
