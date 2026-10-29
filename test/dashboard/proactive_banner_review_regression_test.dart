@@ -10,6 +10,8 @@ import 'package:neuro_companion/modules/human/human_prefs.dart';
 import 'package:neuro_companion/modules/human/human_prefs_controller.dart';
 import 'package:neuro_companion/neura_shell/models/neura_room.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
+import 'package:neuro_companion/src/modules/focus/focus_controller.dart';
+import 'package:neuro_companion/src/modules/focus/focus_mode.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 
 import '../helpers/data_wipe_fixture.dart';
@@ -24,10 +26,17 @@ void main() {
 
   setUp(() async {
     fixture = await DataWipeFixture.create();
-    now = DateTime(2026, 10, 29, 10);
+    now = DateTime.utc(2026, 10, 29, 10);
     controller.resetForTesting();
     HumanPrefsController.instance.prefs.value = HumanPrefs.defaults;
     SafeBoot.instance.safeMode.value = false;
+    // These tests exercise routine delivery, not the independent focus radar.
+    // Its singleton otherwise timestamps itself with the real wall clock;
+    // advancing our fake clock can accidentally make that signal fresh on CI.
+    FocusController.instance.state.value = FocusState(
+      mode: FocusMode.off,
+      startedAt: now.subtract(const Duration(days: 60)),
+    );
     service = ProactiveBannerService.forTesting(clock: () => now);
     addTearDown(service.disposeForTesting);
     await NeuraPrefsCache.prefs.setString(

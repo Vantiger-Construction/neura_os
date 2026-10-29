@@ -28,6 +28,12 @@ and check JSON timestamp bounds and UTC/local same-hour deduplication.
 Histogram-cap tests use UTC so their subject is storage bounds; DST resets
 are tested explicitly using `America/Chicago`.
 
+The first hosted privacy run exposed a test-fixture clock leak: the real-time
+FocusController timestamp became fresh after the routine test advanced its
+fake clock by 13 hours, allowing an unrelated focus candidate to win. Routine
+delivery fixtures now use UTC and an explicitly stale focus observation, so
+they test welcome delivery without changing production candidate ranking.
+
 ## Exact dependency findings and repair provenance
 
 Original [security run 40632024689](https://github.com/Vantiger-Construction/neura_os/actions/runs/40632024689),
