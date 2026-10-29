@@ -219,10 +219,14 @@ class NeuraDataWipeService {
       'adaptive intent shutdown',
       NeuraAdaptiveIntentRuntime.instance.resetAfterDataWipe,
     );
+    var proactiveWritesDrained = false;
     await _attempt(
       failures,
       'proactive banner cache reset',
-      ProactiveBannerService.instance.resetAfterDataWipe,
+      () async {
+        await ProactiveBannerService.instance.resetAfterDataWipe();
+        proactiveWritesDrained = true;
+      },
     );
     await _attempt(
       failures,
@@ -318,6 +322,12 @@ class NeuraDataWipeService {
     );
 
     await _attempt(failures, 'preferences deletion', () async {
+      if (!proactiveWritesDrained) {
+        // A submitted platform preference write cannot be cancelled. Keep
+        // this store and its producers suspended until a retry can drain it;
+        // clearing now could let an old routine write land after deletion.
+        throw StateError('Proactive preference writes have not drained.');
+      }
       final prefs = await SharedPreferences.getInstance();
       if (!await prefs.clear()) {
         throw StateError('SharedPreferences deletion was rejected.');

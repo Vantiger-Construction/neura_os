@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -10,16 +11,19 @@ import '../cognitive/neura_bandwidth_engine.dart';
 import '../cognitive/neura_cognitive_state.dart';
 import '../core/memory/memory_graph_service.dart';
 import '../intelligence/capability_registry.dart';
+import '../intelligence/initiative_source.dart';
 import '../intelligence/intelligence_preferences.dart';
 import '../intelligence/models.dart';
 import '../intelligence/neura_intelligence_controller.dart';
 import '../intelligence/opportunity_radar.dart';
+import '../intelligence/routine_model.dart';
 import '../intelligence/runtime_signal_adapter.dart';
 import '../joy_engine/joy_engine.dart';
 import '../joy_engine/joy_types.dart';
 import '../modules/human/human_prefs_controller.dart';
 import '../modules/mood/mood_store.dart';
 import '../modules/quests/quest_store.dart';
+import '../neura_shell/models/neura_room.dart';
 import '../relationships/models/relationship_profile.dart';
 import '../relationships/services/distress_detector.dart';
 import '../relationships/services/relationship_insight_service.dart';
@@ -35,6 +39,9 @@ enum ProactiveBannerKind {
   focus,
   care,
   dream,
+
+  /// Routine-aware initiative with no destination, such as a welcome back.
+  presence,
 }
 
 class ProactiveBanner {
@@ -46,6 +53,8 @@ class ProactiveBanner {
     required this.receipt,
     this.joyMoment,
     this.relationshipProfile,
+    this.dataGeneration = 0,
+    this.routineGeneration = 0,
   });
 
   final ProactiveBannerKind kind;
@@ -55,6 +64,10 @@ class ProactiveBanner {
   final NeuraDecisionReceipt receipt;
   final JoyMoment? joyMoment;
   final RelationshipProfile? relationshipProfile;
+  final int dataGeneration;
+  final int routineGeneration;
+
+  bool get isInitiative => candidate.specialistId.startsWith('initiative.');
 }
 
 class _BannerCandidate {
@@ -70,7 +83,12 @@ class _BannerCandidate {
   final JoyMoment? joyMoment;
   final RelationshipProfile? relationshipProfile;
 
-  ProactiveBanner toBanner(NeuraDecisionReceipt receipt) => ProactiveBanner(
+  ProactiveBanner toBanner(
+    NeuraDecisionReceipt receipt,
+    int generation,
+    int routineGeneration,
+  ) =>
+      ProactiveBanner(
         kind: kind,
         title: candidate.title,
         body: candidate.body,
@@ -78,13 +96,25 @@ class _BannerCandidate {
         receipt: receipt,
         joyMoment: joyMoment,
         relationshipProfile: relationshipProfile,
+        dataGeneration: generation,
+        routineGeneration: routineGeneration,
       );
 }
 
 /// Builds local opportunities and sends every one through Neura's privacy,
 /// attention, consent, and guardrail boundary before it reaches the dashboard.
 class ProactiveBannerService {
-  ProactiveBannerService._();
+  ProactiveBannerService._() : _clock = DateTime.now {
+    _listenForRoutineConsent();
+  }
+
+  @visibleForTesting
+  ProactiveBannerService.forTesting({required DateTime Function() clock})
+      : _clock = clock {
+    _listenForRoutineConsent();
+  }
+
+  final DateTime Function() _clock;
 
   static final ProactiveBannerService instance = ProactiveBannerService._();
 
@@ -93,8 +123,14 @@ class ProactiveBannerService {
   static const _dismissalsBeforeExtendedCooldown = 3;
   static const _stormSuppressWindow = Duration(hours: 24);
 
+  /// Content-free app-open history for routine-aware initiative. Lives in
+  /// the same prefs store the data wipe clears. A wipe cannot clear that
+  /// store until every submitted banner write has actually finished.
+  static const _routineKey = 'neura.initiative.routine.v1';
+
   final NeuraRuntimeSignalAdapter _signals = const NeuraRuntimeSignalAdapter();
   final NeuraOpportunityRadar _radar = const NeuraOpportunityRadar();
+  final NeuraInitiativeSource _initiative = const NeuraInitiativeSource();
   final NeuraLiveSignalAdapter _liveSignals = NeuraLiveSignalAdapter.instance;
   final NeuraBandwidthEngine _bandwidthEngine = const NeuraBandwidthEngine();
   final NeuraOutcomeStore _outcomeStore = NeuraEncryptedOutcomeStore();
@@ -103,6 +139,51 @@ class ProactiveBannerService {
   Future<void> _writeQueue = Future<void>.value();
   bool _writesSuspended = false;
   int _dataGeneration = 0;
+  int _routineGeneration = 0;
+  int _pendingWrites = 0;
+  bool _evaluating = false;
+  bool? _routineTrackingEnabled;
+  NeuraRoutineModel? _routine;
+  final Map<String, ({DateTime expiresAt, String receiptId})>
+      _offeredInitiatives = {};
+  final Set<String> _shownReceipts = {};
+
+  bool get _canLearnRoutine =>
+      !SafeBoot.instance.safeMode.value &&
+      HumanPrefsController.instance.prefs.value.allowLearning &&
+      NeuraIntelligenceController
+          .instance.preferences.allowsProactiveSuggestions;
+
+  void _listenForRoutineConsent() {
+    HumanPrefsController.instance.prefs.addListener(_routineConsentChanged);
+    NeuraIntelligenceController.instance.addListener(_routineConsentChanged);
+    SafeBoot.instance.safeMode.addListener(_routineConsentChanged);
+  }
+
+  void _routineConsentChanged() {
+    final enabled = _canLearnRoutine;
+    if (_routineTrackingEnabled == enabled) return;
+    _routineTrackingEnabled = enabled;
+    if (enabled) return;
+    _routineGeneration += 1;
+    _routine = NeuraRoutineModel.empty();
+    _offeredInitiatives.clear();
+    // Delete behind already-submitted writes, never detach their queue. A
+    // later re-enable starts with an empty in-memory baseline immediately.
+    unawaited(
+      _enqueueWrite((_) async {
+        await NeuraPrefsCache.prefs.remove(_routineKey);
+      }).catchError((_) {}),
+    );
+  }
+
+  @visibleForTesting
+  Future<void> disposeForTesting() async {
+    HumanPrefsController.instance.prefs.removeListener(_routineConsentChanged);
+    NeuraIntelligenceController.instance.removeListener(_routineConsentChanged);
+    SafeBoot.instance.safeMode.removeListener(_routineConsentChanged);
+    await resetAfterDataWipe();
+  }
 
   Future<Map<String, dynamic>> _loadState() async {
     try {
@@ -116,17 +197,47 @@ class ProactiveBannerService {
   }
 
   Future<void> _saveState(Map<String, dynamic> state, int generation) async {
+    if (!_isCurrent(generation)) return;
     await NeuraPrefsCache.prefs.setString(_stateKey, jsonEncode(state));
-    if (!_isCurrent(generation)) {
-      await NeuraPrefsCache.prefs.remove(_stateKey);
-    }
   }
 
   Future<ProactiveBanner?> maybeGetBannerOnAppOpen() async {
-    if (SafeBoot.instance.safeMode.value) return null;
+    // Only one caller owns a card evaluation. Other dashboard loads return
+    // empty instead of sharing a Future that could display the same card twice.
+    if (_evaluating || _writesSuspended || SafeBoot.instance.safeMode.value) {
+      return null;
+    }
+    _evaluating = true;
+    final generation = _dataGeneration;
+    try {
+      return await _evaluateAppOpen(generation);
+    } finally {
+      _evaluating = false;
+    }
+  }
+
+  Future<ProactiveBanner?> _evaluateAppOpen(int generation) async {
     await NeuraIntelligenceController.instance.initialize();
+    if (!_isCurrent(generation) || SafeBoot.instance.safeMode.value) {
+      return null;
+    }
+    _routineConsentChanged();
     final preferences = NeuraIntelligenceController.instance.preferences;
-    final now = DateTime.now();
+    final now = _clock();
+    _offeredInitiatives
+        .removeWhere((_, offer) => !offer.expiresAt.isAfter(now));
+    // Snapshot the routine *before* recording this open, so the current
+    // visit is never its own precedent. Recording happens even in quiet
+    // hours or cooldown, otherwise those visits would vanish from routine.
+    var routine = NeuraRoutineModel.empty();
+    final routineGeneration = _routineGeneration;
+    if (_canLearnRoutine) {
+      routine = _routine ??= _loadRoutine();
+      // Advance in memory before any await. Platform persistence is optional
+      // and does not hold up the banner or another app-open snapshot.
+      _routine = routine.recordOpen(now);
+      _persistRoutine();
+    }
     if (!preferences.allowsProactiveSuggestions || preferences.isQuietAt(now)) {
       return null;
     }
@@ -160,6 +271,10 @@ class ProactiveBannerService {
     final recentMoods = await _recentMoodsOrEmpty();
     final candidates = <_BannerCandidate>[
       ..._radar.scan(snapshot: snapshot, now: now).map(_radarBanner),
+      ..._initiative
+          .scan(routine: routine, now: now)
+          .where((candidate) => !_offeredInitiatives.containsKey(candidate.id))
+          .map(_initiativeBanner),
     ];
     final relationship = await _relationshipCandidate(now, recentMoods);
     if (relationship != null) candidates.add(relationship);
@@ -187,13 +302,24 @@ class ProactiveBannerService {
       recentMoods: recentMoods,
     );
     final cognitive = await _cognitiveSuppressionSignals(now);
+    if (!_isCurrent(generation) || SafeBoot.instance.safeMode.value) {
+      return null;
+    }
+    // Consent can change while local stores are being read. Never submit an
+    // initiative derived from a revoked routine to the decision history.
+    final currentEligible = eligible.where(
+      (item) =>
+          !item.candidate.specialistId.startsWith('initiative.') ||
+          (_canLearnRoutine && routineGeneration == _routineGeneration),
+    );
     final council =
         await NeuraIntelligenceController.instance.evaluateCandidates(
-      candidates: eligible.map((item) => item.candidate),
+      candidates: currentEligible.map((item) => item.candidate),
       now: now,
       distressScore: distress,
       bandwidthStrain: cognitive.bandwidthStrain,
       outcomeLoopSuppression: cognitive.outcomeLoopSuppression,
+      roomId: _currentRoomId(),
     );
     if (council.visible.isEmpty) return null;
 
@@ -209,11 +335,45 @@ class ProactiveBannerService {
     final selected = visible.first;
     final source = byId[selected.candidate.id];
     if (source == null ||
-        _writesSuspended ||
+        !_isCurrent(generation) ||
         SafeBoot.instance.safeMode.value) {
       return null;
     }
-    return source.toBanner(selected.receipt);
+    final banner = source.toBanner(
+      selected.receipt,
+      generation,
+      routineGeneration,
+    );
+    if (!canDisplay(banner)) return null;
+    if (banner.isInitiative) {
+      _offeredInitiatives[banner.candidate.id] = (
+        expiresAt: banner.candidate.expiresAt,
+        receiptId: banner.receipt.id,
+      );
+    }
+    return banner;
+  }
+
+  bool canDisplay(ProactiveBanner banner) {
+    final now = _clock();
+    final preferences = NeuraIntelligenceController.instance.preferences;
+    return _isCurrent(banner.dataGeneration) &&
+        !SafeBoot.instance.safeMode.value &&
+        preferences.allowsProactiveSuggestions &&
+        !preferences.isQuietAt(now) &&
+        banner.candidate.expiresAt.isAfter(now) &&
+        (!banner.isInitiative ||
+            (_canLearnRoutine &&
+                banner.routineGeneration == _routineGeneration));
+  }
+
+  /// An unmounted card has not consumed its welcome-back opportunity.
+  void releaseUnshown(ProactiveBanner banner) {
+    if (!_shownReceipts.contains(banner.receipt.id) &&
+        _offeredInitiatives[banner.candidate.id]?.receiptId ==
+            banner.receipt.id) {
+      _offeredInitiatives.remove(banner.candidate.id);
+    }
   }
 
   @visibleForTesting
@@ -230,13 +390,21 @@ class ProactiveBannerService {
   /// Commits quota and cooldown only after the dashboard confirms the card
   /// reached a rendered frame.
   Future<void> recordShown(ProactiveBanner banner) async {
+    if (!canDisplay(banner) || !_shownReceipts.add(banner.receipt.id)) return;
+    if (_shownReceipts.length > 100) {
+      _shownReceipts.remove(_shownReceipts.first);
+    }
+    if (banner.candidate.specialistId ==
+        NeuraInitiativeSource.arrivalSpecialist) {
+      _routine = _routine?.acknowledgeArrival(banner.candidate.id);
+      _persistRoutine();
+    }
     await _enqueueWrite((generation) async {
       final state = await _loadState();
-      if (!_isCurrent(generation) ||
-          state['lastReceiptId'] == banner.receipt.id) {
+      if (!canDisplay(banner) || state['lastReceiptId'] == banner.receipt.id) {
         return;
       }
-      final now = DateTime.now();
+      final now = _clock();
       await NeuraIntelligenceController.instance.markShown(banner.receipt.id);
       if (!_isCurrent(generation)) return;
       await _saveState({
@@ -313,6 +481,52 @@ class ProactiveBannerService {
       _ => ProactiveBannerKind.quest,
     };
     return _BannerCandidate(candidate: candidate, kind: kind);
+  }
+
+  _BannerCandidate _initiativeBanner(NeuraIntelligenceCandidate candidate) {
+    final kind = candidate.payload[NeuraInitiativeSource.kindKey] ==
+            NeuraInitiativeSource.routineShiftKind
+        ? ProactiveBannerKind.wellness
+        : ProactiveBannerKind.presence;
+    return _BannerCandidate(candidate: candidate, kind: kind);
+  }
+
+  NeuraRoutineModel _loadRoutine() {
+    try {
+      final raw = NeuraPrefsCache.prefs.getString(_routineKey);
+      if (raw == null || raw.trim().isEmpty) return NeuraRoutineModel.empty();
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return NeuraRoutineModel.empty();
+      return NeuraRoutineModel.fromJson(Map<String, Object?>.from(decoded));
+    } catch (_) {
+      return NeuraRoutineModel.empty();
+    }
+  }
+
+  void _persistRoutine() {
+    if (!_canLearnRoutine || _routine == null) return;
+    final routineGeneration = _routineGeneration;
+    unawaited(
+      _enqueueWrite((generation) async {
+        if (!_canLearnRoutine ||
+            routineGeneration != _routineGeneration ||
+            !_isCurrent(generation)) {
+          return;
+        }
+        await NeuraPrefsCache.prefs.setString(
+          _routineKey,
+          jsonEncode(_routine!.toJson()),
+        );
+      }).catchError((_) {}),
+    );
+  }
+
+  String? _currentRoomId() {
+    try {
+      return NeuraPrefsCache.prefs.getString(NeuraRoom.currentRoomPrefsKey);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<bool> _inStormContext(DateTime now) async {
@@ -503,9 +717,10 @@ class ProactiveBannerService {
     required ProactiveBanner banner,
     required bool acted,
   }) async {
+    if (!canDisplay(banner)) return;
     await _enqueueWrite((generation) async {
       final state = await _loadState();
-      if (!_isCurrent(generation)) return;
+      if (!canDisplay(banner)) return;
       final consecutive =
           acted ? 0 : (_coerceInt(state['consecutiveDismissals']) ?? 0) + 1;
       await _saveState({
@@ -540,24 +755,36 @@ class ProactiveBannerService {
   Future<void> resetAfterDataWipe() async {
     _writesSuspended = true;
     _dataGeneration += 1;
+    _routineGeneration += 1;
+    _routine = NeuraRoutineModel.empty();
+    _offeredInitiatives.clear();
+    _shownReceipts.clear();
     await _writeQueue.timeout(const Duration(seconds: 3));
-    _writeQueue = Future<void>.value();
   }
 
   void resumeAfterDataWipe() {
-    _writeQueue = Future<void>.value();
+    if (_pendingWrites != 0) {
+      throw StateError(
+        'Proactive writes have not drained. Retry data removal.',
+      );
+    }
     _writesSuspended = false;
   }
 
   Future<void> _enqueueWrite(Future<void> Function(int generation) operation) {
     if (_writesSuspended) return Future<void>.value();
     final generation = _dataGeneration;
-    final next = _writeQueue.then(
-      (_) =>
-          _isCurrent(generation) ? operation(generation) : Future<void>.value(),
-      onError: (_) =>
-          _isCurrent(generation) ? operation(generation) : Future<void>.value(),
-    );
+    _pendingWrites += 1;
+    final next = _writeQueue
+        .then(
+          (_) => _isCurrent(generation)
+              ? operation(generation)
+              : Future<void>.value(),
+          onError: (_) => _isCurrent(generation)
+              ? operation(generation)
+              : Future<void>.value(),
+        )
+        .whenComplete(() => _pendingWrites -= 1);
     _writeQueue = next.then<void>((_) {}, onError: (_) {});
     return next;
   }

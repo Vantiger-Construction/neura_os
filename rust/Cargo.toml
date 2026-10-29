@@ -9,7 +9,8 @@ crate-type = ["cdylib", "staticlib", "lib"]
 
 [dependencies]
 flutter_rust_bridge = "=2.12.0"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "sync"] }
+# 1.53.3 patches RUSTSEC-2026-0386; keep the lockfile on this patch release.
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "time", "net", "sync"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -23,6 +24,16 @@ subtle = "2.6"
 getrandom = "0.2.17"
 zeroize = "1.9"
 tokio-tungstenite = "0.24"
+
+[dev-dependencies]
+md5_compat = { package = "md-5", path = "compat/md-5" }
+sha1_compat = { package = "sha1", path = "compat/sha1" }
+
+# Keep FRB 2.12 and the existing WebSocket API while moving their hash calls
+# to RustCrypto's patched digest/block-buffer generation. See compat/README.md.
+[patch.crates-io]
+md-5 = { path = "compat/md-5" }
+sha1 = { path = "compat/sha1" }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_JobObjects", "Win32_System_Pipes", "Win32_System_Power", "Win32_System_Threading", "Win32_System_SystemInformation"] }
