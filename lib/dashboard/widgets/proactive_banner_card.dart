@@ -7,6 +7,8 @@ import '../../care/screens/care_mode_home_screen.dart';
 import '../../dreams/screens/dream_theater_screen.dart';
 import '../../intelligence/action_review_screen.dart';
 import '../../intelligence/neura_intelligence_controller.dart';
+import '../../modules/human/human_prefs_controller.dart';
+import '../../reliability/safe_boot.dart';
 import '../../joy_engine/joy_screen.dart';
 import '../../modules/quests/quest_mode_screen.dart';
 import '../../modules/support/support_center_screen.dart';
@@ -24,7 +26,9 @@ import '../proactive_banner_service.dart';
 /// intelligence suggestion below it still follows suppression and cooldown
 /// policy in [ProactiveBannerService].
 class ProactiveBannerCard extends StatefulWidget {
-  const ProactiveBannerCard({super.key});
+  const ProactiveBannerCard({super.key, this.service});
+
+  final ProactiveBannerService? service;
 
   @override
   State<ProactiveBannerCard> createState() => _ProactiveBannerCardState();
@@ -33,27 +37,54 @@ class ProactiveBannerCard extends StatefulWidget {
 class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
   ProactiveBanner? _banner;
   bool _dismissed = false;
+  ProactiveBannerService get _service =>
+      widget.service ?? ProactiveBannerService.instance;
 
   @override
   void initState() {
     super.initState();
+    SafeBoot.instance.safeMode.addListener(_checkPolicy);
+    HumanPrefsController.instance.prefs.addListener(_checkPolicy);
+    NeuraIntelligenceController.instance.addListener(_checkPolicy);
     _load();
+  }
+
+  void _checkPolicy() {
+    final banner = _banner;
+    if (banner == null || _service.canDisplay(banner)) return;
+    _service.releaseUnshown(banner);
+    HomeWidgetBridge.instance.mirrorApprovedNudge(null);
+    setState(() => _banner = null);
+  }
+
+  @override
+  void dispose() {
+    SafeBoot.instance.safeMode.removeListener(_checkPolicy);
+    HumanPrefsController.instance.prefs.removeListener(_checkPolicy);
+    NeuraIntelligenceController.instance.removeListener(_checkPolicy);
+    final banner = _banner;
+    if (banner != null) _service.releaseUnshown(banner);
+    super.dispose();
   }
 
   Future<void> _load() async {
     try {
-      final banner =
-          await ProactiveBannerService.instance.maybeGetBannerOnAppOpen();
-      if (!mounted) return;
+      final banner = await _service.maybeGetBannerOnAppOpen();
+      if (!mounted) {
+        if (banner != null) _service.releaseUnshown(banner);
+        return;
+      }
+      if (banner != null && !_service.canDisplay(banner)) return;
       setState(() => _banner = banner);
       if (banner != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted || _banner?.receipt.id != banner.receipt.id) return;
-          unawaited(
-            ProactiveBannerService.instance
-                .recordShown(banner)
-                .catchError((_) {}),
-          );
+          if (!mounted ||
+              _dismissed ||
+              _banner?.receipt.id != banner.receipt.id ||
+              !_service.canDisplay(banner)) {
+            return;
+          }
+          unawaited(_service.recordShown(banner).catchError((_) {}));
           // Mirror only after Neura's own attention/consent boundary has
           // already decided to show this card in-app.
           HomeWidgetBridge.instance.mirrorApprovedNudge(banner.title);
@@ -68,9 +99,7 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
     final banner = _banner;
     if (banner != null) {
       unawaited(
-        ProactiveBannerService.instance
-            .recordOutcome(banner: banner, acted: false)
-            .catchError((_) {}),
+        _service.recordOutcome(banner: banner, acted: false).catchError((_) {}),
       );
     }
     HomeWidgetBridge.instance.mirrorApprovedNudge(null);
@@ -79,7 +108,12 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
 
   Future<void> _act() async {
     final banner = _banner;
-    if (banner == null || !mounted) return;
+    if (banner == null ||
+        !mounted ||
+        !_service.canDisplay(banner) ||
+        banner.kind == ProactiveBannerKind.presence) {
+      return;
+    }
     HomeWidgetBridge.instance.mirrorApprovedNudge(null);
     setState(() => _dismissed = true);
 
@@ -117,40 +151,33 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
           ),
         );
       } else {
-        await Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (_) => const QuestModeScreen()));
+        await Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const QuestModeScreen()));
       }
     } else if (banner.kind == ProactiveBannerKind.wellness) {
-      await Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const SupportCenterScreen()));
+      await Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => const SupportCenterScreen()));
     } else if (banner.kind == ProactiveBannerKind.focus) {
-      await Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const FocusOfficeScreen()));
+      await Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => const FocusOfficeScreen()));
     } else if (banner.kind == ProactiveBannerKind.care) {
-      await Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const CareModeHomeScreen()));
+      await Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => const CareModeHomeScreen()));
     } else if (banner.kind == ProactiveBannerKind.dream) {
-      await Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const DreamTheaterScreen()));
+      await Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => const DreamTheaterScreen()));
     }
   }
 
   void _recordOutcome(ProactiveBanner banner, {required bool acted}) {
     unawaited(
-      ProactiveBannerService.instance
-          .recordOutcome(banner: banner, acted: acted)
-          .catchError((_) {}),
+      _service.recordOutcome(banner: banner, acted: acted).catchError((_) {}),
     );
   }
 
   Future<void> _briefMe() async {
     final banner = _banner;
-    if (banner == null) return;
+    if (banner == null || !_service.canDisplay(banner)) return;
     await NeuraTtsService.instance.speak(
       NeuraKindExplanation.spokenBrief(
         title: banner.title,
@@ -239,7 +266,9 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
         Semantics(
           container: true,
           liveRegion: false,
-          label: 'Optional Neura suggestion. Dismiss or open when ready.',
+          label: banner.kind == ProactiveBannerKind.presence
+              ? 'Optional Neura greeting. Dismiss when ready.'
+              : 'Optional Neura suggestion. Dismiss or open when ready.',
           child: Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -280,14 +309,15 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
                                 onPressed: _showWhy,
                                 child: const Text('Why?'),
                               ),
-                            FilledButton(
-                              onPressed: _act,
-                              child: Text(
-                                banner.receipt.requiresApproval
-                                    ? 'Review'
-                                    : 'Open',
+                            if (banner.kind != ProactiveBannerKind.presence)
+                              FilledButton(
+                                onPressed: _act,
+                                child: Text(
+                                  banner.receipt.requiresApproval
+                                      ? 'Review'
+                                      : 'Open',
+                                ),
                               ),
-                            ),
                           ],
                         ),
                       ],

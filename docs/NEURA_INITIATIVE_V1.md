@@ -43,13 +43,32 @@ like every other specialist.
 
 ## Privacy
 
-- Stored: hour-of-week counts, up to 60 active day keys, last-seen time. No
+- Stored: hour-of-week counts, up to 60 active day keys, last-seen time,
+  timezone name/offset, and at most one pending return's timestamps. No
   content, screens, or conversation data.
-- Recorded only when proactive suggestions are on **and** the user's
-  `allowLearning` preference is on.
+- Routine history is read for inference and recorded only when proactive
+  suggestions and `allowLearning` are on and Safe Mode is off. Disabling any
+  of these gates clears the in-memory baseline and queues removal of the
+  stored routine. Re-enabling starts a fresh baseline.
 - Key `neura.initiative.routine.v1` lives in the prefs store the data wipe
-  clears, and is written only through the banner service's generation-guarded
-  write queue, so an in-flight wipe cannot resurrect it.
+  clears; its JSON schema is now v2. Old v1 history has no timezone provenance
+  and is discarded. Travel or a DST offset change resets local-hour history;
+  a clock rollback produces no initiative until time catches up.
+- Routine recording updates memory synchronously and persists through the
+  banner service's queue without holding up banner evaluation. Concurrent
+  callers have one evaluation owner; offered initiative cards are reserved
+  until shown, released by an unmounted card, or expired.
+- Quiet hours, cooldowns and room suppression preserve a pending welcome.
+  Only the rendered-frame acknowledgement consumes it. A presence greeting
+  has no Open button or navigation outcome; Not now remains available.
+- Submitted platform writes cannot be cancelled. If the banner queue misses
+  the wipe drain deadline, preference deletion is deferred, the wipe reports
+  incomplete, and producers stay suspended in Safe Mode. A retry must drain
+  the original queue before clearing preferences. There is no detached
+  post-wipe cleanup that could delete a fresh routine.
+
+See [PR #148 validation](PR148_VALIDATION.md) for review reproductions,
+dependency provenance, commands and the limits of local validation.
 
 ## Not ported
 

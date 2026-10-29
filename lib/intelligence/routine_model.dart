@@ -14,8 +14,12 @@ class NeuraRoutineModel {
     required List<int> hourOfWeekCounts,
     Iterable<String> activeDays = const <String>[],
     this.lastSeenAt,
-  })  : hourOfWeekCounts =
-            List<int>.unmodifiable(_normaliseCounts(hourOfWeekCounts)),
+    this.timeZoneId,
+    this.pendingArrivalFrom,
+    this.pendingArrivalAt,
+  })  : hourOfWeekCounts = List<int>.unmodifiable(
+          _normaliseCounts(hourOfWeekCounts),
+        ),
         activeDays = List<String>.unmodifiable(_normaliseDays(activeDays));
 
   factory NeuraRoutineModel.empty() =>
@@ -31,7 +35,7 @@ class NeuraRoutineModel {
   /// fade and current ones dominate.
   static const int maxTotalCount = 2000;
 
-  static const int schemaVersion = 1;
+  static const int schemaVersion = 2;
 
   final List<int> hourOfWeekCounts;
 
@@ -39,6 +43,17 @@ class NeuraRoutineModel {
   final List<String> activeDays;
 
   final DateTime? lastSeenAt;
+  final String? timeZoneId;
+
+  /// An absence remains eligible until its welcome card reaches a frame.
+  /// Recording suppressed opens must not consume this opportunity.
+  final DateTime? pendingArrivalFrom;
+  final DateTime? pendingArrivalAt;
+
+  static String zoneFor(DateTime at) =>
+      '${at.timeZoneName}:${at.timeZoneOffset.inMinutes}';
+
+  bool matchesTimeZone(DateTime at) => timeZoneId == zoneFor(at);
 
   int get totalCount => hourOfWeekCounts.fold(0, (sum, count) => sum + count);
 
@@ -53,11 +68,13 @@ class NeuraRoutineModel {
     return '$year-$month-$day';
   }
 
-  static bool sameHour(DateTime a, DateTime b) =>
-      a.year == b.year &&
-      a.month == b.month &&
-      a.day == b.day &&
-      a.hour == b.hour;
+  static bool sameHour(DateTime a, DateTime b) {
+    // Persisted timestamps are UTC; compare both instants in b's local zone.
+    final offset = b.timeZoneOffset.inMilliseconds;
+    const hour = Duration.millisecondsPerHour;
+    return (a.millisecondsSinceEpoch + offset) ~/ hour ==
+        (b.millisecondsSinceEpoch + offset) ~/ hour;
+  }
 
   /// Returns a new model with an app open at [at] recorded.
   ///
@@ -65,6 +82,10 @@ class NeuraRoutineModel {
   /// that rebuilds several times does not look like a strong habit. A clock
   /// that moved backwards is ignored rather than rewriting history.
   NeuraRoutineModel recordOpen(DateTime at) {
+    if (timeZoneId != null && !matchesTimeZone(at)) {
+      // Local-hour slots cannot be compared across travel or DST changes.
+      return NeuraRoutineModel.empty().recordOpen(at);
+    }
     final previous = lastSeenAt;
     if (previous != null && at.isBefore(previous)) return this;
 
@@ -81,10 +102,29 @@ class NeuraRoutineModel {
     final day = dayKey(at);
     final days =
         activeDays.contains(day) ? activeDays : <String>[...activeDays, day];
+    final returned =
+        previous != null && at.difference(previous) >= const Duration(days: 3);
     return NeuraRoutineModel(
       hourOfWeekCounts: counts,
       activeDays: days,
       lastSeenAt: at,
+      timeZoneId: zoneFor(at),
+      pendingArrivalFrom: returned ? previous : pendingArrivalFrom,
+      pendingArrivalAt: returned ? at : pendingArrivalAt,
+    );
+  }
+
+  NeuraRoutineModel acknowledgeArrival(String candidateId) {
+    final from = pendingArrivalFrom;
+    if (from == null ||
+        candidateId != 'initiative.arrival:${from.millisecondsSinceEpoch}') {
+      return this;
+    }
+    return NeuraRoutineModel(
+      hourOfWeekCounts: hourOfWeekCounts,
+      activeDays: activeDays,
+      lastSeenAt: lastSeenAt,
+      timeZoneId: timeZoneId,
     );
   }
 
@@ -93,6 +133,7 @@ class NeuraRoutineModel {
   /// 9:55 is not "unusual" for someone who always arrives at 10:05.
   /// Returns 0 when there is no history.
   double shareAround(DateTime at) {
+    if (!matchesTimeZone(at)) return 0;
     final total = totalCount;
     if (total == 0) return 0;
     final slot = slotFor(at);
@@ -107,6 +148,9 @@ class NeuraRoutineModel {
         'hour_of_week': hourOfWeekCounts,
         'days': activeDays,
         'last_seen_ms': lastSeenAt?.millisecondsSinceEpoch,
+        'zone': timeZoneId,
+        'arrival_from_ms': pendingArrivalFrom?.millisecondsSinceEpoch,
+        'arrival_at_ms': pendingArrivalAt?.millisecondsSinceEpoch,
       };
 
   /// Never throws. Unknown versions or malformed fields fall back to an
@@ -130,15 +174,33 @@ class NeuraRoutineModel {
       }
     }
 
-    final rawLastSeen = json['last_seen_ms'];
-    final lastSeen = rawLastSeen is num && rawLastSeen.isFinite
-        ? DateTime.fromMillisecondsSinceEpoch(rawLastSeen.toInt())
-        : null;
+    DateTime? timestamp(String key) {
+      final raw = json[key];
+      if (raw is! num || !raw.isFinite || raw.abs() > 8640000000000000) {
+        return null;
+      }
+      return DateTime.fromMillisecondsSinceEpoch(raw.toInt(), isUtc: true);
+    }
+
+    final zone = json['zone'];
+    // v1 had no timezone provenance and is deliberately not used for inference.
+    if (zone is! String || zone.isEmpty) return NeuraRoutineModel.empty();
+    final lastSeen = timestamp('last_seen_ms');
+    final arrivalFrom = timestamp('arrival_from_ms');
+    final arrivalAt = timestamp('arrival_at_ms');
+    final validArrival = arrivalFrom != null &&
+        arrivalAt != null &&
+        lastSeen != null &&
+        !arrivalAt.isAfter(lastSeen) &&
+        arrivalAt.difference(arrivalFrom) >= const Duration(days: 3);
 
     return NeuraRoutineModel(
       hourOfWeekCounts: counts,
       activeDays: days,
       lastSeenAt: lastSeen,
+      timeZoneId: zone,
+      pendingArrivalFrom: validArrival ? arrivalFrom : null,
+      pendingArrivalAt: validArrival ? arrivalAt : null,
     );
   }
 

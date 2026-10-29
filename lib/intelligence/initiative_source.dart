@@ -54,6 +54,10 @@ class NeuraInitiativeSource {
     required NeuraRoutineModel routine,
     required DateTime now,
   }) {
+    if (!routine.matchesTimeZone(now) ||
+        (routine.lastSeenAt != null && now.isBefore(routine.lastSeenAt!))) {
+      return const [];
+    }
     final candidates = <NeuraIntelligenceCandidate>[];
     final arrival = _arrival(routine, now);
     if (arrival != null) candidates.add(arrival);
@@ -66,9 +70,9 @@ class NeuraInitiativeSource {
     NeuraRoutineModel routine,
     DateTime now,
   ) {
-    final lastSeen = routine.lastSeenAt;
+    final lastSeen = routine.pendingArrivalFrom ?? routine.lastSeenAt;
     if (lastSeen == null) return null;
-    final away = now.difference(lastSeen);
+    final away = (routine.pendingArrivalAt ?? now).difference(lastSeen);
     if (away.isNegative || away < arrivalGap) return null;
     final days = away.inDays;
 

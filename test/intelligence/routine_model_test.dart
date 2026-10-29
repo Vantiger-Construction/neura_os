@@ -5,7 +5,8 @@ import 'package:neuro_companion/intelligence/routine_model.dart';
 
 void main() {
   // 2026-10-05 is a Monday.
-  final monday9am = DateTime(2026, 10, 5, 9, 15);
+  // A stable zone keeps histogram-cap tests independent of seasonal DST.
+  final monday9am = DateTime.utc(2026, 10, 5, 9, 15);
 
   group('NeuraRoutineModel.recordOpen', () {
     test('counts an open in its hour-of-week slot and remembers the day', () {
@@ -40,8 +41,9 @@ void main() {
 
     test('ignores a clock that moved backwards', () {
       final model = NeuraRoutineModel.empty().recordOpen(monday9am);
-      final after =
-          model.recordOpen(monday9am.subtract(const Duration(hours: 5)));
+      final after = model.recordOpen(
+        monday9am.subtract(const Duration(hours: 5)),
+      );
 
       expect(identical(after, model), isTrue);
     });
@@ -111,7 +113,8 @@ void main() {
 
       expect(decoded.hourOfWeekCounts, model.hourOfWeekCounts);
       expect(decoded.activeDays, model.activeDays);
-      expect(decoded.lastSeenAt, model.lastSeenAt);
+      expect(decoded.lastSeenAt!.isAtSameMomentAs(model.lastSeenAt!), isTrue);
+      expect(decoded.timeZoneId, model.timeZoneId);
     });
 
     test('falls back to empty on unknown versions or malformed fields', () {
@@ -119,8 +122,9 @@ void main() {
       expect(unknown.totalCount, 0);
       expect(unknown.lastSeenAt, isNull);
 
-      final malformed = NeuraRoutineModel.fromJson(const {
-        'v': 1,
+      final malformed = NeuraRoutineModel.fromJson({
+        'v': 2,
+        'zone': NeuraRoutineModel.zoneFor(monday9am),
         'hour_of_week': [1, 2, 3],
         'days': ['not-a-day', 7, '2026-10-05'],
         'last_seen_ms': 'yesterday',
@@ -132,6 +136,56 @@ void main() {
       expect(malformed.totalCount, 0);
       expect(malformed.activeDays, ['2026-10-05']);
       expect(malformed.lastSeenAt, isNull);
+    });
+
+    test('untagged legacy history cannot be used for inference', () {
+      final legacy = NeuraRoutineModel.empty().recordOpen(monday9am).toJson()
+        ..['v'] = 1
+        ..remove('zone');
+      expect(NeuraRoutineModel.fromJson(legacy).totalCount, 0);
+    });
+
+    test(
+      'a reloaded UTC timestamp still deduplicates its local clock hour',
+      () {
+        final model = NeuraRoutineModel.empty().recordOpen(monday9am);
+        final reloaded = NeuraRoutineModel.fromJson(model.toJson());
+        expect(
+          reloaded
+              .recordOpen(monday9am.add(const Duration(minutes: 20)))
+              .totalCount,
+          1,
+        );
+      },
+    );
+
+    test('arrival survives recorded opens and reload until acknowledged', () {
+      final returnedAt = monday9am.add(const Duration(days: 5));
+      final model = NeuraRoutineModel.empty()
+          .recordOpen(monday9am)
+          .recordOpen(returnedAt)
+          .recordOpen(returnedAt.add(const Duration(hours: 2)));
+      final reloaded = NeuraRoutineModel.fromJson(model.toJson());
+      expect(reloaded.pendingArrivalFrom!.isAtSameMomentAs(monday9am), isTrue);
+      expect(reloaded.pendingArrivalAt!.isAtSameMomentAs(returnedAt), isTrue);
+      expect(
+        reloaded.acknowledgeArrival('other').pendingArrivalFrom,
+        isNotNull,
+      );
+      expect(
+        reloaded
+            .acknowledgeArrival(
+              'initiative.arrival:${monday9am.millisecondsSinceEpoch}',
+            )
+            .pendingArrivalFrom,
+        isNull,
+      );
+    });
+
+    test('out-of-range timestamps are ignored without throwing', () {
+      final json = NeuraRoutineModel.empty().recordOpen(monday9am).toJson()
+        ..['last_seen_ms'] = 9e100;
+      expect(NeuraRoutineModel.fromJson(json).lastSeenAt, isNull);
     });
 
     test('clamps negative counts to zero', () {
