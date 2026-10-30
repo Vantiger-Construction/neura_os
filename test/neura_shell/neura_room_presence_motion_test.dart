@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:neuro_companion/avatar/motion/neura_motion.dart';
+import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/neura_shell/models/neura_room.dart';
 import 'package:neuro_companion/neura_shell/widgets/neura_room_presence_avatar.dart';
 import 'package:neuro_companion/services/neura_companion_presence.dart';
@@ -23,6 +25,16 @@ Widget host({bool reduceMotion = false, bool ticker = true}) => MaterialApp(
     );
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() {
+    SafeBoot.instance.safeMode.value = false;
+    SafeBoot.instance.restartRequired.value = false;
+    WidgetsBinding.instance
+        .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    NeuraMotion.instance.start();
+  });
+  tearDown(NeuraMotion.instance.stop);
+
   testWidgets('reduced motion and covered routes stop scheduling motion frames',
       (tester) async {
     await tester.pumpWidget(host(reduceMotion: true));

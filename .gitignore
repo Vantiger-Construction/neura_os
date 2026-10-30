@@ -32,3 +32,4 @@ tools/neura_dart_repair/installer/output/
 *.profraw
 *.profdata
 __pycache__/
+/.claude/worktrees/

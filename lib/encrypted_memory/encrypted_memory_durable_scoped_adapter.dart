@@ -319,6 +319,7 @@ final class EncryptedMemoryDurableScopedAdapter {
     required int expectedKeyGeneration,
     required DateTime nowUtc,
     required String replacementValue,
+    EncryptedMemoryProvenance? replacementProvenance,
   }) =>
       _serializedMutation(() async {
         _requireAvailable(safetyContext, expectedKeyGeneration);
@@ -348,6 +349,13 @@ final class EncryptedMemoryDurableScopedAdapter {
             )) {
           return false;
         }
+        if (replacementProvenance != null &&
+            (replacementProvenance.source != source ||
+                replacementProvenance.authorId != ownerId ||
+                replacementProvenance.requiresQuarantine)) {
+          throw const EncryptedMemoryPolicyViolation(
+              'correction_provenance_mismatch');
+        }
         _records[recordId] = EncryptedMemorySessionRecord(
           id: record.id,
           ownerId: record.ownerId,
@@ -355,7 +363,7 @@ final class EncryptedMemoryDurableScopedAdapter {
           capsuleId: record.capsuleId,
           memoryClass: record.memoryClass,
           sensitivity: record.sensitivity,
-          provenance: record.provenance,
+          provenance: replacementProvenance ?? record.provenance,
           value: replacementValue,
           createdAtUtc: record.createdAtUtc,
           keyGeneration: record.keyGeneration,

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../reliability/safe_boot.dart';
 import 'neura_daily_plan.dart';
+import 'neura_task_transfer.dart';
+import 'neura_task_transfer_screen.dart';
 
 class NeuraDailyPlanScreen extends StatefulWidget {
   const NeuraDailyPlanScreen({super.key});
@@ -16,15 +18,20 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
   final _goal = TextEditingController();
   final _steps = TextEditingController();
   String? _error;
+  int _epoch = 0;
+  TextEditingController? _adjustment;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     SafeBoot.instance.safeMode.addListener(_onSafety);
+    SafeBoot.instance.restartRequired.addListener(_onSafety);
   }
 
   void _clear() {
+    _epoch++;
+    _adjustment?.clear();
     _goal.clear();
     _steps.clear();
     _plan.clear();
@@ -32,7 +39,10 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
   }
 
   void _onSafety() {
-    if (SafeBoot.instance.safeMode.value) _clear();
+    if (SafeBoot.instance.safeMode.value ||
+        SafeBoot.instance.restartRequired.value) {
+      _clear();
+    }
   }
 
   @override
@@ -44,6 +54,7 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     SafeBoot.instance.safeMode.removeListener(_onSafety);
+    SafeBoot.instance.restartRequired.removeListener(_onSafety);
     _plan.dispose();
     _goal.dispose();
     _steps.dispose();
@@ -51,6 +62,10 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
   }
 
   void _preview() {
+    if (SafeBoot.instance.safeMode.value ||
+        SafeBoot.instance.restartRequired.value) {
+      return;
+    }
     try {
       _plan.preview(_goal.text, _steps.text.split('\n'));
       setState(() => _error = null);
@@ -61,9 +76,74 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
     }
   }
 
+  Future<void> _smallerStep() async {
+    final epoch = _epoch;
+    final controller = TextEditingController();
+    _adjustment = controller;
+    final route = DialogRoute<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+                title: const Text('Make the next step easier'),
+                content: TextField(
+                    controller: controller,
+                    maxLength: 160,
+                    decoration: const InputDecoration(
+                        labelText: 'A smaller step',
+                        hintText: 'Something you can start in two minutes')),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Cancel')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Preview smaller step'))
+                ]));
+    final accepted = await Navigator.of(context).push(route);
+    await route.completed;
+    final text = controller.text;
+    _adjustment = null;
+    controller.dispose();
+    if (!mounted || epoch != _epoch || accepted != true) return;
+    try {
+      _plan.makeCurrentStepSmaller(text);
+      _steps.text = _plan.steps.join('\n');
+    } on ArgumentError {
+      setState(() => _error = 'Enter one smaller step.');
+    }
+  }
+
+  Future<void> _transfer() async {
+    final epoch = _epoch;
+    final snapshot = _plan.approved
+        ? NeuraTaskSnapshot(goal: _plan.goal, steps: _plan.steps, completed: {
+            for (var i = 0; i < _plan.steps.length; i++)
+              if (_plan.isComplete(i)) i
+          })
+        : null;
+    final result = await Navigator.push<NeuraTaskSnapshot>(
+        context,
+        MaterialPageRoute(
+            builder: (_) => NeuraTaskTransferScreen(snapshot: snapshot)));
+    if (!mounted ||
+        epoch != _epoch ||
+        result == null ||
+        SafeBoot.instance.safeMode.value ||
+        SafeBoot.instance.restartRequired.value) {
+      return;
+    }
+    _goal.text = result.goal;
+    _steps.text = result.steps.join('\n');
+    _plan.previewTransferred(result.goal, result.steps, result.completed);
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Plan my day')),
+        appBar: AppBar(title: const Text('Plan my day'), actions: [
+          IconButton(
+              tooltip: 'Continue on another device',
+              onPressed: _transfer,
+              icon: const Icon(Icons.devices)),
+        ]),
         body: AnimatedBuilder(
           animation: _plan,
           builder: (context, _) => ListView(
@@ -119,11 +199,40 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
                 Text(
                   '${_plan.completedCount} of ${_plan.steps.length} steps complete',
                 ),
+                if (_plan.approved)
+                  Card(
+                      child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(_plan.paused
+                                    ? 'Take your time. Your plan is paused.'
+                                    : _plan.nextStepIndex == null
+                                        ? 'You completed your plan. Notice what helped.'
+                                        : 'Next: ${_plan.steps[_plan.nextStepIndex!]}'),
+                                if (_plan.nextStepIndex != null) ...[
+                                  const Text(
+                                      'Try a few minutes, then choose whether to continue. You decide when it is done.'),
+                                  Wrap(spacing: 8, children: [
+                                    TextButton(
+                                        onPressed: () =>
+                                            _plan.pause(!_plan.paused),
+                                        child: Text(_plan.paused
+                                            ? 'Resume plan'
+                                            : 'Pause plan')),
+                                    TextButton(
+                                        onPressed: _smallerStep,
+                                        child:
+                                            const Text('This feels too big')),
+                                  ]),
+                                ],
+                              ]))),
                 for (var index = 0; index < _plan.steps.length; index++)
                   CheckboxListTile(
                     title: Text(_plan.steps[index]),
                     value: _plan.isComplete(index),
-                    onChanged: _plan.approved
+                    onChanged: _plan.approved && !_plan.paused
                         ? (value) => _plan.complete(index, value ?? false)
                         : null,
                   ),
