@@ -5,6 +5,13 @@ on:
     branches: [Neura]
     paths:
       - 'lib/src/core/data_wipe_service.dart'
+      - 'lib/dashboard/proactive_banner_service.dart'
+      - 'lib/dashboard/widgets/proactive_banner_card.dart'
+      - 'lib/intelligence/routine_model.dart'
+      - 'lib/intelligence/initiative_source.dart'
+      - 'test/dashboard/proactive_banner*'
+      - 'test/intelligence/*routine*'
+      - 'test/intelligence/initiative*'
       - 'lib/src/modules/privacy/**'
       - 'lib/core/memory/**'
       - 'lib/encrypted_memory/**'
@@ -55,6 +62,16 @@ jobs:
             test/data_wipe_service_lifecycle_test.dart \
             test/data_wipe_credentials_test.dart \
             test/data_wipe_microphone_test.dart
+      - name: Routine learning consent, delivery, concurrency and clock regressions
+        run: |
+          flutter test --no-pub --reporter expanded --concurrency 2 \
+            test/data_wipe_routine_lifecycle_test.dart \
+            test/dashboard/proactive_banner_review_regression_test.dart \
+            test/dashboard/proactive_banner_card_test.dart \
+            test/intelligence/routine_model_test.dart \
+            test/intelligence/initiative_source_test.dart \
+            test/intelligence/initiative_clock_regression_test.dart \
+            test/intelligence/room_attention_policy_test.dart
       - name: Related privacy and encrypted-memory contracts
         run: |
           flutter test --no-pub --reporter expanded --concurrency 2 \
@@ -68,6 +85,15 @@ jobs:
         run: |
           flutter analyze --fatal-infos \
             lib/src/core/data_wipe_service.dart \
+            lib/dashboard/proactive_banner_service.dart \
+            lib/dashboard/widgets/proactive_banner_card.dart \
+            lib/intelligence/routine_model.dart \
+            lib/intelligence/initiative_source.dart \
+            test/data_wipe_routine_lifecycle_test.dart \
+            test/dashboard/proactive_banner_review_regression_test.dart \
+            test/dashboard/proactive_banner_card_test.dart \
+            test/intelligence/routine_model_test.dart \
+            test/intelligence/initiative_clock_regression_test.dart \
             lib/services/neura_provider_credentials.dart \
             lib/services/neura_model_credentials.dart \
             lib/services/scheduled_backup_settings.dart \
@@ -82,6 +108,15 @@ jobs:
         run: |
           dart format --output=none --set-exit-if-changed \
             lib/src/core/data_wipe_service.dart \
+            lib/dashboard/proactive_banner_service.dart \
+            lib/dashboard/widgets/proactive_banner_card.dart \
+            lib/intelligence/routine_model.dart \
+            lib/intelligence/initiative_source.dart \
+            test/data_wipe_routine_lifecycle_test.dart \
+            test/dashboard/proactive_banner_review_regression_test.dart \
+            test/dashboard/proactive_banner_card_test.dart \
+            test/intelligence/routine_model_test.dart \
+            test/intelligence/initiative_clock_regression_test.dart \
             lib/services/neura_provider_credentials.dart \
             lib/services/neura_model_credentials.dart \
             lib/services/scheduled_backup_settings.dart \
