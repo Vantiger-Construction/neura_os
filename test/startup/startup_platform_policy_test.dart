@@ -90,6 +90,16 @@ void main() {
           platform: TargetPlatform.windows,
           isWeb: false,
           safeMode: false,
+          hasProviderCredential: true,
+          explicitlyEnabled: true,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldInitializeNativeNeuraSwarm(
+          platform: TargetPlatform.windows,
+          isWeb: false,
+          safeMode: false,
           hasProviderCredential: false,
           explicitlyEnabled: true,
         ),
