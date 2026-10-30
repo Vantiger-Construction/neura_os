@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -25,6 +26,9 @@ class _NeuraTaskTransferScreenState extends State<NeuraTaskTransferScreen>
   bool _keyCopied = false;
   String? _status;
   int _epoch = 0;
+  Object? _pickerRequest;
+  bool _awaitingPicker = false;
+  Completer<void>? _pickerResumed;
 
   @override
   void initState() {
@@ -33,6 +37,7 @@ class _NeuraTaskTransferScreenState extends State<NeuraTaskTransferScreen>
     WidgetsBinding.instance.addObserver(this);
     SafeBoot.instance.safeMode.addListener(_onSafety);
     SafeBoot.instance.restartRequired.addListener(_onSafety);
+    _onSafety();
   }
 
   void _onSafety() {
@@ -42,8 +47,16 @@ class _NeuraTaskTransferScreenState extends State<NeuraTaskTransferScreen>
     }
   }
 
-  void _clear() {
+  void _invalidatePicker() {
+    _pickerRequest = null;
+    _awaitingPicker = false;
+    _pickerResumed?.complete();
+    _pickerResumed = null;
+  }
+
+  void _clear({bool preservePicker = false}) {
     _epoch++;
+    if (!preservePicker) _invalidatePicker();
     _packet.clear();
     _key.clear();
     _sealed = null;
@@ -60,10 +73,30 @@ class _NeuraTaskTransferScreenState extends State<NeuraTaskTransferScreen>
       mounted &&
       epoch == _epoch &&
       !SafeBoot.instance.safeMode.value &&
+      !SafeBoot.instance.restartRequired.value &&
+      (WidgetsBinding.instance.lifecycleState == null ||
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed);
+
+  bool _pickerCurrent(Object request) =>
+      mounted &&
+      identical(request, _pickerRequest) &&
+      !SafeBoot.instance.safeMode.value &&
       !SafeBoot.instance.restartRequired.value;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) _clear();
+    if (state == AppLifecycleState.resumed) {
+      _awaitingPicker = false;
+      _pickerResumed?.complete();
+      _pickerResumed = null;
+    } else {
+      // The OS picker can pause Neura. Always clear secrets and invalidate
+      // ordinary work; only the pending ciphertext selection may cross this
+      // boundary. Explicit clear, edits, safety, recovery and detach revoke it.
+      _clear(
+          preservePicker:
+              _awaitingPicker && state != AppLifecycleState.detached);
+    }
   }
 
   Future<void> _seal() async {
@@ -128,8 +161,9 @@ class _NeuraTaskTransferScreenState extends State<NeuraTaskTransferScreen>
   }
 
   Future<void> _savePacket() async {
+    final epoch = _epoch;
     final sealed = _sealed;
-    if (!_keyCopied || sealed == null || !_current(_epoch)) return;
+    if (!_keyCopied || sealed == null || !_current(epoch)) return;
     // Explicit save may complete in the OS picker after focus changes. Only
     // ciphertext is handed to the picker; plaintext and key are never files.
     try {
@@ -139,25 +173,46 @@ class _NeuraTaskTransferScreenState extends State<NeuraTaskTransferScreen>
           allowedExtensions: ['neuratask'],
           bytes: Uint8List.fromList(utf8.encode(sealed.packet)));
     } catch (_) {
-      if (mounted) setState(() => _status = 'The packet could not be saved.');
+      if (_current(epoch)) {
+        setState(() => _status = 'The packet could not be saved.');
+      }
     }
   }
 
   Future<void> _loadPacket() async {
     if (!_current(_epoch) || _busy) return;
+    _clear();
+    final request = Object();
+    _pickerRequest = request;
+    _awaitingPicker = true;
+    int? readEpoch;
+    setState(() {
+      _busy = true;
+      _status = null;
+    });
     try {
       final result = await FilePicker.platform.pickFiles(
           type: FileType.custom,
           allowedExtensions: ['neuratask'],
           withData: false,
           withReadStream: true);
-      if (result == null ||
+      if (result == null || !_pickerCurrent(request)) return;
+      // Android may deliver the selection before Flutter regains focus. Do not
+      // read it in the background or carry a transfer key through the picker.
+      if (WidgetsBinding.instance.lifecycleState != null &&
+          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+        final resumed = Completer<void>();
+        _pickerResumed = resumed;
+        await resumed.future;
+      }
+      if (!_pickerCurrent(request) ||
           !_current(_epoch) ||
-          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed &&
-              WidgetsBinding.instance.lifecycleState != null) {
+          ModalRoute.of(context)?.isCurrent != true) {
         return;
       }
+      _awaitingPicker = false;
       final epoch = _epoch;
+      readEpoch = epoch;
       final file = result.files.single;
       if (file.size > NeuraTaskTransfer.maxPacketCharacters ||
           file.readStream == null) {
@@ -165,29 +220,34 @@ class _NeuraTaskTransferScreenState extends State<NeuraTaskTransferScreen>
       }
       final bytes = <int>[];
       await for (final chunk in file.readStream!) {
-        if (!_current(epoch)) return;
+        if (!_pickerCurrent(request) || !_current(epoch)) return;
         if (bytes.length + chunk.length >
             NeuraTaskTransfer.maxPacketCharacters) {
           throw const FormatException('Packet too large.');
         }
         bytes.addAll(chunk);
       }
-      if (_current(epoch)) {
+      if (_pickerCurrent(request) && _current(epoch)) {
         setState(() {
           _packet.text = utf8.decode(bytes);
           _preview = null;
+          _status = null;
         });
       }
     } catch (_) {
-      if (mounted) {
+      if (_pickerCurrent(request) && _current(readEpoch ?? _epoch)) {
         setState(() => _status = 'Could not read the encrypted packet.');
       }
+    } finally {
+      if (identical(request, _pickerRequest)) _invalidatePicker();
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
   void dispose() {
     _epoch++;
+    _invalidatePicker();
     WidgetsBinding.instance.removeObserver(this);
     SafeBoot.instance.safeMode.removeListener(_onSafety);
     SafeBoot.instance.restartRequired.removeListener(_onSafety);
@@ -255,6 +315,7 @@ class _NeuraTaskTransferScreenState extends State<NeuraTaskTransferScreen>
                 const InputDecoration(labelText: 'Encrypted task packet'),
             onChanged: (_) => setState(() {
                   _epoch++;
+                  _invalidatePicker();
                   _preview = null;
                 })),
         TextField(
@@ -265,6 +326,7 @@ class _NeuraTaskTransferScreenState extends State<NeuraTaskTransferScreen>
                 const InputDecoration(labelText: 'Separate transfer key'),
             onChanged: (_) => setState(() {
                   _epoch++;
+                  _invalidatePicker();
                   _preview = null;
                 })),
         FilledButton(

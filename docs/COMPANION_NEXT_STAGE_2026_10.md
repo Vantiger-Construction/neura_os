@@ -59,6 +59,8 @@ your chosen channel. On the receiving device, copy the key before opening Neura,
 load the packet and paste the key without leaving the transfer screen. System
 clipboards may synchronize. Keep the key separate from the packet when sharing.
 An explicit file save hands only ciphertext to the operating-system picker.
+Loading a file clears the previous transfer, including its key, before opening
+the picker. Paste the receiving key **after** the selected packet appears.
 
 Import produces a preview, never execution or inherited approval. Progress is a
 claim from the sender for the user to review. There is no automatic pairing,
@@ -67,6 +69,25 @@ Screens clear plaintext and key fields on background/safety/recovery; this is no
 a guarantee of zeroized process memory. Existing exported files/clipboard copies
 cannot be revoked by an in-app wipe; expiry is checked by the importing app and
 does not erase a packet held by someone who has its key.
+
+The import picker has a separate, revocable request identity. Its first OS
+lifecycle round trip still clears every transfer field and invalidates ordinary
+work. A selection delivered before `resumed` waits without reading its stream;
+only the current request may load ciphertext on the current, foreground route.
+Clear, edits, Safe Mode, recovery, detach, disposal, or a second background trip
+after the first resume invalidate that request. Backgrounding during the file
+read also invalidates it. Only one picker request may be pending.
+
+`flutter test test/planning/neura_task_transfer_picker_test.dart` uses a controlled
+picker and legal Flutter lifecycle sequences. It covers both return orderings,
+cancellation/retry, revocation and stale errors, bounded streams, malformed files,
+wrong keys, expiry and explicit planner approval. These simulations do not
+establish Android's actual picker event order or successful device-to-device use.
+On the Samsung Android 16 test phone, verify selection/cancellation, Home and
+return, Safe Mode/recovery, and rejection of expired/wrong-key packets. Separately
+transfer an approved synthetic plan Windows → Android and Android → Windows;
+confirm progress stays a preview until fresh approval. Record the app SHA,
+Android version and observed lifecycle order without recording packet keys.
 
 ## Motion and speech
 
