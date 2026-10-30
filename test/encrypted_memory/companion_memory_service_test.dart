@@ -275,6 +275,39 @@ void main() {
           }));
 
   test(
+      'concurrent note saves cannot exceed the shared 100-record limit',
+      () => f.disk.run(() async {
+            for (var i = 0; i < 99; i++) {
+              await f.seed('Synthetic note $i');
+            }
+            final other = f.owner();
+            Future<bool> save(
+                CompanionMemoryService owner, String value) async {
+              final grant = owner.authorize(CompanionMemoryUse.remember,
+                  directUserGesture: true);
+              try {
+                await owner.remember(grant, value);
+                return true;
+              } on EncryptedMemoryPolicyViolation {
+                return false;
+              } finally {
+                grant.revoke();
+              }
+            }
+
+            final results = await Future.wait([
+              save(f.memory, 'First concurrent note'),
+              save(other, 'Second concurrent note')
+            ]);
+            expect(results.where((ok) => ok).length, 1);
+            final read = f.grant(CompanionMemoryUse.review);
+            expect(
+                (await f.memory.recall(read, use: CompanionMemoryUse.review))
+                    .length,
+                100);
+          }));
+
+  test(
       'scoped clear revokes prompt access and preserves local journals',
       () => f.disk.run(() async {
             await f.seed();

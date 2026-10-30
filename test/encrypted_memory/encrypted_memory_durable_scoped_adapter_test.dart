@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:neuro_companion/core/memory/memory_crypto.dart';
 import 'package:neuro_companion/encrypted_memory/encrypted_memory_contracts.dart';
 import 'package:neuro_companion/encrypted_memory/encrypted_memory_durable_scoped_adapter.dart';
 import 'package:neuro_companion/encrypted_memory/encrypted_memory_session_adapter.dart';
@@ -19,6 +20,7 @@ void main() {
     'plugins.it_nomads.com/flutter_secure_storage',
   );
   final secureValues = <String, String>{};
+  var refuseKeyWrites = false;
   final issuedAt = DateTime.utc(2026, 10, 11, 12);
   const context = NeuraSafetyContext(directUserGesture: true);
   late _FakeDurableCrypto crypto;
@@ -37,6 +39,9 @@ void main() {
         case 'read':
           return secureValues[key];
         case 'write':
+          if (refuseKeyWrites) {
+            throw PlatformException(code: 'synthetic-locked-store');
+          }
           secureValues[key] = args['value'] as String;
           return null;
         case 'delete':
@@ -55,6 +60,7 @@ void main() {
   });
 
   setUp(() async {
+    refuseKeyWrites = false;
     secureValues.clear();
     await NeuraPrefsCache.prefs.clear();
     EncryptedMemoryDurableScopedAdapter.debugResetStorageRegistryForTesting();
@@ -141,6 +147,121 @@ void main() {
       nowUtc: issuedAt.add(const Duration(seconds: 2)),
     );
   }
+
+  test('durable authority refuses an unmigrated preference-backed key',
+      () async {
+    await MemoryCrypto.clearDeviceKey();
+    MemoryCrypto.resumeAfterDataWipe();
+    final seed = base64UrlEncode(List<int>.filled(32, 7));
+    await NeuraPrefsCache.prefs.setString('neura.memoryGraph.seed.v1', seed);
+    refuseKeyWrites = true;
+    try {
+      final legacy = await MemoryCrypto.demo();
+      final blob = await legacy.encryptJson({'journal': 'synthetic recovery'});
+      expect(await legacy.decryptJson(blob), {'journal': 'synthetic recovery'});
+      expect(() => MemoryCryptoDurableAdapter(legacy).authorityToken,
+          throwsStateError);
+      final subject = EncryptedMemoryDurableScopedAdapter(
+        safetyPolicy: safety,
+        keyLifecycle: keys,
+        utcNow: () => issuedAt.add(const Duration(seconds: 30)),
+      );
+      await expectLater(
+          subject.remember(
+            lease: lease('legacy', EncryptedMemoryOperation.remember),
+            safetyContext: context,
+            record: record(),
+            expectedKeyGeneration: keys.generation,
+            nowUtc: issuedAt,
+          ),
+          throwsStateError);
+      expect(
+          NeuraPrefsCache.prefs.containsKey(
+              EncryptedMemoryDurableScopedAdapter.defaultStorageKey),
+          false);
+      expect(
+          NeuraPrefsCache.prefs.getString('neura.memoryGraph.seed.v1'), seed);
+    } finally {
+      refuseKeyWrites = false;
+      await MemoryCrypto.clearDeviceKey();
+      MemoryCrypto.resumeAfterDataWipe();
+    }
+  });
+
+  for (final rejection in ['safe mode', 'crypto failure', 'expired consent']) {
+    test('rejected $rejection first owner cannot pin the durable registry',
+        () async {
+      final rejectedKeys = EncryptedMemoryKeyLifecycle()
+        ..provisionVerifiedKey();
+      final rejected = EncryptedMemoryDurableScopedAdapter(
+        safetyPolicy: NeuraLivingSafetyPolicy(
+            safeModeReader: () => rejection == 'safe mode'),
+        keyLifecycle: rejectedKeys,
+        loadCrypto: () async {
+          if (rejection == 'crypto failure') {
+            throw StateError('Synthetic unavailable crypto');
+          }
+          return crypto;
+        },
+        utcNow: () => issuedAt.add(rejection == 'expired consent'
+            ? const Duration(minutes: 6)
+            : const Duration(seconds: 30)),
+      );
+      await expectLater(
+          rejected.remember(
+            lease: lease('rejected', EncryptedMemoryOperation.remember),
+            safetyContext: context,
+            record: record(),
+            expectedKeyGeneration: rejectedKeys.generation,
+            nowUtc: issuedAt,
+          ),
+          throwsA(
+              anyOf(isA<StateError>(), isA<EncryptedMemoryPolicyViolation>())));
+      final legitimate = adapter();
+      await legitimate.remember(
+        lease: lease('legitimate', EncryptedMemoryOperation.remember),
+        safetyContext: context,
+        record: record(),
+        expectedKeyGeneration: keys.generation,
+        nowUtc: issuedAt,
+      );
+      expect(
+          recall(legitimate, lease('read', EncryptedMemoryOperation.recall))
+              ?.value,
+          'Prefers concise text.');
+    });
+  }
+
+  test('record limit is checked inside the shared serialized write', () async {
+    final first = adapter();
+    final second = adapter();
+    Future<void> save(EncryptedMemoryDurableScopedAdapter subject, String id) =>
+        subject.remember(
+          lease: lease(id, EncryptedMemoryOperation.remember),
+          safetyContext: context,
+          record: record(id: id),
+          expectedKeyGeneration: keys.generation,
+          nowUtc: issuedAt,
+          recordLimit: 1,
+        );
+    final admitted = save(first, 'first');
+    final denied = expectLater(
+        save(second, 'second'),
+        throwsA(isA<EncryptedMemoryPolicyViolation>()
+            .having((e) => e.code, 'code', 'durable_record_limit')));
+    await admitted;
+    await denied;
+    expect(first.recordCount, 1);
+    expect(
+        recall(first, lease('read', EncryptedMemoryOperation.recall),
+                recordId: 'first')
+            ?.value,
+        'Prefers concise text.');
+    expect(
+        recall(first, lease('missing', EncryptedMemoryOperation.recall),
+            recordId: 'second'),
+        isNull);
+  });
 
   test('remember persists encrypted-only and restores after restart', () async {
     final first = adapter();
