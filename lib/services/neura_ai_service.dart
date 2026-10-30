@@ -244,14 +244,6 @@ class NeuraAiService {
         return;
       }
       final messages = history.map((t) => t.toJson()).toList();
-      if (useMemory) {
-        final context = await NeuraPromptBuilder.instance
-            .buildCompanionNoteContext(memoryPermission!);
-        cancel.throwIfCancelled();
-        if (context.isNotEmpty) {
-          messages.add({'role': 'user', 'content': context});
-        }
-      }
       if (selectedContext != null) {
         messages.add({'role': 'user', 'content': selectedContext.toMessage()});
       }
