@@ -204,8 +204,7 @@ class NeuraAiService {
         agentId: agentId,
         audience: audience,
         module: roomId,
-        includePersistentMemory: useMemory,
-        memoryPermission: memoryPermission,
+        includePersistentMemory: false,
         includeCurrentMood: !localOllama,
         conversationMode: conversationMode,
       );
@@ -244,6 +243,14 @@ class NeuraAiService {
         return;
       }
       final messages = history.map((t) => t.toJson()).toList();
+      if (useMemory) {
+        final context = await NeuraPromptBuilder.instance
+            .buildCompanionNoteContext(memoryPermission!);
+        cancel.throwIfCancelled();
+        if (context.isNotEmpty) {
+          messages.add({'role': 'user', 'content': context});
+        }
+      }
       if (selectedContext != null) {
         messages.add({'role': 'user', 'content': selectedContext.toMessage()});
       }

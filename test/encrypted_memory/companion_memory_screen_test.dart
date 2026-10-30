@@ -19,6 +19,11 @@ void main() {
     });
     await tester
         .pumpWidget(MaterialApp(home: MemoryScreen(memoryService: f.memory)));
+    expect(
+        tester
+            .widgetList<TextField>(find.byType(TextField))
+            .every((field) => !field.enableIMEPersonalizedLearning),
+        true);
     expect(f.crypto.decryptions, 0);
     expect(find.text('Synthetic companion note'), findsNothing);
     await tester.runAsync(() async {

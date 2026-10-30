@@ -252,6 +252,7 @@ final class CompanionMemoryService extends ChangeNotifier
       ),
       expectedKeyGeneration: keyLifecycle.generation,
       nowUtc: now,
+      recordLimit: 100,
     );
     _validate(permission, CompanionMemoryUse.remember, unused: false);
   }

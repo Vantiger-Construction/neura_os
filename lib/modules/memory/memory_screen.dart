@@ -218,6 +218,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
             const SizedBox(height: 12),
             TextField(
               controller: _note,
+              enableIMEPersonalizedLearning: false,
               maxLength: 1000,
               enabled: !_busy,
               decoration: const InputDecoration(
@@ -238,6 +239,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
             const SizedBox(height: 8),
             TextField(
               controller: _search,
+              enableIMEPersonalizedLearning: false,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 hintText: 'Search reviewed notes…',
