@@ -1,10 +1,13 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager_plus/window_manager_plus.dart';
+
+import '../avatar/motion/neura_animated_body.dart';
+import '../avatar/motion/neura_gesture.dart';
+import '../avatar/motion/neura_motion_engine.dart';
 
 const double _kWindowWidth = 200;
 const double _kWindowHeight = 400;
@@ -37,13 +40,40 @@ class _MascotHome extends StatefulWidget {
 class _MascotHomeState extends State<_MascotHome>
     with WindowListener, TickerProviderStateMixin {
   WindowManagerPlus get _wm => WindowManagerPlus.current;
-  final _rand = math.Random();
 
-  // Continuous idle cycle: breathing, sway and bob are all derived from this
-  // single phase so they never need separate controllers.
-  late final AnimationController _life =
-      AnimationController(vsync: this, duration: const Duration(seconds: 9))
-        ..repeat();
+  // Her body in this isolate: the same spring engine the main app uses, fed
+  // by MascotEventBridge. Replaces the old fixed sine sway + random "notice".
+  final NeuraMotionEngine _body = NeuraMotionEngine()..setFrozen(true);
+  bool _bodyActive = false;
+  bool _reduceMotion = false;
+  bool get _mayAnimate => _bodyActive && !_body.isStill && !_reduceMotion;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = MediaQuery.disableAnimationsOf(context);
+    if (!_mayAnimate) _stopVisualMotion();
+  }
+
+  void _stopVisualMotion() {
+    _thinking = _talking = _listening = _error = false;
+    _errorTimer?.cancel();
+    _pulseController.stop();
+    _pulseController.value = 0;
+    _entrance.stop();
+    _entrance.value = 1;
+  }
+
+  final Stopwatch _bodyClock = Stopwatch()..start();
+  Duration _bodyLast = Duration.zero;
+
+  NeuraPose _sampleBody() {
+    final now = _bodyClock.elapsed;
+    final dt = (now - _bodyLast).inMicroseconds / 1e6;
+    if (dt < 0.002) return _body.pose;
+    _bodyLast = now;
+    return _body.tick(dt);
+  }
 
   // One-shot "wakes up" the first time the window appears.
   late final AnimationController _entrance = AnimationController(
@@ -51,19 +81,14 @@ class _MascotHomeState extends State<_MascotHome>
     duration: const Duration(milliseconds: 900),
   );
 
-  // One-shot "notices you" bounce, replayed on a random idle cadence and on tap.
-  late final AnimationController _notice = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 650),
-  );
-
-  Timer? _idleGestureTimer;
-
   // Driven by events forwarded from the main engine via
   // MascotEventBridge/MascotWindowService.sendEvent -- see onEventFromWindow
   // below. Best-effort/visual-only: never treated as authoritative state.
   bool _thinking = false;
   bool _talking = false;
+  bool _listening = false;
+  bool _error = false;
+  Timer? _errorTimer;
   double _mood = 0.0; // -1..1
   double _energy = 0.4; // 0..1
 
@@ -77,22 +102,21 @@ class _MascotHomeState extends State<_MascotHome>
     super.initState();
     _wm.addListener(this);
     _setup();
-    _entrance.forward();
-    _scheduleIdleGesture();
-  }
-
-  void _scheduleIdleGesture() {
-    _idleGestureTimer = Timer(Duration(seconds: 7 + _rand.nextInt(9)), () {
-      if (!mounted) return;
-      _playNotice();
-      _scheduleIdleGesture();
+    _entrance.forward().then((_) {
+      if (mounted) _body.gesture(NeuraGesture.wave, intensity: 0.6);
     });
   }
 
-  void _playNotice() {
-    _notice.forward(from: 0).then((_) {
-      if (mounted) _notice.reverse();
-    });
+  void _syncBodyPhase() {
+    _body.setPhase(_error
+        ? NeuraBodyPhase.error
+        : _listening
+            ? NeuraBodyPhase.listening
+            : _talking
+                ? NeuraBodyPhase.speaking
+                : _thinking
+                    ? NeuraBodyPhase.thinking
+                    : NeuraBodyPhase.idle);
   }
 
   @override
@@ -103,6 +127,7 @@ class _MascotHomeState extends State<_MascotHome>
       final args = Map<String, dynamic>.from(arguments as Map);
       if (args['v'] != 1) return null; // unknown payload version, ignore
       final kind = args['kind'] as String?;
+      if (kind != 'body' && !_mayAnimate) return null;
       switch (kind) {
         case 'thinking':
           _setThinking(args['on'] as bool? ?? false);
@@ -119,9 +144,52 @@ class _MascotHomeState extends State<_MascotHome>
                 .toDouble()
                 .clamp(0.0, 1.0);
           });
+          _body.setMood(_mood, _energy);
           break;
         case 'pulse':
           _firePulse();
+          if (args['wave'] == true) _body.gesture(NeuraGesture.wave);
+          break;
+        case 'listening':
+          _listening = args['on'] as bool? ?? false;
+          _syncBodyPhase();
+          break;
+        case 'error':
+          _error = true;
+          _syncBodyPhase();
+          _errorTimer?.cancel();
+          _errorTimer = Timer(const Duration(seconds: 2), () {
+            _error = false;
+            _syncBodyPhase();
+          });
+          break;
+        case 'gesture':
+          final g = NeuraGesture.fromWire(args['gesture']);
+          final k = args['intensity'];
+          if (g != null) {
+            _body.gesture(g,
+                intensity: k is num && k.isFinite ? k.toDouble() : 0.7);
+          }
+          break;
+        case 'mouth':
+          final open = args['open'];
+          if (open is num) _body.setMouthOpen(open.toDouble());
+          break;
+        case 'body':
+          _bodyActive = args['active'] == true && args['safe'] == false;
+          _body.setFrozen(!_bodyActive);
+          _body.setMotionLevel(switch (args['motion']) {
+            'still' => NeuraBodyMotionLevel.still,
+            'subtle' => NeuraBodyMotionLevel.subtle,
+            'expressive' => NeuraBodyMotionLevel.expressive,
+            _ => NeuraBodyMotionLevel.still,
+          });
+          _body.setStance(NeuraBodyStance.values.firstWhere(
+            (v) => v.name == args['stance'],
+            orElse: () => NeuraBodyStance.welcoming,
+          ));
+          if (!_mayAnimate) _stopVisualMotion();
+          if (mounted) setState(() {});
           break;
       }
     } catch (_) {
@@ -133,6 +201,7 @@ class _MascotHomeState extends State<_MascotHome>
   void _setThinking(bool value) {
     if (!mounted || _thinking == value) return;
     setState(() => _thinking = value);
+    _syncBodyPhase();
     if (value) {
       _pulseController.repeat(reverse: true);
     } else if (!_talking) {
@@ -145,6 +214,7 @@ class _MascotHomeState extends State<_MascotHome>
   void _setTalking(bool value) {
     if (!mounted || _talking == value) return;
     setState(() => _talking = value);
+    _syncBodyPhase();
     if (value) {
       _pulseController.repeat(reverse: true);
     } else if (!_thinking) {
@@ -206,11 +276,9 @@ class _MascotHomeState extends State<_MascotHome>
 
   @override
   void dispose() {
-    _idleGestureTimer?.cancel();
+    _errorTimer?.cancel();
     _wm.removeListener(this);
-    _life.dispose();
     _entrance.dispose();
-    _notice.dispose();
     _pulseController.dispose();
     super.dispose();
   }
@@ -242,40 +310,29 @@ class _MascotHomeState extends State<_MascotHome>
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onPanStart: (_) => _wm.startDragging(),
-        onTap: _playNotice,
+        onTap: () => _body.gesture(NeuraGesture.bounce, intensity: 0.8),
         child: Padding(
-          // Headroom so the breathing/notice scale-up never clips against
-          // the window edge (the OS window itself doesn't resize).
+          // Headroom so gestures and breathing never clip against the window
+          // edge (the OS window itself doesn't resize).
           padding: const EdgeInsets.fromLTRB(18, 26, 18, 12),
           child: AnimatedBuilder(
-            animation:
-                Listenable.merge([_life, _entrance, _notice, _pulseController]),
-            builder: (context, _) {
-              final t = _life.value * 2 * math.pi;
-              final breathe = 1.0 + 0.02 * math.sin(t);
-              // Different frequency multipliers per axis so the motion
-              // doesn't repeat in lockstep and reads as organic, not robotic.
-              final swayDeg = 1.4 * math.sin(t * 0.5 + 1.0);
-              final bobY = 3.5 * math.sin(t * 0.7);
-              final idleGlowAlpha =
-                  0.05 + 0.035 * (0.5 + 0.5 * math.sin(t * 0.9));
-
-              final noticeT = Curves.easeOutBack.transform(_notice.value);
-              final noticeScale = 1.0 + 0.1 * math.sin(noticeT * math.pi);
-              final noticeTiltDeg = 6.0 * math.sin(noticeT * math.pi);
-
+            animation: Listenable.merge([_entrance, _pulseController]),
+            child: NeuraAnimatedBody(
+              sampler: _sampleBody,
+              respectAppLifecycle: false,
+              animate: _bodyActive && !_body.isStill,
+              showAura: false, // the mascot keeps its own mood glow below
+              child: RepaintBoundary(child: _buildSprite(context)),
+            ),
+            builder: (context, body) {
               final entranceT = Curves.easeOutCubic.transform(_entrance.value);
-
               return Opacity(
                 opacity: entranceT,
                 child: Transform.translate(
-                  offset: Offset(0, bobY + (1 - entranceT) * 24),
-                  child: Transform.rotate(
-                    angle: (swayDeg + noticeTiltDeg) * math.pi / 180,
-                    child: Transform.scale(
-                      scale: breathe * noticeScale * (0.92 + 0.08 * entranceT),
-                      child: _buildBody(context, idleGlowAlpha),
-                    ),
+                  offset: Offset(0, (1 - entranceT) * 24),
+                  child: Transform.scale(
+                    scale: 0.92 + 0.08 * entranceT,
+                    child: _buildGlow(body!),
                   ),
                 ),
               );
@@ -286,11 +343,12 @@ class _MascotHomeState extends State<_MascotHome>
     );
   }
 
-  Widget _buildBody(BuildContext context, double idleGlowAlpha) {
-    final active = _thinking || _talking;
+  Widget _buildGlow(Widget child) {
+    final active = _thinking || _talking || _listening;
     final pt = _pulseController.value;
     final pulseGlowStrength =
         active ? (0.25 + 0.35 * pt) * (0.5 + _energy) : 0.0;
+    final idleGlowAlpha = 0.05 + 0.035 * _body.pose.glow;
     return DecoratedBox(
       decoration: BoxDecoration(
         boxShadow: [
@@ -308,24 +366,21 @@ class _MascotHomeState extends State<_MascotHome>
             ),
         ],
       ),
-      // The sprite never changes between frames; only the glow above it does.
-      // Give it its own layer so it's composited, not re-rasterized, as the
-      // glow alpha animates.
-      child: RepaintBoundary(
-        child: Image.asset(
-          'assets/images/neura_fullbody.png',
-          fit: BoxFit.contain,
-          cacheWidth:
-              (_kWindowWidth * MediaQuery.devicePixelRatioOf(context)).round(),
-          cacheHeight:
-              (_kWindowHeight * MediaQuery.devicePixelRatioOf(context)).round(),
-          errorBuilder: (_, __, ___) => const Center(
-            child: Text(
-              'NEURA',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
-            ),
-          ),
+      child: child,
+    );
+  }
+
+  Widget _buildSprite(BuildContext context) {
+    // Height-only decode preserves the art's aspect ratio.
+    return Image.asset(
+      'assets/images/neura_fullbody.png',
+      fit: BoxFit.contain,
+      cacheHeight:
+          (_kWindowHeight * MediaQuery.devicePixelRatioOf(context)).round(),
+      errorBuilder: (_, __, ___) => const Center(
+        child: Text(
+          'NEURA',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
         ),
       ),
     );

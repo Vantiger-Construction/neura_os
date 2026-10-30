@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:ui';
 
 import 'package:uuid/uuid.dart';
 
+import '../encrypted_memory/companion_memory_service.dart';
 import '../after_storm/models/storm_event.dart';
 import '../weekly/services/weekly_snapshot_bridge.dart';
 import '../guardrails/guardrails.dart';
@@ -31,9 +31,13 @@ import 'neura_selected_context.dart';
 import 'neura_model_types.dart';
 import 'neura_provider_credentials.dart';
 import 'neura_ollama_chat.dart';
+import 'neura_offline_budget.dart';
+import 'neura_companion_presence.dart';
+import '../reference/neura_reference_shelf.dart';
 
 typedef NeuraToolCommandHandler = FutureOr<bool> Function(
-    NeuraToolCommand command);
+  NeuraToolCommand command,
+);
 
 /// One turn in the conversation, in the shape the Messages API expects.
 /// A user turn may optionally carry an image (base64-encoded) for vision.
@@ -81,18 +85,30 @@ class NeuraChatTurn {
 /// - fallback only before any streamed output, with separate approval
 /// - process-local health diagnostics
 class NeuraAiService {
-  NeuraAiService._();
+  NeuraAiService._()
+      : _modelRouter = NeuraSecureModelRouter(),
+        _configuredReader = null;
+  NeuraAiService.forTesting({
+    required NeuraSecureModelRouter modelRouter,
+    required bool Function() configuredReader,
+    NeuraOllamaChat? ollama,
+  })  : _modelRouter = modelRouter,
+        _configuredReader = configuredReader,
+        _ollama = ollama;
   static final NeuraAiService instance = NeuraAiService._();
 
   static const _maxToolRounds = 4;
 
   final NeuraLlmDiagnostics _diagnostics = NeuraLlmDiagnostics.instance;
-  final NeuraSecureModelRouter _modelRouter = NeuraSecureModelRouter();
+  final NeuraSecureModelRouter _modelRouter;
+  final bool Function()? _configuredReader;
   NeuraGenerationCancel? _activeCancel;
   String? _activeGenerationId;
   NeuraOllamaChat? _ollama;
 
   bool get isConfigured {
+    final configuredReader = _configuredReader;
+    if (configuredReader != null) return configuredReader();
     if (NeuraProviderCredentials.instance.hasKey) return true;
     return NeuraModelCredentials.instance.configured.value.isNotEmpty;
   }
@@ -130,13 +146,25 @@ class NeuraAiService {
     NeuraCloudApprovalHandler? requestCloudApproval,
     NeuraSelectedContext? selectedContext,
     bool includePermittedMemory = false,
+    CompanionMemoryPermission? memoryPermission,
     bool historyIncludesPrivateContext = false,
     NeuraConversationMode conversationMode = NeuraConversationMode.balanced,
     bool localOllama = false,
+    NeuraOfflineBudget offlineBudget = NeuraOfflineBudget.standard,
+    String threadContext = '',
+    NeuraReferenceGrant? offlineReference,
   }) async* {
     _throwIfCloudBlocked();
     if (!localOllama && !isConfigured) {
       throw StateError('Configure the AI provider key in Settings.');
+    }
+    if (offlineReference != null &&
+        (!localOllama ||
+            history.length != 1 ||
+            !history.single.isUser ||
+            history.single.text != offlineReference.question ||
+            threadContext.isNotEmpty)) {
+      throw StateError('References require a dedicated local question.');
     }
     if (localOllama &&
         (selectedContext != null ||
@@ -144,7 +172,8 @@ class NeuraAiService {
             historyIncludesPrivateContext ||
             history.any((t) => t.imageBase64 != null))) {
       throw StateError(
-          'Offline Ollama currently supports visible text chat only.');
+        'Offline Ollama currently supports visible text chat only.',
+      );
     }
 
     final id = generationId ?? const Uuid().v4();
@@ -154,11 +183,44 @@ class NeuraAiService {
     cancelActiveGeneration();
     _activeCancel = cancel;
     _activeGenerationId = id;
+    final thinking = NeuraCompanionPresence.instance.acquireThinking();
+    unawaited(cancel.whenCancelled.then((_) => thinking?.release()));
 
     final policy = NeuraChatPolicy.forRoom(roomId);
     final advertisedTools = NeuraChatPolicy.advertisedTools(policy);
+    final useMemory = policy.persistMemory && includePermittedMemory;
+    void checkReference() {
+      try {
+        offlineReference?.requireCurrent();
+      } catch (_) {
+        cancel.cancel();
+      }
+    }
+
+    if (offlineReference != null) {
+      offlineReference.shelf.addListener(checkReference);
+      unawaited(cancel.whenCancelled.then((_) => offlineReference.revoke()));
+    }
+    void checkMemory() {
+      if (!useMemory || memoryPermission == null) return;
+      try {
+        memoryPermission.requireCurrent();
+      } catch (_) {
+        cancel.cancel();
+      }
+    }
+
+    if (useMemory && memoryPermission != null) {
+      memoryPermission.service.addListener(checkMemory);
+      unawaited(cancel.whenCancelled.then((_) => memoryPermission.revoke()));
+    }
 
     try {
+      if (useMemory && memoryPermission == null) {
+        throw StateError(
+          'Authorize companion-note recall for this reply first.',
+        );
+      }
       final blocked = await _checkGuardrails(history);
       cancel.throwIfCancelled();
       if (blocked != null) {
@@ -167,45 +229,52 @@ class NeuraAiService {
       }
       final audience = NeuraAudienceService.instance.currentAudience;
 
-      final useMemory = policy.persistMemory && includePermittedMemory;
       final systemPrompt = await NeuraPromptBuilder.instance.buildSystemMessage(
         agentId: agentId,
         audience: audience,
         module: roomId,
         includePersistentMemory: useMemory,
+        memoryPermission: memoryPermission,
         includeCurrentMood: !localOllama,
         conversationMode: conversationMode,
       );
       cancel.throwIfCancelled();
       if (localOllama) {
-        // No tools, approved sources, memory, swarm review or cloud routing.
+        // No tools, persistent memory, swarm review or cloud routing. A
+        // dedicated reference grant permits only its displayed passages.
         // The standard charter, room framing, audience and input guardrails
         // still apply. Offline chat never falls through to the cloud router.
-        final recent = history.length > 8
-            ? history.sublist(history.length - 8)
-            : List<NeuraChatTurn>.of(history);
-        // Trim older whole turns before crossing the platform channel; Rust
-        // independently revalidates the same byte/count caps.
-        while (recent.length > 1 &&
-            recent.fold<int>(
-                    0, (sum, turn) => sum + utf8.encode(turn.text).length) >
-                1500) {
-          recent.removeAt(0);
-        }
+        checkReference();
+        cancel.throwIfCancelled();
+        final localMessages = offlineReference == null
+            ? history.map((turn) => turn.toJson()).toList()
+            : <Map<String, dynamic>>[
+                {'role': 'user', 'content': offlineReference.consume()}
+              ];
+        final recent = offlineBudget.retain(
+          localMessages,
+          threadContext: threadContext,
+        );
         final text = await (_ollama ??= NeuraOllamaChat()).reply(
           system:
               '$systemPrompt\n\nYou are running offline. Do not claim web access, '
               'saved memories or completed actions. Offer everyday support; do not '
               'diagnose or advise medication changes. No tools are available.',
-          messages: recent.map((t) => t.toJson()).toList(),
+          messages: recent,
           cancel: cancel,
         );
+        cancel.throwIfCancelled();
+        checkReference();
         cancel.throwIfCancelled();
         final postBlocked = await _checkGuardrails([
           NeuraChatTurn(isUser: true, text: text),
         ]);
         cancel.throwIfCancelled();
-        yield postBlocked ?? text;
+        yield postBlocked ??
+            (offlineReference != null &&
+                    !offlineReference.hasValidCitations(text)
+                ? 'I could not produce a properly cited answer. Please check the source passages below or ask a narrower question.'
+                : text);
         return;
       }
       final messages = history.map((t) => t.toJson()).toList();
@@ -218,6 +287,7 @@ class NeuraAiService {
       var actionCount = 0;
       final seenCallIds = <String>{};
       while (true) {
+        checkMemory();
         cancel.throwIfCancelled();
         _diagnostics.recordAttempt();
         final latency = Stopwatch()..start();
@@ -238,8 +308,18 @@ class NeuraAiService {
           tools: advertisedTools,
           cancel: cancel,
           provider: activeProvider,
-          requestApproval: requestCloudApproval ?? _denyCloudRequest,
+          requestApproval: (preview) async {
+            checkMemory();
+            cancel.throwIfCancelled();
+            final approved = await (requestCloudApproval ?? _denyCloudRequest)(
+              preview,
+            );
+            checkMemory();
+            cancel.throwIfCancelled();
+            return approved;
+          },
         )) {
+          checkMemory();
           cancel.throwIfCancelled();
           if (event is NeuraTextDelta) {
             if (!firstTokenRecorded && event.text.isNotEmpty) {
@@ -279,7 +359,8 @@ class NeuraAiService {
               !seenCallIds.add(callId) ||
               ++actionCount > 8) {
             throw const NeuraStreamFailure(
-                'The action limit or a duplicate action was reached.');
+              'The action limit or a duplicate action was reached.',
+            );
           }
           final name = block['name']?.toString() ?? '';
           toolResultsArePrivate = toolResultsArePrivate ||
@@ -307,6 +388,15 @@ class NeuraAiService {
       _diagnostics.recordFailure(error);
       rethrow;
     } finally {
+      thinking?.release();
+      if (offlineReference != null) {
+        offlineReference.shelf.removeListener(checkReference);
+        offlineReference.revoke();
+      }
+      if (useMemory && memoryPermission != null) {
+        memoryPermission.service.removeListener(checkMemory);
+        memoryPermission.revoke();
+      }
       if (identical(_activeCancel, cancel)) {
         _activeCancel = null;
         _activeGenerationId = null;

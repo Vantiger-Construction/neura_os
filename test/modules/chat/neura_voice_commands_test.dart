@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:neuro_companion/modules/chat/neura_chat_screen.dart';
+import 'package:neuro_companion/encrypted_memory/companion_memory_service.dart';
+import '../../helpers/companion_memory_fixture.dart';
 import 'package:neuro_companion/modules/core/app_log.dart';
 import 'package:neuro_companion/modules/mood/mood_checkin_screen.dart';
 import 'package:neuro_companion/modules/review/weekly_review_screen.dart';
@@ -77,13 +79,14 @@ void main() {
     binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null);
   });
 
-  Future<void> pumpChat(WidgetTester tester, {NeuraRoom? room}) async {
+  Future<void> pumpChat(WidgetTester tester,
+      {NeuraRoom? room, CompanionMemoryService? memory}) async {
     shell = NeuraShellState();
     addTearDown(shell.dispose);
     if (room != null) await shell.setRoom(room);
     await tester.pumpWidget(NeuraShellScope(
       notifier: shell,
-      child: const MaterialApp(home: NeuraChatScreen()),
+      child: MaterialApp(home: NeuraChatScreen(memoryService: memory)),
     ));
     await tester.pumpAndSettle();
   }
@@ -464,7 +467,10 @@ void main() {
 
   testWidgets('context commands remove only the selected next-reply inputs',
       (tester) async {
-    await pumpChat(tester);
+    late CompanionMemoryFixture memory;
+    await tester
+        .runAsync(() async => memory = await CompanionMemoryFixture.create());
+    await pumpChat(tester, memory: memory.memory);
     await tester.tap(find.byTooltip('Select text for the next reply'));
     await tester.pumpAndSettle();
     expect(find.text('Next reply: notes.txt'), findsOneWidget);
