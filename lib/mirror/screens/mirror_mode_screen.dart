@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
-import '../../core/memory/memory_graph_service.dart';
+import '../../modules/therapy/therapy_models.dart';
+import '../../modules/therapy/therapy_response_store.dart';
 import '../../mood/services/mood_state_service.dart';
 
 /// A short guided check-in: name the feeling, say a line about what's behind
 /// it, then a quiet close-out. No camera/emotion detection (that's future
 /// work) -- this is a deliberately simple, local, non-diagnostic ritual that
-/// actually contributes to Neura's memory of the user, unlike the old stub
-/// which only wrote to MoodStateService.
+/// saves to the encrypted local reflection journal. It does not authorize
+/// companion recall or copy raw check-in text into companion memory.
 class MirrorModeScreen extends StatefulWidget {
   const MirrorModeScreen({super.key});
 
@@ -72,15 +73,24 @@ class _MirrorModeScreenState extends State<MirrorModeScreen> {
 
     final reflection = _reflectionController.text.trim();
     try {
-      await MemoryGraphService.I.logUserAction(
-        kind: 'MIRROR_CHECKIN',
-        payload: {
-          'mood': _mood,
-          if (reflection.isNotEmpty) 'reflection': reflection,
-        },
+      await TherapyResponseStore.I.save(
+        prompt: const TherapyPrompt(
+          id: 'mirror_checkin',
+          title: 'Mirror check-in',
+          instruction: 'A local, user-authored check-in.',
+          method: 'Reflection',
+        ),
+        text: 'Mood: $_mood${reflection.isEmpty ? '' : '\n\n$reflection'}',
       );
     } catch (_) {
-      // A memory-write failure shouldn't block finishing the check-in.
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Could not save the local check-in. Your draft is still here.'),
+        ));
+      }
+      return;
     }
 
     if (!mounted) return;
@@ -175,7 +185,7 @@ class _MirrorModeScreenState extends State<MirrorModeScreen> {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Done'),
+                : const Text('Save check-in locally'),
           ),
         ),
       ],
