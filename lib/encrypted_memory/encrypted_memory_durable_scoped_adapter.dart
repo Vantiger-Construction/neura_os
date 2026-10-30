@@ -23,7 +23,7 @@ final class MemoryCryptoDurableAdapter implements EncryptedMemoryDurableCrypto {
 
   @override
   Object get authorityToken {
-    crypto.requireActiveKey();
+    crypto.requireOsBackedKey();
     return _authorityToken;
   }
 
