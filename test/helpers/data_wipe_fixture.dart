@@ -174,8 +174,10 @@ class DataWipeFixture {
     throw StateError('Filesystem operation escaped synthetic storage.');
   }
 
-  Future<File> seed(String path,
-      [String content = 'synthetic private fixture']) async {
+  Future<File> seed(
+    String path, [
+    String content = 'synthetic private fixture',
+  ]) async {
     final file = File(path);
     await file.parent.create(recursive: true);
     return file.writeAsString(content);
@@ -208,12 +210,15 @@ class WipePreferencesStore extends SharedPreferencesStorePlatform {
   bool refuseClear = false;
   bool throwOnClear = false;
   bool ignoreClear = false;
+  int clearCalls = 0;
+  Future<void> Function(String key)? beforeSetValue;
 
   @override
   bool get isMock => true;
 
   @override
   Future<bool> clear() async {
+    clearCalls += 1;
     if (throwOnClear) throw StateError('Synthetic preference cleanup failure.');
     if (refuseClear) return false;
     if (!ignoreClear) data.clear();
@@ -231,6 +236,7 @@ class WipePreferencesStore extends SharedPreferencesStorePlatform {
 
   @override
   Future<bool> setValue(String valueType, String key, Object value) async {
+    await beforeSetValue?.call(key);
     data[key] = value;
     return true;
   }
@@ -283,7 +289,11 @@ class PausedWipeFile extends Fake implements File {
     started.complete();
     await release.future;
     await delegate.parent.create(recursive: true);
-    return delegate.writeAsString(contents,
-        mode: mode, encoding: encoding, flush: flush);
+    return delegate.writeAsString(
+      contents,
+      mode: mode,
+      encoding: encoding,
+      flush: flush,
+    );
   }
 }
