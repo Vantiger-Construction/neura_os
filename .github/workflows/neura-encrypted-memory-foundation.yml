@@ -34,7 +34,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Use retained Flutter 3.47.5
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
