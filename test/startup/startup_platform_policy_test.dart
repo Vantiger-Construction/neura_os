@@ -6,6 +6,7 @@ import 'package:neuro_companion/notifications/neura_notifications_service.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/services/ambient_listening_service.dart';
 import 'package:neuro_companion/services/neura_ai_service.dart';
+import 'package:neuro_companion/services/neura_swarm_policy.dart';
 import 'package:neuro_companion/services/neura_swarm_service.dart';
 import 'package:neuro_companion/services/neura_swarm_service_stub.dart'
     as web_swarm;
@@ -73,13 +74,24 @@ void main() {
       expect(kNativeAudioStartupIsLazy, isTrue);
     });
 
-    test('native swarm startup requires a credential and normal Windows', () {
+    test('native swarm startup requires explicit foreground enablement', () {
       expect(
         shouldInitializeNativeNeuraSwarm(
           platform: TargetPlatform.windows,
           isWeb: false,
           safeMode: false,
           hasProviderCredential: true,
+          explicitlyEnabled: false,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldInitializeNativeNeuraSwarm(
+          platform: TargetPlatform.windows,
+          isWeb: false,
+          safeMode: false,
+          hasProviderCredential: true,
+          explicitlyEnabled: true,
         ),
         isTrue,
       );
@@ -89,6 +101,7 @@ void main() {
           isWeb: false,
           safeMode: false,
           hasProviderCredential: false,
+          explicitlyEnabled: true,
         ),
         isFalse,
       );
@@ -98,6 +111,7 @@ void main() {
           isWeb: false,
           safeMode: true,
           hasProviderCredential: true,
+          explicitlyEnabled: true,
         ),
         isFalse,
       );
@@ -107,6 +121,7 @@ void main() {
           isWeb: false,
           safeMode: false,
           hasProviderCredential: true,
+          explicitlyEnabled: true,
         ),
         isFalse,
       );
@@ -116,6 +131,7 @@ void main() {
           isWeb: true,
           safeMode: false,
           hasProviderCredential: true,
+          explicitlyEnabled: true,
         ),
         isFalse,
       );
@@ -187,7 +203,11 @@ void main() {
     test('web swarm fallback exposes no fake native capability', () async {
       final service = web_swarm.NeuraSwarmService.instance;
       await expectLater(
-        service.init('not-a-real-key'),
+        service.init(
+          'not-a-real-key',
+          approval: NeuraSwarmApproval.grantFromVisibleConfirmation(),
+          foreground: true,
+        ),
         throwsUnsupportedError,
       );
 
@@ -195,6 +215,8 @@ void main() {
         transcript: 'local transcript',
         draftReply: 'local draft',
         userMessage: 'local message',
+        approval: NeuraSwarmApproval.grantFromVisibleConfirmation(),
+        foreground: true,
       );
       expect(outcome.concernNote, isNull);
       expect(outcome.facts, isEmpty);
@@ -289,8 +311,14 @@ void main() {
       await NeuraVoicePack.I.startMic();
       await NeuraVoicePack.I.playAsset('must-not-play.wav');
 
+      final approval =
+          NeuraSwarmApproval.grantFromVisibleConfirmation();
       await expectLater(
-        NeuraSwarmService.instance.init('not-a-real-key'),
+        NeuraSwarmService.instance.init(
+          'not-a-real-key',
+          approval: approval,
+          foreground: true,
+        ),
         throwsA(
           isA<StateError>().having(
             (error) => error.message,
@@ -299,6 +327,7 @@ void main() {
           ),
         ),
       );
+      expect(approval.isConsumed, isFalse);
     });
 
     test('clearing Safe Mode is latched until the next launch', () async {
