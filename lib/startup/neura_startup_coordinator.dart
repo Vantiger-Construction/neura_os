@@ -54,7 +54,9 @@ bool shouldInitializeNativeNeuraSwarm({
   required bool isWeb,
   required bool safeMode,
   required bool hasProviderCredential,
+  required bool explicitlyEnabled,
 }) =>
+    explicitlyEnabled &&
     !safeMode &&
     hasProviderCredential &&
     supportsNativeNeuraSwarm(platform: platform, isWeb: isWeb);
@@ -354,6 +356,10 @@ class NeuraStartupCoordinator {
           isWeb: kIsWeb,
           safeMode: SafeBoot.instance.safeMode.value,
           hasProviderCredential: NeuraProviderCredentials.instance.hasKey,
+          // Startup never has the visible, payload-specific confirmation
+          // required for a secondary cloud review. A foreground surface must
+          // explicitly enable the swarm for one approved operation.
+          explicitlyEnabled: false,
         )) {
           _swarmStarted = await _safe(
             () => NeuraSwarmService.instance
@@ -363,7 +369,7 @@ class NeuraStartupCoordinator {
         } else {
           ModuleHealthMonitor.instance.skipped(
             'SwarmInit',
-            'The packaged native swarm is currently available on Windows only.',
+            'Native swarm stays unloaded until a foreground surface receives fresh approval.',
           );
         }
       }(),
