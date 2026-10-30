@@ -10,16 +10,6 @@ import 'package:neuro_companion/modules/therapy/therapy_response_store.dart';
 
 import '../helpers/companion_memory_fixture.dart';
 
-Future<void> pumpUntilVisible(WidgetTester tester, Finder finder) async {
-  for (var attempt = 0;
-      attempt < 100 && finder.evaluate().isEmpty;
-      attempt += 1) {
-    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-    await tester.pump(const Duration(milliseconds: 20));
-  }
-  expect(finder, findsOneWidget);
-}
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   testWidgets(
@@ -35,17 +25,17 @@ void main() {
         method: 'CBT');
     await tester.pumpWidget(
         const MaterialApp(home: TherapyReflectionScreen(prompt: prompt)));
-    // The reflection screen keeps an indeterminate progress indicator while
-    // its local journal is loading. The test only needs the editor and save
-    // callback, so do not wait for the animation to settle.
-    await tester.pump();
+    await tester.runAsync(() async {
+      await Future<void>.delayed(Duration.zero);
+    });
+    await tester.pumpAndSettle();
     await tester.enterText(
         find.byType(TextField), 'Synthetic private journal reflection');
     final save = tester
         .widget<FilledButton>(find.byType(FilledButton))
         .onPressed! as Future<void> Function();
     await tester.runAsync(() => f.disk.run(save));
-    await tester.pump();
+    await tester.pumpAndSettle();
     await tester.runAsync(() => f.disk.run(() async {
           final saved = await TherapyResponseStore.I.forPrompt(prompt.id);
           expect(saved.single.text, 'Synthetic private journal reflection');
@@ -64,9 +54,9 @@ void main() {
           expect(f.disk.networkAttempts, 0);
         }));
     await tester.pumpWidget(const MaterialApp(home: MirrorModeScreen()));
-    await pumpUntilVisible(tester, find.text('Next'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Next'));
-    await tester.pump();
+    await tester.pumpAndSettle();
     await tester.enterText(
         find.byType(TextField), 'Synthetic private Mirror reflection');
     final finish = tester
@@ -74,7 +64,7 @@ void main() {
             find.widgetWithText(ElevatedButton, 'Save check-in locally'))
         .onPressed! as Future<void> Function();
     await tester.runAsync(() => f.disk.run(finish));
-    await tester.pump();
+    await tester.pumpAndSettle();
     await tester.runAsync(() => f.disk.run(() async {
           final saved =
               await TherapyResponseStore.I.forPrompt('mirror_checkin');

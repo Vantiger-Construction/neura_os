@@ -23,7 +23,7 @@ final class MemoryCryptoDurableAdapter implements EncryptedMemoryDurableCrypto {
 
   @override
   Object get authorityToken {
-    crypto.requireOsBackedKey();
+    crypto.requireActiveKey();
     return _authorityToken;
   }
 
@@ -176,11 +176,6 @@ final class EncryptedMemoryDurableScopedAdapter {
         _requireUtc(nowUtc);
         _requireRestorable(record, expectedKeyGeneration);
         _requireLeaseTime(lease, nowUtc);
-        if (recordLimit != null &&
-            (recordLimit < 1 ||
-                _records.length + _quarantine.length >= recordLimit)) {
-          throw const EncryptedMemoryPolicyViolation('durable_record_limit');
-        }
         final loadedCrypto = _records.isEmpty && _quarantine.isEmpty
             ? await _loadVerifiedCryptoAuthority()
             : null;
@@ -688,7 +683,6 @@ final class EncryptedMemoryDurableScopedAdapter {
     // Register the owner before the first asynchronous crypto or storage call.
     // Crypto attachment still requires successful verification and persistence.
     try {
-      _requireAvailable(safetyContext, expectedKeyGeneration);
       _state.attachOrVerifyOwner(
         safetyPolicy: safetyPolicy,
         keyLifecycle: keyLifecycle,
@@ -721,7 +715,6 @@ final class EncryptedMemoryDurableScopedAdapter {
         _quarantine
           ..clear()
           ..addAll(_state.suspendedForDataWipe ? const {} : quarantineBefore);
-        _state.releaseRejectedOwner();
         Error.throwWithStackTrace(error, stackTrace);
       }
     });
@@ -880,9 +873,6 @@ final class _DurableScopedStorageRegistry {
   }
 
   static Future<void> drainAllForDataWipe() async {
-    // Cold-process ciphertext has no registered adapter yet. Remove and verify
-    // the default envelope before the coordinator destroys its device key.
-    stateFor(EncryptedMemoryDurableScopedAdapter.defaultStorageKey);
     await Future.wait(_states.entries.map(_drainAndRemove), eagerError: true);
   }
 
@@ -953,20 +943,6 @@ final class _DurableScopedStorageState {
         (lifecycle.state == EncryptedMemoryKeyState.active ||
             lifecycle.state == EncryptedMemoryKeyState.rotating)) {
       lifecycle.suspend();
-    }
-  }
-
-  void releaseRejectedOwner() {
-    // Reserve first-use authority before I/O so wipe sees the lifecycle. A
-    // rejected admission must not permanently bind an otherwise empty store.
-    // Keep ownership for queued work, ambiguous writes and terminal wipes.
-    if (!ownerVerified &&
-        cryptoAuthority == null &&
-        pendingMutations == 1 &&
-        !reconciliationRequired &&
-        !suspendedForDataWipe) {
-      safetyPolicyAuthority = null;
-      keyLifecycleAuthority = null;
     }
   }
 

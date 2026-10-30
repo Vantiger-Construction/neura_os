@@ -1,45 +1,5 @@
 # Encrypted-memory release-contract evidence
 
-## Current review stack — October 30, 2026
-
-Review and merge the dependency-ordered replacement PRs #151 (foundation),
-#152 (scoped owner) and #153 (application integration). PR #141 remains an
-unmerged aggregate reference. Each successor must target Neura and pass fresh
-applicable checks and independent review after its predecessor lands.
-
-The initial extraction reproduced #141 head `84f0ea61` byte for byte. Subsequent
-review corrections strengthen that candidate while keeping all earlier regression
-coverage and security policies:
-
-- Durable crypto authorities require verified OS-backed keys; the legacy key
-  fallback remains available only to its separate journal-recovery path.
-- Availability is checked before synchronous owner reservation. Failed first-use
-  admission releases an unverified empty reservation; pending work, ambiguous
-  writes, established authorities and terminal wipe suspension keep ownership.
-- Full wipe removes and verifies the default scoped envelope before device-key
-  destruction even when no scoped owner was created in the current process.
-- The 100-note limit is rechecked inside the shared serialized write. Concurrent
-  callers cannot both pass an earlier service-level count and exceed the cap.
-- System instructions never contain recalled note contents. A fresh prompt grant
-  recalls bounded notes into a separately labeled JSON payload in a user-role
-  message. The exact cloud preview, sensitive-local policy, cancellation and
-  lifetime checks still apply. Default, private-room and offline exclusions remain.
-- Note entry and reviewed-note search request disabled personalized IME learning.
-  Actual keyboard behavior remains part of physical Android acceptance.
-
-Five controlled tests fail on the original foundation and pass after correction;
-additional regressions verify atomic capacity, concurrent owners, note/message
-roles, instruction-like note data and input privacy flags. Existing post-AES
-JSON generation checks and successful Uint8List test compilation were verified
-in the complete source rather than changed in response to diff-only findings.
-
-The PR descriptions record the immutable current heads, tested trees, counts and
-remaining CI/review gates. The dated sections below are historical evidence;
-references to recalled notes in system prompts describe the earlier candidate.
-In-process wipe guarantees remain distinct from the outstanding durable recovery
-protocol and physical restart/key-store/microphone acceptance. No public release
-or physical acceptance is implied.
-
 This is an engineering verification record for the existing P1 task
 [Validate encrypted memory release contracts](https://app.notion.com/p/3f4cff6b3f43818eb64ae3946aea4c31).
 Synthetic automated validation does not complete physical-device acceptance or

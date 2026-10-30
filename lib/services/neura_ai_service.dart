@@ -204,7 +204,8 @@ class NeuraAiService {
         agentId: agentId,
         audience: audience,
         module: roomId,
-        includePersistentMemory: false,
+        includePersistentMemory: useMemory,
+        memoryPermission: memoryPermission,
         includeCurrentMood: !localOllama,
         conversationMode: conversationMode,
       );
