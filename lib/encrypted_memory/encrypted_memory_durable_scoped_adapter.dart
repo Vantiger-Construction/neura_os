@@ -176,6 +176,13 @@ final class EncryptedMemoryDurableScopedAdapter {
         _requireUtc(nowUtc);
         _requireRestorable(record, expectedKeyGeneration);
         _requireLeaseTime(lease, nowUtc);
+        if (recordLimit != null && (recordLimit < 1 || recordLimit > 100)) {
+          throw const EncryptedMemoryPolicyViolation('invalid_record_limit');
+        }
+        if (recordLimit != null &&
+            _records.length + _quarantine.length >= recordLimit) {
+          throw const EncryptedMemoryPolicyViolation('durable_record_limit');
+        }
         final loadedCrypto = _records.isEmpty && _quarantine.isEmpty
             ? await _loadVerifiedCryptoAuthority()
             : null;
@@ -913,7 +920,9 @@ final class _DurableScopedStorageRegistry {
     for (final state in _states.values) {
       final lifecycle = state.keyLifecycleAuthority;
       if (lifecycle is EncryptedMemoryKeyLifecycle &&
-          lifecycle.state != EncryptedMemoryKeyState.destroyed) {
+          (lifecycle.state == EncryptedMemoryKeyState.active ||
+              lifecycle.state == EncryptedMemoryKeyState.rotating ||
+              lifecycle.state == EncryptedMemoryKeyState.suspended)) {
         lifecycle.destroyVerifiedKey();
       }
     }
