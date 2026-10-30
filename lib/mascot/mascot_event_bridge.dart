@@ -1,5 +1,8 @@
+import '../avatar/motion/neura_gesture.dart';
+import '../avatar/neura_avatar_runtime_bridge.dart';
 import '../core/neura_event_bus.dart';
 import '../core/neura_events.dart';
+import '../core/neura_events_extra.dart';
 import 'mascot_window_service.dart';
 
 /// Forwards a small subset of [NeuraEventBus] events from the main engine to
@@ -44,7 +47,52 @@ class MascotEventBridge {
         (e) => _send('pulse', {'wave': e.wave, 'blink': e.blink}),
       ),
     );
+    // ── Body-motion kinds (receivers ignore kinds they don't know) ──────────
+    _unsubscribers.add(
+      NeuraEventBus.I.on<NeuraListeningEvent>(
+          (e) => _send('listening', {'on': e.isListening})),
+    );
+    _unsubscribers.add(
+      NeuraEventBus.I.on<NeuraErrorEvent>((_) => _send('error', {})),
+    );
+    _unsubscribers.add(
+      NeuraEventBus.I.on<NeuraGestureEvent>((e) {
+        // Only allow-listed gestures cross the isolate boundary.
+        if (!NeuraGesture.wireAllowed.contains(e.gesture)) return;
+        _send('gesture', {
+          'gesture': e.gesture.wireName,
+          'intensity': e.intensity.clamp(0.0, 1.0),
+        });
+      }),
+    );
+    _unsubscribers.add(
+      NeuraEventBus.I.on<NeuraMouthOpenEvent>((e) {
+        // Throttle: visemes can fire per word; ~15 Hz is plenty for a bob.
+        final now = DateTime.now();
+        if (e.open > 0 && now.difference(_lastMouth).inMilliseconds < 66) {
+          return;
+        }
+        _lastMouth = now;
+        _send('mouth', {'open': e.open.clamp(0.0, 1.0)});
+      }),
+    );
+    final snapshot = NeuraAvatarRuntimeBridge.instance.snapshot;
+    void sendBody() {
+      final s = snapshot.value;
+      if (s == null) return;
+      _send('body', {
+        'motion': s.motion.name,
+        'stance': s.stance.name,
+        'safe': s.safeMode,
+      });
+    }
+
+    snapshot.addListener(sendBody);
+    _unsubscribers.add(() => snapshot.removeListener(sendBody));
+    sendBody();
   }
+
+  DateTime _lastMouth = DateTime.fromMillisecondsSinceEpoch(0);
 
   void _send(String kind, Map<String, dynamic> data) {
     MascotWindowService.I.sendEvent(_method, {
