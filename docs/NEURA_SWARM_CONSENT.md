@@ -20,9 +20,10 @@ The current contract is:
 - The local Ollama path remains independent: it does not call the swarm,
   cloud router, persistent memory or automatic summarizer.
 
-This is a capability boundary, not a model instruction. The Rust API still
-returns safe defaults when no valid approval reaches it, and the Dart wrapper
-continues to clear the native credential during Safe Mode and full-data wipe.
+This is a capability boundary, not a model instruction. The Dart wrapper
+returns safe defaults when no valid approval reaches it and is the only normal
+app path that forwards the provider key into Rust. It also continues to clear
+the native credential during Safe Mode and full-data wipe.
 
 The five-minute limit and single-use behavior are covered by
 test/services/neura_swarm_policy_test.dart. Physical Windows network,
