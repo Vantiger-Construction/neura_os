@@ -709,6 +709,9 @@ final class EncryptedMemoryDurableScopedAdapter {
         _state.ownerVerified = true;
         return value;
       } catch (error, stackTrace) {
+        if (_state.canReleaseUnverifiedOwner) {
+          _state.releaseUnverifiedOwner();
+        }
         _records
           ..clear()
           ..addAll(_state.suspendedForDataWipe ? const {} : recordsBefore);
@@ -933,6 +936,20 @@ final class _DurableScopedStorageState {
   bool reconciliationRequired = false;
   bool suspendedForDataWipe = false;
   int pendingMutations = 0;
+
+  bool get canReleaseUnverifiedOwner =>
+      pendingMutations == 1 &&
+      !ownerVerified &&
+      cryptoAuthority == null &&
+      !reconciliationRequired &&
+      records.isEmpty &&
+      quarantine.isEmpty;
+
+  void releaseUnverifiedOwner() {
+    if (!canReleaseUnverifiedOwner) return;
+    safetyPolicyAuthority = null;
+    keyLifecycleAuthority = null;
+  }
 
   void suspendForDataWipe() {
     suspendedForDataWipe = true;
