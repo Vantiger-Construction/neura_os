@@ -361,10 +361,11 @@ class NeuraStartupCoordinator {
           // explicitly enable the swarm for one approved operation.
           explicitlyEnabled: false,
         )) {
-          _swarmStarted = await _safe(
-            () => NeuraSwarmService.instance
-                .init(NeuraProviderCredentials.instance.apiKey),
+          // Defensive policy: the startup coordinator never mints a visible
+          // approval, so normal boot cannot initialize the native swarm.
+          ModuleHealthMonitor.instance.skipped(
             'SwarmInit',
+            'Native swarm requires a foreground approval and remains unloaded.',
           );
         } else {
           ModuleHealthMonitor.instance.skipped(
