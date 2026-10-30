@@ -24,10 +24,17 @@ class NeuraSwarmService {
     required NeuraSwarmApproval approval,
     required bool foreground,
   }) {
+    if (SafeBoot.instance.safeMode.value) {
+      return Future<void>.error(
+        StateError(
+          'The native Neura swarm is unavailable while Safe Mode is active.',
+        ),
+      );
+    }
     if (!approval.consume(
       now: DateTime.now().toUtc(),
       foreground: foreground,
-      safeMode: SafeBoot.instance.safeMode.value,
+      safeMode: false,
     )) {
       return Future<void>.error(
         StateError(
@@ -35,12 +42,10 @@ class NeuraSwarmService {
         ),
       );
     }
-    if (SafeBoot.instance.safeMode.value ||
-        _credentialSuspended ||
-        _clearingCredential) {
+    if (_credentialSuspended || _clearingCredential) {
       return Future<void>.error(
         StateError(
-          'The native Neura swarm is unavailable while Safe Mode is active.',
+          'The native Neura swarm is unavailable during credential cleanup.',
         ),
       );
     }
