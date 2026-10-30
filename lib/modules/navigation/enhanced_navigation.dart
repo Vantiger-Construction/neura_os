@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../../config/supabase_config.dart';
 import '../../neura_shell/neura_shell.dart';
 import '../../neura_shell/neura_shell_state.dart';
@@ -35,7 +36,6 @@ import '../../screens/dream_visualizer_screen.dart';
 import '../../screens/journal_prompt_screen.dart';
 import '../../screens/voice_journal_screen.dart';
 import '../../adaptive_intent/neura_live_signal_adapter.dart';
-import '../../core/memory/memory_consolidation_service.dart';
 import '../../dashboard/widgets/proactive_banner_card.dart';
 import '../../intelligence/intelligence_center_screen.dart';
 import '../../living_intelligence/decision_path_screen.dart';
@@ -126,9 +126,6 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     // fire it. No BuildContext needed: it only writes to prefs, never shows
     // UI itself.
     unawaited(_generateWeeklySummaryThenMaybeNotify());
-    // Same cadence-gated, app-open-only pattern -- summarizes older memory
-    // entries into a persistent profile snippet chat can recall from later.
-    unawaited(MemoryConsolidationService.instance.maybeConsolidateOnAppOpen());
     unawaited(_maybeNotifyLegacyOverdue());
     unawaited(_reconfirmDailyMoodNudgeSchedule());
     unawaited(_checkForUpdate());
@@ -338,10 +335,8 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
           subtitle: 'Your private camera center on this Windows PC.',
           icon: Icons.videocam_outlined,
           keywords: const <String>['camera', 'security', 'hawk', 'nvr'],
-          onSelected: () => _openRoute(
-            '/camera-hawk',
-            (_) => const CameraHawkScreen(),
-          ),
+          onSelected: () =>
+              _openRoute('/camera-hawk', (_) => const CameraHawkScreen()),
         ),
         PresenceCommand(
           id: 'talk',
