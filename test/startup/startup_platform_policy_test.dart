@@ -311,10 +311,12 @@ void main() {
       await NeuraVoicePack.I.startMic();
       await NeuraVoicePack.I.playAsset('must-not-play.wav');
 
+      final approval =
+          NeuraSwarmApproval.grantFromVisibleConfirmation();
       await expectLater(
         NeuraSwarmService.instance.init(
           'not-a-real-key',
-          approval: NeuraSwarmApproval.grantFromVisibleConfirmation(),
+          approval: approval,
           foreground: true,
         ),
         throwsA(
@@ -325,6 +327,7 @@ void main() {
           ),
         ),
       );
+      expect(approval.isConsumed, isFalse);
     });
 
     test('clearing Safe Mode is latched until the next launch', () async {
