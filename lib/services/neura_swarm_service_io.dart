@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import '../reliability/safe_boot.dart';
+import 'neura_swarm_policy.dart';
 import '../rust_bridge/api.dart' as rust_api;
 import '../rust_bridge/frb_generated.dart';
 
@@ -18,7 +19,22 @@ class NeuraSwarmService {
   Future<void> _credentialQueue = Future<void>.value();
   final Set<Future<SwarmOutcome>> _activeReviews = <Future<SwarmOutcome>>{};
 
-  Future<void> init(String apiKey) {
+  Future<void> init(
+    String apiKey, {
+    required NeuraSwarmApproval approval,
+    required bool foreground,
+  }) {
+    if (!approval.consume(
+      now: DateTime.now().toUtc(),
+      foreground: foreground,
+      safeMode: SafeBoot.instance.safeMode.value,
+    )) {
+      return Future<void>.error(
+        StateError(
+          'Native swarm initialization requires a fresh foreground approval.',
+        ),
+      );
+    }
     if (SafeBoot.instance.safeMode.value ||
         _credentialSuspended ||
         _clearingCredential) {
@@ -148,6 +164,8 @@ class NeuraSwarmService {
     required String transcript,
     required String draftReply,
     required String userMessage,
+    required NeuraSwarmApproval approval,
+    required bool foreground,
   }) async {
     if (SafeBoot.instance.safeMode.value ||
         !Platform.isWindows ||
@@ -155,6 +173,13 @@ class NeuraSwarmService {
         _clearingCredential ||
         _credentialBlocked ||
         _credentialSuspended) {
+      return const SwarmOutcome(concernNote: null, facts: []);
+    }
+    if (!approval.consume(
+      now: DateTime.now().toUtc(),
+      foreground: foreground,
+      safeMode: SafeBoot.instance.safeMode.value,
+    )) {
       return const SwarmOutcome(concernNote: null, facts: []);
     }
     final generation = _credentialGeneration;
