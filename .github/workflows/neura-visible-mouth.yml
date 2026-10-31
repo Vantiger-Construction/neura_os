@@ -53,11 +53,20 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - name: Compose pinned source heads in this disposable checkout
+        env:
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           set -euo pipefail
-          test "$(git ls-remote origin refs/heads/neura/avatar-conversation-presence | cut -f1)" = "$PRESENCE_HEAD"
-          test "$(git ls-remote origin refs/heads/neura/sapi-native-visemes | cut -f1)" = "$SAPI_HEAD"
-          test "$(git ls-remote origin refs/heads/feature/fluent-motion-neura | cut -f1)" = "$MOTION_HEAD"
+          # A pin on the branch under test goes stale with every commit to it,
+          # so the PR's own branch uses this checkout's head instead.
+          pinned() {
+            if [ "$HEAD_REF" = "$1" ]; then git rev-parse HEAD; return; fi
+            test "$(git ls-remote origin "refs/heads/$1" | cut -f1)" = "$2" || return 1
+            echo "$2"
+          }
+          PRESENCE_HEAD=$(pinned neura/avatar-conversation-presence "$PRESENCE_HEAD")
+          SAPI_HEAD=$(pinned neura/sapi-native-visemes "$SAPI_HEAD")
+          MOTION_HEAD=$(pinned feature/fluent-motion-neura "$MOTION_HEAD")
           git config user.name 'Neura integration validation'
           git config user.email 'validation@local.invalid'
           source_head=$(git rev-parse HEAD)
