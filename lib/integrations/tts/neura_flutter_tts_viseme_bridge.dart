@@ -53,8 +53,12 @@ class NeuraFlutterTtsVisemeBridge {
       if (!allowed()) return;
       speaking = true;
       eventBus.emit(const NeuraTalkingEvent(true));
-      eventBus.emit(const NeuraMouthOpenEvent(0.25));
-      eventBus.emit(const NeuraVisemeEvent(NeuraViseme.AI));
+      // A native acknowledgement is not an audio-timed phoneme. Windows
+      // stays closed until its first SAPI viseme (including silence) arrives.
+      final native = tts is NeuraWindowsTts;
+      eventBus.emit(NeuraMouthOpenEvent(native ? 0 : 0.25));
+      eventBus
+          .emit(NeuraVisemeEvent(native ? NeuraViseme.rest : NeuraViseme.AI));
     });
 
     tts.setCompletionHandler(() {
