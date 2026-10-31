@@ -8,6 +8,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../../encrypted_memory/companion_memory_service.dart';
+import '../../modules/memory/memory_screen.dart';
+import '../../reference/neura_reference_shelf_screen.dart';
+import '../../services/neura_conversation_thread.dart';
 import '../../neura_link/reply_speech_queue.dart';
 import '../../neura_link/local_conversation_session.dart';
 import '../../relationships/services/crisis_text_scan.dart';
@@ -294,7 +297,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   }
 
   void _stopForSafeMode() {
-    if (!SafeBoot.instance.safeMode.value) return;
+    if (!SafeBoot.instance.safeMode.value &&
+        !SafeBoot.instance.restartRequired.value) {
+      return;
+    }
+    _clearThread();
     _memoryPermission?.revoke();
     _memoryPermission = null;
     _includeMemory = false;
@@ -318,6 +325,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) {
+      _clearThread();
       _memoryPermission?.revoke();
       _memoryPermission = null;
       _includeMemory = false;
@@ -336,6 +344,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
 
   @override
   void dispose() {
+    _clearThread();
     _memoryOwner?.removeListener(_onPendingMemoryChanged);
     _memoryPermission?.revoke();
     ++_localSerial;
