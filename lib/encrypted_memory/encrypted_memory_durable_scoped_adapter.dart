@@ -690,6 +690,7 @@ final class EncryptedMemoryDurableScopedAdapter {
     // Register the owner before the first asynchronous crypto or storage call.
     // Crypto attachment still requires successful verification and persistence.
     try {
+      _requireAvailable(safetyContext, expectedKeyGeneration);
       _state.attachOrVerifyOwner(
         safetyPolicy: safetyPolicy,
         keyLifecycle: keyLifecycle,
@@ -883,6 +884,9 @@ final class _DurableScopedStorageRegistry {
   }
 
   static Future<void> drainAllForDataWipe() async {
+    // Ciphertext from an earlier process has no live owner. Give the default
+    // envelope the same bounded removal and readback as registered storage.
+    stateFor(EncryptedMemoryDurableScopedAdapter.defaultStorageKey);
     await Future.wait(_states.entries.map(_drainAndRemove), eagerError: true);
   }
 
@@ -948,6 +952,7 @@ final class _DurableScopedStorageState {
 
   bool get canReleaseUnverifiedOwner =>
       pendingMutations == 1 &&
+      !suspendedForDataWipe &&
       !ownerVerified &&
       cryptoAuthority == null &&
       !reconciliationRequired &&

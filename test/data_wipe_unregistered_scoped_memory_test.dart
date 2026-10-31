@@ -24,6 +24,7 @@ void main() {
       f.beforeSecretDelete = (key) async {
         if (key == DataWipeFixture.memoryKey) {
           expect(NeuraPrefsCache.prefs.containsKey(storage), false);
+          expect(f.preferences.data.containsKey('flutter.$storage'), false);
         }
       };
       await NeuraDataWipeService.wipeAllLocalData();
