@@ -52,7 +52,7 @@
     },
     {
       "path": "lib/integrations/tts/neura_flutter_tts_viseme_bridge.dart",
-      "sha256_lf": "63d1d04896fffdd253492ad8c9a9359464fba8fad3a5a781346c4285dd44841a"
+      "sha256_lf": "baeebdcad825862df37b2e8150a903f31957ed8c860ee4d4d663925e566ff2f8"
     }
   ]
 }
