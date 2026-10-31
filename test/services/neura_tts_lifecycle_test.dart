@@ -8,6 +8,8 @@ import 'package:neuro_companion/services/ambient_listening_service.dart';
 import 'package:neuro_companion/services/neura_audio_focus.dart';
 import 'package:neuro_companion/services/neura_companion_presence.dart';
 import 'package:neuro_companion/services/neura_tts_service.dart';
+import 'package:neuro_companion/avatar/motion/neura_gesture.dart';
+import 'package:neuro_companion/core/neura_event_bus.dart';
 
 /// No native speech, capture, network, files, preferences or real user text.
 class _SyntheticTts extends FlutterTts {
@@ -97,6 +99,24 @@ void main() {
     expect(NeuraAudioFocus.instance.speechActive, isFalse);
     expect(NeuraCompanionPresence.instance.state.value.voiceActive, isFalse);
   }
+
+  lifecycleTest('native completion discards remaining speech gesture timers',
+      (tester) async {
+    var gestures = 0;
+    final unsubscribe =
+        NeuraEventBus.I.on<NeuraGestureEvent>((_) => gestures++);
+    addTearDown(unsubscribe);
+    final speaking = service.speak(
+        'Hello there. This long synthetic sentence ends with a question?');
+    await tester.pump();
+    await native.event('speak.onComplete');
+    await tester.pump();
+    await speaking;
+    final completed = gestures;
+    await tester.pump(const Duration(seconds: 20));
+    expect(gestures, completed);
+    expectIdle();
+  });
 
   test('proactive startup speech stays disabled pending Windows acceptance',
       () {

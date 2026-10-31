@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
+import '../avatar/motion/neura_body_cues.dart';
 import '../integrations/tts/neura_flutter_tts_viseme_bridge.dart';
 import '../integrations/tts/neura_windows_tts.dart';
+import '../avatar/motion/neura_motion.dart';
 import 'neura_audio_focus.dart';
 import 'neura_companion_presence.dart';
 import '../reliability/safe_boot.dart';
@@ -220,6 +222,8 @@ class NeuraTtsService {
     playback.focus?.release();
     playback.presence?.release();
     if (identical(_playing, playback)) {
+      NeuraSpeechBeats.instance.end();
+      NeuraMotion.instance.endSpeech();
       _playing = null;
       _acceptCallbacks = false;
     }
@@ -486,8 +490,13 @@ class NeuraTtsService {
           _finish(playback, error: failure, stack: stack);
         }));
       });
+      // Body language follows her speech rhythm (punctuation only).
+      NeuraSpeechBeats.instance.begin(text);
       final result = await _tts!.speak(text);
-      if (result == 0) _finish(playback);
+      if (result == 0) {
+        NeuraSpeechBeats.instance.end();
+        _finish(playback);
+      }
     });
     unawaited(dispatch.catchError((Object error, StackTrace stack) {
       _finish(playback, error: error, stack: stack);
@@ -499,6 +508,8 @@ class NeuraTtsService {
   /// A missing acknowledgement fails within the command deadline and prevents
   /// further speech; it cannot guarantee that a hung native player is silent.
   Future<void> stop() {
+    NeuraSpeechBeats.instance.end();
+    NeuraMotion.instance.endSpeech();
     ++_speechGeneration;
     ++_cancelGeneration;
     // A stop before first use must remain a no-op. In particular, do not

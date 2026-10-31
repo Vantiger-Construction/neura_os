@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:ui';
 
 import 'package:uuid/uuid.dart';
@@ -32,6 +31,9 @@ import 'neura_selected_context.dart';
 import 'neura_model_types.dart';
 import 'neura_provider_credentials.dart';
 import 'neura_ollama_chat.dart';
+import 'neura_offline_budget.dart';
+import 'neura_companion_presence.dart';
+import '../reference/neura_reference_shelf.dart';
 
 typedef NeuraToolCommandHandler = FutureOr<bool> Function(
   NeuraToolCommand command,
@@ -146,10 +148,21 @@ class NeuraAiService {
     bool historyIncludesPrivateContext = false,
     NeuraConversationMode conversationMode = NeuraConversationMode.balanced,
     bool localOllama = false,
+    NeuraOfflineBudget offlineBudget = NeuraOfflineBudget.standard,
+    String threadContext = '',
+    NeuraReferenceGrant? offlineReference,
   }) async* {
     _throwIfCloudBlocked();
     if (!localOllama && !isConfigured) {
       throw StateError('Configure the AI provider key in Settings.');
+    }
+    if (offlineReference != null &&
+        (!localOllama ||
+            history.length != 1 ||
+            !history.single.isUser ||
+            history.single.text != offlineReference.question ||
+            threadContext.isNotEmpty)) {
+      throw StateError('References require a dedicated local question.');
     }
     if (localOllama &&
         (selectedContext != null ||
@@ -168,6 +181,8 @@ class NeuraAiService {
     cancelActiveGeneration();
     _activeCancel = cancel;
     _activeGenerationId = id;
+    final thinking = NeuraCompanionPresence.instance.acquireThinking();
+    unawaited(cancel.whenCancelled.then((_) => thinking?.release()));
 
     final policy = NeuraChatPolicy.forRoom(roomId);
     final advertisedTools = NeuraChatPolicy.advertisedTools(policy);
@@ -211,7 +226,8 @@ class NeuraAiService {
       );
       cancel.throwIfCancelled();
       if (localOllama) {
-        // No tools, approved sources, memory, swarm review or cloud routing.
+        // No tools, persistent memory, swarm review or cloud routing. A
+        // dedicated reference grant permits only its displayed passages.
         // The standard charter, room framing, audience and input guardrails
         // still apply. Offline chat never falls through to the cloud router.
         final recent = history.length > 8
@@ -232,15 +248,22 @@ class NeuraAiService {
               '$systemPrompt\n\nYou are running offline. Do not claim web access, '
               'saved memories or completed actions. Offer everyday support; do not '
               'diagnose or advise medication changes. No tools are available.',
-          messages: recent.map((t) => t.toJson()).toList(),
+          messages: recent,
           cancel: cancel,
         );
         cancel.throwIfCancelled();
-        final postBlocked = await _checkGuardrails([
-          NeuraChatTurn(isUser: true, text: text),
-        ]);
+        checkReference();
         cancel.throwIfCancelled();
-        yield postBlocked ?? text;
+        // Validate and decode reference evidence before screening the complete
+        // display text, including JSON-escaped source characters. No model
+        // prose is released; quotation matching proves identity, not truth.
+        final displayText = offlineReference?.formatVerifiedReply(text) ?? text;
+        final postBlocked = await _checkGuardrails([
+          NeuraChatTurn(isUser: true, text: displayText),
+        ]);
+        checkReference();
+        cancel.throwIfCancelled();
+        yield postBlocked ?? displayText;
         return;
       }
       final messages = history.map((t) => t.toJson()).toList();

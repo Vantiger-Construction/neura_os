@@ -32,7 +32,7 @@ class NeuraShellScope extends InheritedNotifier<NeuraShellState> {
 }
 
 class NeuraShellState extends ChangeNotifier {
-  static const _kRoomId = 'neura_shell.room_id';
+  static const _kRoomId = NeuraRoom.currentRoomPrefsKey;
   static const _kShowAvatar = 'neura_shell.show_avatar';
   static const _kAmbientEnabled = 'neura_shell.ambient_enabled';
   static const _kAmbientVolume = 'neura_shell.ambient_volume';
