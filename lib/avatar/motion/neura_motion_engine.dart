@@ -251,17 +251,19 @@ class NeuraMotionEngine {
     if (frozen) {
       _gestures.clear();
       for (final s in _all) {
-        s.snap(s == _scale
-            ? 1
-            : s == _glow
-                ? 0.15
-                : s == _breathRate
-                    ? 0.22
-                    : (s == _breathAmp || s == _swayAmp)
-                        ? 1
-                        : s == _amp
-                            ? 0
-                            : 0);
+        s.snap(
+          s == _scale
+              ? 1
+              : s == _glow
+                  ? 0.15
+                  : s == _breathRate
+                      ? 0.22
+                      : (s == _breathAmp || s == _swayAmp)
+                          ? 1
+                          : s == _amp
+                              ? 0
+                              : 0,
+        );
       }
       _weightTarget = 0;
       _pose = NeuraPose.neutral;
@@ -281,7 +283,7 @@ class NeuraMotionEngine {
   /// dt; long frame hitches are clamped so the body never "explodes".
   NeuraPose tick(double dt) {
     if (!dt.isFinite || dt <= 0) return _pose;
-    if (_frozen) return _pose = NeuraPose.neutral;
+    if (isStill) return _pose = NeuraPose.neutral;
     dt = math.min(dt, 0.1);
     _clock += dt;
 

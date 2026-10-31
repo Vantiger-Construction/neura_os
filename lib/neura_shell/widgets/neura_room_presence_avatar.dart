@@ -36,7 +36,30 @@ class NeuraRoomPresenceAvatar extends StatefulWidget {
       _NeuraRoomPresenceAvatarState();
 }
 
-class _NeuraRoomPresenceAvatarState extends State<NeuraRoomPresenceAvatar> {
+class _NeuraRoomPresenceAvatarState extends State<NeuraRoomPresenceAvatar>
+    with WidgetsBindingObserver {
+  bool _foreground = true;
+  @override
+  void initState() {
+    super.initState();
+    final state = WidgetsBinding.instance.lifecycleState;
+    _foreground = state == null || state == AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (mounted) {
+      setState(() => _foreground = state == AppLifecycleState.resumed);
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final profile = NeuraRoomPresenceProfile.forRoom(widget.room);
@@ -79,32 +102,42 @@ class _NeuraRoomPresenceAvatarState extends State<NeuraRoomPresenceAvatar> {
           },
         );
 
-    return Semantics(
-      image: true,
-      label: 'Neura in ${widget.room.title}, ${profile.stanceLabel}',
-      child: AnimatedSwitcher(
-        duration:
-            reduceMotion ? Duration.zero : const Duration(milliseconds: 420),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, animation) => FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0.08, 0),
-              end: Offset.zero,
-            ).animate(animation),
-            child: child,
-          ),
-        ),
-        // Body motion (idle sway, breathing, gestures) comes from the shared
-        // NeuraMotion engine inside AvatarView, which already honours Safe
-        // Mode, the Still preference and OS reduced-motion.
-        child: KeyedSubtree(
-          key: ValueKey<String>(widget.room.id),
-          child: ValueListenableBuilder<String>(
-            valueListenable: selectedId,
-            builder: (_, id, __) => avatarFor(id),
+    return RepaintBoundary(
+      child: TickerMode(
+        enabled: _foreground &&
+            !reduceMotion &&
+            widget.phase != NeuraPresencePhase.safeMode &&
+            widget.motion != NeuraCompanionMotion.still,
+        child: Semantics(
+          image: true,
+          label:
+              'Neura in ${widget.room.title}, ${profile.stanceLabel}, ${NeuraPresenceSnapshot(widget.phase).label}',
+          child: AnimatedSwitcher(
+            duration: reduceMotion
+                ? Duration.zero
+                : const Duration(milliseconds: 420),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0.08, 0),
+                  end: Offset.zero,
+                ).animate(animation),
+                child: child,
+              ),
+            ),
+            // Body motion (idle sway, breathing, gestures) comes from the shared
+            // NeuraMotion engine inside AvatarView, which already honours Safe
+            // Mode, the Still preference and OS reduced-motion.
+            child: KeyedSubtree(
+              key: ValueKey<String>(widget.room.id),
+              child: ValueListenableBuilder<String>(
+                valueListenable: selectedId,
+                builder: (_, id, __) => avatarFor(id),
+              ),
+            ),
           ),
         ),
       ),
