@@ -5,6 +5,9 @@ on:
     branches: [Neura]
     paths:
       - 'lib/integrations/tts/**'
+      - 'lib/avatar/viseme/sapi_viseme_map.dart'
+      - 'test/avatar/sapi_viseme_map_test.dart'
+      - 'test/services/neura_native_viseme_lifecycle_test.dart'
       - 'lib/services/neura_tts_service.dart'
       - 'windows/runner/neura*tts*'
       - 'windows/runner/flutter_window.*'
@@ -51,11 +54,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Analyze speech code
         run: |
-          flutter analyze --no-pub lib/integrations/tts lib/services/neura_tts_service.dart test/services/neura_windows_tts_test.dart test/services/neura_windows_tts_routing_test.dart test/services/neura_tts_lifecycle_test.dart
+          flutter analyze --no-pub lib/integrations/tts lib/services/neura_tts_service.dart test/services/neura_native_viseme_lifecycle_test.dart test/avatar/sapi_viseme_map_test.dart test/services/neura_windows_tts_test.dart test/services/neura_windows_tts_routing_test.dart test/services/neura_tts_lifecycle_test.dart
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Synthetic Dart speech tests only
         run: |
-          flutter test --no-pub --reporter expanded test/services/neura_windows_tts_test.dart test/services/neura_windows_tts_routing_test.dart test/services/neura_tts_lifecycle_test.dart test/screens/neura_voice_settings_lifecycle_test.dart test/modules/chat/neura_voice_commands_test.dart test/modules/chat/neura_offline_chat_test.dart
+          flutter test --no-pub --reporter expanded test/services/neura_native_viseme_lifecycle_test.dart test/avatar/sapi_viseme_map_test.dart test/services/neura_windows_tts_test.dart test/services/neura_windows_tts_routing_test.dart test/services/neura_tts_lifecycle_test.dart test/screens/neura_voice_settings_lifecycle_test.dart test/modules/chat/neura_voice_commands_test.dart test/modules/chat/neura_offline_chat_test.dart
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile real Windows owner and run audio-free ownership tests
         run: |
