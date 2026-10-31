@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../avatar/motion/neura_body_cues.dart';
 import '../services/neura_tts_service.dart';
 import 'brain_link.dart';
 import 'diagnostics.dart';
@@ -107,7 +108,13 @@ class ConversationController extends ChangeNotifier {
         _speechChunker.discard(id);
         unawaited(_stopSpeech().catchError((_) {}));
       case 'set_tone':
+        final before = tone.value;
         tone.setFromWire(data['tone'] as String?);
+        if (tone.value != before) NeuraToneMotion.apply(tone.value);
+      case 'avatar_cue':
+        // Brain-chosen body language. Allow-listed + rate-limited; a cue can
+        // only move the avatar, never act. See neura_body_cues.dart.
+        NeuraAvatarCueGate.instance.apply(data);
       case 'dispatch_intent':
         onDispatchIntent?.call(data);
       case 'diagnostics':
