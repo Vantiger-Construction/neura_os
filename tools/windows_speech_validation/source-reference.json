@@ -36,7 +36,7 @@
     },
     {
       "path": "lib/services/neura_tts_service.dart",
-      "sha256_lf": "013c080ed5787b30119ae364e816f2d55e1c0d0cefab5ea2b8ded4bb0819c925"
+      "sha256_lf": "bc34fea6f47a8895d4aaa6995d15d0fc9629456524a0badfecd832a343397512"
     },
     {
       "path": "lib/services/ambient_listening_service.dart",

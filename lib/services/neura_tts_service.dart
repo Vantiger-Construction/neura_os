@@ -528,9 +528,7 @@ class NeuraTtsService with WidgetsBindingObserver {
         );
       });
       final result = await _tts!.speak(text);
-      if (result == 0) {
-        _finish(playback);
-      }
+      if (result == 0) _finish(playback);
     });
     unawaited(
       dispatch.catchError((Object error, StackTrace stack) {
