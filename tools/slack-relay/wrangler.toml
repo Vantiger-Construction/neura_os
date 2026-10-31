@@ -1,0 +1,13 @@
+name = "neura-slack-relay"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+GITHUB_REPO = "Vantiger-Construction/neura_os"
+GITHUB_REF = "Neura"
+WORKFLOW_FILE = "neura-remote-launch.yml"
+
+# Secrets - set with `npx wrangler secret put <NAME>`, never commit them:
+#   SLACK_SIGNING_SECRET
+#   GITHUB_TOKEN
+#   ALLOWED_SLACK_USERS
