@@ -43,8 +43,10 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-          filter: blob:none
+          # Fetch only this head, never every branch: on Windows' case-
+          # insensitive filesystem the `Neura` ref collides with the
+          # `neura/` branch directory and checkout fails.
+          fetch-depth: 1
           persist-credentials: false
       - name: Compose pinned source heads in this disposable checkout
         run: |
@@ -54,7 +56,9 @@ jobs:
           git config user.name 'Neura integration validation'
           git config user.email 'validation@local.invalid'
           source_head=$(git rev-parse HEAD)
-          git fetch --no-tags origin "$BASE_HEAD" "$SAPI_HEAD" "$MOTION_HEAD"
+          # Full history of only the pinned commits (and this head), so the
+          # merges below have their merge bases without fetching every ref.
+          git fetch --no-tags --filter=blob:none --unshallow origin "$BASE_HEAD" "$SAPI_HEAD" "$MOTION_HEAD"
           git merge --no-edit "$BASE_HEAD"
           git merge --no-edit "$SAPI_HEAD"
           git merge --no-edit "$MOTION_HEAD"
