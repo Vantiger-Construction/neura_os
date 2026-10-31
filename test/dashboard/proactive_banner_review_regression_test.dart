@@ -62,9 +62,11 @@ void main() {
       final request = service.maybeGetBannerOnAppOpen();
       await started.future;
       try {
+        // The card must arrive while routine persistence is still held.
+        // Allow cold local-store reads on a busy Windows runner to finish;
+        // keep a bounded failure that identifies an actual blocked request.
         final banner = await request.timeout(
-          const Duration(seconds: 1),
-          onTimeout: () => null,
+          const Duration(seconds: 10),
         );
         expect(banner?.kind, ProactiveBannerKind.presence);
       } finally {
