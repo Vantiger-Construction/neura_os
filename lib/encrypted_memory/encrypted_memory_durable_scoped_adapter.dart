@@ -23,7 +23,7 @@ final class MemoryCryptoDurableAdapter implements EncryptedMemoryDurableCrypto {
 
   @override
   Object get authorityToken {
-    crypto.requireActiveKey();
+    crypto.requireOsBackedKey();
     return _authorityToken;
   }
 
@@ -159,6 +159,8 @@ final class EncryptedMemoryDurableScopedAdapter {
           _attachLoadedCryptoAuthority(loadedCrypto);
         },
         allowReconciliation: true,
+        safetyContext: safetyContext,
+        expectedKeyGeneration: expectedKeyGeneration,
       );
 
   Future<void> remember({
@@ -167,12 +169,20 @@ final class EncryptedMemoryDurableScopedAdapter {
     required EncryptedMemorySessionRecord record,
     required int expectedKeyGeneration,
     required DateTime nowUtc,
+    int? recordLimit,
   }) =>
       _serializedMutation(() async {
         _requireAvailable(safetyContext, expectedKeyGeneration);
         _requireUtc(nowUtc);
         _requireRestorable(record, expectedKeyGeneration);
         _requireLeaseTime(lease, nowUtc);
+        if (recordLimit != null && (recordLimit < 1 || recordLimit > 100)) {
+          throw const EncryptedMemoryPolicyViolation('invalid_record_limit');
+        }
+        if (recordLimit != null &&
+            _records.length + _quarantine.length >= recordLimit) {
+          throw const EncryptedMemoryPolicyViolation('durable_record_limit');
+        }
         final loadedCrypto = _records.isEmpty && _quarantine.isEmpty
             ? await _loadVerifiedCryptoAuthority()
             : null;
@@ -202,7 +212,9 @@ final class EncryptedMemoryDurableScopedAdapter {
         if (loadedCrypto != null) {
           _attachLoadedCryptoAuthority(loadedCrypto);
         }
-      });
+      },
+          safetyContext: safetyContext,
+          expectedKeyGeneration: expectedKeyGeneration);
 
   EncryptedMemorySessionRecord? recall({
     required EncryptedMemoryConsentLease lease,
@@ -368,7 +380,9 @@ final class EncryptedMemoryDurableScopedAdapter {
           expectedKeyGeneration: expectedKeyGeneration,
         );
         return true;
-      });
+      },
+          safetyContext: safetyContext,
+          expectedKeyGeneration: expectedKeyGeneration);
 
   Future<bool> forget({
     required EncryptedMemoryConsentLease lease,
@@ -417,7 +431,9 @@ final class EncryptedMemoryDurableScopedAdapter {
           );
         }
         return removed;
-      });
+      },
+          safetyContext: safetyContext,
+          expectedKeyGeneration: expectedKeyGeneration);
 
   Future<void> wipeScope({
     required EncryptedMemoryConsentLease lease,
@@ -478,7 +494,9 @@ final class EncryptedMemoryDurableScopedAdapter {
           safetyContext: safetyContext,
           expectedKeyGeneration: expectedKeyGeneration,
         );
-      });
+      },
+          safetyContext: safetyContext,
+          expectedKeyGeneration: expectedKeyGeneration);
 
   Future<bool> reviewQuarantined({
     required EncryptedMemoryConsentLease lease,
@@ -551,7 +569,9 @@ final class EncryptedMemoryDurableScopedAdapter {
           expectedKeyGeneration: expectedKeyGeneration,
         );
         return true;
-      });
+      },
+          safetyContext: safetyContext,
+          expectedKeyGeneration: expectedKeyGeneration);
 
   void _publishRestored({
     required Map<String, EncryptedMemorySessionRecord> records,
@@ -664,6 +684,8 @@ final class EncryptedMemoryDurableScopedAdapter {
   Future<T> _serializedMutation<T>(
     Future<T> Function() action, {
     bool allowReconciliation = false,
+    required NeuraSafetyContext safetyContext,
+    required int expectedKeyGeneration,
   }) {
     // Register the owner before the first asynchronous crypto or storage call.
     // Crypto attachment still requires successful verification and persistence.
@@ -690,8 +712,13 @@ final class EncryptedMemoryDurableScopedAdapter {
         _quarantine,
       );
       try {
-        return await action();
+        final value = await action();
+        _state.ownerVerified = true;
+        return value;
       } catch (error, stackTrace) {
+        if (_state.canReleaseUnverifiedOwner) {
+          _state.releaseUnverifiedOwner();
+        }
         _records
           ..clear()
           ..addAll(_state.suspendedForDataWipe ? const {} : recordsBefore);
@@ -893,7 +920,9 @@ final class _DurableScopedStorageRegistry {
     for (final state in _states.values) {
       final lifecycle = state.keyLifecycleAuthority;
       if (lifecycle is EncryptedMemoryKeyLifecycle &&
-          lifecycle.state != EncryptedMemoryKeyState.destroyed) {
+          (lifecycle.state == EncryptedMemoryKeyState.active ||
+              lifecycle.state == EncryptedMemoryKeyState.rotating ||
+              lifecycle.state == EncryptedMemoryKeyState.suspended)) {
         lifecycle.destroyVerifiedKey();
       }
     }
@@ -912,9 +941,24 @@ final class _DurableScopedStorageState {
   Object? safetyPolicyAuthority;
   Object? keyLifecycleAuthority;
   Object? cryptoAuthority;
+  bool ownerVerified = false;
   bool reconciliationRequired = false;
   bool suspendedForDataWipe = false;
   int pendingMutations = 0;
+
+  bool get canReleaseUnverifiedOwner =>
+      pendingMutations == 1 &&
+      !ownerVerified &&
+      cryptoAuthority == null &&
+      !reconciliationRequired &&
+      records.isEmpty &&
+      quarantine.isEmpty;
+
+  void releaseUnverifiedOwner() {
+    if (!canReleaseUnverifiedOwner) return;
+    safetyPolicyAuthority = null;
+    keyLifecycleAuthority = null;
+  }
 
   void suspendForDataWipe() {
     suspendedForDataWipe = true;
