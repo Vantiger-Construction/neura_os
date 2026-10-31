@@ -8,9 +8,11 @@
 import 'package:flutter_tts/flutter_tts.dart';
 
 import '../../avatar/viseme/neura_viseme_engine.dart';
+import '../../avatar/viseme/sapi_viseme_map.dart';
 import '../../core/neura_event_bus.dart';
 import '../../core/neura_events.dart';
 import '../../core/neura_events_extra.dart';
+import 'neura_windows_tts.dart';
 
 class NeuraFlutterTtsVisemeBridge {
   static final _attached = Expando<bool>();
@@ -57,6 +59,16 @@ class NeuraFlutterTtsVisemeBridge {
       );
       onError?.call(message);
     });
+
+    // Windows' owned SAPI channel reports real, audio-timed visemes from the
+    // engine's phoneme stream. Prefer them over text-progress guesses (that
+    // channel never reports text progress).
+    if (tts is NeuraWindowsTts) {
+      tts.visemeHandler = (int id) {
+        eventBus.emit(NeuraVisemeEvent(NeuraSapiVisemes.viseme(id)));
+        eventBus.emit(NeuraMouthOpenEvent(NeuraSapiVisemes.mouthOpen(id)));
+      };
+    }
 
     // Many platforms report the spoken substring through this callback. Keep
     // every index inside the source text before deriving the current viseme.
