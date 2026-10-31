@@ -28,6 +28,7 @@ import '../services/neura_provider_credentials.dart';
 import '../services/neura_swarm_service.dart';
 import '../services/wake_word_listener_service.dart';
 import '../services/wake_word_prefs.dart';
+import '../services/neura_startup_voice_prefs.dart';
 import '../src/modules/focus/focus_controller.dart';
 import '../src/shell/shell_prefs.dart';
 import 'neura_error_pipeline.dart';
@@ -40,7 +41,8 @@ bool supportsNativeNeuraSwarm({
 }) =>
     !isWeb && platform == TargetPlatform.windows;
 
-/// Native audio is deliberately absent from the automatic launch path.
+/// Core boot leaves native audio lazy. A separate saved startup-voice opt-in
+/// enters voice chat only after the unlocked foreground dashboard is ready.
 ///
 /// Both services initialize themselves on the first user-requested playback.
 /// Keeping their Windows plugins lazy prevents an optional AudioPlayer/TTS
@@ -257,6 +259,7 @@ class NeuraStartupCoordinator {
         'AmbientListeningPrefs',
       ),
       _safe(WakeWordPrefsController.instance.init, 'WakeWordPrefs'),
+      _safe(NeuraStartupVoicePrefs.instance.init, 'StartupVoicePrefs'),
       _safe(
         NeuraNotificationsPrefsController.instance.init,
         'NotificationsPrefs',

@@ -31,6 +31,7 @@ void main() {
           theme: ThemeData(splashFactory: NoSplash.splashFactory),
           home: const NeuraVoiceSettingsScreen()));
       await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.byTooltip('Play a sample'), 180);
       await tester.tap(find.byTooltip('Play a sample'));
       await tester.pumpAndSettle();
       expect(calls.where((method) => method == 'speak').length, 1);

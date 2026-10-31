@@ -33,6 +33,7 @@ add_executable(${BINARY_NAME} WIN32
   "neura_on_device_asr.cpp"
   "neura_engine_session.cpp"
   "neura_local_conversation.cpp"
+  "neura_local_speech_input.cpp"
   "neura_speech_recognizer.cpp"
   "neura_windows_tts.cpp"
   "neura_window_role.cpp"
