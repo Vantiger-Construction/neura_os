@@ -13,11 +13,14 @@ int main() {
   NeuraTtsLifecycle state;
   Require(state.request() == 0 && state.state() == "idle");
   Require(!state.Start(0, 1) && !state.Start(-1, 1) && !state.Start(1, 0));
+  Require(!state.Owns(0) && !state.Owns(10));  // Nothing speaking yet.
   Require(state.Start(1, 10));
+  Require(state.Owns(10) && !state.Owns(9) && !state.Owns(0));
   Require(!state.CanStart(2));
   state.End(1, 9);
   Require(state.state() == "speaking");
   state.Cancel();
+  Require(!state.Owns(10));  // A cancelled stream's late visemes are ignored.
   state.End(1, 10);
   Require(state.state() == "cancelled");
   Require(!state.Start(1, 11));
@@ -26,6 +29,7 @@ int main() {
   Require(state.state() == "speaking" && state.request() == 2);
   state.End(2, 10);
   Require(state.state() == "completed");
+  Require(!state.Owns(10));  // Completed streams no longer own events.
   state.End(2, 10);  // Duplicate is idempotent.
   Require(state.state() == "completed");
   state.Cancel();
