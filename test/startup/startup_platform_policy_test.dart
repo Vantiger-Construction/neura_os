@@ -311,8 +311,7 @@ void main() {
       await NeuraVoicePack.I.startMic();
       await NeuraVoicePack.I.playAsset('must-not-play.wav');
 
-      final approval =
-          NeuraSwarmApproval.grantFromVisibleConfirmation();
+      final approval = NeuraSwarmApproval.grantFromVisibleConfirmation();
       await expectLater(
         NeuraSwarmService.instance.init(
           'not-a-real-key',
