@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SAPI_HEAD: '4354a5f8277ed6024a3f332c0a9f95299d8b7b99'
+  SAPI_HEAD: 'fe97cf8016fe64cdc1bcb2258e1440a65aeb6299'
   MOTION_HEAD: '3269cddde9589c6c38ce275cc9319f73e8469ff9'
   BASE_HEAD: ${{ github.event.pull_request.base.sha || '640dedf6612c3cf91824bfc4152e3a4fbc3c663f' }}
 
