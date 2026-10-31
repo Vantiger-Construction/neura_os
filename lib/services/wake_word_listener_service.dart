@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import '../core/memory/memory_graph_service.dart';
 import '../core/neura_event_bus.dart';
 import '../core/neura_events.dart';
 import '../mascot/mascot_window_service.dart';
@@ -27,8 +26,10 @@ class WakeWordListenerService {
   }
   static final WakeWordListenerService instance = WakeWordListenerService._();
 
-  static final RegExp _wakePattern =
-      RegExp(r'^\s*(hey\s+)?neura\b[,.]?\s*', caseSensitive: false);
+  static final RegExp _wakePattern = RegExp(
+    r'^\s*(hey\s+)?neura\b[,.]?\s*',
+    caseSensitive: false,
+  );
 
   NeuraSpeechToTextService? _stt;
   StreamSubscription<String>? _sub;
@@ -160,17 +161,14 @@ class WakeWordListenerService {
     NeuraEventBus.I.emit(const NeuraThinkingEvent(true));
     try {
       final buffer = StringBuffer();
-      await for (final delta in NeuraAiService.instance.streamReply(
-        [NeuraChatTurn(isUser: true, text: text)],
-        agentId: AgentPersonaCatalog.generalId,
-      )) {
+      await for (final delta in NeuraAiService.instance.streamReply([
+        NeuraChatTurn(isUser: true, text: text),
+      ], agentId: AgentPersonaCatalog.generalId)) {
         buffer.write(delta);
       }
       if (generation != _dataGeneration) return;
 
       final reply = buffer.toString();
-      unawaited(_remember(isUser: true, text: text));
-      unawaited(_remember(isUser: false, text: reply));
 
       NeuraEventBus.I.emit(const NeuraTalkingEvent(true));
       await NeuraTtsService.instance.speak(reply);
@@ -180,25 +178,6 @@ class WakeWordListenerService {
       NeuraEventBus.I.emit(const NeuraThinkingEvent(false));
       NeuraEventBus.I.emit(const NeuraTalkingEvent(false));
       _busy = false;
-    }
-  }
-
-  Future<void> _remember({required bool isUser, required String text}) async {
-    if (text.trim().isEmpty) return;
-    try {
-      if (isUser) {
-        await MemoryGraphService.I.logUserAction(
-          kind: 'CHAT_MESSAGE',
-          payload: {'text': text, 'source': 'wake_word'},
-        );
-      } else {
-        await MemoryGraphService.I.logSuggestion(
-          kind: 'CHAT_REPLY',
-          payload: {'text': text, 'source': 'wake_word'},
-        );
-      }
-    } catch (e, st) {
-      await AppLog.instance.caught('wake_word_memory_log_failed', e, st);
     }
   }
 

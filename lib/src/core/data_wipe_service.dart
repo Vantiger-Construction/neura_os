@@ -7,6 +7,8 @@ import '../../adaptive_intent/neura_adaptive_intent_runtime.dart';
 import '../../core/memory/memory_crypto.dart';
 import '../../core/memory/memory_consolidation_service.dart';
 import '../../core/memory/memory_graph_service.dart';
+import '../../encrypted_memory/encrypted_memory_durable_scoped_adapter.dart';
+import '../../encrypted_memory/companion_memory_service.dart';
 import '../../core/neura_error_vault.dart';
 import '../../care/services/care_mode_bridge.dart';
 import '../../care/services/contact_share_service.dart';
@@ -118,6 +120,8 @@ class NeuraDataWipeService {
     // Keep the live gate closed for the rest of this process; the next launch
     // starts clean after the persisted Safe Boot marker is deleted.
     SafeBoot.instance.safeMode.value = true;
+    CompanionMemoryService.suspendAllForDataWipe();
+    EncryptedMemoryDurableScopedAdapter.suspendAllForDataWipe();
     NeuraAiService.instance.cancelActiveGeneration();
     AmbientListeningPrefsController.instance.resetAfterDataWipe();
     WakeWordPrefsController.instance.resetAfterDataWipe();
@@ -170,6 +174,11 @@ class NeuraDataWipeService {
       failures,
       'weekly summary drain',
       WeeklySummaristService.instance.resetAfterDataWipe,
+    );
+    await _attempt(
+      failures,
+      'scoped memory writer shutdown',
+      EncryptedMemoryDurableScopedAdapter.drainAllForDataWipe,
     );
     await _attempt(
       failures,
@@ -295,11 +304,11 @@ class NeuraDataWipeService {
       'native provider credential deletion',
       NeuraSwarmService.instance.clearCredentialForDataWipe,
     );
-    await _attempt(
-      failures,
-      'device encryption key deletion',
-      MemoryCrypto.clearDeviceKey,
-    );
+    await _attempt(failures, 'device encryption key deletion', () async {
+      await MemoryCrypto.clearDeviceKey();
+      EncryptedMemoryDurableScopedAdapter
+          .confirmDeviceKeyDestroyedForDataWipe();
+    });
     await _attempt(
       failures,
       'provider credential deletion',

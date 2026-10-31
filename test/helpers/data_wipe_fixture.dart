@@ -212,6 +212,9 @@ class WipePreferencesStore extends SharedPreferencesStorePlatform {
   bool ignoreClear = false;
   int clearCalls = 0;
   Future<void> Function(String key)? beforeSetValue;
+  Future<void> Function(String key)? beforeSet;
+  Future<void> Function(String key)? beforeRemove;
+  Future<void> Function()? beforeGetAll;
 
   @override
   bool get isMock => true;
@@ -226,16 +229,21 @@ class WipePreferencesStore extends SharedPreferencesStorePlatform {
   }
 
   @override
-  Future<Map<String, Object>> getAll() async => Map.from(data);
+  Future<Map<String, Object>> getAll() async {
+    await beforeGetAll?.call();
+    return Map.from(data);
+  }
 
   @override
   Future<bool> remove(String key) async {
+    await beforeRemove?.call(key);
     data.remove(key);
     return true;
   }
 
   @override
   Future<bool> setValue(String valueType, String key, Object value) async {
+    await beforeSet?.call(key);
     await beforeSetValue?.call(key);
     data[key] = value;
     return true;
