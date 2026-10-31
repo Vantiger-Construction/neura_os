@@ -84,10 +84,14 @@ jobs:
           flutter analyze --no-pub $files
       - name: Full synthetic Flutter suite with native-viseme assertions required
         run: flutter test --no-pub --concurrency 2 --reporter expanded --dart-define=NEURA_VALIDATE_NATIVE_VISEMES=true
-      - name: Verify speech plugin exclusion and audit-helper behavior
-        run: |
-          python tools/test_windows_plugin_filter.py
-          python -m unittest discover -s tools/security -p 'test_*.py'
+      - name: Verify speech plugin exclusion
+        run: python tools/test_windows_plugin_filter.py
+      # The audit-helper tests use POSIX fixture paths (e.g. /synthetic/neura);
+      # on Windows resolve() adds a drive letter and relative_to() fails. The
+      # security workflow runs them on Linux only, so match it here.
+      - name: Verify audit-helper behavior
+        if: runner.os == 'Linux'
+        run: python -m unittest discover -s tools/security -p 'test_*.py'
       - name: Compile the actual Windows speech owner and run audio-free native tests
         if: runner.os == 'Windows'
         shell: pwsh
