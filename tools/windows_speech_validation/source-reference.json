@@ -36,7 +36,7 @@
     },
     {
       "path": "lib/services/neura_tts_service.dart",
-      "sha256_lf": "182b9fb15f0074a225c9f63b9d6d90a33698cca33ea979a52bbd8b91ce9c6ed5"
+      "sha256_lf": "013c080ed5787b30119ae364e816f2d55e1c0d0cefab5ea2b8ded4bb0819c925"
     },
     {
       "path": "lib/services/ambient_listening_service.dart",
@@ -49,6 +49,10 @@
     {
       "path": "tools/test_windows_plugin_filter.py",
       "sha256_lf": "0b754bc3a2f7c72615847c4eebc697b6a8886adfa958c4e52e2efe6e92b1bf70"
+    },
+    {
+      "path": "lib/integrations/tts/neura_flutter_tts_viseme_bridge.dart",
+      "sha256_lf": "63d1d04896fffdd253492ad8c9a9359464fba8fad3a5a781346c4285dd44841a"
     }
   ]
 }

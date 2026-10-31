@@ -16,6 +16,13 @@ import 'neura_windows_tts.dart';
 
 class NeuraFlutterTtsVisemeBridge {
   static final _attached = Expando<bool>();
+  static final _resets = Expando<void Function()>();
+
+  /// Revoke animation synchronously, before waiting for native stop. Late
+  /// progress/viseme callbacks must not reopen a cancelled utterance's mouth.
+  static void reset(FlutterTts? tts) {
+    if (tts != null) _resets[tts]?.call();
+  }
 
   /// [onCompletion], [onCancel], and [onError] run alongside the bridge's
   /// event-bus emissions. flutter_tts supports only one handler of each kind,
@@ -27,36 +34,52 @@ class NeuraFlutterTtsVisemeBridge {
     void Function()? onCompletion,
     void Function()? onCancel,
     void Function(dynamic message)? onError,
+    bool Function()? playbackAllowed,
   }) async {
     if (_attached[tts] == true) return;
 
     final eventBus = bus ?? NeuraEventBus.I;
+    var speaking = false;
+    bool allowed() => playbackAllowed?.call() ?? true;
+    void rest() {
+      if (!speaking) return;
+      speaking = false;
+      _emitRestState(eventBus);
+    }
+
+    _resets[tts] = rest;
 
     tts.setStartHandler(() {
+      if (!allowed()) return;
+      speaking = true;
       eventBus.emit(const NeuraTalkingEvent(true));
       eventBus.emit(const NeuraMouthOpenEvent(0.25));
       eventBus.emit(const NeuraVisemeEvent(NeuraViseme.AI));
     });
 
     tts.setCompletionHandler(() {
-      _emitRestState(eventBus);
-      eventBus.emit(const NeuraPulseEvent.blink());
+      final active = speaking && allowed();
+      rest();
+      if (active) eventBus.emit(const NeuraPulseEvent.blink());
       onCompletion?.call();
     });
 
     tts.setCancelHandler(() {
-      _emitRestState(eventBus);
+      rest();
       onCancel?.call();
     });
 
     tts.setErrorHandler((message) {
-      _emitRestState(eventBus);
-      eventBus.emit(
-        NeuraErrorEvent(
-          'TTS error: $message',
-          hint: 'flutter_tts',
-        ),
-      );
+      final active = speaking && allowed();
+      rest();
+      if (active) {
+        eventBus.emit(
+          NeuraErrorEvent(
+            'Local speech failed.',
+            hint: 'flutter_tts',
+          ),
+        );
+      }
       onError?.call(message);
     });
 
@@ -65,6 +88,7 @@ class NeuraFlutterTtsVisemeBridge {
     // channel never reports text progress).
     if (tts is NeuraWindowsTts) {
       tts.visemeHandler = (int id) {
+        if (!speaking || !allowed()) return;
         eventBus.emit(NeuraVisemeEvent(NeuraSapiVisemes.viseme(id)));
         eventBus.emit(NeuraMouthOpenEvent(NeuraSapiVisemes.mouthOpen(id)));
       };
@@ -73,6 +97,7 @@ class NeuraFlutterTtsVisemeBridge {
     // Many platforms report the spoken substring through this callback. Keep
     // every index inside the source text before deriving the current viseme.
     tts.setProgressHandler((String text, int start, int end, String word) {
+      if (!speaking || !allowed() || tts is NeuraWindowsTts) return;
       try {
         final safeStart = start.clamp(0, text.length).toInt();
         final safeEnd = end.clamp(0, text.length).toInt();
