@@ -1,0 +1,147 @@
+name: Neura avatar conversation integration
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths:
+      - 'lib/avatar/**'
+      - 'lib/modules/chat/**'
+      - 'lib/services/neura_ai_service.dart'
+      - 'lib/services/neura_tts_service.dart'
+      - 'lib/integrations/tts/**'
+      - 'test/modules/chat/**'
+      - 'test/services/neura_native_viseme_lifecycle_test.dart'
+      - 'docs/AVATAR_CONVERSATION_VALIDATION.md'
+      - '.github/workflows/neura-avatar-conversation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-avatar-conversation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  SAPI_HEAD: 'fe97cf8016fe64cdc1bcb2258e1440a65aeb6299'
+  MOTION_HEAD: '3269cddde9589c6c38ce275cc9319f73e8469ff9'
+  BASE_HEAD: ${{ github.event.pull_request.base.sha || '640dedf6612c3cf91824bfc4152e3a4fbc3c663f' }}
+
+jobs:
+  conversation:
+    name: Integrated conversation (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          # Fetch only this head, never every branch: on Windows' case-
+          # insensitive filesystem the `Neura` ref collides with the
+          # `neura/` branch directory and checkout fails.
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Compose pinned source heads in this disposable checkout
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/neura/sapi-native-visemes | cut -f1)" = "$SAPI_HEAD"
+          test "$(git ls-remote origin refs/heads/feature/fluent-motion-neura | cut -f1)" = "$MOTION_HEAD"
+          git config user.name 'Neura integration validation'
+          git config user.email 'validation@local.invalid'
+          source_head=$(git rev-parse HEAD)
+          # Full history of only the pinned commits (and this head), so the
+          # merges below have their merge bases without fetching every ref.
+          git fetch --no-tags --filter=blob:none --unshallow origin "$BASE_HEAD" "$SAPI_HEAD" "$MOTION_HEAD"
+          git merge --no-edit "$BASE_HEAD"
+          git merge --no-edit "$SAPI_HEAD"
+          git merge --no-edit "$MOTION_HEAD"
+          {
+            echo "Source PR head: $source_head"
+            echo "Base: $BASE_HEAD"
+            echo "SAPI: $SAPI_HEAD"
+            echo "Motion: $MOTION_HEAD"
+            echo "Combined tree: $(git rev-parse 'HEAD^{tree}')"
+            echo 'Disposable source integration only. No physical audio or lip-sync acceptance.'
+          } | tee avatar-integration-source.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Restore reviewed dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Check formatting and analyze conversation boundaries
+        run: |
+          files='lib/avatar/conversation_presence_signal.dart lib/avatar/viseme/sapi_viseme_map.dart lib/modules/chat/neura_chat_screen.dart lib/services/neura_ai_service.dart lib/services/neura_tts_service.dart lib/integrations/tts/neura_flutter_tts_viseme_bridge.dart test/modules/chat/neura_conversation_presence_test.dart test/services/neura_native_viseme_lifecycle_test.dart'
+          dart format --output=none --set-exit-if-changed $files
+          flutter analyze --no-pub $files
+      - name: Full synthetic Flutter suite with native-viseme assertions required
+        run: flutter test --no-pub --concurrency 2 --reporter expanded --dart-define=NEURA_VALIDATE_NATIVE_VISEMES=true
+      - name: Verify speech plugin exclusion
+        run: python tools/test_windows_plugin_filter.py
+      # The audit-helper tests use POSIX fixture paths (e.g. /synthetic/neura);
+      # on Windows resolve() adds a drive letter and relative_to() fails. The
+      # security workflow runs them on Linux only, so match it here.
+      - name: Verify audit-helper behavior
+        if: runner.os == 'Linux'
+        run: python -m unittest discover -s tools/security -p 'test_*.py'
+      - name: Compile the actual Windows speech owner and run audio-free native tests
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sdk = $env:FLUTTER_ROOT
+          if ([string]::IsNullOrWhiteSpace($sdk)) {
+            $sdk = Split-Path -Parent (Split-Path -Parent (Get-Command flutter).Source)
+          }
+          flutter precache --windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $includes = Join-Path $sdk 'engine\src\flutter\shell\platform\common\client_wrapper\include'
+          if (-not (Test-Path (Join-Path $includes 'flutter\method_channel.h'))) {
+            $header = Get-ChildItem (Join-Path $sdk 'bin\cache\artifacts\engine') -Filter method_channel.h -Recurse |
+              Where-Object { $_.Directory.Name -eq 'flutter' } | Select-Object -First 1
+            if (-not $header) { throw 'Genuine Flutter wrapper headers were not found.' }
+            $includes = Split-Path -Parent $header.Directory.FullName
+          }
+          $engine = Join-Path $sdk 'bin\cache\artifacts\engine'
+          $library = Get-ChildItem $engine -Filter flutter_windows.dll.lib -Recurse |
+            Where-Object { $_.FullName -match 'windows-x64' } | Select-Object -First 1
+          if (-not $library) { throw 'Genuine Flutter engine import library was not found.' }
+          $dll = Join-Path $library.Directory.FullName 'flutter_windows.dll'
+          $api = Join-Path $sdk 'engine\src\flutter\shell\platform\common\public'
+          if (-not (Test-Path (Join-Path $api 'flutter_messenger.h'))) {
+            $apiHeader = Get-ChildItem $library.Directory.FullName -Filter flutter_messenger.h -Recurse | Select-Object -First 1
+            if (-not $apiHeader) { throw 'Genuine Flutter engine API headers were not found.' }
+            $api = $apiHeader.Directory.FullName
+          }
+          cmake -S tools/windows_tts_native_check -B build/windows-tts-native-check "-DFLUTTER_WRAPPER_INCLUDE=$includes" "-DFLUTTER_ENGINE_INCLUDE=$api" "-DFLUTTER_ENGINE_LIBRARY=$($library.FullName)" "-DFLUTTER_ENGINE_DLL=$dll"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build/windows-tts-native-check --config Debug
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir build/windows-tts-native-check -C Debug --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build the combined Windows app without the legacy TTS DLL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          flutter build windows --release --no-pub
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $legacy = Get-ChildItem build/windows -Recurse -Filter flutter_tts_plugin.dll
+          if ($legacy) { throw 'Legacy flutter_tts plugin unexpectedly bundled in Windows output' }
+      - name: Ensure reviewed source and lockfiles were not rewritten
+        run: git diff --exit-code -- lib test pubspec.lock rust/Cargo.lock
+      - name: Preserve exact source composition
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: avatar-conversation-source-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: avatar-integration-source.txt
+          if-no-files-found: error
+          retention-days: 14

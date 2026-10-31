@@ -89,8 +89,10 @@ class NeuraAiService {
   NeuraAiService.forTesting({
     required NeuraSecureModelRouter modelRouter,
     required bool Function() configuredReader,
+    NeuraOllamaChat? ollama,
   })  : _modelRouter = modelRouter,
-        _configuredReader = configuredReader;
+        _configuredReader = configuredReader,
+        _ollama = ollama;
   static final NeuraAiService instance = NeuraAiService._();
 
   static const _maxToolRounds = 4;
