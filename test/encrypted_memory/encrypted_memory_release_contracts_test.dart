@@ -24,8 +24,10 @@ void main() {
   late NeuraLivingSafetyPolicy safety;
   late _PausedRealCrypto crypto;
   var safeMode = false;
+  var refuseKeyDeletion = false;
 
   setUp(() async {
+    refuseKeyDeletion = false;
     SharedPreferences.setMockInitialValues({});
     await NeuraPrefsCache.init();
     await NeuraPrefsCache.prefs.clear();
@@ -40,7 +42,7 @@ void main() {
           secrets[key] = args['value'] as String;
           return null;
         case 'delete':
-          secrets.remove(key);
+          if (!refuseKeyDeletion) secrets.remove(key);
           return null;
       }
       throw StateError('Unexpected synthetic credential-store operation.');
@@ -170,6 +172,40 @@ void main() {
     await MemoryCrypto.clearDeviceKey();
     EncryptedMemoryDurableScopedAdapter.confirmDeviceKeyDestroyedForDataWipe();
     expect(keys.state, EncryptedMemoryKeyState.destroyed);
+  });
+
+  test(
+      'cancelled first owner survives failed key deletion until verified retry',
+      () async {
+    final subject = adapter();
+    final generation = keys.generation;
+    final rejected = expectLater(
+      seed(subject),
+      throwsA(isA<EncryptedMemoryPolicyViolation>()),
+    );
+    EncryptedMemoryDurableScopedAdapter.suspendAllForDataWipe();
+    await rejected;
+    await EncryptedMemoryDurableScopedAdapter.drainAllForDataWipe();
+    refuseKeyDeletion = true;
+    try {
+      await expectLater(MemoryCrypto.clearDeviceKey(), throwsStateError);
+      expect(secrets['neura.memoryGraph.seed.v2'], isNotNull);
+      expect(keys.state, EncryptedMemoryKeyState.suspended);
+      expect(keys.generation, generation);
+      await expectLater(MemoryCrypto.demo(), throwsStateError);
+      await expectLater(
+          crypto.inner.encryptJson({'late': value}), throwsStateError);
+    } finally {
+      refuseKeyDeletion = false;
+    }
+    await MemoryCrypto.clearDeviceKey();
+    EncryptedMemoryDurableScopedAdapter.confirmDeviceKeyDestroyedForDataWipe();
+    EncryptedMemoryDurableScopedAdapter.confirmDeviceKeyDestroyedForDataWipe();
+    expect(secrets['neura.memoryGraph.seed.v2'], isNull);
+    expect(keys.state, EncryptedMemoryKeyState.destroyed);
+    expect(keys.generation, generation + 1);
+    expect(subject.recordCount, 0);
+    expect(NeuraPrefsCache.prefs.containsKey(storage), isFalse);
   });
 
   test('expired recall cannot backdate access using its request timestamp',
