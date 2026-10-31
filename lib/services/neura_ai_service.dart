@@ -91,10 +91,8 @@ class NeuraAiService {
   NeuraAiService.forTesting({
     required NeuraSecureModelRouter modelRouter,
     required bool Function() configuredReader,
-    NeuraOllamaChat? ollama,
   })  : _modelRouter = modelRouter,
-        _configuredReader = configuredReader,
-        _ollama = ollama;
+        _configuredReader = configuredReader;
   static final NeuraAiService instance = NeuraAiService._();
 
   static const _maxToolRounds = 4;
@@ -189,18 +187,6 @@ class NeuraAiService {
     final policy = NeuraChatPolicy.forRoom(roomId);
     final advertisedTools = NeuraChatPolicy.advertisedTools(policy);
     final useMemory = policy.persistMemory && includePermittedMemory;
-    void checkReference() {
-      try {
-        offlineReference?.requireCurrent();
-      } catch (_) {
-        cancel.cancel();
-      }
-    }
-
-    if (offlineReference != null) {
-      offlineReference.shelf.addListener(checkReference);
-      unawaited(cancel.whenCancelled.then((_) => offlineReference.revoke()));
-    }
     void checkMemory() {
       if (!useMemory || memoryPermission == null) return;
       try {
@@ -244,17 +230,19 @@ class NeuraAiService {
         // dedicated reference grant permits only its displayed passages.
         // The standard charter, room framing, audience and input guardrails
         // still apply. Offline chat never falls through to the cloud router.
-        checkReference();
-        cancel.throwIfCancelled();
-        final localMessages = offlineReference == null
-            ? history.map((turn) => turn.toJson()).toList()
-            : <Map<String, dynamic>>[
-                {'role': 'user', 'content': offlineReference.consume()}
-              ];
-        final recent = offlineBudget.retain(
-          localMessages,
-          threadContext: threadContext,
-        );
+        final recent = history.length > 8
+            ? history.sublist(history.length - 8)
+            : List<NeuraChatTurn>.of(history);
+        // Trim older whole turns before crossing the platform channel; Rust
+        // independently revalidates the same byte/count caps.
+        while (recent.length > 1 &&
+            recent.fold<int>(
+                  0,
+                  (sum, turn) => sum + utf8.encode(turn.text).length,
+                ) >
+                1500) {
+          recent.removeAt(0);
+        }
         final text = await (_ollama ??= NeuraOllamaChat()).reply(
           system:
               '$systemPrompt\n\nYou are running offline. Do not claim web access, '
@@ -389,11 +377,6 @@ class NeuraAiService {
       _diagnostics.recordFailure(error);
       rethrow;
     } finally {
-      thinking?.release();
-      if (offlineReference != null) {
-        offlineReference.shelf.removeListener(checkReference);
-        offlineReference.revoke();
-      }
       if (useMemory && memoryPermission != null) {
         memoryPermission.service.removeListener(checkMemory);
         memoryPermission.revoke();

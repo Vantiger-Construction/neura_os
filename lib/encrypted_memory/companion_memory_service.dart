@@ -13,7 +13,7 @@ import 'encrypted_memory_contracts.dart';
 import 'encrypted_memory_durable_scoped_adapter.dart';
 import 'encrypted_memory_session_adapter.dart';
 
-enum CompanionMemoryUse { review, prompt, remember, correct, forget, wipe }
+enum CompanionMemoryUse { review, prompt, remember, wipe }
 
 /// One user gesture, one operation and one destination. A review grant cannot
 /// be reused for a prompt, nor a recall grant for a write. Nothing is persisted.
@@ -299,71 +299,6 @@ final class CompanionMemoryService extends ChangeNotifier
     revokePermissions();
   }
 
-  /// A separate direct gesture authorizes changing exactly one reviewed note.
-  /// Invalidate recalled copies before mutation, including in-flight replies.
-  Future<bool> changeNote(CompanionMemoryPermission permission,
-      {required String recordId, String? replacement}) async {
-    final use = replacement == null
-        ? CompanionMemoryUse.forget
-        : CompanionMemoryUse.correct;
-    _validate(permission, use);
-    final value = replacement?.trim();
-    if (recordId.isEmpty ||
-        (value != null &&
-            (value.isEmpty ||
-                value.length > 1000 ||
-                value.codeUnits.any((c) => c < 0x20 || c == 0x7f)))) {
-      throw const EncryptedMemoryPolicyViolation('invalid_companion_note');
-    }
-    for (final owner in _owners.toList()) {
-      for (final other in owner._permissions.toList()) {
-        if (!identical(other, permission)) other.revoke();
-      }
-    }
-    await _restore(permission, use);
-    final now = _utcNow();
-    final changed = value == null
-        ? await _adapter.forget(
-            lease: permission.lease,
-            safetyContext: _context,
-            recordId: recordId,
-            ownerId: scope.ownerId,
-            deviceId: scope.deviceId,
-            capsuleId: scope.capsuleId,
-            memoryClass: scope.classes.single,
-            source: scope.sources.single,
-            sensitivity: scope.sensitivity,
-            expectedKeyGeneration: keyLifecycle.generation,
-            nowUtc: now)
-        : await _adapter.correct(
-            lease: permission.lease,
-            safetyContext: _context,
-            recordId: recordId,
-            ownerId: scope.ownerId,
-            deviceId: scope.deviceId,
-            capsuleId: scope.capsuleId,
-            memoryClass: scope.classes.single,
-            source: scope.sources.single,
-            sensitivity: scope.sensitivity,
-            expectedKeyGeneration: keyLifecycle.generation,
-            nowUtc: now,
-            replacementValue: value,
-            replacementProvenance: EncryptedMemoryProvenance(
-                source: scope.sources.single,
-                sourceId: permission.lease.id,
-                authorId: scope.ownerId,
-                reason: 'user_corrected_companion_note',
-                trustTier: EncryptedMemoryTrustTier.userReviewed,
-                integrityState: EncryptedMemoryIntegrityState.verified,
-                integrityTag: base64UrlEncode(
-                    (await Sha256().hash(utf8.encode(value))).bytes),
-                observedAtUtc: now,
-                reviewedAtUtc: now));
-    _validate(permission, use, unused: false);
-    notifyListeners();
-    return changed;
-  }
-
   Future<void> _restore(
     CompanionMemoryPermission? permission,
     CompanionMemoryUse use,
@@ -451,8 +386,6 @@ final class CompanionMemoryService extends ChangeNotifier
         CompanionMemoryUse.prompt =>
           EncryptedMemoryOperation.recall,
         CompanionMemoryUse.remember => EncryptedMemoryOperation.remember,
-        CompanionMemoryUse.correct => EncryptedMemoryOperation.correct,
-        CompanionMemoryUse.forget => EncryptedMemoryOperation.forget,
         CompanionMemoryUse.wipe => EncryptedMemoryOperation.wipe,
       };
 }

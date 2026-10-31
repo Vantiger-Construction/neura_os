@@ -58,43 +58,6 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('revocation clears an open correction and prevents a stale save',
-      (tester) async {
-    late CompanionMemoryFixture f;
-    await tester.runAsync(() async {
-      f = await CompanionMemoryFixture.create();
-      await f.disk.run(() => f.seed());
-    });
-    await tester
-        .pumpWidget(MaterialApp(home: MemoryScreen(memoryService: f.memory)));
-    await tester.runAsync(() async {
-      await tester.tap(find.text('Review saved notes on this device'));
-      await f.crypto.decrypted.future;
-    });
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Edit or forget note'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Correct note'));
-    await tester.pumpAndSettle();
-    final editor = find.descendant(
-        of: find.byType(AlertDialog), matching: find.byType(TextField));
-    await tester.enterText(editor, 'Private replacement draft');
-    f.memory.revokePermissions();
-    await tester.pump();
-    expect(tester.widget<TextField>(editor).controller!.text, isEmpty);
-    await tester.tap(find.text('Save correction'));
-    await tester.pumpAndSettle();
-    await tester.runAsync(() async {
-      final permission = f.grant(CompanionMemoryUse.review);
-      final records =
-          await f.memory.recall(permission, use: CompanionMemoryUse.review);
-      expect(records.single.value, 'Synthetic companion note');
-      permission.revoke();
-    });
-    await tester.pumpWidget(const SizedBox.shrink());
-    expect(tester.takeException(), isNull);
-  });
-
   testWidgets('idle permission timer revokes at the five-minute boundary',
       (tester) async {
     late CompanionMemoryFixture f;
