@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 
+import '../../avatar/conversation_presence_signal.dart';
 import '../../encrypted_memory/companion_memory_service.dart';
 import '../../neura_link/reply_speech_queue.dart';
 import '../../neura_link/local_conversation_session.dart';
@@ -64,6 +65,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   ];
 
   bool _speechEnabled = true;
+
+  /// Mirrors this screen's turn state onto the avatar (listening/thinking).
+  final ConversationPresenceSignal _presence = ConversationPresenceSignal();
+  bool _disposed = false;
   late final LocalConversationSession _localSession;
   bool _localSelected = false;
   int _localSerial = 0;
@@ -286,6 +291,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     NeuraAiService.instance.cancelActiveGeneration();
     _continuousMode = false;
     _listening = false;
+    _syncPresence();
     if (mounted) {
       setState(() {
         if (hadVoice) _controller.clear();
@@ -314,8 +320,29 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     });
   }
 
+  /// Every visible state change also re-derives the avatar's presence, so
+  /// listening/thinking can never drift from what the chat is showing.
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _syncPresence();
+  }
+
+  void _syncPresence() {
+    final activeLine = _activeBotLine;
+    _presence.update(
+      listening: _listening,
+      // Thinking lasts from the request until the first reply text appears;
+      // after that the TTS bridge owns talking and visemes.
+      awaitingReply: _busy && (activeLine == null || activeLine.text.isEmpty),
+      suppressed: _disposed || SafeBoot.instance.safeMode.value,
+    );
+  }
+
   @override
   void dispose() {
+    _disposed = true;
+    _presence.reset();
     _memoryOwner?.removeListener(_onPendingMemoryChanged);
     _memoryPermission?.revoke();
     ++_localSerial;
