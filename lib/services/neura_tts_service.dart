@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
+import '../avatar/motion/neura_body_cues.dart';
 import '../integrations/tts/neura_flutter_tts_viseme_bridge.dart';
 import '../integrations/tts/neura_windows_tts.dart';
+import '../avatar/motion/neura_motion.dart';
 import 'neura_audio_focus.dart';
 import 'neura_companion_presence.dart';
 import '../reliability/safe_boot.dart';
@@ -158,10 +160,13 @@ class NeuraTtsService {
     if (existing != null) return existing;
 
     late final Future<bool> operation;
-    operation = _initialize().timeout(_nativeCommandTimeout, onTimeout: () {
-      _nativeUncertain = true;
-      throw TimeoutException('Local speech initialization timed out.');
-    }).whenComplete(() {
+    operation = _initialize().timeout(
+      _nativeCommandTimeout,
+      onTimeout: () {
+        _nativeUncertain = true;
+        throw TimeoutException('Local speech initialization timed out.');
+      },
+    ).whenComplete(() {
       if (identical(_initialization, operation)) {
         _initialization = null;
       }
@@ -220,6 +225,8 @@ class NeuraTtsService {
     playback.focus?.release();
     playback.presence?.release();
     if (identical(_playing, playback)) {
+      NeuraSpeechBeats.instance.end();
+      NeuraMotion.instance.endSpeech();
       _playing = null;
       _acceptCallbacks = false;
     }
@@ -239,14 +246,17 @@ class NeuraTtsService {
       if (_nativeUncertain) {
         throw StateError('Local speech requires an application restart.');
       }
-      await action().timeout(_nativeCommandTimeout, onTimeout: () {
-        // A Dart timeout cannot cancel a native operation. Quarantine this
-        // engine so a late acknowledgement cannot overlap a new utterance.
-        _nativeUncertain = true;
-        final error = TimeoutException('Local speech command timed out.');
-        _finish(_playing, error: error);
-        throw error;
-      });
+      await action().timeout(
+        _nativeCommandTimeout,
+        onTimeout: () {
+          // A Dart timeout cannot cancel a native operation. Quarantine this
+          // engine so a late acknowledgement cannot overlap a new utterance.
+          _nativeUncertain = true;
+          final error = TimeoutException('Local speech command timed out.');
+          _finish(_playing, error: error);
+          throw error;
+        },
+      );
     });
     late final Future<void> tail;
     tail = next
@@ -309,8 +319,10 @@ class NeuraTtsService {
     if (!await _ensureInit()) return;
     if (!playbackAllowed) return;
 
-    final result =
-        await _tts!.setVoice({'name': voice.name, 'locale': voice.locale});
+    final result = await _tts!.setVoice({
+      'name': voice.name,
+      'locale': voice.locale,
+    });
     if (result == 0) return;
     _selectedVoiceName = voice.name;
     try {
@@ -355,8 +367,10 @@ class NeuraTtsService {
     if (!await _ensureInit()) return;
     if (!current() || sampleText.trim().isEmpty) return;
 
-    final result =
-        await _tts!.setVoice({'name': voice.name, 'locale': voice.locale});
+    final result = await _tts!.setVoice({
+      'name': voice.name,
+      'locale': voice.locale,
+    });
     if (result == 0) return;
     if (!current()) return;
     await speak(sampleText);
@@ -382,8 +396,10 @@ class NeuraTtsService {
       final savedLocale = prefs?.getString(_kVoiceLocaleKey);
       if (savedName != null && savedLocale != null) {
         if (!_configurationAllowed(cancellation)) return;
-        final result =
-            await tts.setVoice({'name': savedName, 'locale': savedLocale});
+        final result = await tts.setVoice({
+          'name': savedName,
+          'locale': savedLocale,
+        });
         if (result != 0) {
           _selectedVoiceName = savedName;
           return;
@@ -482,16 +498,25 @@ class NeuraTtsService {
           // mistaken for another utterance. Require a restart after timeout.
           _nativeUncertain = true;
         });
-        unawaited(cleanup.catchError((Object failure, StackTrace stack) {
-          _finish(playback, error: failure, stack: stack);
-        }));
+        unawaited(
+          cleanup.catchError((Object failure, StackTrace stack) {
+            _finish(playback, error: failure, stack: stack);
+          }),
+        );
       });
+      // Body language follows her speech rhythm (punctuation only).
+      NeuraSpeechBeats.instance.begin(text);
       final result = await _tts!.speak(text);
-      if (result == 0) _finish(playback);
+      if (result == 0) {
+        NeuraSpeechBeats.instance.end();
+        _finish(playback);
+      }
     });
-    unawaited(dispatch.catchError((Object error, StackTrace stack) {
-      _finish(playback, error: error, stack: stack);
-    }));
+    unawaited(
+      dispatch.catchError((Object error, StackTrace stack) {
+        _finish(playback, error: error, stack: stack);
+      }),
+    );
     return playback.done.future;
   }
 
@@ -499,6 +524,8 @@ class NeuraTtsService {
   /// A missing acknowledgement fails within the command deadline and prevents
   /// further speech; it cannot guarantee that a hung native player is silent.
   Future<void> stop() {
+    NeuraSpeechBeats.instance.end();
+    NeuraMotion.instance.endSpeech();
     ++_speechGeneration;
     ++_cancelGeneration;
     // A stop before first use must remain a no-op. In particular, do not
