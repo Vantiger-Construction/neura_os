@@ -266,15 +266,16 @@ class NeuraAiService {
         cancel.throwIfCancelled();
         checkReference();
         cancel.throwIfCancelled();
+        // Validate and decode reference evidence before screening the complete
+        // display text, including JSON-escaped source characters. No model
+        // prose is released; quotation matching proves identity, not truth.
+        final displayText = offlineReference?.formatVerifiedReply(text) ?? text;
         final postBlocked = await _checkGuardrails([
-          NeuraChatTurn(isUser: true, text: text),
+          NeuraChatTurn(isUser: true, text: displayText),
         ]);
+        checkReference();
         cancel.throwIfCancelled();
-        yield postBlocked ??
-            (offlineReference != null &&
-                    !offlineReference.hasValidCitations(text)
-                ? 'I could not produce a properly cited answer. Please check the source passages below or ask a narrower question.'
-                : text);
+        yield postBlocked ?? displayText;
         return;
       }
       final messages = history.map((t) => t.toJson()).toList();

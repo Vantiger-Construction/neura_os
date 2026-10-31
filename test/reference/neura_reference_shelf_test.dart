@@ -26,7 +26,8 @@ void main() {
         throwsStateError);
     final grant = shelf.authorize('filter', directUserGesture: true);
     final prompt = grant.consume();
-    expect(prompt, contains('[1] Clean the filter every month.'));
+    expect(
+        prompt, contains('"passage":1,"text":"Clean the filter every month."'));
     expect(prompt, isNot(contains('Introduction')));
     expect(utf8.encode(prompt).length, lessThanOrEqualTo(1500));
     expect(() => grant.consume(), throwsStateError);

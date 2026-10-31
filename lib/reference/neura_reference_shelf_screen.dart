@@ -180,7 +180,8 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
       body: ListView(padding: const EdgeInsets.all(16), children: [
         const Text(
             'Select one text document. Search shows exact passages with line numbers. '
-            'On Windows, you can approve those passages for one local Ollama answer. '
+            'On Windows, approve those passages for one local Ollama excerpt selection. '
+            'Replies show complete matching quotations. Check the full source for context and accuracy. '
             'Nothing is saved to memory or sent to the cloud. Leaving the app or entering Safe Mode clears this shelf.'),
         TextButton.icon(
             onPressed: _busy ? null : _pick,
@@ -202,6 +203,8 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
             onPressed: _shelf.name == null || _busy ? null : _find,
             child: const Text('Find source passages')),
         if (_status != null) Text(_status!),
+        if (_passages.isNotEmpty)
+          const Text('Source preview — exact passages for your approval'),
         for (final p in _passages)
           Card(
               child: Padding(
@@ -224,7 +227,7 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
         ],
         if (_answer != null) ...[
           const Text(
-              'Neura’s explanation — check it against the quoted passages.'),
+              'Local reply — quotations checked against the approved passages'),
           SelectableText(_answer!)
         ],
         TextButton(

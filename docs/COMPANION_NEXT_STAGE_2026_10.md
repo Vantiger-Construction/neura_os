@@ -43,9 +43,25 @@ answer** on Windows. Only that question and those passages enter a single local
 request, with no previous chat, persistent notes, tools or cloud fallback. The
 existing input and full-response guardrails stay in place. The grant is single-use
 and invalidated by source changes, Stop, background or safety/recovery. Late native
-results cannot restore a cleared answer. Citation checks reject missing or unknown
-numbered references; they do not establish that the model's claims are supported.
-The UI keeps source quotations visible for comparison.
+results cannot restore a cleared answer.
+
+Reference replies now use a conservative quotation-only protocol. Local Ollama
+selects passages using a bounded JSON response; every selected number and complete
+text must match an approved passage exactly. Neura renders the original passage
+and its original line number. Changed quantities, negations, shortened quotations,
+unknown references, extra explanations, malformed responses or mixed valid/invalid
+evidence withhold the entire reply and show explicit uncertainty. Empty evidence
+also shows uncertainty, without an automatic retry or cloud fallback. Model-written
+explanations are withheld even when they carry valid citation numbers.
+
+Whole-passage quotation matching establishes text identity, not factual entailment,
+truth, relevance, or completeness. Keyword retrieval can split a long line or miss
+conditions elsewhere in the source. Even an exact selection can be irrelevant,
+partial, outdated or contradictory. Every successful selection explicitly says that
+Neura cannot establish whether it fully answers the question and asks the user to
+check the complete source. Source previews stay visible and unchanged. This trades
+free-form answers for inspectable evidence; real-model JSON compliance and usefulness
+remain acceptance work on the Windows laptop, within the existing memory budget.
 
 ## Manual Windows–Android continuation
 
