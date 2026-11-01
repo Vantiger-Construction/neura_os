@@ -54,4 +54,7 @@ class NeuraWindowsTts {
   LONG rate_ = 0;
   USHORT volume_ = 100;
   int pitch_ = 0;
+  // Latest SAPI viseme (SPVISEMES 0..21) for the active utterance, or -1.
+  // A mouth-shape index only: no text, phoneme string or timing leaves here.
+  int viseme_ = -1;
 };

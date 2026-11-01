@@ -16,15 +16,15 @@
     },
     {
       "path": "windows/runner/neura_windows_tts.cpp",
-      "sha256_lf": "9860dfe5ab431c73587bea73655b18a6b2e290154ff22935713f797fa2f19dcf"
+      "sha256_lf": "82192c405cd95b41555ae5ee38f25f7ee4b82dd1f5daa0a1b875cb8d4d9d8aea"
     },
     {
       "path": "windows/runner/neura_windows_tts.h",
-      "sha256_lf": "39daa8dddf58ccaedaa3c0814fa80052c296cc6b4e60e5860bae6549fc71b2a1"
+      "sha256_lf": "14849d4fbb5bd19ce4d5fb8a8a12c0a60bc8ef855009eb17de5a072ddb2483b1"
     },
     {
       "path": "windows/runner/neura_tts_lifecycle.h",
-      "sha256_lf": "cbee46f1c2dad7a8eddda6b09174e4e088713c0686d79bb3e0f8323962dfedc7"
+      "sha256_lf": "c0329a13daa6a0879549d157b8749f97eca746c0bc6b1a8243525007a368ee30"
     },
     {
       "path": "windows/runner/flutter_window.cpp",
@@ -32,11 +32,11 @@
     },
     {
       "path": "lib/integrations/tts/neura_windows_tts.dart",
-      "sha256_lf": "f7cbb68fc940e911537449a5b9f48b4d6a564f640f9910142059222decdba864"
+      "sha256_lf": "dbae8d17df4f3bcca6d93b3471e892fb454505b84f1a02e954b50a1c4c381228"
     },
     {
       "path": "lib/services/neura_tts_service.dart",
-      "sha256_lf": "182b9fb15f0074a225c9f63b9d6d90a33698cca33ea979a52bbd8b91ce9c6ed5"
+      "sha256_lf": "bc34fea6f47a8895d4aaa6995d15d0fc9629456524a0badfecd832a343397512"
     },
     {
       "path": "lib/services/ambient_listening_service.dart",
@@ -49,6 +49,10 @@
     {
       "path": "tools/test_windows_plugin_filter.py",
       "sha256_lf": "0b754bc3a2f7c72615847c4eebc697b6a8886adfa958c4e52e2efe6e92b1bf70"
+    },
+    {
+      "path": "lib/integrations/tts/neura_flutter_tts_viseme_bridge.dart",
+      "sha256_lf": "baeebdcad825862df37b2e8150a903f31957ed8c860ee4d4d663925e566ff2f8"
     }
   ]
 }

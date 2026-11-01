@@ -259,4 +259,50 @@ void main() {
     expect(calls.map((call) => call.method),
         ['getVoices', 'setVoice', 'setSpeechRate', 'setPitch', 'setVolume']);
   });
+
+  speechTest('native visemes reach the handler once per change, in order',
+      (tester, tts, calls, respond) async {
+    final visemes = <int>[];
+    var errors = 0;
+    tts.visemeHandler = visemes.add;
+    tts.setErrorHandler((_) => errors++);
+    // Repeats, out-of-range and non-int values must be ignored.
+    final script = <Object?>[1, 1, 21, 99, -1, 'x', null, 0, 15];
+    var poll = 0;
+    respond((call) async {
+      if (call.method != 'poll') return 1;
+      if (poll < script.length) {
+        final viseme = script[poll++];
+        return {'id': 1, 'state': 'speaking', 'viseme': viseme};
+      }
+      return {'id': 1, 'state': 'completed'};
+    });
+    await tts.speak('Synthetic alpha.');
+    for (var i = 0; i <= script.length; i++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(visemes, [1, 21, 0, 15]);
+    expect(errors, 0);
+  });
+
+  speechTest('a throwing viseme handler never fails the utterance',
+      (tester, tts, calls, respond) async {
+    var completions = 0;
+    var errors = 0;
+    tts.visemeHandler = (_) => throw StateError('renderer failure');
+    tts.setCompletionHandler(() => completions++);
+    tts.setErrorHandler((_) => errors++);
+    var poll = 0;
+    respond((call) async {
+      if (call.method != 'poll') return 1;
+      return poll++ == 0
+          ? {'id': 1, 'state': 'speaking', 'viseme': 2}
+          : {'id': 1, 'state': 'completed'};
+    });
+    await tts.speak('Synthetic alpha.');
+    await tester.pump(const Duration(milliseconds: 10));
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(completions, 1);
+    expect(errors, 0);
+  });
 }
