@@ -44,6 +44,29 @@ NeuraEngineSession::NeuraEngineSession(flutter::BinaryMessenger* messenger,
       result->Success();
       return;
     }
+    if (method == "readOfflineMemory") {
+      // Explicit content-free OS query: no DLL load, daemon call or inference.
+      if ((call.arguments() &&
+           !std::holds_alternative<std::monostate>(*call.arguments())) ||
+          blocked_ || !IsWindowVisible(window_) || IsIconic(window_) ||
+          GetForegroundWindow() != window_) {
+        result->Error("local_unavailable", "Memory snapshot is unavailable.");
+        return;
+      }
+      MEMORYSTATUSEX memory = {};
+      memory.dwLength = sizeof(memory);
+      if (!GlobalMemoryStatusEx(&memory)) {
+        result->Success();
+        return;
+      }
+      flutter::EncodableMap snapshot;
+      snapshot[flutter::EncodableValue("totalMiB")] =
+          flutter::EncodableValue(static_cast<int64_t>(memory.ullTotalPhys / (1024 * 1024)));
+      snapshot[flutter::EncodableValue("availableMiB")] =
+          flutter::EncodableValue(static_cast<int64_t>(memory.ullAvailPhys / (1024 * 1024)));
+      result->Success(flutter::EncodableValue(snapshot));
+      return;
+    }
     if (method == "beginOllama") {
       const auto* input = call.arguments() == nullptr ? nullptr :
           std::get_if<std::string>(call.arguments());
