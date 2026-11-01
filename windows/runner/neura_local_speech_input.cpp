@@ -21,7 +21,10 @@ int64_t Session(const Value* args) {
 }
 std::string Text(ISpRecoResult* result) {
   wchar_t* raw = nullptr;
-  Check(result->GetText(SP_GETWHOLEPHRASE, SP_GETWHOLEPHRASE, TRUE, &raw, nullptr));
+  // SAPI declares this all-elements sentinel as a signed enum, while GetText
+  // accepts ULONG. Preserve its bit pattern explicitly under MSVC /W4 /WX.
+  constexpr ULONG whole_phrase = static_cast<ULONG>(SP_GETWHOLEPHRASE);
+  Check(result->GetText(whole_phrase, whole_phrase, TRUE, &raw, nullptr));
   std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> owned(raw, CoTaskMemFree);
   if (!raw) return {};
   size_t size = 0;
