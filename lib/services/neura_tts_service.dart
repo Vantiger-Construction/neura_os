@@ -150,6 +150,40 @@ class NeuraTtsService {
     await _ensureInit();
   }
 
+  /// Startup speech must not select an Android network voice implicitly.
+  /// Windows already restricts its owned SAPI catalog to Microsoft desktop
+  /// voices. Unsupported/missing local voices leave voice startup unavailable.
+  Future<void> prepareLocalStartupVoice() async {
+    if (kIsWeb ||
+        (defaultTargetPlatform != TargetPlatform.windows &&
+            defaultTargetPlatform != TargetPlatform.android)) {
+      throw UnsupportedError('Local startup voice is unavailable.');
+    }
+    if (!await _ensureInit() || !playbackAllowed) {
+      throw StateError('Local startup voice is unavailable.');
+    }
+    if (defaultTargetPlatform == TargetPlatform.windows) return;
+    final voices = await _tts!.getVoices as List<dynamic>;
+    final local = voices.whereType<Map>().where((voice) =>
+        voice['network_required']?.toString() == '0' &&
+        !(voice['features']?.toString().contains('notInstalled') ?? false));
+    if (local.isEmpty) throw StateError('No installed on-device voice.');
+    final selected = local.firstWhere((v) => v['name'] == _selectedVoiceName,
+        orElse: () => local.firstWhere(
+            (v) =>
+                v['locale']?.toString().toLowerCase().startsWith('en') ?? false,
+            orElse: () => local.first));
+    if (!playbackAllowed) return;
+    final result = await _tts!.setVoice({
+      'name': selected['name'].toString(),
+      'locale': selected['locale'].toString(),
+    });
+    if (result == 0) {
+      throw StateError('Local startup voice could not be selected.');
+    }
+    _selectedVoiceName = selected['name'].toString();
+  }
+
   Future<bool> _ensureInit() {
     if (!_engineUsable) return Future<bool>.value(false);
     if (_initialized) return Future<bool>.value(true);
@@ -432,7 +466,7 @@ class NeuraTtsService {
   }
 
   /// Waits for completion, cancellation or a bounded failure in Dart.
-  /// Startup speech remains disabled until physical Windows acceptance.
+  /// Startup speech requires the separate saved startup-voice opt-in.
   Future<void> speak(String text) {
     if (!playbackAllowed || !enabled || text.trim().isEmpty) {
       return Future<void>.value();

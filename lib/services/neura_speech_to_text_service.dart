@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../modules/core/app_log.dart';
 import '../reliability/safe_boot.dart';
 import 'neura_speech_engine.dart';
+import 'neura_speech_input.dart';
 
 /// Windows speech-to-text via a native WinRT bridge (see
 /// windows/runner/neura_speech_recognizer.{h,cpp}).
@@ -17,7 +18,7 @@ import 'neura_speech_engine.dart';
 /// Exposes the same shape as VoiceJournalService (transcriptStream /
 /// startRecording / stopRecording / dispose) so callers can be swapped
 /// between the two without changing call sites.
-class NeuraSpeechToTextService {
+class NeuraSpeechToTextService implements NeuraSpeechInput {
   // The underlying MethodChannel maps to a single native WinRT recognizer
   // session -- setMethodCallHandler can only safely have one owner. A second
   // instance would silently steal another owner's native callbacks (see the
@@ -49,10 +50,14 @@ class NeuraSpeechToTextService {
   Future<String>? _stopInFlight;
   DateTime? _lastFinalAtUtc;
 
+  @override
   Stream<String> get transcriptStream => _transcriptStream.stream;
+  @override
   Stream<String> get statusStream => _statusStream.stream;
+  @override
   Stream<String> get finalPhraseStream => _finalPhraseStream.stream;
   Stream<NeuraSpeechSegment> get segmentStream => _segmentStream.stream;
+  @override
   bool get isListening => _listening;
   bool get listeningAllowed => !SafeBoot.instance.safeMode.value;
 
@@ -154,6 +159,7 @@ class NeuraSpeechToTextService {
     }
   }
 
+  @override
   Future<bool> startRecording() async {
     if (!listeningAllowed) return false;
     final stopping = _stopInFlight;
@@ -178,6 +184,7 @@ class NeuraSpeechToTextService {
     }
   }
 
+  @override
   Future<String> stopRecording() {
     final existing = _stopInFlight;
     if (existing != null) return existing;

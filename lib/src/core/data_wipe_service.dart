@@ -51,6 +51,8 @@ import '../../shared/services/self_heal_service.dart';
 import '../../services/ambient_listening_prefs.dart';
 import '../../services/ambient_listening_service.dart';
 import '../../services/app_lock_prefs.dart';
+import '../../services/neura_startup_voice_prefs.dart';
+import '../../services/neura_local_speech_input.dart';
 import '../../services/auth_service.dart';
 import '../../services/avatar_service.dart';
 import '../../services/neura_model_credentials.dart';
@@ -125,6 +127,9 @@ class NeuraDataWipeService {
     NeuraAiService.instance.cancelActiveGeneration();
     AmbientListeningPrefsController.instance.resetAfterDataWipe();
     WakeWordPrefsController.instance.resetAfterDataWipe();
+    NeuraStartupVoicePrefs.instance.resetAfterDataWipe();
+    await _attempt(failures, 'startup microphone shutdown',
+        NeuraLocalSpeechInput.instance.shutdownForDataWipe);
     await _attempt(
       failures,
       'native crash-log writer shutdown',
@@ -327,6 +332,7 @@ class NeuraDataWipeService {
     );
 
     await _attempt(failures, 'preferences deletion', () async {
+      await NeuraStartupVoicePrefs.instance.drainForDataWipe();
       final prefs = await SharedPreferences.getInstance();
       if (!await prefs.clear()) {
         throw StateError('SharedPreferences deletion was rejected.');

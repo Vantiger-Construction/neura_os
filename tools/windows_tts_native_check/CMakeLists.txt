@@ -13,7 +13,9 @@ if(WIN32)
   if(NOT EXISTS "${FLUTTER_WRAPPER_INCLUDE}/flutter/method_channel.h")
     message(FATAL_ERROR "Provide the genuine Flutter Windows wrapper include directory")
   endif()
-  add_library(neura_windows_tts_check OBJECT "../../windows/runner/neura_windows_tts.cpp")
+  add_library(neura_windows_tts_check OBJECT
+    "../../windows/runner/neura_windows_tts.cpp"
+    "../../windows/runner/neura_local_speech_input.cpp")
   target_include_directories(neura_windows_tts_check PRIVATE "${FLUTTER_WRAPPER_INCLUDE}")
   target_compile_features(neura_windows_tts_check PRIVATE cxx_std_20)
   target_compile_definitions(neura_windows_tts_check PRIVATE NOMINMAX _HAS_EXCEPTIONS=0)

@@ -256,7 +256,8 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.record_voice_over_outlined),
             title: const Text("Neura's Voice"),
-            subtitle: const Text('Pick which system voice Neura speaks with.'),
+            subtitle: const Text(
+                'Choose a voice, reply speech and voice on startup.'),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(

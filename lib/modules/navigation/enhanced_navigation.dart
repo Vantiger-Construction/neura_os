@@ -48,6 +48,7 @@ import '../../notifications/neura_notifications_service.dart';
 import '../../reliability/safe_boot.dart';
 import '../../services/ambient_listening_service.dart';
 import '../../services/wake_word_listener_service.dart';
+import '../../services/neura_startup_voice_prefs.dart';
 import '../../src/modules/legacy/legacy_deadman_service.dart';
 import '../../widgets/ambient_recording_badge.dart';
 import '../../src/modules/legacy/legacy_home_screen.dart';
@@ -65,6 +66,8 @@ class EnhancedNavigation extends StatefulWidget {
 }
 
 class _EnhancedNavigationState extends State<EnhancedNavigation> {
+  static bool _startupVoiceOpened = false;
+  Timer? _voiceStartupTimer;
   static const List<Widget> _destinationPages = <Widget>[
     SizedBox.shrink(),
     OsShellHomeScreen(),
@@ -100,22 +103,25 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     // post-boot hooks from silently starting them again after navigation.
     if (!_optionalHooksAllowed) return;
 
-    // Speaks a short greeting once per launch, then -- only if the user has
-    // opted in under Settings > Privacy & Safety -- starts voice-activated
-    // ambient listening. No BuildContext needed past this point; the
-    // service only speaks (once) and writes encrypted files to disk.
-    //
-    // Deliberately delayed a couple seconds past the first frame (not fired
-    // from the immediate postFrameCallback like the other hooks here): this
-    // is the app's first-ever *proactive* native TTS call, immediately
-    // followed by starting mic capture -- two native audio subsystems
-    // (SAPI/WinRT speech synthesis, then WASAPI capture) initializing back
-    // to back, this early in the window's lifecycle, is a combination that
-    // has never been exercised before today. Giving the window/engine a
-    // moment to fully settle after first paint avoids finding out the hard
-    // way whether that combination is safe at the literal first frame.
-    Future.delayed(const Duration(seconds: 2), () {
+    // After the dashboard settles, a saved startup-voice opt-in opens the
+    // foreground voice route. Other optional capture preferences stay separate.
+    _voiceStartupTimer = Timer(const Duration(seconds: 2), () {
       if (!mounted || !_optionalHooksAllowed) return;
+      if (NeuraStartupVoicePrefs.instance.enabled.value) {
+        if (_startupVoiceOpened ||
+            SafeBoot.instance.restartRequired.value ||
+            WidgetsBinding.instance.lifecycleState !=
+                AppLifecycleState.resumed ||
+            !(ModalRoute.of(context)?.isCurrent ?? true)) {
+          return;
+        }
+        _startupVoiceOpened = true;
+        Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const NeuraChatScreen(startWithVoice: true),
+          settings: const RouteSettings(name: '/startup-voice'),
+        ));
+        return;
+      }
       unawaited(AmbientListeningService.instance.greetAndStartListening());
       // Same "let the window/engine settle first" reasoning as the greeting
       // above -- this is also a native voice subsystem starting for the
@@ -152,6 +158,7 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
 
   @override
   void dispose() {
+    _voiceStartupTimer?.cancel();
     final shell = _shellState;
     shell?.removeListener(_publishAvatarState);
     NeuraCompanionPresence.instance.state.removeListener(_publishAvatarState);
@@ -302,9 +309,9 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
   PresenceShellStatus _presenceStatus() {
     final safeMode = SafeBoot.instance.safeMode.value;
     final presence = NeuraCompanionPresence.instance.state.value;
-    final voiceOptedIn =
+    final voiceOptedIn = NeuraStartupVoicePrefs.instance.enabled.value ||
         AmbientListeningPrefsController.instance.enabled.value ||
-            WakeWordPrefsController.instance.enabled.value;
+        WakeWordPrefsController.instance.enabled.value;
     final voiceLabel = switch (presence.phase) {
       NeuraPresencePhase.listening when !safeMode => 'Listening locally',
       NeuraPresencePhase.speaking when !safeMode => 'Speaking locally',
@@ -601,6 +608,7 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
         SafeBoot.instance.safeMode,
         AmbientListeningPrefsController.instance.enabled,
         WakeWordPrefsController.instance.enabled,
+        NeuraStartupVoicePrefs.instance.enabled,
         NeuraCompanionPresence.instance.state,
         ShellPrefsController.instance.prefs,
       ]),
