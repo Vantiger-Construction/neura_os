@@ -98,8 +98,8 @@ dart format lib/rust_bridge
 
 ## Validation
 
-- Full Flutter suite: 1,018 tests passed; 38 focused migration/backup/voice tests
-  passed after adding three content-URI and byte-limit regressions.
+- Full Flutter suite: 1,021 tests passed, including the content-URI and byte-limit
+  regressions; 38 focused migration/backup/voice tests also passed.
 - Flutter analysis: no issues.
 - Rust: 113 tests passed; Clippy with `-D warnings` passed; formatting passed.
 - PGlite migration/revision/ownership checks passed; seven relay tests passed.
@@ -107,8 +107,12 @@ dart format lib/rust_bridge
   actual `neura` runner label configured (shellcheck not run).
 - OSV Scanner 2.7.0: zero known advisory matches across 225 Pub, 244 Cargo, and
   one npm package, using all findings and no suppression rules.
-- Android build and platform/device validation are recorded in the PR. Apple
-  and Windows native builds cannot be executed in this Linux environment.
+- Android arm64 debug APK: Gradle `assembleDebug` passed with AGP 9.5.0,
+  Gradle 9.8.2, Kotlin 2.4.21, compile SDK 37.0 and a full JDK 17.
+- Windows locked-source CMake corrections pass against the resolved packages;
+  changed upstream source is rejected and authentication-result handling is
+  preserved. Native compilation and CodeQL run in GitHub CI.
+- Apple builds and on-device migration checks require platform validation.
 
 A dependency upgrade is not an installed-app rollout. Before release, exercise
 upgrades from a v9 secure-storage installation on Android and Windows, preserve
