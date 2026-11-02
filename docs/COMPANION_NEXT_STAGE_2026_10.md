@@ -30,6 +30,14 @@ new user-authored provenance. A revoked asynchronous correction cannot overwrite
 the original note. Leaving the foreground clears memory drafts and reviewed lists.
 Ordinary offline chat still cannot recall stored notes automatically.
 
+The November 2 base integration retains the avatar's cancellable listening and
+thinking lifecycle alongside continuity cleanup. Covering chat with an opaque
+route clears its temporary topic/correction before cancelling the active turn;
+returning to chat cannot reuse that brief. An approval dialog remains part of
+the current turn. Disposal both resets avatar presence and clears continuity.
+A combined regression checks the next native request as well as the visible
+thread state after the route round trip.
+
 ## Document references
 
 The shelf holds one explicitly selected UTF-8 TXT, MD, CSV or JSON document, up to
@@ -131,7 +139,7 @@ not enabled.
 
 ## Integrated sources
 
-- Default `Neura`: `1beaadf072a0350165b6464bc620920549f4a2e5` (security baseline).
+- Default `Neura`: `ef3d9635cd8ed4fcc0e4c8831655d2c2580e4f33` (November 2 avatar conversation integration, including security baseline `cf20a393...`).
 - PR #141 memory: `bff9a701bda7c2361f4fc07fb5b34c7a38e510d7`.
 - PR #147 planning/recovery: `acd7cdd77401ba85ac3de867927155fbcb58d103`.
 - PR #148 routine/privacy: `bf616e86abf081dd65bf2000b102f8cc6bc61307`.
@@ -143,6 +151,13 @@ No dependency upgrades, model changes, scanner exemptions or action-pin changes
 are required.
 
 ## Validation and remaining acceptance
+
+The November 2 integration with `ef3d9635...` passed all 1,171 Flutter tests,
+strict analysis, and formatting of 705 Dart files with the CI-pinned Flutter
+3.47.5 / Dart 3.13.4. The new route/continuity regression first failed with the
+thread still enabled, then passed with synchronous route cleanup. Package locks
+and analysis policy are unchanged. Hosted checks and independent approval still
+apply to the pushed merge head; these local results do not satisfy those gates.
 
 Validation results are recorded in the pull request after running the combined
 tree. CI includes the new reference, transfer, continuity and motion tests. Memory
