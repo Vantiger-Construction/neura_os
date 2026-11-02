@@ -173,7 +173,7 @@ impl Drop for MemorySampler {
 
 fn fresh_token() -> Result<String, String> {
     let mut bytes = [0u8; 32];
-    getrandom::getrandom(&mut bytes).map_err(|_| "no OS randomness")?;
+    getrandom::fill(&mut bytes).map_err(|_| "no OS randomness")?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
@@ -303,7 +303,7 @@ type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 async fn send(socket: &mut Socket, kind: &str, data: Value) -> Result<(), String> {
     socket
         .send(Message::Text(
-            json!({"v":1,"kind":kind,"data":data}).to_string(),
+            json!({"v":1,"kind":kind,"data":data}).to_string().into(),
         ))
         .await
         .map_err(|_| "sidecar connection closed".into())
@@ -682,7 +682,7 @@ mod tests {
                     while let Some(Ok(M::Text(text))) = ws.next().await {
                         let request: Value = serde_json::from_str(&text).unwrap();
                         let frame = |kind: &str, data: Value| {
-                            M::Text(json!({"v":1,"kind":kind,"data":data}).to_string())
+                            M::Text(json!({"v":1,"kind":kind,"data":data}).to_string().into())
                         };
                         match request["kind"].as_str().unwrap() {
                             "diagnostics_request" => {

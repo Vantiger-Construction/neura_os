@@ -2,19 +2,22 @@
 
 ## Prerequisites
 
-- Flutter SDK 3.10+  
-- Dart SDK  
+- Flutter SDK 3.47.9 (includes Dart 3.13.7)
+- Rust 1.99.1 (see `rust-toolchain.toml`)
 - Firebase CLI (for hosting)  
 - Appropriate API keys/secrets in environment variables or secure storage  
+
+See [the November dependency refresh](DEPENDENCY_REFRESH_2026_11.md) for
+platform minimums, pinned tooling, and storage migration constraints.
 
 ## Setup
 
 1. **Environment configuration**  
    - Copy `.env.example` to `.env` and fill environment variables (Firebase token, Stripe keys).  
 
-2. **Generating Hive adapters**  
+2. **Generating Freezed models**
    ```bash
-   flutter pub run build_runner build
+   dart run build_runner build
    ```
 
 3. **Running the application**  

@@ -121,7 +121,7 @@ impl From<tokio_tungstenite::tungstenite::Error> for ProbeFailure {
 // Keep this holder out of Debug, error payloads and diagnostics.
 pub(crate) fn fresh_token() -> Result<Zeroizing<String>, ()> {
     let mut bytes = Zeroizing::new([0u8; 32]);
-    getrandom::getrandom(bytes.as_mut()).map_err(|_| ())?;
+    getrandom::fill(bytes.as_mut()).map_err(|_| ())?;
     let mut token = Zeroizing::new(String::with_capacity(64));
     use std::fmt::Write;
     for byte in bytes.iter() {
@@ -450,13 +450,11 @@ async fn connect(address: SocketAddr, token: &str) -> Result<ProbeSocket, ProbeF
         HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| ProbeFailure::Failed)?;
     authorization.set_sensitive(true);
     request.headers_mut().insert("Authorization", authorization);
-    let config = WebSocketConfig {
-        write_buffer_size: 0,
-        max_write_buffer_size: 8192,
-        max_message_size: Some(4096),
-        max_frame_size: Some(4096),
-        ..Default::default()
-    };
+    let config = WebSocketConfig::default()
+        .write_buffer_size(0)
+        .max_write_buffer_size(8192)
+        .max_message_size(Some(4096))
+        .max_frame_size(Some(4096));
     let (socket, _) = tokio_tungstenite::connect_async_with_config(request, Some(config), true)
         .await
         .map_err(ProbeFailure::from)?;
@@ -467,7 +465,7 @@ async fn connect(address: SocketAddr, token: &str) -> Result<ProbeSocket, ProbeF
 async fn send_fixed(socket: &mut ProbeSocket, kind: &str, data: Value) -> Result<(), ProbeFailure> {
     socket
         .send(Message::Text(
-            json!({"v":1,"kind":kind,"data":data}).to_string(),
+            json!({"v":1,"kind":kind,"data":data}).to_string().into(),
         ))
         .await
         .map_err(ProbeFailure::from)
@@ -554,7 +552,7 @@ async fn probe(address: SocketAddr, token: &str) -> Result<(), ProbeFailure> {
     for (kind, expected) in [("hello", "hello"), ("diagnostics_request", "diagnostics")] {
         socket
             .send(Message::Text(
-                json!({"v":1,"kind":kind,"data":{}}).to_string(),
+                json!({"v":1,"kind":kind,"data":{}}).to_string().into(),
             ))
             .await
             .map_err(ProbeFailure::from)?;
@@ -589,7 +587,9 @@ async fn probe(address: SocketAddr, token: &str) -> Result<(), ProbeFailure> {
         if kind == "hello" {
             socket
                 .send(Message::Text(
-                    json!({"v":1,"kind":"synthetic_input","data":{"fixture":"hello"}}).to_string(),
+                    json!({"v":1,"kind":"synthetic_input","data":{"fixture":"hello"}})
+                        .to_string()
+                        .into(),
                 ))
                 .await
                 .map_err(ProbeFailure::from)?;

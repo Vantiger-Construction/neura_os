@@ -87,7 +87,7 @@ async fn assert_rejected(request: axum::http::Request<()>, expected: StatusCode)
 async fn send(socket: &mut ClientSocket, kind: &str, data: Value) {
     socket
         .send(ClientMessage::Text(
-            json!({"v":1,"kind":kind,"data":data}).to_string(),
+            json!({"v":1,"kind":kind,"data":data}).to_string().into(),
         ))
         .await
         .unwrap();
@@ -373,7 +373,9 @@ async fn oversized_inbound_messages_close_the_connection() {
     let server = Server::start().await;
     let mut socket = server.connect().await;
     socket
-        .send(ClientMessage::Text("x".repeat(MAX_MESSAGE_BYTES + 1)))
+        .send(ClientMessage::Text(
+            "x".repeat(MAX_MESSAGE_BYTES + 1).into(),
+        ))
         .await
         .unwrap();
     assert_closed_without_completion(&mut socket).await;

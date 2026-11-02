@@ -192,14 +192,18 @@ async fn time_frame_and_byte_exhaustion_pause_and_invalidate_the_probe() {
                 // Wait for the client deadline to close rather than flushing.
                 let _ = socket.next().await;
             } else if limit == "bytes" {
-                socket.send(Message::Text("x".repeat(4097))).await.unwrap();
+                socket
+                    .send(Message::Text("x".repeat(4097).into()))
+                    .await
+                    .unwrap();
             } else if limit == "invalid" {
                 socket.send(Message::Text("invalid".into())).await.unwrap();
             } else {
                 socket
                     .send(Message::Text(
                         json!({"v":1,"kind":"hello","data":{"input_scope":"synthetic-only"}})
-                            .to_string(),
+                            .to_string()
+                            .into(),
                     ))
                     .await
                     .unwrap();
@@ -207,7 +211,9 @@ async fn time_frame_and_byte_exhaustion_pause_and_invalidate_the_probe() {
                 for _ in 0..16 {
                     socket
                         .send(Message::Text(
-                            json!({"v":1,"kind":"speak_delta","data":{}}).to_string(),
+                            json!({"v":1,"kind":"speak_delta","data":{}})
+                                .to_string()
+                                .into(),
                         ))
                         .await
                         .unwrap();
@@ -501,7 +507,9 @@ async fn child_hello(local_model: bool) -> serde_json::Value {
     let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
     socket
         .send(Message::Text(
-            serde_json::json!({"v":1,"kind":"hello","data":{}}).to_string(),
+            serde_json::json!({"v":1,"kind":"hello","data":{}})
+                .to_string()
+                .into(),
         ))
         .await
         .unwrap();
@@ -606,7 +614,11 @@ async fn local_peer(
                 _ => vec![],
             };
             for reply in replies {
-                if socket.send(Message::Text(reply.to_string())).await.is_err() {
+                if socket
+                    .send(Message::Text(reply.to_string().into()))
+                    .await
+                    .is_err()
+                {
                     return seen;
                 }
             }
