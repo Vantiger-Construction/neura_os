@@ -4,6 +4,7 @@ import '../intent_compiler/neura_action_graph.dart'
 import 'capability_registry.dart';
 import 'consent_ledger.dart';
 import 'models.dart';
+import 'room_attention_policy.dart';
 
 typedef NeuraReceiptIdFactory = String Function(
   NeuraIntelligenceCandidate candidate,
@@ -25,6 +26,7 @@ class NeuraAutonomyPolicy {
     this.constitution = const NeuraPersonalConstitution(),
     this.bandwidthStrain = 0,
     this.outcomeLoopSuppression = false,
+    this.roomId,
   });
 
   final bool enabled;
@@ -51,6 +53,11 @@ class NeuraAutonomyPolicy {
   /// both are "hold back" signals from the cognitive/adaptive-intent side
   /// of the app that the Autonomy Kernel previously never saw.
   final bool outcomeLoopSuppression;
+
+  /// The `NeuraRoom.id` the user is currently in, or null when unknown.
+  /// Checked through [NeuraRoomAttentionPolicy], which can only suppress a
+  /// non-urgent candidate, never allow one the other checks rejected.
+  final String? roomId;
 
   /// Consulted as an additional, tightening-only check for capabilities that
   /// map to a constitution-governed category (see
@@ -128,6 +135,11 @@ class NeuraAutonomyKernel {
         riskPenalty -
         declinePenalty;
     final score = rawScore.clamp(0.0, 1.0).toDouble();
+    final roomReason = NeuraRoomAttentionPolicy.suppressionReason(
+      roomId: policy.roomId,
+      urgency: candidate.urgency,
+      disruption: candidate.disruption,
+    );
     if (reputation > 1.0) {
       reasons.add(
         'Past outcomes for ${candidate.specialistId} suggestions increased '
@@ -172,6 +184,9 @@ class NeuraAutonomyKernel {
       reasons.add(
         'Attention Guardian protected the active ${policy.focusMode} mode.',
       );
+    } else if (roomReason != null) {
+      outcome = NeuraDecisionOutcome.suppressed;
+      reasons.add(roomReason);
     } else if ((policy.bandwidthStrain >= highBandwidthStrain ||
             policy.outcomeLoopSuppression) &&
         candidate.urgency < 0.85) {

@@ -29,6 +29,11 @@ import '../../services/neura_context_receipt.dart';
 import '../../services/neura_generation_cancel.dart';
 import '../../services/neura_llm_diagnostics.dart';
 import '../../services/neura_ollama_chat.dart';
+import '../../services/neura_offline_budget.dart';
+import '../../services/neura_companion_presence.dart';
+import '../../widgets/neura_offline_controls.dart';
+import '../../widgets/neura_activity_badge.dart';
+import '../../planning/neura_daily_plan_screen.dart';
 import '../../services/neura_reply_batch.dart';
 import '../../services/neura_speech_to_text_service.dart';
 import '../../services/neura_speech_input.dart';
@@ -84,6 +89,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   NeuraConversationMode _conversationMode = NeuraConversationMode.balanced;
   bool _busy = false;
   bool _localOllama = false;
+  NeuraOfflineBudget _offlineBudget = NeuraOfflineBudget.standard;
   NeuraSelectedContext? _selectedContext;
   bool _includeMemory = false;
   CompanionMemoryPermission? _memoryPermission;
@@ -340,7 +346,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final reply = scan.crisis
         ? '${SupportResources.forLocale(Localizations.localeOf(context).toLanguageTag())}'
             '${playbook == null ? '' : '\n\n${CrisisPlaybookSurface.format(playbook)}'}'
-        : await _localSession.reply(text);
+        : await _replyLocalWithPresence(text);
     if (!mounted ||
         !_localSelected ||
         serial != _localSerial ||
@@ -353,6 +359,15 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       _trimLocalLines();
     });
     _scrollToEnd();
+  }
+
+  Future<String?> _replyLocalWithPresence(String text) async {
+    final thinking = NeuraCompanionPresence.instance.acquireThinking();
+    try {
+      return await _localSession.reply(text);
+    } finally {
+      thinking?.release();
+    }
   }
 
   void _stopForSafeMode() {
@@ -430,6 +445,24 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _openOfflineControls() async {
+    await _endConversation();
+    if (!mounted) return;
+    final budget = await showDialog<NeuraOfflineBudget>(
+      context: context,
+      builder: (_) => NeuraOfflineControls(budget: _offlineBudget),
+    );
+    if (mounted && budget != null) setState(() => _offlineBudget = budget);
+  }
+
+  Future<void> _openDailyPlan() async {
+    await _endConversation();
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => const NeuraDailyPlanScreen()),
+    );
   }
 
   static const _autoSentinel = '__auto__';
@@ -1043,6 +1076,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     }
 
     final room = NeuraShell.of(context).room;
+    if (_localOllama &&
+        utf8.encode(text).length > _offlineBudget.contextBytes) {
+      _showVoiceNotice(
+        'Shorten this message or choose Standard in offline controls.',
+      );
+      return;
+    }
     final conversationMode = _conversationMode;
     final policy = NeuraChatPolicy.forRoom(room.id);
     final localOllama = _localOllama;
@@ -1174,6 +1214,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         roomId: room.id,
         conversationMode: conversationMode,
         localOllama: localOllama,
+        offlineBudget: _offlineBudget,
         generationId: generationId,
         selectedContext: selectedContext,
         includePermittedMemory: includeMemory,
@@ -1645,7 +1686,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
             tooltip: 'Chat options',
             icon: const Icon(Icons.more_vert),
             onSelected: (option) {
-              if (option == 'offline') {
+              if (option == 'daily_plan') {
+                unawaited(_openDailyPlan());
+              } else if (option == 'offline_controls') {
+                unawaited(_openOfflineControls());
+              } else if (option == 'offline') {
                 unawaited(_startLocalChat());
               } else if (option == 'standard') {
                 unawaited(_useStandardChat());
@@ -1656,6 +1701,15 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
               }
             },
             itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'daily_plan',
+                child: Text('Plan my day'),
+              ),
+              if (_localOllama)
+                const PopupMenuItem(
+                  value: 'offline_controls',
+                  child: Text('Offline conversation controls'),
+                ),
               if (_localSession.supported)
                 PopupMenuItem(
                   value: 'offline',
@@ -1700,6 +1754,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       ),
       body: Column(
         children: [
+          NeuraActivityBadge(offline: _localOllama || _localSelected),
           if (_localSelected)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),

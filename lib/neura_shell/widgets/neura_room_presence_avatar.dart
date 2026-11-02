@@ -37,10 +37,16 @@ class NeuraRoomPresenceAvatar extends StatefulWidget {
 }
 
 class _NeuraRoomPresenceAvatarState extends State<NeuraRoomPresenceAvatar>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  bool _foreground = true;
+  bool _reduceMotion = false;
+  bool _tickerEnabled = true;
   late final AnimationController _motion;
 
   bool get _mayAnimate =>
+      _foreground &&
+      !_reduceMotion &&
+      _tickerEnabled &&
       widget.phase != NeuraPresencePhase.safeMode &&
       widget.motion != NeuraCompanionMotion.still;
 
@@ -51,6 +57,22 @@ class _NeuraRoomPresenceAvatarState extends State<NeuraRoomPresenceAvatar>
       vsync: this,
       duration: const Duration(milliseconds: 3600),
     );
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = MediaQuery.disableAnimationsOf(context);
+    _tickerEnabled = TickerMode.valuesOf(context).enabled;
+    _syncMotion();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    setState(() => _foreground = state == AppLifecycleState.resumed);
     _syncMotion();
   }
 
@@ -74,6 +96,7 @@ class _NeuraRoomPresenceAvatarState extends State<NeuraRoomPresenceAvatar>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _motion.dispose();
     super.dispose();
   }
@@ -121,56 +144,65 @@ class _NeuraRoomPresenceAvatarState extends State<NeuraRoomPresenceAvatar>
           },
         );
 
-    return Semantics(
-      image: true,
-      label: 'Neura in ${widget.room.title}, ${profile.stanceLabel}',
-      child: AnimatedSwitcher(
-        duration:
-            reduceMotion ? Duration.zero : const Duration(milliseconds: 420),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, animation) => FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0.08, 0),
-              end: Offset.zero,
-            ).animate(animation),
-            child: child,
-          ),
-        ),
-        child: AnimatedBuilder(
-          key: ValueKey<String>(widget.room.id),
-          animation: _motion,
-          builder: (context, child) {
-            if (!animate) return child!;
-            final wave = math.sin(_motion.value * math.pi * 2);
-            final strength =
-                widget.motion == NeuraCompanionMotion.expressive ? 1.7 : 1.0;
-            final phaseStrength = switch (widget.phase) {
-              NeuraPresencePhase.listening => 1.4,
-              NeuraPresencePhase.speaking => 1.25,
-              NeuraPresencePhase.thinking => 0.8,
-              _ => 0.55,
-            };
-            final translateY = -wave.abs() * 2 * strength * phaseStrength;
-            final rotate = widget.phase == NeuraPresencePhase.thinking
-                ? wave * 0.012 * strength
-                : 0.0;
-            final pulse = widget.phase == NeuraPresencePhase.speaking
-                ? 1 + wave.abs() * 0.012 * strength
-                : 1.0;
-            return Transform.translate(
-              offset: Offset(0, translateY),
-              child: Transform.rotate(
-                angle: rotate,
-                child: Transform.scale(scale: pulse, child: child),
+    return RepaintBoundary(
+      child: Semantics(
+        image: true,
+        label:
+            'Neura in ${widget.room.title}, ${profile.stanceLabel}, ${NeuraPresenceSnapshot(widget.phase).label}',
+        child: TickerMode(
+          enabled: animate,
+          child: AnimatedSwitcher(
+            duration: reduceMotion
+                ? Duration.zero
+                : const Duration(milliseconds: 420),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0.08, 0),
+                  end: Offset.zero,
+                ).animate(animation),
+                child: child,
               ),
-            );
-          },
-          child: ValueListenableBuilder<String>(
-            valueListenable: selectedId,
-            builder: (_, id, __) => avatarFor(id),
+            ),
+            child: AnimatedBuilder(
+              key: ValueKey<String>(widget.room.id),
+              animation: _motion,
+              builder: (context, child) {
+                if (!animate) return child!;
+                final wave = math.sin(_motion.value * math.pi * 2);
+                final strength =
+                    widget.motion == NeuraCompanionMotion.expressive
+                        ? 1.7
+                        : 1.0;
+                final phaseStrength = switch (widget.phase) {
+                  NeuraPresencePhase.listening => 1.4,
+                  NeuraPresencePhase.speaking => 1.25,
+                  NeuraPresencePhase.thinking => 0.8,
+                  _ => 0.55,
+                };
+                final translateY = -wave.abs() * 2 * strength * phaseStrength;
+                final rotate = widget.phase == NeuraPresencePhase.thinking
+                    ? wave * 0.012 * strength
+                    : 0.0;
+                final pulse = widget.phase == NeuraPresencePhase.speaking
+                    ? 1 + wave.abs() * 0.012 * strength
+                    : 1.0;
+                return Transform.translate(
+                  offset: Offset(0, translateY),
+                  child: Transform.rotate(
+                    angle: rotate,
+                    child: Transform.scale(scale: pulse, child: child),
+                  ),
+                );
+              },
+              child: ValueListenableBuilder<String>(
+                valueListenable: selectedId,
+                builder: (_, id, __) => avatarFor(id),
+              ),
+            ),
           ),
         ),
       ),
