@@ -13,6 +13,9 @@ on:
       - 'test/services/neura_native_viseme_lifecycle_test.dart'
       - 'docs/AVATAR_CONVERSATION_VALIDATION.md'
       - '.github/workflows/neura-avatar-conversation.yml'
+      - 'tools/compose_avatar_sources.sh'
+      - 'tools/test_avatar_source_composition.py'
+      - '.gitattributes'
   workflow_dispatch:
 
 permissions:
@@ -23,9 +26,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SAPI_HEAD: '50f646f31a4303f5bfe705a6a5eda2a6766ad482'
-  MOTION_HEAD: '2849ec9eb88cb4b55edcd1e136d7bb052379f15e'
-  BASE_HEAD: ${{ github.event.pull_request.base.sha || '640dedf6612c3cf91824bfc4152e3a4fbc3c663f' }}
+  SAPI_HEAD: '4240e006949352740c5e20e50403b0188f6e4cbd'
+  # #149 was squash-merged and its feature branch was deleted.
+  MOTION_HEAD: '4e66869078442392e2dde0282826c7a97c9dee74'
+  MOTION_IN_BASE: 'true'
+  BASE_HEAD: ${{ github.event.pull_request.base.sha || '4e66869078442392e2dde0282826c7a97c9dee74' }}
 
 jobs:
   conversation:
@@ -40,7 +45,8 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           # Fetch only this head, never every branch: on Windows' case-
@@ -48,28 +54,24 @@ jobs:
           # `neura/` branch directory and checkout fails.
           fetch-depth: 1
           persist-credentials: false
-      - name: Compose pinned source heads in this disposable checkout
+      - name: Initialize source diagnostics
+        if: always()
+        env:
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          set -euo pipefail
-          test "$(git ls-remote origin refs/heads/neura/sapi-native-visemes | cut -f1)" = "$SAPI_HEAD"
-          test "$(git ls-remote origin refs/heads/feature/fluent-motion-neura | cut -f1)" = "$MOTION_HEAD"
-          git config user.name 'Neura integration validation'
-          git config user.email 'validation@local.invalid'
-          source_head=$(git rev-parse HEAD)
-          # Full history of only the pinned commits (and this head), so the
-          # merges below have their merge bases without fetching every ref.
-          git fetch --no-tags --filter=blob:none --unshallow origin "$BASE_HEAD" "$SAPI_HEAD" "$MOTION_HEAD"
-          git merge --no-edit "$BASE_HEAD"
-          git merge --no-edit "$SAPI_HEAD"
-          git merge --no-edit "$MOTION_HEAD"
-          {
-            echo "Source PR head: $source_head"
-            echo "Base: $BASE_HEAD"
-            echo "SAPI: $SAPI_HEAD"
-            echo "Motion: $MOTION_HEAD"
-            echo "Combined tree: $(git rev-parse 'HEAD^{tree}')"
-            echo 'Disposable source integration only. No physical audio or lip-sync acceptance.'
-          } | tee avatar-integration-source.txt >> "$GITHUB_STEP_SUMMARY"
+          printf 'Source PR head: %s\nCheckout: %s\nComposition: not started\n' "$SOURCE_HEAD" "$CHECKOUT_OUTCOME" > avatar-integration-source.txt
+      - name: Verify source-composition failure diagnostics
+        run: |
+          export COMPOSER_BASH="$BASH"
+          if [ "$RUNNER_OS" = Windows ]; then
+            export COMPOSER_BASH="$(cygpath -w "$BASH")"
+          fi
+          python tools/test_avatar_source_composition.py
+      - name: Compose pinned source heads in this disposable checkout
+        env:
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        run: bash tools/compose_avatar_sources.sh
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: '3.47.9'
@@ -139,7 +141,7 @@ jobs:
         run: git diff --exit-code -- lib test pubspec.lock rust/Cargo.lock
       - name: Preserve exact source composition
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: avatar-conversation-source-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: avatar-integration-source.txt

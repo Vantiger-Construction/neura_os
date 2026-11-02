@@ -60,6 +60,30 @@ uses patched `block-buffer` 0.12.1. See [the adapter audit](../rust/compat/READM
 
 ## App compatibility changes
 
+### Avatar workflow compatibility
+
+The inherited motion and conversation jobs must also use Flutter 3.47.9;
+Flutter 3.47.5 cannot restore this branch's locked dependencies. Their checkout
+and artifact actions use the same reviewed pins as the other refreshed jobs.
+
+Conversation validation composes the current SAPI pin and motion's merged commit
+`4e66869078442392e2dde0282826c7a97c9dee74` in a disposable checkout. Motion #149's
+deleted feature branch is no longer required: the pinned merged commit must be
+an ancestor of the reviewed base. It creates diagnostics before any guard or merge, and preserves
+the failing phase, expected/observed heads and unresolved paths on failure.
+Only successful composition records a combined tree. The fixture tests run with
+the workflow's Git Bash on Windows, and the shell script retains LF endings.
+
+The SAPI branch carries an older version of the conversation workflow itself.
+A checkout-local merge driver retains this PR's version of that one workflow
+file and records its source head in the report. Application, test, dependency
+lock and other conflicts still fail normally; native-viseme assertions and
+strict artifact uploads remain required. Fixtures cover both the workflow-only
+resolution and rejection of application conflicts. This CI repair does not merge
+the SAPI feature into the dependency PR or alter application/dependency files.
+
+### Runtime migration
+
 File picking uses the new single-file API and byte streams. Chat retains its
 32 KB cap. Encrypted backups retain their 25 MB cap even when a provider cannot
 report file size. Export passes encrypted bytes to the picker, allowing Android
