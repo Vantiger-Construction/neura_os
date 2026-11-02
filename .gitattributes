@@ -1,0 +1,2 @@
+# Git Bash must receive LF scripts even with Windows core.autocrlf enabled.
+/tools/compose_avatar_sources.sh text eol=lf

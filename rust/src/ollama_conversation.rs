@@ -687,7 +687,7 @@ mod tests {
         let task = tokio::spawn(async move {
             axum::serve(listener, router).await.unwrap();
         });
-        let response = reqwest::Client::builder()
+        let response = crate::http_client::builder()
             .no_proxy()
             .build()
             .unwrap()

@@ -59,7 +59,7 @@ pub async fn complete(
     user_message: &str,
     max_tokens: u32,
 ) -> Result<String, ClientError> {
-    let client = reqwest::Client::builder()
+    let client = crate::http_client::builder()
         .timeout(REQUEST_TIMEOUT)
         .build()
         .map_err(|e| ClientError::Http(e.to_string()))?;

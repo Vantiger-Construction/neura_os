@@ -125,7 +125,8 @@ class _ContactShareScreenState extends State<ContactShareScreen> {
       final text = 'Mood trend shared from Neura '
           '(${_window.label.toLowerCase()}, ${entries.length} check-ins):\n\n'
           '$summary';
-      await Share.share(text, subject: 'Mood trend from Neura');
+      await SharePlus.instance
+          .share(ShareParams(text: text, subject: 'Mood trend from Neura'));
       await _shareService.recordShare(
         contactId: widget.contact.id,
         rangeStart: start,

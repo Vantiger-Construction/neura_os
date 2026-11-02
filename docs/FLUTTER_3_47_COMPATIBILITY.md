@@ -1,5 +1,8 @@
 # Flutter 3.47 compatibility gate
 
+The [November 2026 dependency refresh](DEPENDENCY_REFRESH_2026_11.md) supersedes
+the version inventory below. This document retains the earlier audit evidence.
+
 This change set upgrades Neura OS's pinned validation toolchain to Flutter
 3.47.5 and deliberately keeps the migration separate from feature work. It is
 a compatibility gate, not a release approval.

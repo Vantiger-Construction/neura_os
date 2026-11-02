@@ -79,12 +79,12 @@ class _DataControlsScreenState extends State<DataControlsScreen> {
         decryptEncrypted: decrypt,
       );
 
-      await Share.shareXFiles(
-        [XFile(zip.path)],
+      await SharePlus.instance.share(ShareParams(
+        files: [XFile(zip.path)],
         text: decrypt
             ? 'Neura Legacy Vault export (decrypted)'
             : 'Neura Legacy Vault export (raw)',
-      );
+      ));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
