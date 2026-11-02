@@ -18,6 +18,7 @@ on:
       - '.github/workflows/neura-visible-mouth.yml'
       - 'tools/compose_avatar_sources.sh'
       - 'tools/test_avatar_source_composition.py'
+      - '.gitattributes'
   workflow_dispatch:
 
 permissions:
@@ -63,7 +64,12 @@ jobs:
         run: |
           printf 'Source PR head: %s\nCheckout: %s\nComposition: not started\n' "$SOURCE_HEAD" "$CHECKOUT_OUTCOME" > avatar-integration-source.txt
       - name: Verify source-composition failure diagnostics
-        run: python tools/test_avatar_source_composition.py
+        run: |
+          export COMPOSER_BASH="$BASH"
+          if [ "$RUNNER_OS" = Windows ]; then
+            export COMPOSER_BASH="$(cygpath -w "$BASH")"
+          fi
+          python tools/test_avatar_source_composition.py
       - name: Compose pinned source heads in this disposable checkout
         env:
           HEAD_REF: ${{ github.head_ref || github.ref_name }}

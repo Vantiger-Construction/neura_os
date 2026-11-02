@@ -57,10 +57,13 @@ class AvatarSourceCompositionTests(unittest.TestCase):
                    GITHUB_STEP_SUMMARY=str(summary))
         env.update(overrides)
         result = subprocess.run(
-            ['bash', SCRIPT.as_posix()], cwd=checkout, env=env,
+            [os.environ.get('COMPOSER_BASH', 'bash'), SCRIPT.as_posix()],
+            cwd=checkout, env=env,
             capture_output=True, text=True,
         )
-        report = (checkout / 'avatar-integration-source.txt').read_text()
+        report_path = checkout / 'avatar-integration-source.txt'
+        self.assertTrue(report_path.is_file(), result.stdout + result.stderr)
+        report = report_path.read_text()
         self.assertEqual(summary.read_text(), report)
         return result, report, checkout
 
