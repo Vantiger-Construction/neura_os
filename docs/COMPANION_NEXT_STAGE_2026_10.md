@@ -45,6 +45,13 @@ existing input and full-response guardrails stay in place. The grant is single-u
 and invalidated by source changes, Stop, background or safety/recovery. Late native
 results cannot restore a cleared answer.
 
+Document selection is also revocable while the native picker is open. Clear,
+Safe Mode, recovery and disposal invalidate its pending result; only one picker
+may be outstanding. A result arriving before foreground recovery waits without
+reading source bytes. Backgrounding during the read invalidates it, and stale
+failures cannot replace the cleared state. The picker round trip grants no
+permission to ask Ollama: passages still require separate review and approval.
+
 Reference replies now use a conservative quotation-only protocol. Local Ollama
 selects passages using a bounded JSON response; every selected number and complete
 text must match an approved passage exactly. Neura renders the original passage
@@ -93,6 +100,12 @@ only the current request may load ciphertext on the current, foreground route.
 Clear, edits, Safe Mode, recovery, detach, disposal, or a second background trip
 after the first resume invalidate that request. Backgrounding during the file
 read also invalidates it. Only one picker request may be pending.
+
+The parent planner clears its old draft on background but keeps a separate
+handoff identity for the transfer route. This lets a newly decrypted, reviewed
+import return after the Android picker trip without reviving the old plan.
+Safe Mode, recovery, detach or disposal revoke that handoff. The returned plan
+still requires **Use this plan** before progress can be changed.
 
 `flutter test test/planning/neura_task_transfer_picker_test.dart` uses a controlled
 picker and legal Flutter lifecycle sequences. It covers both return orderings,

@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/planning/neura_daily_plan.dart';
+import 'package:neuro_companion/planning/neura_daily_plan_screen.dart';
 import 'package:neuro_companion/planning/neura_task_transfer.dart';
 import 'package:neuro_companion/planning/neura_task_transfer_screen.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
@@ -448,6 +449,77 @@ void main() {
           find.text(
               'Could not open the packet. Check the key, expiry and device clocks.'),
           findsOneWidget);
+    });
+  }
+
+  testWidgets(
+      'Android picker import reaches the actual planner after background and needs approval',
+      (tester) async {
+    await _resume(tester);
+    await tester.pumpWidget(const MaterialApp(home: NeuraDailyPlanScreen()));
+    await tester.enterText(find.byType(TextField).first, 'Old private goal');
+    await tester.tap(find.byTooltip('Continue on another device'));
+    await tester.pumpAndSettle();
+    await _tap(tester, 'Load encrypted packet file');
+    await _background(tester);
+    picker.requests.single.complete(_file(sealed.packet));
+    await tester.pump();
+    await _resume(tester);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, sealed.key);
+    await decrypt(tester);
+    await _tap(tester, 'Bring this preview into my planner');
+    await tester.pumpAndSettle();
+    expect(find.text('Old private goal'), findsNothing);
+    expect(
+        tester.widget<TextField>(find.byType(TextField).first).controller!.text,
+        'Synthetic transferred goal');
+    await tester.scrollUntilVisible(find.text('Second synthetic step'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pump();
+    expect(
+        tester
+            .widget<CheckboxListTile>(find.byType(CheckboxListTile).last)
+            .onChanged,
+        isNull);
+    await _tap(tester, 'Use this plan');
+    await tester.ensureVisible(find.text('Second synthetic step'));
+    expect(
+        tester
+            .widget<CheckboxListTile>(find.byType(CheckboxListTile).last)
+            .onChanged,
+        isNotNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  for (final recovery in [false, true]) {
+    testWidgets(
+        'planner handoff remains revoked after safety transition: $recovery',
+        (tester) async {
+      await _resume(tester);
+      await tester.pumpWidget(const MaterialApp(home: NeuraDailyPlanScreen()));
+      await tester.tap(find.byTooltip('Continue on another device'));
+      await tester.pumpAndSettle();
+      final signal = recovery
+          ? SafeBoot.instance.restartRequired
+          : SafeBoot.instance.safeMode;
+      signal.value = true;
+      signal.value = false;
+      await tester.pump();
+      // Even a new child preview cannot revive the revoked parent handoff.
+      await tester.enterText(find.byType(TextField).first, sealed.packet);
+      await tester.enterText(find.byType(TextField).last, sealed.key);
+      await decrypt(tester);
+      await _tap(tester, 'Bring this preview into my planner');
+      await tester.pumpAndSettle();
+      expect(
+          tester
+              .widget<TextField>(find.byType(TextField).first)
+              .controller!
+              .text,
+          isEmpty);
+      expect(find.text('Use this plan'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
     });
   }
 

@@ -19,6 +19,7 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
   final _steps = TextEditingController();
   String? _error;
   int _epoch = 0;
+  Object? _transferRequest;
   TextEditingController? _adjustment;
 
   @override
@@ -29,8 +30,9 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
     SafeBoot.instance.restartRequired.addListener(_onSafety);
   }
 
-  void _clear() {
+  void _clear({bool preserveTransfer = false}) {
     _epoch++;
+    if (!preserveTransfer) _transferRequest = null;
     _adjustment?.clear();
     _goal.clear();
     _steps.clear();
@@ -47,11 +49,16 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) _clear();
+    if (state != AppLifecycleState.resumed) {
+      // The child owns picker/read/decryption revocation. Clear the old plan,
+      // but allow its newly reviewed import to return after the picker resumes.
+      _clear(preserveTransfer: state != AppLifecycleState.detached);
+    }
   }
 
   @override
   void dispose() {
+    _transferRequest = null;
     WidgetsBinding.instance.removeObserver(this);
     SafeBoot.instance.safeMode.removeListener(_onSafety);
     SafeBoot.instance.restartRequired.removeListener(_onSafety);
@@ -113,7 +120,13 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
   }
 
   Future<void> _transfer() async {
-    final epoch = _epoch;
+    if (_transferRequest != null ||
+        SafeBoot.instance.safeMode.value ||
+        SafeBoot.instance.restartRequired.value) {
+      return;
+    }
+    final request = Object();
+    _transferRequest = request;
     final snapshot = _plan.approved
         ? NeuraTaskSnapshot(goal: _plan.goal, steps: _plan.steps, completed: {
             for (var i = 0; i < _plan.steps.length; i++)
@@ -124,11 +137,16 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
         context,
         MaterialPageRoute(
             builder: (_) => NeuraTaskTransferScreen(snapshot: snapshot)));
+    final current = identical(request, _transferRequest);
+    if (current) _transferRequest = null;
     if (!mounted ||
-        epoch != _epoch ||
+        !current ||
         result == null ||
         SafeBoot.instance.safeMode.value ||
-        SafeBoot.instance.restartRequired.value) {
+        SafeBoot.instance.restartRequired.value ||
+        (WidgetsBinding.instance.lifecycleState != null &&
+            WidgetsBinding.instance.lifecycleState !=
+                AppLifecycleState.resumed)) {
       return;
     }
     _goal.text = result.goal;

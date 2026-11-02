@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +25,10 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
   String? _answer;
   String? _status;
   bool _busy = false;
+  bool _picking = false;
+  Object? _pickerRequest;
+  bool _awaitingPicker = false;
+  Completer<void>? _pickerResumed;
   int _epoch = 0;
   bool get _allowed =>
       mounted &&
@@ -46,8 +52,22 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
     }
   }
 
-  void _stop() {
+  void _invalidatePicker() {
+    _pickerRequest = null;
+    _awaitingPicker = false;
+    _pickerResumed?.complete();
+    _pickerResumed = null;
+  }
+
+  bool _pickerCurrent(Object request) =>
+      mounted &&
+      identical(request, _pickerRequest) &&
+      !SafeBoot.instance.safeMode.value &&
+      !SafeBoot.instance.restartRequired.value;
+
+  void _stop({bool preservePicker = false}) {
     _epoch++;
+    if (!preservePicker) _invalidatePicker();
     _grant?.revoke();
     _grant = null;
     NeuraAiService.instance.cancelActiveGeneration();
@@ -59,8 +79,8 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
     }
   }
 
-  void _clear() {
-    _stop();
+  void _clear({bool preservePicker = false}) {
+    _stop(preservePicker: preservePicker);
     _shelf.clear();
     _question.clear();
     if (mounted) {
@@ -73,26 +93,50 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) _clear();
+    if (state == AppLifecycleState.resumed) {
+      _awaitingPicker = false;
+      _pickerResumed?.complete();
+      _pickerResumed = null;
+    } else {
+      // Preserve only the pending native selection across its own focus loss.
+      // Previously loaded text, answers and permissions always clear.
+      _clear(
+          preservePicker:
+              _awaitingPicker && state != AppLifecycleState.detached);
+    }
   }
 
   Future<void> _pick() async {
-    if (!_allowed || _busy) return;
+    if (!_allowed || _busy || _picking) return;
     _clear();
+    final request = Object();
+    _pickerRequest = request;
+    _awaitingPicker = true;
+    setState(() => _picking = true);
+    int? readEpoch;
     try {
       final selected = await FilePicker.platform.pickFiles(
           type: FileType.custom,
           allowedExtensions: NeuraSelectedContext.extensions,
           withData: false,
           withReadStream: true);
-      // Completion of the system picker is the new selection gesture. A focus
-      // loss during the picker clears the old source, never authorizes its use.
-      if (selected == null ||
+      if (selected == null || !_pickerCurrent(request)) return;
+      // Android can deliver the result before the app resumes. Do not read
+      // private source bytes in the background, or revive a revoked selection.
+      if (WidgetsBinding.instance.lifecycleState != null &&
+          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+        final resumed = Completer<void>();
+        _pickerResumed = resumed;
+        await resumed.future;
+      }
+      if (!_pickerCurrent(request) ||
           !_allowed ||
           ModalRoute.of(context)?.isCurrent != true) {
         return;
       }
+      _awaitingPicker = false;
       final epoch = _epoch;
+      readEpoch = epoch;
       final file = selected.files.single;
       if (file.size > NeuraSelectedContext.maxBytes ||
           file.readStream == null) {
@@ -100,23 +144,28 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
       }
       final bytes = <int>[];
       await for (final chunk in file.readStream!) {
-        if (!_allowed || epoch != _epoch) return;
+        if (!_pickerCurrent(request) || !_allowed || epoch != _epoch) return;
         if (bytes.length + chunk.length > NeuraSelectedContext.maxBytes) {
           throw const FormatException('Choose a text file up to 32 KB.');
         }
         bytes.addAll(chunk);
       }
-      if (!_allowed || epoch != _epoch) return;
+      if (!_pickerCurrent(request) || !_allowed || epoch != _epoch) return;
       final document = NeuraSelectedContext.fromBytes(file.name, bytes);
       setState(() {
         _shelf.select(document);
         _status = 'Selected locally. Ask a question to find source passages.';
       });
     } catch (_) {
-      if (_allowed) {
+      if (_pickerCurrent(request) &&
+          _allowed &&
+          (readEpoch == null || readEpoch == _epoch)) {
         setState(() => _status =
             'Could not read that file. Choose a UTF-8 TXT, MD, CSV or JSON file up to 32 KB.');
       }
+    } finally {
+      if (identical(request, _pickerRequest)) _invalidatePicker();
+      if (mounted) setState(() => _picking = false);
     }
   }
 
@@ -164,6 +213,7 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
   @override
   void dispose() {
     _epoch++;
+    _invalidatePicker();
     _grant?.revoke();
     NeuraAiService.instance.cancelActiveGeneration();
     WidgetsBinding.instance.removeObserver(this);
@@ -184,14 +234,14 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
             'Replies show complete matching quotations. Check the full source for context and accuracy. '
             'Nothing is saved to memory or sent to the cloud. Leaving the app or entering Safe Mode clears this shelf.'),
         TextButton.icon(
-            onPressed: _busy ? null : _pick,
+            onPressed: _busy || _picking ? null : _pick,
             icon: const Icon(Icons.description_outlined),
             label: const Text('Select a text document')),
         if (_shelf.name != null) Text('Source: ${_shelf.name}'),
         TextField(
             controller: _question,
             maxLength: 250,
-            enabled: !_busy,
+            enabled: !_busy && !_picking,
             decoration: const InputDecoration(
                 labelText: 'Question about this document'),
             onChanged: (_) => setState(() {
