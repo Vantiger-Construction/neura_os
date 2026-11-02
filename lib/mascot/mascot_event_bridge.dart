@@ -1,5 +1,7 @@
 import '../avatar/motion/neura_gesture.dart';
+
 import 'package:flutter/widgets.dart';
+
 import '../avatar/neura_avatar_runtime_bridge.dart';
 import '../core/neura_event_bus.dart';
 import '../core/neura_events.dart';
@@ -39,11 +41,13 @@ class MascotEventBridge with WidgetsBindingObserver {
 
     _unsubscribers.add(
       NeuraEventBus.I.on<NeuraThinkingEvent>(
-          (e) => _send('thinking', {'on': e.isThinking})),
+        (e) => _send('thinking', {'on': e.isThinking}),
+      ),
     );
     _unsubscribers.add(
-      NeuraEventBus.I
-          .on<NeuraTalkingEvent>((e) => _send('talking', {'on': e.isTalking})),
+      NeuraEventBus.I.on<NeuraTalkingEvent>(
+        (e) => _send('talking', {'on': e.isTalking}),
+      ),
     );
     _unsubscribers.add(
       NeuraEventBus.I.on<NeuraMoodEvent>(
@@ -58,7 +62,8 @@ class MascotEventBridge with WidgetsBindingObserver {
     // ── Body-motion kinds (receivers ignore kinds they don't know) ──────────
     _unsubscribers.add(
       NeuraEventBus.I.on<NeuraListeningEvent>(
-          (e) => _send('listening', {'on': e.isListening})),
+        (e) => _send('listening', {'on': e.isListening}),
+      ),
     );
     _unsubscribers.add(
       NeuraEventBus.I.on<NeuraErrorEvent>((_) => _send('error', {})),

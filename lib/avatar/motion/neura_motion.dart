@@ -17,6 +17,7 @@
 // fed the same signals through MascotEventBridge.
 
 import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 
 import '../../core/neura_event_bus.dart';
@@ -75,34 +76,47 @@ class NeuraMotion with WidgetsBindingObserver {
     final bus = NeuraEventBus.I;
 
     _unsubs
-      ..add(bus.on<NeuraTalkingEvent>((e) {
-        _talking = e.isTalking;
-        _syncPhase();
-      }))
-      ..add(bus.on<NeuraListeningEvent>((e) {
-        _listening = e.isListening;
-        _syncPhase();
-      }))
-      ..add(bus.on<NeuraThinkingEvent>((e) {
-        _thinking = e.isThinking;
-        _syncPhase();
-      }))
-      ..add(bus.on<NeuraErrorEvent>((_) {
-        _error = true;
-        _syncPhase();
-        _errorTimer?.cancel();
-        _errorTimer = Timer(const Duration(seconds: 2), () {
-          _error = false;
+      ..add(
+        bus.on<NeuraTalkingEvent>((e) {
+          _talking = e.isTalking;
           _syncPhase();
-        });
-      }))
+        }),
+      )
+      ..add(
+        bus.on<NeuraListeningEvent>((e) {
+          _listening = e.isListening;
+          _syncPhase();
+        }),
+      )
+      ..add(
+        bus.on<NeuraThinkingEvent>((e) {
+          _thinking = e.isThinking;
+          _syncPhase();
+        }),
+      )
+      ..add(
+        bus.on<NeuraErrorEvent>((_) {
+          _error = true;
+          _syncPhase();
+          _errorTimer?.cancel();
+          _errorTimer = Timer(const Duration(seconds: 2), () {
+            _error = false;
+            _syncPhase();
+          });
+        }),
+      )
       ..add(bus.on<NeuraMoodEvent>((e) => engine.setMood(e.mood, e.energy)))
       ..add(bus.on<NeuraMouthOpenEvent>((e) => engine.setMouthOpen(e.open)))
-      ..add(bus.on<NeuraPulseEvent>((e) {
-        if (e.wave) engine.gesture(NeuraGesture.wave);
-      }))
-      ..add(bus.on<NeuraGestureEvent>(
-          (e) => engine.gesture(e.gesture, intensity: e.intensity)));
+      ..add(
+        bus.on<NeuraPulseEvent>((e) {
+          if (e.wave) engine.gesture(NeuraGesture.wave);
+        }),
+      )
+      ..add(
+        bus.on<NeuraGestureEvent>(
+          (e) => engine.gesture(e.gesture, intensity: e.intensity),
+        ),
+      );
 
     SafeBoot.instance.safeMode.addListener(_syncSafety);
     SafeBoot.instance.restartRequired.addListener(_syncSafety);
@@ -195,12 +209,14 @@ class NeuraMotion with WidgetsBindingObserver {
       return;
     }
     _syncSafety();
-    engine.setPhase(resolvePhase(
-      error: _error,
-      listening: _listening || presence == NeuraPresencePhase.listening,
-      speaking: _talking || presence == NeuraPresencePhase.speaking,
-      thinking: _thinking || presence == NeuraPresencePhase.thinking,
-    ));
+    engine.setPhase(
+      resolvePhase(
+        error: _error,
+        listening: _listening || presence == NeuraPresencePhase.listening,
+        speaking: _talking || presence == NeuraPresencePhase.speaking,
+        thinking: _thinking || presence == NeuraPresencePhase.thinking,
+      ),
+    );
   }
 
   /// Same priority order as NeuraCompanionPresence (error wins first).

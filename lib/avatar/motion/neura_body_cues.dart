@@ -250,6 +250,8 @@ class NeuraAvatarCueGate {
       final energy = _num(data['energy'], 0, 1);
       if (data.containsKey('mood') && mood == null) return false;
       if (data.containsKey('energy') && energy == null) return false;
+      // Validate the whole cue before emitting anything, so a malformed
+      // gesture never leaves a half-applied mood change behind.
       final gesture = NeuraGesture.fromWire(data['gesture']);
       final intensity =
           data.containsKey('intensity') ? _num(data['intensity'], 0, 1) : 0.7;

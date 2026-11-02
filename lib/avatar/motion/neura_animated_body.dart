@@ -129,69 +129,72 @@ class _NeuraAnimatedBodyState extends State<NeuraAnimatedBody>
   @override
   Widget build(BuildContext context) {
     final body = RepaintBoundary(child: widget.child);
-    return LayoutBuilder(builder: (context, constraints) {
-      final w = constraints.maxWidth.isFinite ? constraints.maxWidth : 200.0;
-      final h = constraints.maxHeight.isFinite ? constraints.maxHeight : 200.0;
-      return ValueListenableBuilder<NeuraPose>(
-        valueListenable: _pose,
-        child: body,
-        builder: (context, p, child) {
-          final sx = p.scale * (1 - p.squash * 0.5);
-          final sy = p.scale * (1 + p.squash);
-          final posed = Transform.translate(
-            offset: Offset(p.dx * w, p.dy * h),
-            child: Transform.rotate(
-              angle: p.lean,
-              alignment: Alignment.bottomCenter,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth.isFinite ? constraints.maxWidth : 200.0;
+        final h =
+            constraints.maxHeight.isFinite ? constraints.maxHeight : 200.0;
+        return ValueListenableBuilder<NeuraPose>(
+          valueListenable: _pose,
+          child: body,
+          builder: (context, p, child) {
+            final sx = p.scale * (1 - p.squash * 0.5);
+            final sy = p.scale * (1 + p.squash);
+            final posed = Transform.translate(
+              offset: Offset(p.dx * w, p.dy * h),
               child: Transform.rotate(
-                angle: p.tilt,
-                alignment: Alignment.center,
-                child: Transform(
-                  alignment: Alignment.bottomCenter,
-                  transform: Matrix4.diagonal3Values(sx, sy, 1),
-                  child: child,
-                ),
-              ),
-            ),
-          );
-          if (!widget.showAura) return posed;
-          final aura = Color.lerp(
-            widget.auraColorCool,
-            widget.auraColorWarm,
-            (p.warmth + 1) / 2,
-          )!;
-          return Stack(
-            alignment: Alignment.center,
-            clipBehavior: Clip.none,
-            children: [
-              Positioned(
-                bottom: h * 0.02,
-                child: IgnorePointer(
-                  child: Container(
-                    width: w * 0.55,
-                    height: h * 0.06,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.all(
-                        Radius.elliptical(w * 0.3, h * 0.04),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: aura.withValues(
-                            alpha: (0.12 + p.glow * 0.45).clamp(0.0, 1.0),
-                          ),
-                          blurRadius: 18 + 26 * p.glow,
-                          spreadRadius: 2 + 8 * p.glow,
-                        ),
-                      ],
-                    ),
+                angle: p.lean,
+                alignment: Alignment.bottomCenter,
+                child: Transform.rotate(
+                  angle: p.tilt,
+                  alignment: Alignment.center,
+                  child: Transform(
+                    alignment: Alignment.bottomCenter,
+                    transform: Matrix4.diagonal3Values(sx, sy, 1),
+                    child: child,
                   ),
                 ),
               ),
-              posed,
-            ],
-          );
-        },
-      );
-    });
+            );
+            if (!widget.showAura) return posed;
+            final aura = Color.lerp(
+              widget.auraColorCool,
+              widget.auraColorWarm,
+              (p.warmth + 1) / 2,
+            )!;
+            return Stack(
+              alignment: Alignment.center,
+              clipBehavior: Clip.none,
+              children: [
+                Positioned(
+                  bottom: h * 0.02,
+                  child: IgnorePointer(
+                    child: Container(
+                      width: w * 0.55,
+                      height: h * 0.06,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.all(
+                          Radius.elliptical(w * 0.3, h * 0.04),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: aura.withValues(
+                              alpha: (0.12 + p.glow * 0.45).clamp(0.0, 1.0),
+                            ),
+                            blurRadius: 18 + 26 * p.glow,
+                            spreadRadius: 2 + 8 * p.glow,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                posed,
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 }

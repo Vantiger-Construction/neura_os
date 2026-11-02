@@ -108,20 +108,25 @@ class _MascotHomeState extends State<_MascotHome>
   }
 
   void _syncBodyPhase() {
-    _body.setPhase(_error
-        ? NeuraBodyPhase.error
-        : _listening
-            ? NeuraBodyPhase.listening
-            : _talking
-                ? NeuraBodyPhase.speaking
-                : _thinking
-                    ? NeuraBodyPhase.thinking
-                    : NeuraBodyPhase.idle);
+    _body.setPhase(
+      _error
+          ? NeuraBodyPhase.error
+          : _listening
+              ? NeuraBodyPhase.listening
+              : _talking
+                  ? NeuraBodyPhase.speaking
+                  : _thinking
+                      ? NeuraBodyPhase.thinking
+                      : NeuraBodyPhase.idle,
+    );
   }
 
   @override
   Future<dynamic> onEventFromWindow(
-      String eventName, int fromWindowId, dynamic arguments) async {
+    String eventName,
+    int fromWindowId,
+    dynamic arguments,
+  ) async {
     if (eventName != 'neura_state') return null;
     try {
       final args = Map<String, dynamic>.from(arguments as Map);
@@ -138,11 +143,14 @@ class _MascotHomeState extends State<_MascotHome>
         case 'mood':
           if (!mounted) break;
           setState(() {
-            _mood =
-                ((args['mood'] as num?) ?? _mood).toDouble().clamp(-1.0, 1.0);
-            _energy = ((args['energy'] as num?) ?? _energy)
-                .toDouble()
-                .clamp(0.0, 1.0);
+            _mood = ((args['mood'] as num?) ?? _mood).toDouble().clamp(
+                  -1.0,
+                  1.0,
+                );
+            _energy = ((args['energy'] as num?) ?? _energy).toDouble().clamp(
+                  0.0,
+                  1.0,
+                );
           });
           _body.setMood(_mood, _energy);
           break;
@@ -167,8 +175,10 @@ class _MascotHomeState extends State<_MascotHome>
           final g = NeuraGesture.fromWire(args['gesture']);
           final k = args['intensity'];
           if (g != null) {
-            _body.gesture(g,
-                intensity: k is num && k.isFinite ? k.toDouble() : 0.7);
+            _body.gesture(
+              g,
+              intensity: k is num && k.isFinite ? k.toDouble() : 0.7,
+            );
           }
           break;
         case 'mouth':
@@ -184,10 +194,12 @@ class _MascotHomeState extends State<_MascotHome>
             'expressive' => NeuraBodyMotionLevel.expressive,
             _ => NeuraBodyMotionLevel.still,
           });
-          _body.setStance(NeuraBodyStance.values.firstWhere(
-            (v) => v.name == args['stance'],
-            orElse: () => NeuraBodyStance.welcoming,
-          ));
+          _body.setStance(
+            NeuraBodyStance.values.firstWhere(
+              (v) => v.name == args['stance'],
+              orElse: () => NeuraBodyStance.welcoming,
+            ),
+          );
           if (!_mayAnimate) _stopVisualMotion();
           if (mounted) setState(() {});
           break;
@@ -206,8 +218,10 @@ class _MascotHomeState extends State<_MascotHome>
       _pulseController.repeat(reverse: true);
     } else if (!_talking) {
       _pulseController.stop();
-      _pulseController.animateTo(0,
-          duration: const Duration(milliseconds: 300));
+      _pulseController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+      );
     }
   }
 
@@ -219,8 +233,10 @@ class _MascotHomeState extends State<_MascotHome>
       _pulseController.repeat(reverse: true);
     } else if (!_thinking) {
       _pulseController.stop();
-      _pulseController.animateTo(0,
-          duration: const Duration(milliseconds: 300));
+      _pulseController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+      );
     }
   }
 
@@ -228,8 +244,10 @@ class _MascotHomeState extends State<_MascotHome>
     if (!mounted) return;
     _pulseController.forward(from: 0).then((_) {
       if (mounted && !_thinking && !_talking) {
-        _pulseController.animateTo(0,
-            duration: const Duration(milliseconds: 300));
+        _pulseController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 300),
+        );
       }
     });
   }
@@ -360,7 +378,8 @@ class _MascotHomeState extends State<_MascotHome>
           if (pulseGlowStrength > 0)
             BoxShadow(
               color: _glowColor.withValues(
-                  alpha: pulseGlowStrength.clamp(0.0, 1.0)),
+                alpha: pulseGlowStrength.clamp(0.0, 1.0),
+              ),
               blurRadius: 30 + 20 * pt,
               spreadRadius: 4 + 6 * pt,
             ),

@@ -103,28 +103,34 @@ void main() {
     expect(NeuraCompanionPresence.instance.state.value.voiceActive, isFalse);
   }
 
-  lifecycleTest('native completion discards remaining speech gesture timers',
-      (tester) async {
-    var gestures = 0;
-    final unsubscribe =
-        NeuraEventBus.I.on<NeuraGestureEvent>((_) => gestures++);
-    addTearDown(unsubscribe);
-    final speaking = service.speak(
-        'Hello there. This long synthetic sentence ends with a question?');
-    await tester.pump();
-    await native.event('speak.onComplete');
-    await tester.pump();
-    await speaking;
-    final completed = gestures;
-    await tester.pump(const Duration(seconds: 20));
-    expect(gestures, completed);
-    expectIdle();
-  });
+  lifecycleTest(
+    'native completion discards remaining speech gesture timers',
+    (tester) async {
+      var gestures = 0;
+      final unsubscribe = NeuraEventBus.I.on<NeuraGestureEvent>(
+        (_) => gestures++,
+      );
+      addTearDown(unsubscribe);
+      final speaking = service.speak(
+        'Hello there. This long synthetic sentence ends with a question?',
+      );
+      await tester.pump();
+      await native.event('speak.onComplete');
+      await tester.pump();
+      await speaking;
+      final completed = gestures;
+      await tester.pump(const Duration(seconds: 20));
+      expect(gestures, completed);
+      expectIdle();
+    },
+  );
 
-  test('proactive startup speech stays disabled pending Windows acceptance',
-      () {
-    expect(kEnableProactiveGreetingTts, isFalse);
-  });
+  test(
+    'proactive startup speech stays disabled pending Windows acceptance',
+    () {
+      expect(kEnableProactiveGreetingTts, isFalse);
+    },
+  );
 
   lifecycleTest('empty and disabled speech do not initialize native TTS', (
     tester,

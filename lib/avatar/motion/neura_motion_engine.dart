@@ -251,17 +251,19 @@ class NeuraMotionEngine {
     if (frozen) {
       _gestures.clear();
       for (final s in _all) {
-        s.snap(s == _scale
-            ? 1
-            : s == _glow
-                ? 0.15
-                : s == _breathRate
-                    ? 0.22
-                    : (s == _breathAmp || s == _swayAmp)
-                        ? 1
-                        : s == _amp
-                            ? 0
-                            : 0);
+        s.snap(
+          s == _scale
+              ? 1
+              : s == _glow
+                  ? 0.15
+                  : s == _breathRate
+                      ? 0.22
+                      : (s == _breathAmp || s == _swayAmp)
+                          ? 1
+                          : s == _amp
+                              ? 0
+                              : 0,
+        );
       }
       _weightTarget = 0;
       _pose = NeuraPose.neutral;
