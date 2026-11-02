@@ -58,7 +58,15 @@ leaves a report saying composition did not start. Local fixture regressions cove
 shallow/full checkout success, source-branch identity, stale pins, missing
 branches, fetch failure and conflicting merges.
 
-All external integration pins must still equal their source branch heads. The
+Motion #149 was squash-merged as
+`4e66869078442392e2dde0282826c7a97c9dee74`, and its feature branch was deleted.
+Both conversation and visible-mouth workflows pin that merged commit and set
+`MOTION_IN_BASE=true`. After fetching, the composer verifies that the exact
+motion commit is an ancestor of the reviewed base; an unrelated pin fails.
+It no longer requires the deleted motion branch. The manual-dispatch base
+fallback includes this merged commit as well.
+
+Live external integration pins must still equal their source branch heads. The
 feature branch under test uses its exact checked-out revision. A changed
 dependency fails the workflow and requires a reviewed pin refresh. Before
 merging, recheck the PR head, checks, review decisions, unresolved threads,

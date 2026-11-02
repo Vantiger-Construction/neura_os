@@ -63,7 +63,11 @@ pinned() {
 phase='verify SAPI head'
 SAPI_HEAD=$(pinned neura/sapi-native-visemes "$SAPI_HEAD")
 phase='verify motion head'
-MOTION_HEAD=$(pinned feature/fluent-motion-neura "$MOTION_HEAD")
+if [ "${MOTION_IN_BASE:-false}" = true ]; then
+  printf 'Motion uses merged commit %s; base ancestry must be verified after fetch.\n' "$MOTION_HEAD" >> "$report"
+else
+  MOTION_HEAD=$(pinned feature/fluent-motion-neura "$MOTION_HEAD")
+fi
 phase='fetch pinned history'
 git config user.name 'Neura integration validation'
 git config user.email 'validation@local.invalid'
@@ -73,6 +77,14 @@ if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
   fetch_options+=(--unshallow)
 fi
 git fetch "${fetch_options[@]}" origin "$BASE_HEAD" "$SAPI_HEAD" "$MOTION_HEAD"
+if [ "${MOTION_IN_BASE:-false}" = true ]; then
+  phase='verify merged motion ancestry'
+  if ! git merge-base --is-ancestor "$MOTION_HEAD" "$BASE_HEAD"; then
+    echo '::error::Pinned merged motion commit is not contained in the reviewed base.'
+    exit 1
+  fi
+  printf 'Verified merged motion commit is contained in the reviewed base.\n' >> "$report"
+fi
 phase='merge base'
 git merge --no-edit "$BASE_HEAD"
 phase='merge SAPI'

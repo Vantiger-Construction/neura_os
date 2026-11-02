@@ -54,6 +54,7 @@ class AvatarSourceCompositionTests(unittest.TestCase):
         summary = self.root / 'summary.txt'
         env = dict(os.environ, BASE_HEAD=self.base, SAPI_HEAD=self.sapi,
                    MOTION_HEAD=self.motion, HEAD_REF=branch,
+                   MOTION_IN_BASE='false',
                    GITHUB_STEP_SUMMARY=str(summary))
         env.update(overrides)
         result = subprocess.run(
@@ -124,6 +125,18 @@ class AvatarSourceCompositionTests(unittest.TestCase):
     def test_unfetchable_base_fails_and_keeps_report(self):
         result, report, _ = self.compose(BASE_HEAD='0' * 40)
         self.assert_failure(result, report, 'fetch pinned history')
+
+    def test_merged_motion_does_not_need_deleted_feature_branch(self):
+        self.git(self.origin, 'merge', '--no-edit', MOTION)
+        self.base = self.motion
+        self.git(self.origin, 'branch', '-D', MOTION)
+        result, report, checkout = self.compose(MOTION_IN_BASE='true')
+        self.assert_success(result, report, checkout)
+        self.assertIn('Verified merged motion commit is contained', report)
+
+    def test_merged_motion_outside_base_fails_closed(self):
+        result, report, _ = self.compose(MOTION_IN_BASE='true')
+        self.assert_failure(result, report, 'verify merged motion ancestry')
 
 
 if __name__ == '__main__':

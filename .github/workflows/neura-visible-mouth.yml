@@ -30,9 +30,11 @@ concurrency:
 
 env:
   SAPI_HEAD: '4240e006949352740c5e20e50403b0188f6e4cbd'
-  MOTION_HEAD: '659255ced8b9082546199682fcc7fb7f3d7e8448'
+  # #149 was squash-merged and its feature branch was deleted.
+  MOTION_HEAD: '4e66869078442392e2dde0282826c7a97c9dee74'
+  MOTION_IN_BASE: 'true'
   # #157 (conversation presence) is merged into Neura, so the base carries it.
-  BASE_HEAD: ${{ github.event.pull_request.base.sha || 'ef3d9635cd8ed4fcc0e4c8831655d2c2580e4f33' }}
+  BASE_HEAD: ${{ github.event.pull_request.base.sha || '4e66869078442392e2dde0282826c7a97c9dee74' }}
 
 jobs:
   conversation:
