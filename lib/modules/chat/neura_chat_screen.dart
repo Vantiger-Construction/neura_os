@@ -9,6 +9,9 @@ import 'package:file_picker/file_picker.dart';
 
 import '../../avatar/conversation_presence_signal.dart';
 import '../../encrypted_memory/companion_memory_service.dart';
+import '../../modules/memory/memory_screen.dart';
+import '../../reference/neura_reference_shelf_screen.dart';
+import '../../services/neura_conversation_thread.dart';
 import '../../neura_link/reply_speech_queue.dart';
 import '../../neura_link/local_conversation_session.dart';
 import '../../relationships/services/crisis_text_scan.dart';
@@ -97,6 +100,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   NeuraConversationMode _conversationMode = NeuraConversationMode.balanced;
   bool _busy = false;
   bool _localOllama = false;
+  final _thread = NeuraConversationThread();
+  int _threadEpoch = 0;
+  final List<TextEditingController> _threadEditors = [];
   NeuraOfflineBudget _offlineBudget = NeuraOfflineBudget.standard;
   NeuraSelectedContext? _selectedContext;
   bool _includeMemory = false;
@@ -158,6 +164,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     _localSession = widget.localSession ?? LocalConversationSession();
     _localSession.addListener(_onLocalChanged);
     SafeBoot.instance.safeMode.addListener(_stopForSafeMode);
+    SafeBoot.instance.restartRequired.addListener(_stopForSafeMode);
     unawaited(_initAgent());
     WakeWordListenerService.instance.pause();
   }
@@ -188,6 +195,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     _routeVisible = current;
     _syncPresence();
     if (wasCurrent && !current) {
+      _clearThread();
       unawaited(_endConversation().catchError((_) {}));
     }
   }
@@ -221,6 +229,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     if (!mounted || !_localSession.canStart) return;
     setState(() {
       _localSelected = true;
+      _clearThread();
       _localOllama = false;
       ++_localSerial;
       _localLines.clear();
@@ -315,7 +324,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   }
 
   void _stopForSafeMode() {
-    if (!SafeBoot.instance.safeMode.value) return;
+    if (!SafeBoot.instance.safeMode.value &&
+        !SafeBoot.instance.restartRequired.value) {
+      return;
+    }
+    _clearThread();
     _memoryPermission?.revoke();
     _memoryPermission = null;
     _includeMemory = false;
@@ -338,6 +351,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     _foreground = state == AppLifecycleState.resumed;
     _syncPresence();
     if (state != AppLifecycleState.resumed) {
+      _clearThread();
       _memoryPermission?.revoke();
       _memoryPermission = null;
       _includeMemory = false;
@@ -380,6 +394,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   void dispose() {
     _disposed = true;
     _presence.reset();
+    _clearThread();
     _memoryOwner?.removeListener(_onPendingMemoryChanged);
     _memoryPermission?.revoke();
     ++_localSerial;
@@ -390,6 +405,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     _continuousMode = false;
     WidgetsBinding.instance.removeObserver(this);
     SafeBoot.instance.safeMode.removeListener(_stopForSafeMode);
+    SafeBoot.instance.restartRequired.removeListener(_stopForSafeMode);
     _voiceSub?.cancel();
     _finalPhraseSub?.cancel();
     _replyUpdates?.dispose();
@@ -418,9 +434,90 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   Future<void> _openDailyPlan() async {
     await _endConversation();
     if (!mounted) return;
+    _clearThread();
     await Navigator.of(context).push<void>(
       MaterialPageRoute(builder: (_) => const NeuraDailyPlanScreen()),
     );
+  }
+
+  void _clearThread() {
+    _threadEpoch++;
+    _thread.clear();
+    for (final editor in _threadEditors) {
+      editor.clear();
+    }
+  }
+
+  Future<void> _openCompanionTool(Widget screen) async {
+    await _endConversation();
+    if (!mounted) return;
+    _clearThread();
+    await Navigator.push<void>(
+        context, MaterialPageRoute(builder: (_) => screen));
+  }
+
+  Future<void> _editThread() async {
+    await _endConversation();
+    if (!mounted) return;
+    final epoch = _threadEpoch;
+    final topic = TextEditingController(text: _thread.topic);
+    final correction = TextEditingController(text: _thread.correction);
+    _threadEditors.addAll([topic, correction]);
+    var enabled = _thread.enabled;
+    final route = DialogRoute<bool>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+            builder: (context, update) => AlertDialog(
+                  title: const Text('Conversation thread'),
+                  content: SingleChildScrollView(
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Text(
+                        'Keep a short topic and your latest correction for this offline session. '
+                        'Only your words are kept. This shares the existing context budget and clears when you leave the app, switch routes, or enter Safe Mode.'),
+                    SwitchListTile(
+                        title: const Text('Keep this session’s thread'),
+                        value: enabled,
+                        onChanged: (value) => update(() => enabled = value)),
+                    TextField(
+                        controller: topic,
+                        maxLength: 160,
+                        decoration: const InputDecoration(
+                            labelText: 'Current topic or goal')),
+                    TextField(
+                        controller: correction,
+                        maxLength: 160,
+                        decoration: const InputDecoration(
+                            labelText: 'Latest correction')),
+                  ])),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel')),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Apply for this session'))
+                  ],
+                )));
+    final accepted = await Navigator.of(context).push(route);
+    await route.completed;
+    if (mounted &&
+        epoch == _threadEpoch &&
+        accepted == true &&
+        !SafeBoot.instance.safeMode.value &&
+        !SafeBoot.instance.restartRequired.value) {
+      try {
+        setState(() {
+          _thread.update(topic.text, correction.text);
+          _thread.enabled = enabled;
+          if (!enabled) _thread.clear();
+        });
+      } on FormatException {
+        _showVoiceNotice('Keep each thread field within 160 UTF-8 bytes.');
+      }
+    }
+    _threadEditors.removeWhere((c) => c == topic || c == correction);
+    topic.dispose();
+    correction.dispose();
   }
 
   static const _autoSentinel = '__auto__';
@@ -1035,6 +1132,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final conversationMode = _conversationMode;
     final policy = NeuraChatPolicy.forRoom(room.id);
     final localOllama = _localOllama;
+    if (localOllama) _thread.observeUserTurn(text);
+    final threadContext = localOllama ? _thread.context : '';
     final selectedContext = _selectedContext;
     final includeMemory = _includeMemory && policy.persistMemory;
     final historyIncludedPrivateContext = _privateContextUsed;
@@ -1163,6 +1262,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         conversationMode: conversationMode,
         localOllama: localOllama,
         offlineBudget: _offlineBudget,
+        threadContext: threadContext,
         generationId: generationId,
         selectedContext: selectedContext,
         includePermittedMemory: includeMemory,
@@ -1593,6 +1693,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                 await _interruptActiveReply();
                 if (!mounted) return;
                 setState(() {
+                  _clearThread();
                   _localOllama = local;
                   _selectedContext = null;
                   _includeMemory = false;
@@ -1639,6 +1740,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                 unawaited(_openDailyPlan());
               } else if (option == 'offline_controls') {
                 unawaited(_openOfflineControls());
+              } else if (option == 'thread') {
+                unawaited(_editThread());
+              } else if (option == 'teach') {
+                unawaited(_openCompanionTool(const MemoryScreen()));
+              } else if (option == 'references') {
+                unawaited(
+                    _openCompanionTool(const NeuraReferenceShelfScreen()));
               } else if (option == 'offline') {
                 unawaited(_startLocalChat());
               } else if (option == 'standard') {
@@ -1654,6 +1762,14 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                 value: 'daily_plan',
                 child: Text('Plan my day'),
               ),
+              const PopupMenuItem(
+                  value: 'teach',
+                  child: Text('Teach Neura — review and correct notes')),
+              const PopupMenuItem(
+                  value: 'references', child: Text('Offline reference shelf')),
+              if (_localOllama)
+                const PopupMenuItem(
+                    value: 'thread', child: Text('Conversation thread')),
               if (_localOllama)
                 const PopupMenuItem(
                   value: 'offline_controls',
@@ -1704,6 +1820,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       body: Column(
         children: [
           NeuraActivityBadge(offline: _localOllama || _localSelected),
+          if (_localOllama && _thread.enabled)
+            InputChip(
+                label: const Text('Temporary conversation thread on'),
+                onPressed: _busy ? null : _editThread,
+                onDeleted: _busy ? null : () => setState(_clearThread)),
           if (_localSelected)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),

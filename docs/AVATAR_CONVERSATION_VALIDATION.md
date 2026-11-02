@@ -3,9 +3,12 @@
 PR #157 owns listening/thinking and chat-turn cancellation. PR #158 owns
 Windows SAPI viseme delivery and synchronous speech-animation revocation.
 PR #149 owns the shared body and the separate mascot's motion lifecycle.
-Keep these changes independently reviewable. The integration workflow merges
-exact reviewed commits only inside its disposable checkout; it never pushes
-the combined source or changes a PR's base.
+The feature PRs remain separately reviewable. PR #150 now includes motion
+`659255ced8b9082546199682fcc7fb7f3d7e8448` and SAPI
+`4240e006949352740c5e20e50403b0188f6e4cbd`, with the overlapping motion
+regressions reconciled. Its source is a committed combination. The integration
+workflow verifies pinned dependency heads and composes any missing commits only
+in its disposable checkout; the workflow never pushes source or changes a PR base.
 
 ## Automated checks
 
@@ -46,7 +49,25 @@ regressions. On Windows it compiles the genuine SAPI owner, runs the native
 ownership/escaping tests without audio, and builds the production application
 while checking that the legacy `flutter_tts_plugin.dll` is absent.
 
-All integration pins must still equal their source branch heads. A changed
+Both conversation and visible-mouth workflows initialize the source report before
+composition. `tools/compose_avatar_sources.sh` retains expected/observed heads,
+the last attempted phase, exit status and any unmerged paths even when a guard,
+fetch or merge fails. Only successful composition records a combined tree;
+the artifact is source evidence, not a test-pass attestation. Checkout failure
+leaves a report saying composition did not start. Local fixture regressions cover
+shallow/full checkout success, source-branch identity, stale pins, missing
+branches, fetch failure and conflicting merges.
+
+Motion #149 was squash-merged as
+`4e66869078442392e2dde0282826c7a97c9dee74`, and its feature branch was deleted.
+Both conversation and visible-mouth workflows pin that merged commit and set
+`MOTION_IN_BASE=true`. After fetching, the composer verifies that the exact
+motion commit is an ancestor of the reviewed base; an unrelated pin fails.
+It no longer requires the deleted motion branch. The manual-dispatch base
+fallback includes this merged commit as well.
+
+Live external integration pins must still equal their source branch heads. The
+feature branch under test uses its exact checked-out revision. A changed
 dependency fails the workflow and requires a reviewed pin refresh. Before
 merging, recheck the PR head, checks, review decisions, unresolved threads,
 and applicable branch/ruleset protections. A clean local merge or green test
@@ -55,8 +76,10 @@ auto-merge while acceptance or review blockers remain.
 
 ## Rendering limitation
 
-These changes deliver native mouth-shape events into the avatar controller.
-They do **not** establish that the selected artwork visibly moves its lips:
+Native mouth-shape events reach the avatar controller. The opt-in Flutter mouth
+prototype from #158 has synthetic renderer coverage; see
+[its rendering contract](FLUTTER_MOUTH_PROTOTYPE.md). This does **not** establish
+physical playback or lip timing, or change the default artwork's limitations:
 
 - `lib/avatar/renderers/rive_avatar_view.dart` is a fallback stub.
 - The default `neura_fullbody.png` rendering is a static image wrapped in
@@ -64,9 +87,10 @@ They do **not** establish that the selected artwork visibly moves its lips:
 - The mascot also renders that image. Its `mouth` event drives body motion,
   not an independently animated lip rig.
 
-A functioning mouth renderer and compatible rig/artwork are required before
-claiming visible lip synchronization. This is an implementation prerequisite,
-separate from whether SAPI viseme polling or numeric controller wiring passes.
+A functioning mouth renderer and compatible rig/artwork must be selected before
+testing visible lip synchronization. The opt-in prototype supplies a synthetic
+mouth layer; default-image observations remain separate from native polling or
+numeric controller wiring passes.
 Do not mark a static-image or stub-renderer observation as a lip-sync PASS.
 
 ## Physical Windows acceptance: still required
