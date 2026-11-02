@@ -18,6 +18,11 @@ class NeuraRoom {
     this.ambientSoundAsset,
   });
 
+  /// Prefs key where `NeuraShellState` persists the current room id. Public
+  /// so services outside the widget tree (such as proactive intelligence)
+  /// can read which room the user is in without owning shell state.
+  static const String currentRoomPrefsKey = 'neura_shell.room_id';
+
   // Built-in rooms. Add more as your OS grows.
   static const penthouse = NeuraRoom(
     id: 'penthouse',

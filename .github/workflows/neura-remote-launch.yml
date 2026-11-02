@@ -1,0 +1,123 @@
+name: Neura Remote Launch
+
+# Opens Neura on the self-hosted Windows PC. Triggered by hand from the Actions
+# tab, or by the Slack /neura command (tools/slack-relay). The runner cannot
+# show a window itself, so it starts the scheduled task that
+# tools/Register-NeuraRemoteLaunch.ps1 created in the signed-in user's session.
+# Setup: docs/REMOTE_LAUNCH.md
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'launch = open Neura; update = pull the checkout, rebuild if needed, open; status = is Neura running?'
+        type: choice
+        options:
+          - launch
+          - update
+          - status
+        default: launch
+      requested_by:
+        description: 'Who asked (filled in by the Slack relay)'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-remote-launch
+  cancel-in-progress: false
+
+jobs:
+  desktop:
+    name: Neura desktop ${{ inputs.mode }}
+    runs-on: [self-hosted, Windows, X64, neura]
+    timeout-minutes: 10
+    steps:
+      - name: Ask the desktop session to ${{ inputs.mode }} Neura
+        shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
+        env:
+          NEURA_MODE: ${{ inputs.mode }}
+          NEURA_REQUESTED_BY: ${{ inputs.requested_by }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          function Get-NeuraProcess {
+            @(Get-Process -Name 'neuro_companion' -ErrorAction SilentlyContinue)
+          }
+          function Write-Summary([string]$Text) {
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $Text -Encoding UTF8
+            Write-Host $Text
+          }
+
+          $mode = $env:NEURA_MODE
+          if ($mode -notin @('launch', 'update', 'status')) {
+            throw "Unknown mode '$mode'."
+          }
+          $who = if ($env:NEURA_REQUESTED_BY) { " (requested by $($env:NEURA_REQUESTED_BY))" } else { '' }
+          Write-Summary "### Neura desktop: $mode$who"
+
+          $running = Get-NeuraProcess
+          if ($mode -eq 'status') {
+            if ($running.Count -gt 0) {
+              Write-Summary 'Neura is running.'
+            } else {
+              Write-Summary 'Neura is not running.'
+            }
+            return
+          }
+
+          if ($mode -eq 'launch' -and $running.Count -gt 0) {
+            Write-Summary 'Neura is already running; nothing to do.'
+            return
+          }
+
+          $taskName = if ($mode -eq 'update') { 'Neura Remote Launch (Update)' } else { 'Neura Remote Launch' }
+          $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+          if (-not $task) {
+            Write-Summary ("The '$taskName' task is not registered on this PC. Run " +
+              '`tools\Register-NeuraRemoteLaunch.ps1` once while signed in (see docs/REMOTE_LAUNCH.md).')
+            exit 1
+          }
+
+          $requestedAt = Get-Date
+          Start-ScheduledTask -TaskName $taskName
+          Write-Host "Started task '$taskName'."
+
+          # A plain launch should show a process within a minute or so. An
+          # update may pull and rebuild first, so only wait for it to start.
+          $deadline = $requestedAt.AddSeconds($(if ($mode -eq 'update') { 45 } else { 90 }))
+          $finished = $false
+          while ((Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 5
+            if ((Get-NeuraProcess).Count -gt 0) {
+              Write-Summary 'Neura is open on the desktop.'
+              return
+            }
+            $info = Get-ScheduledTaskInfo -TaskName $taskName
+            $state = (Get-ScheduledTask -TaskName $taskName).State
+            if ($state -ne 'Running' -and $info.LastRunTime -ge $requestedAt.AddSeconds(-2)) {
+              $finished = $true
+              break
+            }
+          }
+
+          $info = Get-ScheduledTaskInfo -TaskName $taskName
+          if (-not $finished) {
+            if ($info.LastRunTime -lt $requestedAt.AddSeconds(-2)) {
+              # The task never ran: it only runs while the user is signed in.
+              Write-Summary 'The PC did not start Neura. Is someone signed in to Windows? Sign in and try again.'
+              exit 1
+            }
+            Write-Summary 'The desktop task is still working (pulling or rebuilding). Neura opens when it finishes.'
+            return
+          }
+          if ((Get-NeuraProcess).Count -gt 0) {
+            Write-Summary 'Neura is open on the desktop.'
+            return
+          }
+          Write-Summary ("Neura did not open (task result 0x{0:X}). See %LOCALAPPDATA%\Neura\remote-launch.log on the PC." -f
+            $info.LastTaskResult)
+          exit 1

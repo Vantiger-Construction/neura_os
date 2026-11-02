@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:ui';
 
 import 'package:uuid/uuid.dart';
@@ -32,6 +31,8 @@ import 'neura_selected_context.dart';
 import 'neura_model_types.dart';
 import 'neura_provider_credentials.dart';
 import 'neura_ollama_chat.dart';
+import 'neura_offline_budget.dart';
+import 'neura_companion_presence.dart';
 
 typedef NeuraToolCommandHandler = FutureOr<bool> Function(
   NeuraToolCommand command,
@@ -146,6 +147,7 @@ class NeuraAiService {
     bool historyIncludesPrivateContext = false,
     NeuraConversationMode conversationMode = NeuraConversationMode.balanced,
     bool localOllama = false,
+    NeuraOfflineBudget offlineBudget = NeuraOfflineBudget.standard,
   }) async* {
     _throwIfCloudBlocked();
     if (!localOllama && !isConfigured) {
@@ -168,6 +170,8 @@ class NeuraAiService {
     cancelActiveGeneration();
     _activeCancel = cancel;
     _activeGenerationId = id;
+    final thinking = NeuraCompanionPresence.instance.acquireThinking();
+    unawaited(cancel.whenCancelled.then((_) => thinking?.release()));
 
     final policy = NeuraChatPolicy.forRoom(roomId);
     final advertisedTools = NeuraChatPolicy.advertisedTools(policy);
@@ -214,25 +218,15 @@ class NeuraAiService {
         // No tools, approved sources, memory, swarm review or cloud routing.
         // The standard charter, room framing, audience and input guardrails
         // still apply. Offline chat never falls through to the cloud router.
-        final recent = history.length > 8
-            ? history.sublist(history.length - 8)
-            : List<NeuraChatTurn>.of(history);
-        // Trim older whole turns before crossing the platform channel; Rust
-        // independently revalidates the same byte/count caps.
-        while (recent.length > 1 &&
-            recent.fold<int>(
-                  0,
-                  (sum, turn) => sum + utf8.encode(turn.text).length,
-                ) >
-                1500) {
-          recent.removeAt(0);
-        }
+        final recent = offlineBudget.retain(
+          history.map((turn) => turn.toJson()).toList(),
+        );
         final text = await (_ollama ??= NeuraOllamaChat()).reply(
           system:
               '$systemPrompt\n\nYou are running offline. Do not claim web access, '
               'saved memories or completed actions. Offer everyday support; do not '
               'diagnose or advise medication changes. No tools are available.',
-          messages: recent.map((t) => t.toJson()).toList(),
+          messages: recent,
           cancel: cancel,
         );
         cancel.throwIfCancelled();
@@ -354,6 +348,7 @@ class NeuraAiService {
       _diagnostics.recordFailure(error);
       rethrow;
     } finally {
+      thinking?.release();
       if (useMemory && memoryPermission != null) {
         memoryPermission.service.removeListener(checkMemory);
         memoryPermission.revoke();
