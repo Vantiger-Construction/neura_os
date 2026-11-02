@@ -10,6 +10,7 @@ import '../services/app_lock_prefs.dart';
 import '../services/auth_service.dart';
 import '../widgets/auth_guard.dart';
 import 'neura_startup_avatar.dart';
+import 'neura_boot_recovery_actions.dart';
 import 'neura_startup_coordinator.dart';
 
 /// Animated splash screen shown while [NeuraStartupCoordinator] runs.
@@ -113,124 +114,151 @@ class _NeuraBootScreenState extends State<NeuraBootScreen> {
           child: ValueListenableBuilder<NeuraBootStage>(
             valueListenable: _coordinator.stage,
             builder: (context, stage, _) {
-              return Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Spacer(flex: 2),
-                  ValueListenableBuilder<bool>(
-                    valueListenable: SafeBoot.instance.safeMode,
-                    builder: (context, safeMode, _) =>
-                        ValueListenableBuilder<bool>(
-                      valueListenable: _coordinator.booting,
-                      builder: (_, booting, __) => NeuraStartupAvatar(
-                        animate: booting && !safeMode,
-                        height: 180,
-                      ),
-                    ),
+              return SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: MediaQuery.sizeOf(context).height -
+                        MediaQuery.paddingOf(context).vertical,
                   ),
-                  const SizedBox(height: 32),
-                  // ── App name ─────────────────────────────────────────────
-                  const Text(
-                    'Neura OS',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 28,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 2,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  ValueListenableBuilder<bool>(
-                    valueListenable: SafeBoot.instance.safeMode,
-                    builder: (context, safeMode, _) {
-                      if (!safeMode) return const SizedBox.shrink();
-                      return const Padding(
-                        padding: EdgeInsets.only(bottom: 6),
-                        child: Chip(
-                          avatar: Icon(Icons.health_and_safety, size: 18),
-                          label: Text('Safe Mode'),
-                        ),
-                      );
-                    },
-                  ),
-                  Text(
-                    'Your AI companion',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.45),
-                      fontSize: 13,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                  const Spacer(flex: 2),
-                  ValueListenableBuilder<NeuraBootFailure?>(
-                    valueListenable: _coordinator.failure,
-                    builder: (context, failure, _) {
-                      if (failure != null) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 36),
-                          child: Column(
-                            children: [
-                              const Icon(
-                                Icons.error_outline,
-                                color: Colors.orangeAccent,
-                                size: 28,
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                failure.message,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.78),
-                                  fontSize: 13,
-                                ),
-                              ),
-                              const SizedBox(height: 14),
-                              FilledButton.icon(
-                                onPressed: () => unawaited(_coordinator.boot()),
-                                icon: const Icon(Icons.refresh),
-                                label: const Text('Retry startup'),
-                              ),
-                            ],
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(height: 36),
+                      ValueListenableBuilder<bool>(
+                        valueListenable: SafeBoot.instance.safeMode,
+                        builder: (context, safeMode, _) =>
+                            ValueListenableBuilder<bool>(
+                          valueListenable: _coordinator.booting,
+                          builder: (_, booting, __) => NeuraStartupAvatar(
+                            animate: booting && !safeMode,
+                            height: 180,
                           ),
-                        );
-                      }
-
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 48),
-                        child: Column(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(6),
-                              child: LinearProgressIndicator(
-                                value: stage.progress,
-                                minHeight: 4,
-                                backgroundColor: Colors.white12,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.deepPurple.shade300,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            AnimatedSwitcher(
-                              duration: MediaQuery.disableAnimationsOf(context)
-                                  ? Duration.zero
-                                  : const Duration(milliseconds: 200),
-                              child: Text(
-                                stage.label,
-                                key: ValueKey(stage.label),
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.55),
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          ],
                         ),
-                      );
-                    },
+                      ),
+                      const SizedBox(height: 32),
+                      // ── App name ─────────────────────────────────────────────
+                      const Text(
+                        'Neura OS',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      ValueListenableBuilder<bool>(
+                        valueListenable: SafeBoot.instance.safeMode,
+                        builder: (context, safeMode, _) {
+                          if (!safeMode) return const SizedBox.shrink();
+                          return const Padding(
+                            padding: EdgeInsets.only(bottom: 6),
+                            child: Chip(
+                              avatar: Icon(Icons.health_and_safety, size: 18),
+                              label: Text('Safe Mode'),
+                            ),
+                          );
+                        },
+                      ),
+                      Text(
+                        'Your AI companion',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.45),
+                          fontSize: 13,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 36),
+                      ValueListenableBuilder<NeuraBootFailure?>(
+                        valueListenable: _coordinator.failure,
+                        builder: (context, failure, _) {
+                          if (failure != null) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 36,
+                              ),
+                              child: Column(
+                                children: [
+                                  const Icon(
+                                    Icons.error_outline,
+                                    color: Colors.orangeAccent,
+                                    size: 28,
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    failure.message,
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.78,
+                                      ),
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  ValueListenableBuilder<bool>(
+                                    valueListenable: _coordinator.booting,
+                                    builder: (_, booting, __) =>
+                                        NeuraBootRecoveryActions(
+                                      module: failure.module,
+                                      safeMode:
+                                          SafeBoot.instance.safeMode.value,
+                                      busy: booting,
+                                      onRetry: () =>
+                                          unawaited(_coordinator.boot()),
+                                      onSafeMode: () {
+                                        SafeBoot.instance
+                                            .preselectSafeModeForProcess();
+                                        unawaited(_coordinator.boot());
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 48),
+                            child: Column(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: LinearProgressIndicator(
+                                    value: stage.progress,
+                                    minHeight: 4,
+                                    backgroundColor: Colors.white12,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.deepPurple.shade300,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                AnimatedSwitcher(
+                                  duration:
+                                      MediaQuery.disableAnimationsOf(context)
+                                          ? Duration.zero
+                                          : const Duration(milliseconds: 200),
+                                  child: Text(
+                                    stage.label,
+                                    key: ValueKey(stage.label),
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.55,
+                                      ),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 40),
+                    ],
                   ),
-                  const SizedBox(height: 40),
-                ],
+                ),
               );
             },
           ),
