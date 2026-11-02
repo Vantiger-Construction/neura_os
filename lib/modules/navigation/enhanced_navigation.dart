@@ -1,3 +1,5 @@
+import '../../planning/neura_daily_plan_screen.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -389,6 +391,16 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
           keywords: const <String>['rooms', 'spaces', 'world'],
           pinned: true,
           onSelected: () => _onTab(1),
+        ),
+        PresenceCommand(
+          id: 'daily-plan',
+          title: 'Plan my day',
+          subtitle: 'Preview a private checklist and track your progress.',
+          icon: Icons.checklist,
+          keywords: const <String>['daily', 'goal', 'steps', 'plan'],
+          pinned: true,
+          onSelected: () => _openRoute(
+              '/care/daily-plan', (_) => const NeuraDailyPlanScreen()),
         ),
         PresenceCommand(
           id: 'intelligence',
