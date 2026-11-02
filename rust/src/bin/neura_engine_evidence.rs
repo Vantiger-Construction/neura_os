@@ -265,7 +265,7 @@ impl Sidecar {
     }
 
     async fn revoke(&self) {
-        if let Ok(client) = reqwest::Client::builder()
+        if let Ok(client) = neura_swarm::http_client::builder()
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
             .timeout(Duration::from_millis(500))

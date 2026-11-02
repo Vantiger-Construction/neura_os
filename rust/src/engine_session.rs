@@ -631,7 +631,7 @@ async fn probe(address: SocketAddr, token: &str) -> Result<(), ProbeFailure> {
 }
 
 pub(crate) async fn revoke(address: SocketAddr, token: &str) -> Result<(), ()> {
-    let client = reqwest::Client::builder()
+    let client = crate::http_client::builder()
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(REVOKE_TIMEOUT)

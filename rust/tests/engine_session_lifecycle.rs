@@ -2,6 +2,8 @@
 // No test-only credential/session operations are exported by the production ABI.
 #[path = "../src/engine_session.rs"]
 mod engine_session;
+#[path = "../src/http_client.rs"]
+mod http_client;
 
 use engine_session::{
     fresh_token, process, read_ready, run_session, CheckMode, Launcher, RuntimeState, BLOCKED,

@@ -306,7 +306,10 @@ async fn cancel_closes_the_connection_without_a_late_completion_or_replay() {
 #[tokio::test]
 async fn revocation_requires_auth_and_ends_all_current_and_future_access() {
     let server = Server::start().await;
-    let http = reqwest::Client::builder().no_proxy().build().unwrap();
+    let http = neura_swarm::http_client::builder()
+        .no_proxy()
+        .build()
+        .unwrap();
     let endpoint = format!("http://{}/session/revoke", server.address);
     let unauthorized = http.post(&endpoint).send().await.unwrap();
     assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);

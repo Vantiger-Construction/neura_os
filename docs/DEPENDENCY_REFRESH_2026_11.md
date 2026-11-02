@@ -118,6 +118,54 @@ A dependency upgrade is not an installed-app rollout. Before release, exercise
 upgrades from a v9 secure-storage installation on Android and Windows, preserve
 existing encrypted records and credentials, and verify explicit wipe behavior.
 
+## Explicit Rust TLS provider and extraction repair
+
+Security [run 41419872039](https://github.com/Vantiger-Construction/neura_os/actions/runs/41419872039),
+job `125192996721`, built the Windows application
+successfully but failed the unchanged incomplete-extraction gate. Its verified
+SARIF/native diagnostic artifacts show six compiler-error metrics from two
+`aws-lc-sys 0.47.0` translation units: `stdalign_check.c` (alignment probe) and
+`crypto/thread_win.c` (MSVC linker pragma). These were introduced transitively by
+Reqwest 0.13's default Rustls provider; they were not Dart compilation failures.
+
+Retained failure artifacts (archive SHA-256 verified before inspection):
+
+- C++ SARIF, artifact `13130023923`: `5a212e3b47968fda9d00c33ab13c07ef8d46c59aa5616ca2839254b9755a1e65`.
+- Native extraction diagnostics, artifact `13130264226`: `169054cb0a6cf0802f1159bc93dad61884704805e8a9ef99044d71d45ede520b`.
+
+Keep Reqwest 0.13.5 and Rustls 0.23.46, explicitly selecting the maintained Ring
+backend already used by the pre-refresh application. `rustls-no-provider` requires
+installation before any Reqwest client is built, even a loopback HTTP client.
+All app, sidecar, evidence and test clients use `http_client::builder`, which
+initializes the provider once without starting a request. Callers retain their
+existing consent, loopback-only, proxy, redirect, timeout and cancellation rules.
+Rustls still verifies certificates and hostnames with the platform trust roots.
+
+The lockfile removes AWS-LC and unused supporting packages; no remaining package
+version changes and no registry crypto implementation is patched. This retains
+Ring's TLS cipher/key-exchange capabilities; AWS-LC-only features, including its
+post-quantum groups and FIPS provider, are not enabled. Revisit that choice only
+with working extraction and platform validation. Neither provider choice makes
+Neura a FIPS-validated application.
+
+`rust/tests/http_tls.rs` performs real loopback TLS handshakes with public test
+fixtures: a locally trusted certificate succeeds, an untrusted CA fails, and a
+trusted certificate with the wrong hostname fails. The test CA is never installed
+globally. The existing complete Rust suite also exercises client construction,
+local boundaries, cancellation and native session teardown.
+
+The CodeQL workflow, compiler-error gate, query set, build tracing and artifact
+retention remain unchanged. Current-head Windows extraction must pass before this
+repair is accepted; local Linux TLS tests alone cannot establish that result.
+
+Local validation of this repair with Rust 1.99.1: all 116 Rust tests, warning-free
+Clippy across all targets, Rust formatting, and all 10 security-helper tests pass.
+OSV 2.7.0 scanned 454 locked packages (225 Pub, 228 Cargo, 1 npm) with zero known
+advisory matches and no suppressions. Locked Windows MSVC dependency resolution
+selects Ring and includes no AWS-LC packages; this is not a Windows build result.
+
+Provider API: [Reqwest 0.13 TLS configuration](https://docs.rs/reqwest/latest/reqwest/tls/).
+
 ## Primary release references
 
 - [Flutter changelog](https://github.com/flutter/flutter/blob/3.47.9/CHANGELOG.md)
