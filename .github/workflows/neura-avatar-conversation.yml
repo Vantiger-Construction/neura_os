@@ -13,6 +13,8 @@ on:
       - 'test/services/neura_native_viseme_lifecycle_test.dart'
       - 'docs/AVATAR_CONVERSATION_VALIDATION.md'
       - '.github/workflows/neura-avatar-conversation.yml'
+      - 'tools/compose_avatar_sources.sh'
+      - 'tools/test_avatar_source_composition.py'
   workflow_dispatch:
 
 permissions:
@@ -23,9 +25,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SAPI_HEAD: '50f646f31a4303f5bfe705a6a5eda2a6766ad482'
-  MOTION_HEAD: '2849ec9eb88cb4b55edcd1e136d7bb052379f15e'
-  BASE_HEAD: ${{ github.event.pull_request.base.sha || '640dedf6612c3cf91824bfc4152e3a4fbc3c663f' }}
+  SAPI_HEAD: '4240e006949352740c5e20e50403b0188f6e4cbd'
+  MOTION_HEAD: '659255ced8b9082546199682fcc7fb7f3d7e8448'
+  BASE_HEAD: ${{ github.event.pull_request.base.sha || 'ef3d9635cd8ed4fcc0e4c8831655d2c2580e4f33' }}
 
 jobs:
   conversation:
@@ -40,7 +42,8 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - id: checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           # Fetch only this head, never every branch: on Windows' case-
@@ -48,28 +51,19 @@ jobs:
           # `neura/` branch directory and checkout fails.
           fetch-depth: 1
           persist-credentials: false
-      - name: Compose pinned source heads in this disposable checkout
+      - name: Initialize source diagnostics
+        if: always()
+        env:
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          set -euo pipefail
-          test "$(git ls-remote origin refs/heads/neura/sapi-native-visemes | cut -f1)" = "$SAPI_HEAD"
-          test "$(git ls-remote origin refs/heads/feature/fluent-motion-neura | cut -f1)" = "$MOTION_HEAD"
-          git config user.name 'Neura integration validation'
-          git config user.email 'validation@local.invalid'
-          source_head=$(git rev-parse HEAD)
-          # Full history of only the pinned commits (and this head), so the
-          # merges below have their merge bases without fetching every ref.
-          git fetch --no-tags --filter=blob:none --unshallow origin "$BASE_HEAD" "$SAPI_HEAD" "$MOTION_HEAD"
-          git merge --no-edit "$BASE_HEAD"
-          git merge --no-edit "$SAPI_HEAD"
-          git merge --no-edit "$MOTION_HEAD"
-          {
-            echo "Source PR head: $source_head"
-            echo "Base: $BASE_HEAD"
-            echo "SAPI: $SAPI_HEAD"
-            echo "Motion: $MOTION_HEAD"
-            echo "Combined tree: $(git rev-parse 'HEAD^{tree}')"
-            echo 'Disposable source integration only. No physical audio or lip-sync acceptance.'
-          } | tee avatar-integration-source.txt >> "$GITHUB_STEP_SUMMARY"
+          printf 'Source PR head: %s\nCheckout: %s\nComposition: not started\n' "$SOURCE_HEAD" "$CHECKOUT_OUTCOME" > avatar-integration-source.txt
+      - name: Verify source-composition failure diagnostics
+        run: python tools/test_avatar_source_composition.py
+      - name: Compose pinned source heads in this disposable checkout
+        env:
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        run: bash tools/compose_avatar_sources.sh
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: '3.47.5'

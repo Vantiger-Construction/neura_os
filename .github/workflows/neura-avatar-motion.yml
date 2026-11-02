@@ -1,0 +1,81 @@
+name: Neura avatar motion lifecycle
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths:
+      - 'lib/avatar/**'
+      - 'lib/mascot/**'
+      - 'lib/neura_shell/**'
+      - 'lib/services/neura_tts_service.dart'
+      - 'lib/integrations/tts/**'
+      - 'lib/reliability/safe_boot*'
+      - 'lib/src/shell/shell_prefs.dart'
+      - 'test/avatar/**'
+      - 'test/mascot/**'
+      - 'test/neura_shell/**'
+      - 'test/services/neura_tts_lifecycle_test.dart'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/neura-avatar-motion.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-avatar-motion-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  MOTION_FILES: >-
+    lib/avatar/motion/neura_animated_body.dart
+    lib/avatar/motion/neura_motion.dart
+    lib/avatar/motion/neura_motion_engine.dart
+    lib/mascot/mascot_event_bridge.dart
+    lib/mascot/mascot_window_app.dart
+    lib/neura_shell/widgets/neura_room_presence_avatar.dart
+    lib/services/neura_tts_service.dart
+    test/avatar/neura_motion_lifecycle_test.dart
+    test/mascot/mascot_motion_lifecycle_test.dart
+    test/neura_shell/neura_room_presence_motion_test.dart
+    test/services/neura_tts_lifecycle_test.dart
+
+jobs:
+  motion:
+    name: Motion regression (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Restore exact reviewed dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Check canonical formatting
+        run: dart format --output=none --set-exit-if-changed $MOTION_FILES
+      - name: Analyze motion and speech boundaries
+        run: flutter analyze --no-pub $MOTION_FILES
+      - name: Run synthetic motion, route and speech regressions
+        run: >-
+          flutter test --no-pub --reporter expanded
+          test/avatar test/mascot test/neura_shell
+          test/services/neura_tts_lifecycle_test.dart
+          test/startup/native_speech_safe_mode_test.dart
+          test/neura_link/reply_speech_queue_test.dart
+      - name: Verify source and lockfiles were not rewritten
+        run: git diff --exit-code -- lib test pubspec.lock rust/Cargo.lock

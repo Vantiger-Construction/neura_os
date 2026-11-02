@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 import '../avatar/motion/neura_body_cues.dart';
@@ -46,7 +47,7 @@ extension NeuraReplySpeechModeLabel on NeuraReplySpeechMode {
 /// Speaks Neura's chat replies aloud. Wires the existing
 /// [NeuraFlutterTtsVisemeBridge] so avatar mouth/viseme events fire on the
 /// Neura event bus alongside actual speech.
-class NeuraTtsService {
+class NeuraTtsService with WidgetsBindingObserver {
   NeuraTtsService._()
       : _nativeCommandTimeout = const Duration(seconds: 10),
         _speechTimeout = const Duration(minutes: 2) {
@@ -86,6 +87,8 @@ class NeuraTtsService {
   bool _acceptCallbacks = false;
   bool _nativeUncertain = false;
   bool _disposed = false;
+  bool _foreground = true;
+  bool _observingLifecycle = false;
   Future<void>? _disposal;
   int _speechGeneration = 0;
   int _cancelGeneration = 0;
@@ -94,7 +97,22 @@ class NeuraTtsService {
   double _volume = 1.0;
   NeuraReplySpeechMode _replySpeechMode = NeuraReplySpeechMode.off;
 
-  bool get playbackAllowed => !_disposed && !SafeBoot.instance.safeMode.value;
+  bool get playbackAllowed =>
+      !_disposed && _foreground && !SafeBoot.instance.safeMode.value;
+
+  void _observeLifecycle() {
+    if (_observingLifecycle) return;
+    final state = WidgetsBinding.instance.lifecycleState;
+    _foreground = state == null || state == AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this);
+    _observingLifecycle = true;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (!_foreground) unawaited(stop().catchError((_) {}));
+  }
 
   bool get _engineUsable => playbackAllowed && !_nativeUncertain;
 
@@ -154,16 +172,23 @@ class NeuraTtsService {
 
   Future<bool> _ensureInit() {
     if (!_engineUsable) return Future<bool>.value(false);
+    // Reading voice preferences and Safe Mode no-ops must stay usable before
+    // any UI binding or native speech engine exists.
+    _observeLifecycle();
+    if (!_engineUsable) return Future<bool>.value(false);
     if (_initialized) return Future<bool>.value(true);
 
     final existing = _initialization;
     if (existing != null) return existing;
 
     late final Future<bool> operation;
-    operation = _initialize().timeout(_nativeCommandTimeout, onTimeout: () {
-      _nativeUncertain = true;
-      throw TimeoutException('Local speech initialization timed out.');
-    }).whenComplete(() {
+    operation = _initialize().timeout(
+      _nativeCommandTimeout,
+      onTimeout: () {
+        _nativeUncertain = true;
+        throw TimeoutException('Local speech initialization timed out.');
+      },
+    ).whenComplete(() {
       if (identical(_initialization, operation)) {
         _initialization = null;
       }
@@ -186,6 +211,7 @@ class NeuraTtsService {
       onCompletion: _completeSpeak,
       onCancel: _completeSpeak,
       onError: (_) => _completeSpeak(error: StateError('Local speech failed.')),
+      playbackAllowed: () => _acceptCallbacks && _engineUsable,
     );
 
     if (!current()) return false;
@@ -226,6 +252,7 @@ class NeuraTtsService {
       NeuraMotion.instance.endSpeech();
       _playing = null;
       _acceptCallbacks = false;
+      NeuraFlutterTtsVisemeBridge.reset(_tts);
     }
     if (error == null) {
       playback.done.complete();
@@ -243,14 +270,17 @@ class NeuraTtsService {
       if (_nativeUncertain) {
         throw StateError('Local speech requires an application restart.');
       }
-      await action().timeout(_nativeCommandTimeout, onTimeout: () {
-        // A Dart timeout cannot cancel a native operation. Quarantine this
-        // engine so a late acknowledgement cannot overlap a new utterance.
-        _nativeUncertain = true;
-        final error = TimeoutException('Local speech command timed out.');
-        _finish(_playing, error: error);
-        throw error;
-      });
+      await action().timeout(
+        _nativeCommandTimeout,
+        onTimeout: () {
+          // A Dart timeout cannot cancel a native operation. Quarantine this
+          // engine so a late acknowledgement cannot overlap a new utterance.
+          _nativeUncertain = true;
+          final error = TimeoutException('Local speech command timed out.');
+          _finish(_playing, error: error);
+          throw error;
+        },
+      );
     });
     late final Future<void> tail;
     tail = next
@@ -266,6 +296,7 @@ class NeuraTtsService {
     final playback = _playing;
     playback?.deadline?.cancel();
     _acceptCallbacks = false;
+    NeuraFlutterTtsVisemeBridge.reset(_tts);
     Object? failure = error;
     try {
       final result = await _tts?.stop();
@@ -313,8 +344,10 @@ class NeuraTtsService {
     if (!await _ensureInit()) return;
     if (!playbackAllowed) return;
 
-    final result =
-        await _tts!.setVoice({'name': voice.name, 'locale': voice.locale});
+    final result = await _tts!.setVoice({
+      'name': voice.name,
+      'locale': voice.locale,
+    });
     if (result == 0) return;
     _selectedVoiceName = voice.name;
     try {
@@ -359,8 +392,10 @@ class NeuraTtsService {
     if (!await _ensureInit()) return;
     if (!current() || sampleText.trim().isEmpty) return;
 
-    final result =
-        await _tts!.setVoice({'name': voice.name, 'locale': voice.locale});
+    final result = await _tts!.setVoice({
+      'name': voice.name,
+      'locale': voice.locale,
+    });
     if (result == 0) return;
     if (!current()) return;
     await speak(sampleText);
@@ -386,8 +421,10 @@ class NeuraTtsService {
       final savedLocale = prefs?.getString(_kVoiceLocaleKey);
       if (savedName != null && savedLocale != null) {
         if (!_configurationAllowed(cancellation)) return;
-        final result =
-            await tts.setVoice({'name': savedName, 'locale': savedLocale});
+        final result = await tts.setVoice({
+          'name': savedName,
+          'locale': savedLocale,
+        });
         if (result != 0) {
           _selectedVoiceName = savedName;
           return;
@@ -479,6 +516,8 @@ class NeuraTtsService {
         if (!identical(_playing, playback)) return;
         ++_speechGeneration;
         ++_cancelGeneration;
+        _acceptCallbacks = false;
+        NeuraFlutterTtsVisemeBridge.reset(_tts);
         final error = TimeoutException('Local speech completion timed out.');
         final cleanup = _queueNative(() async {
           await _stopPlayback(error: error);
@@ -486,9 +525,11 @@ class NeuraTtsService {
           // mistaken for another utterance. Require a restart after timeout.
           _nativeUncertain = true;
         });
-        unawaited(cleanup.catchError((Object failure, StackTrace stack) {
-          _finish(playback, error: failure, stack: stack);
-        }));
+        unawaited(
+          cleanup.catchError((Object failure, StackTrace stack) {
+            _finish(playback, error: failure, stack: stack);
+          }),
+        );
       });
       // Body language follows her speech rhythm (punctuation only).
       NeuraSpeechBeats.instance.begin(text);
@@ -498,9 +539,11 @@ class NeuraTtsService {
         _finish(playback);
       }
     });
-    unawaited(dispatch.catchError((Object error, StackTrace stack) {
-      _finish(playback, error: error, stack: stack);
-    }));
+    unawaited(
+      dispatch.catchError((Object error, StackTrace stack) {
+        _finish(playback, error: error, stack: stack);
+      }),
+    );
     return playback.done.future;
   }
 
@@ -512,6 +555,8 @@ class NeuraTtsService {
     NeuraMotion.instance.endSpeech();
     ++_speechGeneration;
     ++_cancelGeneration;
+    _acceptCallbacks = false;
+    NeuraFlutterTtsVisemeBridge.reset(_tts);
     // A stop before first use must remain a no-op. In particular, do not
     // leave a native command tail owned by a disposed UI/test lifecycle when
     // there has never been a native speech engine to stop.
@@ -526,6 +571,7 @@ class NeuraTtsService {
   Future<void> dispose() {
     if (_disposed) return _disposal ?? Future<void>.value();
     _disposed = true;
+    if (_observingLifecycle) WidgetsBinding.instance.removeObserver(this);
     SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
     return _disposal = stop();
   }

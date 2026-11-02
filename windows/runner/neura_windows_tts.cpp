@@ -101,7 +101,10 @@ void NeuraWindowsTts::EnsureVoice() {
   Check(CoCreateInstance(CLSID_SpVoice, nullptr, CLSCTX_INPROC_SERVER,
                          IID_ISpVoice, reinterpret_cast<void**>(&raw)));
   voice_.reset(raw);
-  const ULONGLONG events = SPFEI(SPEI_START_INPUT_STREAM) | SPFEI(SPEI_END_INPUT_STREAM);
+  // SAPI raises viseme events as the audio device reaches each mouth shape,
+  // so the latest one drained by a poll is already on the playback clock.
+  const ULONGLONG events = SPFEI(SPEI_START_INPUT_STREAM) | SPFEI(SPEI_END_INPUT_STREAM) |
+                           SPFEI(SPEI_VISEME);
   Check(voice_->SetInterest(events, events));
   // Never send text to an arbitrary system-default/third-party SAPI engine.
   Check(voice_->SetVoice(voices_[selected_voice_].token.get()));
@@ -168,8 +171,17 @@ void NeuraWindowsTts::Drain() {
     ULONG fetched = 0;
     Check(voice_->GetEvents(1, &event, &fetched));
     if (!fetched) break;
-    // Only start/end stream events were requested; neither carries a resource.
-    if (event.eEventId == SPEI_END_INPUT_STREAM) lifecycle_.End(voice_request_, event.ulStreamNum);
+    // Only stream and viseme events were requested; none carries a resource
+    // (viseme lParam/wParam are plain integers, SPET_LPARAM_IS_UNDEFINED).
+    if (event.eEventId == SPEI_VISEME && lifecycle_.Owns(event.ulStreamNum)) {
+      // LOWORD(lParam) is the current SPVISEMES value; ignore anything else.
+      const int current = static_cast<int>(LOWORD(event.lParam));
+      if (current >= 0 && current <= 21) viseme_ = current;
+    }
+    if (event.eEventId == SPEI_END_INPUT_STREAM) {
+      lifecycle_.End(voice_request_, event.ulStreamNum);
+      if (lifecycle_.state() != "speaking") viseme_ = -1;
+    }
   }
   if (lifecycle_.state() == "completed") {
     SPVOICESTATUS status = {};
@@ -182,6 +194,7 @@ void NeuraWindowsTts::Stop() {
   lifecycle_.Cancel();  // Revoke identity before purging queued/current audio.
   auto voice = std::move(voice_);
   voice_request_ = 0;
+  viseme_ = -1;
   if (voice) Check(voice->Speak(nullptr, SPF_PURGEBEFORESPEAK | SPF_IS_NOT_XML, nullptr));
   voice.reset();
   utterance_.clear();
@@ -272,8 +285,12 @@ void NeuraWindowsTts::Handle(
       result->Success(Value(1));
     } else if (method == "poll") {
       Drain();
-      result->Success(Value(Map{{Value("id"), Value(lifecycle_.request())},
-                                {Value("state"), Value(lifecycle_.state())}}));
+      Map reply{{Value("id"), Value(lifecycle_.request())},
+                {Value("state"), Value(lifecycle_.state())}};
+      if (lifecycle_.state() == "speaking" && viseme_ >= 0) {
+        reply.emplace(Value("viseme"), Value(viseme_));
+      }
+      result->Success(Value(reply));
     }
   } catch (const std::invalid_argument&) {
     result->Error("invalid_speech_request", "Local speech rejected the request.");
