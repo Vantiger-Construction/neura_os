@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../avatar/avatar_globals.dart';
 import '../avatar/avatar_orchestrator.dart';
 import '../avatar/avatar_orchestrator_viseme_ext.dart';
+import '../avatar/motion/neura_motion.dart';
 import '../config/supabase_config.dart';
 import '../core/neura_event_bus.dart';
 import '../intelligence/neura_intelligence_controller.dart';
@@ -423,6 +424,9 @@ class NeuraStartupCoordinator {
       controller: AvatarGlobals.controller,
       bus: NeuraEventBus.I,
     )..start();
+
+    // Fluent procedural body shared by every in-app avatar surface.
+    NeuraMotion.instance.start();
   }
 
   Future<void> _initSupabase() async {
