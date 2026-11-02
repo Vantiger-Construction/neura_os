@@ -15,7 +15,9 @@ import '../reliability/safe_boot.dart';
 import 'ambient_listening_prefs.dart';
 import 'neura_tts_service.dart';
 
-/// Whether [AmbientListeningService.greetAndStartListening] speaks at boot.
+/// Whether the legacy ambient-capture helper speaks at boot. Saved startup
+/// voice is handled separately by the foreground chat route; it does not
+/// enable ambient recording or require changing this constant.
 ///
 /// It remains disabled pending physical Windows acceptance of the owned SAPI
 /// speech path in [NeuraTtsService]. Debugging for issue #32 reproduced the crash

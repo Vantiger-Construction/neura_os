@@ -98,7 +98,7 @@ void main() {
     expect(NeuraCompanionPresence.instance.state.value.voiceActive, isFalse);
   }
 
-  test('proactive startup speech stays disabled pending Windows acceptance',
+  test('legacy ambient greeting stays disabled independently of startup voice',
       () {
     expect(kEnableProactiveGreetingTts, isFalse);
   });
