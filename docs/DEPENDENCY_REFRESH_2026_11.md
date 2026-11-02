@@ -13,6 +13,7 @@ device, encrypted-state, and release-package validation gates still apply.
 | Rust | 1.99.1, pinned in `rust-toolchain.toml` and CI |
 | Android Gradle Plugin / Gradle | 9.5.0 / 9.8.2 |
 | Kotlin / Java | 2.4.21 / 17 |
+| Android command-line tools | 23.0, verified Windows archive |
 | Android compile SDK / NDK | 37.0 / 28.2.13676358 |
 | Flutter/Rust bridge, runtime and generated bindings | 2.13.0 |
 | Supabase Flutter | 2.18.3, exact pin |
@@ -72,11 +73,17 @@ The selected Android scripts were inspected from the resolved pub archives:
 | Plugin | AGP 9 decision |
 | --- | --- |
 | android_file_picker 2.1.2 | Upstream detects built-in Kotlin; remove old file_picker override. |
-| home_widget 0.10.0 | Upstream detects built-in Kotlin; remove old override. |
+| home_widget 0.10.0 | Native build still selected external KGP under the legacy DSL. Re-audit and retain the guarded override; align compile SDK 37 and Kotlin with the app. |
 | record_android 2.2.0 | Upstream uses built-in Kotlin; remove old override. |
 | share_plus 13.3.1 | Upstream detects built-in Kotlin; remove old override. |
 | speech_to_text 7.5.0 | Upstream uses built-in Kotlin; remove old override. |
 | flutter_tts 4.2.5 | Retain exact-version/upstream-hash guard and local Kotlin migration. |
+
+Windows `local_auth_windows` 2.0.2 still requires the reviewed C++20/COM
+correction. Its source guard and receipt were refreshed after comparing the
+published plugin source; its new authentication result and availability cases
+remain intact. Media and notification source guards still match their resolved
+packages. See [security validation](SECURITY_VALIDATION.md).
 
 ## Reproduce generated bindings
 

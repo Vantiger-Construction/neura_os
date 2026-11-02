@@ -867,6 +867,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $requiredPackages = @(
             (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'cmdline-tools\\latest\\bin\\sdkmanager.bat'),
+            (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'cmdline-tools\\latest\\source.properties'),
             (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'platform-tools\\adb.exe'),
             (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'platforms\\android-36\\android.jar'),
             (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'platforms\\android-37.0\\android.jar'),
@@ -877,6 +878,11 @@ jobs:
             -not (Test-Path -LiteralPath $_ -PathType Leaf)
           }).Count -eq 0
 
+          $commandLineProperties = Join-Path $env:NEURA_ANDROID_SDK_ROOT 'cmdline-tools\\latest\\source.properties'
+          $sdkCacheComplete = $sdkCacheComplete -and (
+            Select-String -LiteralPath $commandLineProperties -Pattern '^Pkg\.Revision=23\.0$' -Quiet
+          )
+
           if ($sdkCacheComplete) {
             Write-Host "Reusing verified Android SDK package cache at $env:NEURA_ANDROID_SDK_ROOT."
           } else {
@@ -886,8 +892,8 @@ jobs:
 
             $archive = Join-Path $env:NEURA_ANDROID_TOOL_ROOT 'command-line-tools.zip'
             $extract = Join-Path $env:NEURA_ANDROID_TOOL_ROOT '_extract'
-            $uri = 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip'
-            $expected = '90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a'
+            $uri = 'https://dl.google.com/android/repository/commandlinetools-win-16111833_latest.zip'
+            $expected = 'e5885e2e59038c0778a85fc19f01de7ce7c567c105553f7617b936b1e0e87b2b'
 
             $maxRetries = 3
             $retryCount = 0

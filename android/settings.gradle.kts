@@ -44,3 +44,4 @@ fun useMigratedPluginBuild(name: String, version: String, expectedHash: String) 
 }
 
 useMigratedPluginBuild("flutter_tts", "4.2.5", "e8282fed47a650a28c490df7cae3c800db574b8335a7d4d2b8db806378482088")
+useMigratedPluginBuild("home_widget", "0.10.0", "c8ec7ffe5b27a41ad980d5a87c117ac7deec1fa72b63f9294535bdaedef0924e")
