@@ -7,12 +7,48 @@ class NeuraDailyPlan extends ChangeNotifier {
   List<String> _steps = const [];
   final Set<int> _completed = {};
   bool _approved = false;
+  bool _paused = false;
 
   String get goal => _goal;
   List<String> get steps => List.unmodifiable(_steps);
   bool get approved => _approved;
   int get completedCount => _completed.length;
   bool isComplete(int index) => _completed.contains(index);
+  bool get paused => _paused;
+  int? get nextStepIndex {
+    for (var i = 0; i < _steps.length; i++) {
+      if (!_completed.contains(i)) return i;
+    }
+    return null;
+  }
+
+  void pause(bool value) {
+    if (!_approved) throw StateError('Approve the plan first.');
+    _paused = value;
+    notifyListeners();
+  }
+
+  void makeCurrentStepSmaller(String replacement) {
+    final index = nextStepIndex;
+    final text = replacement.trim();
+    if (!_approved || index == null || text.isEmpty || text.length > 160) {
+      throw ArgumentError('Choose a smaller step up to 160 characters.');
+    }
+    _steps = List.of(_steps)..[index] = text;
+    _approved = false;
+    _paused = false;
+    notifyListeners();
+  }
+
+  /// An imported snapshot is always a preview, never a restored approval.
+  void previewTransferred(String goal, List<String> steps, Set<int> completed) {
+    if (completed.any((i) => i < 0 || i >= steps.length)) {
+      throw ArgumentError('Invalid progress.');
+    }
+    preview(goal, steps);
+    _completed.addAll(completed);
+    notifyListeners();
+  }
 
   void preview(String goal, Iterable<String> steps) {
     final nextGoal = goal.trim();
@@ -30,6 +66,7 @@ class NeuraDailyPlan extends ChangeNotifier {
     _steps = List.unmodifiable(next);
     _completed.clear();
     _approved = false;
+    _paused = false;
     notifyListeners();
   }
 
@@ -40,7 +77,7 @@ class NeuraDailyPlan extends ChangeNotifier {
   }
 
   void complete(int index, bool completed) {
-    if (!_approved || index < 0 || index >= _steps.length) {
+    if (!_approved || _paused || index < 0 || index >= _steps.length) {
       throw StateError('Approve the current plan before recording progress.');
     }
     if (completed) {
@@ -56,6 +93,7 @@ class NeuraDailyPlan extends ChangeNotifier {
     _steps = const [];
     _completed.clear();
     _approved = false;
+    _paused = false;
     notifyListeners();
   }
 }

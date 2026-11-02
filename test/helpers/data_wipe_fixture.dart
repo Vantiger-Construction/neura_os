@@ -210,11 +210,11 @@ class WipePreferencesStore extends SharedPreferencesStorePlatform {
   bool refuseClear = false;
   bool throwOnClear = false;
   bool ignoreClear = false;
-  int clearCalls = 0;
-  Future<void> Function(String key)? beforeSetValue;
   Future<void> Function(String key)? beforeSet;
   Future<void> Function(String key)? beforeRemove;
   Future<void> Function()? beforeGetAll;
+  int clearCalls = 0;
+  Future<void> Function(String key)? beforeSetValue;
 
   @override
   bool get isMock => true;

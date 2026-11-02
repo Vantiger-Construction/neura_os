@@ -13,7 +13,7 @@ import '../models/neura_room_presence_profile.dart';
 /// Neura's safe, non-interactive in-room presence.
 ///
 /// This widget never opens a microphone. It only renders the selected avatar
-/// and applies subtle motion from already-public presence state. Safe Mode,
+/// and lets the shared NeuraMotion body engine animate it. Safe Mode,
 /// reduced-motion accessibility, and the Still preference all freeze motion.
 class NeuraRoomPresenceAvatar extends StatefulWidget {
   const NeuraRoomPresenceAvatar({
@@ -37,67 +37,26 @@ class NeuraRoomPresenceAvatar extends StatefulWidget {
 }
 
 class _NeuraRoomPresenceAvatarState extends State<NeuraRoomPresenceAvatar>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with WidgetsBindingObserver {
   bool _foreground = true;
-  bool _reduceMotion = false;
-  bool _tickerEnabled = true;
-  late final AnimationController _motion;
-
-  bool get _mayAnimate =>
-      _foreground &&
-      !_reduceMotion &&
-      _tickerEnabled &&
-      widget.phase != NeuraPresencePhase.safeMode &&
-      widget.motion != NeuraCompanionMotion.still;
-
   @override
   void initState() {
     super.initState();
-    _motion = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 3600),
-    );
-    final lifecycle = WidgetsBinding.instance.lifecycleState;
-    _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    final state = WidgetsBinding.instance.lifecycleState;
+    _foreground = state == null || state == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _reduceMotion = MediaQuery.disableAnimationsOf(context);
-    _tickerEnabled = TickerMode.valuesOf(context).enabled;
-    _syncMotion();
-  }
-
-  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    setState(() => _foreground = state == AppLifecycleState.resumed);
-    _syncMotion();
-  }
-
-  @override
-  void didUpdateWidget(NeuraRoomPresenceAvatar oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.phase != widget.phase || oldWidget.motion != widget.motion) {
-      _syncMotion();
-    }
-  }
-
-  void _syncMotion() {
-    if (_mayAnimate) {
-      if (!_motion.isAnimating) _motion.repeat();
-    } else {
-      _motion
-        ..stop()
-        ..value = 0;
+    if (mounted) {
+      setState(() => _foreground = state == AppLifecycleState.resumed);
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _motion.dispose();
     super.dispose();
   }
 
@@ -105,7 +64,6 @@ class _NeuraRoomPresenceAvatarState extends State<NeuraRoomPresenceAvatar>
   Widget build(BuildContext context) {
     final profile = NeuraRoomPresenceProfile.forRoom(widget.room);
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final animate = _mayAnimate && !reduceMotion;
     final accent = Theme.of(context).colorScheme.primary;
     final selectedId = AvatarGlobals.service.selectedAvatarId;
 
@@ -145,67 +103,42 @@ class _NeuraRoomPresenceAvatarState extends State<NeuraRoomPresenceAvatar>
         );
 
     return RepaintBoundary(
-      child: Semantics(
-        image: true,
-        label:
-            'Neura in ${widget.room.title}, ${profile.stanceLabel}, ${NeuraPresenceSnapshot(widget.phase).label}',
         child: TickerMode(
-          enabled: animate,
-          child: AnimatedSwitcher(
-            duration: reduceMotion
-                ? Duration.zero
-                : const Duration(milliseconds: 420),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, animation) => FadeTransition(
-              opacity: animation,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0.08, 0),
-                  end: Offset.zero,
-                ).animate(animation),
-                child: child,
-              ),
-            ),
-            child: AnimatedBuilder(
-              key: ValueKey<String>(widget.room.id),
-              animation: _motion,
-              builder: (context, child) {
-                if (!animate) return child!;
-                final wave = math.sin(_motion.value * math.pi * 2);
-                final strength =
-                    widget.motion == NeuraCompanionMotion.expressive
-                        ? 1.7
-                        : 1.0;
-                final phaseStrength = switch (widget.phase) {
-                  NeuraPresencePhase.listening => 1.4,
-                  NeuraPresencePhase.speaking => 1.25,
-                  NeuraPresencePhase.thinking => 0.8,
-                  _ => 0.55,
-                };
-                final translateY = -wave.abs() * 2 * strength * phaseStrength;
-                final rotate = widget.phase == NeuraPresencePhase.thinking
-                    ? wave * 0.012 * strength
-                    : 0.0;
-                final pulse = widget.phase == NeuraPresencePhase.speaking
-                    ? 1 + wave.abs() * 0.012 * strength
-                    : 1.0;
-                return Transform.translate(
-                  offset: Offset(0, translateY),
-                  child: Transform.rotate(
-                    angle: rotate,
-                    child: Transform.scale(scale: pulse, child: child),
+            enabled: _foreground &&
+                !reduceMotion &&
+                widget.phase != NeuraPresencePhase.safeMode &&
+                widget.motion != NeuraCompanionMotion.still,
+            child: Semantics(
+              image: true,
+              label:
+                  'Neura in ${widget.room.title}, ${profile.stanceLabel}, ${NeuraPresenceSnapshot(widget.phase).label}',
+              child: AnimatedSwitcher(
+                duration: reduceMotion
+                    ? Duration.zero
+                    : const Duration(milliseconds: 420),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) => FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0.08, 0),
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: child,
                   ),
-                );
-              },
-              child: ValueListenableBuilder<String>(
-                valueListenable: selectedId,
-                builder: (_, id, __) => avatarFor(id),
+                ),
+                // Body motion (idle sway, breathing, gestures) comes from the shared
+                // NeuraMotion engine inside AvatarView, which already honours Safe
+                // Mode, the Still preference and OS reduced-motion.
+                child: KeyedSubtree(
+                  key: ValueKey<String>(widget.room.id),
+                  child: ValueListenableBuilder<String>(
+                    valueListenable: selectedId,
+                    builder: (_, id, __) => avatarFor(id),
+                  ),
+                ),
               ),
-            ),
-          ),
-        ),
-      ),
-    );
+            )));
   }
 }

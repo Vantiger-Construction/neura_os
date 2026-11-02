@@ -7,6 +7,17 @@ on:
       - 'rust/**'
       - 'lib/services/neura_ollama_chat.dart'
       - 'lib/planning/**'
+      - 'lib/reference/**'
+      - 'lib/avatar/motion/**'
+      - 'lib/mascot/mascot_event_bridge.dart'
+      - 'lib/mascot/mascot_window_app.dart'
+      - 'lib/services/neura_conversation_thread.dart'
+      - 'lib/services/neura_tts_service.dart'
+      - 'test/reference/**'
+      - 'test/avatar/**'
+      - 'test/services/neura_conversation_thread_test.dart'
+      - 'test/services/neura_tts_lifecycle_test.dart'
+      - 'docs/COMPANION_NEXT_STAGE_2026_10.md'
       - 'lib/widgets/neura_activity_badge.dart'
       - 'lib/widgets/neura_offline_controls.dart'
       - 'lib/services/neura_offline_budget.dart'
@@ -97,7 +108,11 @@ jobs:
           lib/modules/navigation/enhanced_navigation.dart test/planning \
           test/widgets/neura_activity_badge_test.dart test/widgets/neura_offline_controls_test.dart \
           test/services/neura_offline_budget_test.dart test/startup/neura_boot_recovery_actions_test.dart \
-          test/neura_shell/neura_room_presence_motion_test.dart
+          test/neura_shell/neura_room_presence_motion_test.dart \
+          lib/reference lib/avatar/motion lib/mascot/mascot_event_bridge.dart \
+          lib/mascot/mascot_window_app.dart lib/services/neura_conversation_thread.dart \
+          lib/services/neura_tts_service.dart test/reference test/avatar \
+          test/services/neura_conversation_thread_test.dart test/services/neura_tts_lifecycle_test.dart
       - name: Analyze integration
         run: >-
           flutter analyze --no-pub lib/services/neura_ollama_chat.dart lib/services/neura_ai_service.dart
@@ -111,6 +126,10 @@ jobs:
           test/widgets/neura_activity_badge_test.dart test/widgets/neura_offline_controls_test.dart
           test/services/neura_offline_budget_test.dart test/startup/neura_boot_recovery_actions_test.dart
           test/neura_shell/neura_room_presence_motion_test.dart
+          lib/reference lib/avatar/motion lib/mascot/mascot_event_bridge.dart
+          lib/mascot/mascot_window_app.dart lib/services/neura_conversation_thread.dart
+          lib/services/neura_tts_service.dart test/reference test/avatar
+          test/services/neura_conversation_thread_test.dart test/services/neura_tts_lifecycle_test.dart
       - name: Test adapter and existing lifecycle boundaries
         run: >-
           flutter test --no-pub test/services/neura_ollama_chat_test.dart
@@ -120,6 +139,8 @@ jobs:
           test/widgets/neura_activity_badge_test.dart test/widgets/neura_offline_controls_test.dart
           test/services/neura_offline_budget_test.dart test/startup/neura_boot_recovery_actions_test.dart
           test/neura_shell/neura_room_presence_motion_test.dart
+          test/reference test/avatar test/services/neura_conversation_thread_test.dart
+          test/services/neura_tts_lifecycle_test.dart
 
   windows-preview:
     name: Build and verify Windows Ollama preview
@@ -156,9 +177,10 @@ jobs:
           if ($packages.Count -ne 1) { throw 'Expected exactly one preview directory' }
           $package = $packages[0]
           Copy-Item docs\NEURA_OLLAMA_CHAT.md $package.FullName
+          Copy-Item docs\COMPANION_NEXT_STAGE_2026_10.md $package.FullName
           @"
           Neura Companion - Offline Ollama Windows preview
-          Draft PR #127; source $env:PREVIEW_HEAD; run $env:GITHUB_RUN_ID.
+          Companion upgrade review branch; source $env:PREVIEW_HEAD; run $env:GITHUB_RUN_ID.
           This is an unsigned portable review build, not a production installer.
           Extract the whole ZIP into its own folder; keep the app folder intact.
           Read NEURA_OLLAMA_CHAT.md, then launch app\START_NEURA.bat.

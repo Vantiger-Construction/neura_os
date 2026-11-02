@@ -13,13 +13,22 @@ enum NeuraOfflineBudget {
 
   /// Preserve the newest user turn and whole older turns within the byte cap.
   /// Never truncate user text or include an orphaned assistant response.
-  List<Map<String, dynamic>> retain(List<Map<String, dynamic>> messages) {
+  List<Map<String, dynamic>> retain(List<Map<String, dynamic>> messages,
+      {String threadContext = ''}) {
     if (messages.isEmpty || messages.last['role'] != 'user') {
       throw StateError('An offline request needs a new user message.');
     }
-    var bytes = 0;
+    final newest = messages.last['content'];
+    if (newest is! String) throw StateError('Offline chat accepts text only.');
+    // The brief shares the existing budget. Never displace the newest request
+    // or expand native context/RAM limits to keep it.
+    final threadBytes = utf8.encode(threadContext).length;
+    final useThread = threadContext.isNotEmpty &&
+        threadBytes <= 450 &&
+        threadBytes + utf8.encode(newest).length <= contextBytes;
+    var bytes = useThread ? threadBytes : 0;
     final retained = <Map<String, dynamic>>[];
-    for (final message in messages.reversed.take(8)) {
+    for (final message in messages.reversed.take(useThread ? 7 : 8)) {
       final text = message['content'];
       if (text is! String ||
           (message['role'] != 'user' && message['role'] != 'assistant')) {
@@ -37,6 +46,9 @@ enum NeuraOfflineBudget {
     }
     while (retained.first['role'] != 'user') {
       retained.removeAt(0);
+    }
+    if (useThread) {
+      retained.insert(0, {'role': 'user', 'content': threadContext});
     }
     return retained;
   }
