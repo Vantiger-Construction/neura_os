@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a reproducible Neura problem with its build and platform details.
+title: '[Bug] '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use [private reporting](https://github.com/Vantiger-Construction/neura_os/security/advisories/new) for suspected security or privacy vulnerabilities.
+        Use sample data and redact logs/screenshots. Do not attach private journals, recordings, credentials or complete app-data folders.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Affected platform
+      options: [Windows, Android, iOS, macOS, Linux, Web, GitHub Actions or build tooling, Other]
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Neura version, release or commit
+      description: Include the package source and checksum if available; write unknown if unavailable.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Device and operating system
+      description: Include OS version and relevant RAM or model details; omit serial numbers and account identifiers.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Use sample information. Mention Safe Mode, permissions or background transitions if relevant.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics or workflow link
+      description: Optional short error, crash excerpt or failed Actions URL. Review before sharing.
+      render: text
