@@ -3,12 +3,7 @@ name: Neura Actions validation
 on:
   pull_request:
     branches: [Neura]
-    paths:
-      - '.github/**'
-      - '.gitattributes'
-      - 'tools/ci/**'
-      - 'tools/compose_avatar_sources.sh'
-      - 'tools/test_avatar_source_composition.py'
+    # Required workflow validation must report on every PR, including docs-only.
   push:
     branches: [Neura]
     paths:
