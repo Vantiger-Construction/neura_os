@@ -2,6 +2,13 @@
 
 This is the **merged** Neura OS Flutter project with the upgrades/patches you uploaded applied into one codebase.
 
+## GitHub coding agents
+
+Six [Neura specialist agents](docs/GITHUB_AGENTS.md) cover CI repair, privacy and
+memory, voice and avatar, offline intelligence, dependencies, and release
+readiness. Select one in GitHub's agent picker for a focused task. Shared project
+boundaries and validation commands are in [AGENTS.md](AGENTS.md).
+
 ## Included modules
 - Legacy Vault
 - Neura Spaces (rooms + map)
