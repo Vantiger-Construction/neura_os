@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../avatar/avatar_globals.dart';
 import '../avatar/avatar_orchestrator.dart';
 import '../avatar/avatar_orchestrator_viseme_ext.dart';
+import '../avatar/motion/neura_motion.dart';
 import '../config/supabase_config.dart';
 import '../core/neura_event_bus.dart';
 import '../intelligence/neura_intelligence_controller.dart';
@@ -56,7 +57,9 @@ bool shouldInitializeNativeNeuraSwarm({
   required bool isWeb,
   required bool safeMode,
   required bool hasProviderCredential,
+  required bool explicitlyEnabled,
 }) =>
+    explicitlyEnabled &&
     !safeMode &&
     hasProviderCredential &&
     supportsNativeNeuraSwarm(platform: platform, isWeb: isWeb);
@@ -357,16 +360,21 @@ class NeuraStartupCoordinator {
           isWeb: kIsWeb,
           safeMode: SafeBoot.instance.safeMode.value,
           hasProviderCredential: NeuraProviderCredentials.instance.hasKey,
+          // Startup never has the visible, payload-specific confirmation
+          // required for a secondary cloud review. A foreground surface must
+          // explicitly enable the swarm for one approved operation.
+          explicitlyEnabled: false,
         )) {
-          _swarmStarted = await _safe(
-            () => NeuraSwarmService.instance
-                .init(NeuraProviderCredentials.instance.apiKey),
+          // Defensive policy: the startup coordinator never mints a visible
+          // approval, so normal boot cannot initialize the native swarm.
+          ModuleHealthMonitor.instance.skipped(
             'SwarmInit',
+            'Native swarm requires a foreground approval and remains unloaded.',
           );
         } else {
           ModuleHealthMonitor.instance.skipped(
             'SwarmInit',
-            'The packaged native swarm is currently available on Windows only.',
+            'Native swarm stays unloaded until a foreground surface receives fresh approval.',
           );
         }
       }(),
@@ -426,6 +434,9 @@ class NeuraStartupCoordinator {
       controller: AvatarGlobals.controller,
       bus: NeuraEventBus.I,
     )..start();
+
+    // Fluent procedural body shared by every in-app avatar surface.
+    NeuraMotion.instance.start();
   }
 
   Future<void> _initSupabase() async {

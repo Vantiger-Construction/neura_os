@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 
+import '../../avatar/conversation_presence_signal.dart';
 import '../../encrypted_memory/companion_memory_service.dart';
 import '../../neura_link/reply_speech_queue.dart';
 import '../../neura_link/local_conversation_session.dart';
@@ -52,12 +53,15 @@ import '../support/guided_support_screen.dart';
 import 'neura_voice_destinations.dart';
 
 class NeuraChatScreen extends StatefulWidget {
-  const NeuraChatScreen(
-      {super.key,
-      this.localSession,
-      this.memoryService,
-      this.startWithVoice = false,
-      this.speechInput});
+  const NeuraChatScreen({
+    super.key,
+    this.localSession,
+    this.memoryService,
+    this.aiService,
+    this.ttsService,
+    this.startWithVoice = false,
+    this.speechInput,
+  });
 
   /// Requires the saved startup-voice opt-in; never uses online OS dictation.
   final bool startWithVoice;
@@ -67,12 +71,20 @@ class NeuraChatScreen extends StatefulWidget {
   final LocalConversationSession? localSession;
   final CompanionMemoryService? memoryService;
 
+  /// Optional borrowed services for deterministic conversation integration
+  /// tests. Their caller retains ownership; production uses process services.
+  final NeuraAiService? aiService;
+  final NeuraTtsService? ttsService;
+
   @override
   State<NeuraChatScreen> createState() => _NeuraChatScreenState();
 }
 
 class _NeuraChatScreenState extends State<NeuraChatScreen>
     with WidgetsBindingObserver {
+  NeuraAiService get _ai => widget.aiService ?? NeuraAiService.instance;
+  NeuraTtsService get _tts => widget.ttsService ?? NeuraTtsService.instance;
+
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final List<_ChatLine> _lines = [
@@ -82,6 +94,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   ];
 
   bool _speechEnabled = true;
+
+  /// Mirrors this screen's turn state onto the avatar (listening/thinking).
+  final ConversationPresenceSignal _presence = ConversationPresenceSignal();
+  bool _disposed = false;
+  bool _foreground = true;
+  bool _routeVisible = true;
   late final LocalConversationSession _localSession;
   bool _localSelected = false;
   int _localSerial = 0;
@@ -145,6 +163,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   @override
   void initState() {
     super.initState();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     _voiceInput = widget.speechInput ??
         (widget.startWithVoice
@@ -189,11 +209,14 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final current = ModalRoute.of(context)?.isCurrent ?? true;
-    // ModalRoute registers this dependency when another route covers chat,
-    // even while the Windows application itself remains in the foreground.
-    if (_localSelected && !current) {
-      unawaited(_localSession.stop());
+    // Opaque covering routes disable chat's tickers. Approval dialogs remain
+    // part of the active turn and must not cancel the request they approve.
+    final current = TickerMode.valuesOf(context).enabled;
+    final wasCurrent = _routeVisible;
+    _routeVisible = current;
+    _syncPresence();
+    if (wasCurrent && !current) {
+      unawaited(_endConversation().catchError((_) {}));
     }
     if (widget.startWithVoice &&
         !current &&
@@ -380,23 +403,22 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     _includeMemory = false;
     final hadVoice = _continuousMode || _listening || _startingListening;
     _voiceSession++;
-    _replyUpdates?.dispose();
-    _replyUpdates = null;
-    _replySpeech?.cancel();
-    NeuraAiService.instance.cancelActiveGeneration();
     _continuousMode = false;
     _listening = false;
+    _syncPresence();
     if (mounted) {
       setState(() {
         if (hadVoice) _controller.clear();
       });
     }
+    unawaited(_interruptActiveReply(flush: false).catchError((_) {}));
     unawaited(_voiceInput.stopRecording().catchError((_) => ''));
-    unawaited(NeuraTtsService.instance.stop().catchError((_) {}));
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    _syncPresence();
     if (state != AppLifecycleState.resumed) {
       _memoryPermission?.revoke();
       _memoryPermission = null;
@@ -414,8 +436,32 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     });
   }
 
+  /// Every visible state change also re-derives the avatar's presence, so
+  /// listening/thinking can never drift from what the chat is showing.
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _syncPresence();
+  }
+
+  void _syncPresence() {
+    final activeLine = _activeBotLine;
+    _presence.update(
+      listening: _listening,
+      // Thinking lasts from the request until the first reply text appears;
+      // after that the TTS bridge owns talking and visemes.
+      awaitingReply: _busy && (activeLine == null || activeLine.text.isEmpty),
+      suppressed: _disposed ||
+          !_foreground ||
+          !_routeVisible ||
+          SafeBoot.instance.safeMode.value,
+    );
+  }
+
   @override
   void dispose() {
+    _disposed = true;
+    _presence.reset();
     _memoryOwner?.removeListener(_onPendingMemoryChanged);
     _memoryPermission?.revoke();
     ++_localSerial;
@@ -434,8 +480,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     _finalPhraseSub?.cancel();
     _replyUpdates?.dispose();
     _replySpeech?.cancel();
-    NeuraAiService.instance.cancelActiveGeneration();
-    unawaited(NeuraTtsService.instance.stop().catchError((_) {}));
+    _ai.cancelActiveGeneration();
+    unawaited(_tts.stop().catchError((_) {}));
     if (_listening || _startingListening || _voiceInput.isListening) {
       unawaited(_voiceInput.stopRecording());
     }
@@ -570,6 +616,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
 
   bool _voiceSessionActive(int session) =>
       mounted &&
+      _foreground &&
       _continuousMode &&
       session == _voiceSession &&
       !SafeBoot.instance.safeMode.value &&
@@ -585,6 +632,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         _listening ||
         !_continuousMode ||
         !mounted ||
+        !_foreground ||
         SafeBoot.instance.safeMode.value) {
       return;
     }
@@ -657,8 +705,15 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         if (hadVoice) _controller.clear();
       });
     }
-    await _voiceInput.stopRecording();
-    await _interruptActiveReply();
+    // Revoke the model/reply identity before either native shutdown can wait.
+    // A late model delta or start acknowledgement cannot survive this turn.
+    final speechStop = _interruptActiveReply(
+      flush: _foreground && _routeVisible && !SafeBoot.instance.safeMode.value,
+    );
+    await Future.wait<void>([
+      _voiceInput.stopRecording().then<void>((_) {}),
+      speechStop,
+    ]);
   }
 
   void _showVoiceNotice(String message) {
@@ -720,8 +775,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         _showVoiceNotice('Replies are muted in this chat.');
         return;
       case NeuraVoiceCommand.unmuteReplies:
-        if (NeuraTtsService.instance.replySpeechMode ==
-            NeuraReplySpeechMode.off) {
+        if (_tts.replySpeechMode == NeuraReplySpeechMode.off) {
           _showVoiceNotice('Enable reply speech in Voice settings first.');
           return;
         }
@@ -942,15 +996,24 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   /// Stops both the in-flight model stream and TTS. The partial/full bot line
   /// remains visible and is marked interrupted so correlation with its
   /// generation id is preserved instead of silently deleting output.
-  Future<void> _interruptActiveReply() async {
+  Future<void> _interruptActiveReply({bool flush = true}) async {
     final interruptedId = _activeReplyId;
     final interruptedLine = _activeBotLine;
-    _replyUpdates?.flush();
+    if (flush) _replyUpdates?.flush();
     _replyUpdates?.dispose();
     _replyUpdates = null;
     _replySpeech?.cancel();
-    NeuraAiService.instance.cancelActiveGeneration();
-    await NeuraTtsService.instance.stop();
+    _ai.cancelActiveGeneration();
+    if (mounted) {
+      setState(() {
+        if (interruptedLine != null) interruptedLine.interrupted = true;
+        _activeReplyId = null;
+        _activeBotLine = null;
+        _busy = false;
+        if (_localOllama) _trimOllamaVisibleHistory();
+      });
+    }
+    await _tts.stop();
 
     if (interruptedId != null) {
       await AppLog.instance.info('speak_interrupted', {
@@ -958,15 +1021,6 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         'seq': interruptedLine?.seq ?? 0,
       });
     }
-
-    if (!mounted) return;
-    setState(() {
-      if (interruptedLine != null) interruptedLine.interrupted = true;
-      _activeReplyId = null;
-      _activeBotLine = null;
-      _busy = false;
-      if (_localOllama) _trimOllamaVisibleHistory();
-    });
   }
 
   void _scrollToEnd() {
@@ -1051,6 +1105,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   }
 
   Future<void> _send({String? imageBase64, String? imageMediaType}) async {
+    if (!_foreground || !_routeVisible || SafeBoot.instance.safeMode.value) {
+      return;
+    }
     final text = _controller.text.trim();
     final hasImage = imageBase64 != null;
     if (text.isEmpty && !hasImage) return;
@@ -1058,8 +1115,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       await _sendLocalText(text, hasImage: hasImage);
       return;
     }
-    if ((_selectedContext != null || _includeMemory) &&
-        !NeuraAiService.instance.isConfigured) {
+    if ((_selectedContext != null || _includeMemory) && !_ai.isConfigured) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -1139,6 +1195,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       'room': room.id,
       'persist': persistMemory,
     });
+    if (!mounted || _activeReplyId != generationId) return;
 
     final history = _lines
         .skip(1)
@@ -1153,7 +1210,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         )
         .toList();
 
-    if (!localOllama && !NeuraAiService.instance.isConfigured) {
+    if (!localOllama && !_ai.isConfigured) {
       await _fallbackToLocalReply(
         displayText,
         generationId: generationId,
@@ -1175,20 +1232,18 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     });
     _scrollToEnd();
 
-    final useStreamSpeech = _speechEnabled &&
-        NeuraTtsService.instance.replySpeechMode ==
-            NeuraReplySpeechMode.streamed;
+    final useStreamSpeech =
+        _speechEnabled && _tts.replySpeechMode == NeuraReplySpeechMode.streamed;
     final speech = ReplySpeechQueue(
-      speak: (text) => NeuraTtsService.instance.speak(text).timeout(
+      speak: (text) => _tts.speak(text).timeout(
             const Duration(seconds: 45),
-            onTimeout: () => NeuraTtsService.instance.stop(),
+            onTimeout: () => _tts.stop(),
           ),
       allowed: () =>
           mounted &&
           _activeReplyId == generationId &&
           _speechEnabled &&
-          NeuraTtsService.instance.replySpeechMode ==
-              NeuraReplySpeechMode.streamed &&
+          _tts.replySpeechMode == NeuraReplySpeechMode.streamed &&
           !SafeBoot.instance.safeMode.value,
     );
     _replySpeech = speech;
@@ -1208,7 +1263,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     );
     _replyUpdates = updates;
     try {
-      await for (final delta in NeuraAiService.instance.streamReply(
+      await for (final delta in _ai.streamReply(
         history,
         agentId: _activeAgent.id,
         roomId: room.id,
@@ -1240,18 +1295,19 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         'room': room.id,
         'context_receipt': cloudContextReceipt.toMetadata(),
       });
+      if (!mounted || _activeReplyId != generationId) return;
       if (useStreamSpeech) {
         await speech.finish(botLine.text);
       } else if (_speechEnabled &&
-          NeuraTtsService.instance.replySpeechMode ==
-              NeuraReplySpeechMode.afterComplete &&
+          _tts.replySpeechMode == NeuraReplySpeechMode.afterComplete &&
           botLine.text.trim().isNotEmpty) {
-        await NeuraTtsService.instance.speak(botLine.text);
+        await _tts.speak(botLine.text);
       }
     } on NeuraGenerationCancelled catch (e) {
+      if (!mounted || _activeReplyId != generationId) return;
       updates.flush();
       speech.cancel();
-      await NeuraTtsService.instance.stop();
+      await _tts.stop();
       await AppLog.instance.info('chat_generation_cancelled', {
         'utterance_id': e.generationId,
         'seq': botLine.seq,
@@ -1261,9 +1317,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       }
       return;
     } catch (error, stack) {
+      if (!mounted || _activeReplyId != generationId) return;
       updates.flush();
       speech.cancel();
-      await NeuraTtsService.instance.stop();
+      await _tts.stop();
       await AppLog.instance.caught(
         'chat_generation_failed',
         error,
@@ -1355,9 +1412,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       _activeBotLine = fallbackLine;
     });
     _scrollToEnd();
-    if (_speechEnabled &&
-        NeuraTtsService.instance.replySpeechMode != NeuraReplySpeechMode.off) {
-      await NeuraTtsService.instance.speak(reply);
+    if (_speechEnabled && _tts.replySpeechMode != NeuraReplySpeechMode.off) {
+      await _tts.speak(reply);
     }
 
     if (!mounted || _activeReplyId != generationId) return;
@@ -1486,7 +1542,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         setState(() {
           _activeAgent = AgentSelectionService.instance.resolveAgent(target);
         });
-        NeuraAiService.instance.cancelActiveGeneration();
+        _ai.cancelActiveGeneration();
         await AppLog.instance.info('dispatch_intent', {'room': roomId});
         return true;
       case NeuraChatPolicy.setTone:
@@ -1544,7 +1600,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   }
 
   void _toggleSpeech() {
-    if (NeuraTtsService.instance.replySpeechMode == NeuraReplySpeechMode.off) {
+    if (_tts.replySpeechMode == NeuraReplySpeechMode.off) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Enable automatic reply speech in Voice settings.'),
@@ -1556,12 +1612,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     setState(() => _speechEnabled = !_speechEnabled);
     if (!_speechEnabled) {
       _replySpeech?.cancel();
-      unawaited(NeuraTtsService.instance.stop().catchError((_) {}));
+      unawaited(_tts.stop().catchError((_) {}));
     }
   }
 
   void _showAiDiagnostics() {
-    final snapshot = NeuraAiService.instance.diagnosticsSnapshot;
+    final snapshot = _ai.diagnosticsSnapshot;
     showModalBottomSheet<void>(
       context: context,
       builder: (context) => SafeArea(
@@ -1610,7 +1666,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   Widget build(BuildContext context) {
     final visibleLines = _localSelected ? _localLines : _lines;
     final replySpeechAvailable =
-        NeuraTtsService.instance.replySpeechMode != NeuraReplySpeechMode.off;
+        _tts.replySpeechMode != NeuraReplySpeechMode.off;
     final replySpeechActive = _speechEnabled && replySpeechAvailable;
     return Scaffold(
       appBar: AppBar(
