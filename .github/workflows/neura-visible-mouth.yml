@@ -27,7 +27,9 @@ concurrency:
 
 env:
   SAPI_HEAD: 'fe97cf8016fe64cdc1bcb2258e1440a65aeb6299'
-  MOTION_HEAD: '659255ced8b9082546199682fcc7fb7f3d7e8448'
+  # #149 was squash-merged and its feature branch was deleted.
+  MOTION_HEAD: '4e66869078442392e2dde0282826c7a97c9dee74'
+  MOTION_IN_BASE: 'true'
   # #157 (conversation presence) is merged into Neura, so the base carries it.
   BASE_HEAD: ${{ github.event.pull_request.base.sha || 'ef3d9635cd8ed4fcc0e4c8831655d2c2580e4f33' }}
 
@@ -52,37 +54,12 @@ jobs:
           # `neura/` branch directory and checkout fails.
           fetch-depth: 1
           persist-credentials: false
+      # Shared, tested composer (tools/compose_avatar_sources.sh): the branch
+      # under test uses this checkout; merged motion is verified in the base.
       - name: Compose pinned source heads in this disposable checkout
         env:
-          HEAD_REF: ${{ github.head_ref }}
-        run: |
-          set -euo pipefail
-          # A pin on the branch under test goes stale with every commit to it,
-          # so the PR's own branch uses this checkout's head instead.
-          pinned() {
-            if [ "$HEAD_REF" = "$1" ]; then git rev-parse HEAD; return; fi
-            test "$(git ls-remote origin "refs/heads/$1" | cut -f1)" = "$2" || return 1
-            echo "$2"
-          }
-          SAPI_HEAD=$(pinned neura/sapi-native-visemes "$SAPI_HEAD")
-          MOTION_HEAD=$(pinned feature/fluent-motion-neura "$MOTION_HEAD")
-          git config user.name 'Neura integration validation'
-          git config user.email 'validation@local.invalid'
-          source_head=$(git rev-parse HEAD)
-          # Full history of only the pinned commits (and this head), so the
-          # merges below have their merge bases without fetching every ref.
-          git fetch --no-tags --filter=blob:none --unshallow origin "$BASE_HEAD" "$SAPI_HEAD" "$MOTION_HEAD"
-          git merge --no-edit "$BASE_HEAD"
-          git merge --no-edit "$SAPI_HEAD"
-          git merge --no-edit "$MOTION_HEAD"
-          {
-            echo "Source PR head: $source_head"
-            echo "Base: $BASE_HEAD"
-            echo "SAPI: $SAPI_HEAD"
-            echo "Motion: $MOTION_HEAD"
-            echo "Combined tree: $(git rev-parse 'HEAD^{tree}')"
-            echo 'Disposable source integration only. No physical audio or lip-sync acceptance.'
-          } | tee avatar-integration-source.txt >> "$GITHUB_STEP_SUMMARY"
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        run: bash tools/compose_avatar_sources.sh
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: '3.47.5'

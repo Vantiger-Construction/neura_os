@@ -3,6 +3,11 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:neuro_companion/avatar/motion/neura_body_cues.dart';
+import 'package:neuro_companion/avatar/motion/neura_gesture.dart';
+import 'package:neuro_companion/avatar/motion/neura_motion.dart';
+import 'package:neuro_companion/avatar/motion/neura_motion_engine.dart';
+import 'package:neuro_companion/core/neura_event_bus.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/services/ambient_listening_service.dart';
 import 'package:neuro_companion/services/neura_audio_focus.dart';
@@ -98,13 +103,16 @@ void main() {
     expect(NeuraCompanionPresence.instance.state.value.voiceActive, isFalse);
   }
 
-  test('proactive startup speech stays disabled pending Windows acceptance',
-      () {
-    expect(kEnableProactiveGreetingTts, isFalse);
-  });
+  test(
+    'proactive startup speech stays disabled pending Windows acceptance',
+    () {
+      expect(kEnableProactiveGreetingTts, isFalse);
+    },
+  );
 
-  lifecycleTest('empty and disabled speech do not initialize native TTS',
-      (tester) async {
+  lifecycleTest('empty and disabled speech do not initialize native TTS', (
+    tester,
+  ) async {
     await service.speak('  ');
     service.enabled = false;
     await service.speak('Synthetic disabled.');
@@ -132,24 +140,26 @@ void main() {
   });
 
   lifecycleTest(
-      'waits for callback and releases focus once on duplicate signals',
-      (tester) async {
-    var returned = false;
-    final speech =
-        service.speak('Synthetic alpha.').then((_) => returned = true);
-    await tester.pump();
-    expect(native.spoken, ['Synthetic alpha.']);
-    expect(returned, isFalse);
-    expect(NeuraAudioFocus.instance.speechActive, isTrue);
-    await native.event('speak.onComplete');
-    await native.event('speak.onComplete');
-    await native.event('speak.onCancel');
-    await speech;
-    expectIdle();
-  });
+    'waits for callback and releases focus once on duplicate signals',
+    (tester) async {
+      var returned = false;
+      final speech =
+          service.speak('Synthetic alpha.').then((_) => returned = true);
+      await tester.pump();
+      expect(native.spoken, ['Synthetic alpha.']);
+      expect(returned, isFalse);
+      expect(NeuraAudioFocus.instance.speechActive, isTrue);
+      await native.event('speak.onComplete');
+      await native.event('speak.onComplete');
+      await native.event('speak.onCancel');
+      await speech;
+      expectIdle();
+    },
+  );
 
-  lifecycleTest('stop during initialization invalidates the waiting request',
-      (tester) async {
+  lifecycleTest('stop during initialization invalidates the waiting request', (
+    tester,
+  ) async {
     final initializing = Completer<dynamic>();
     native.onRate = () => initializing.future;
     final speech = service.speak('Synthetic stale request.');
@@ -163,8 +173,9 @@ void main() {
     expectIdle();
   });
 
-  lifecycleTest('Safe Mode entry and exit cannot revive a pending request',
-      (tester) async {
+  lifecycleTest('Safe Mode entry and exit cannot revive a pending request', (
+    tester,
+  ) async {
     final initializing = Completer<dynamic>();
     native.onRate = () => initializing.future;
     final speech = service.speak('Synthetic stale request.');
@@ -178,8 +189,9 @@ void main() {
     expectIdle();
   });
 
-  lifecycleTest('concurrent requests serialize stop before the latest speak',
-      (tester) async {
+  lifecycleTest('concurrent requests serialize stop before the latest speak', (
+    tester,
+  ) async {
     await service.warmUp();
     final stopping = Completer<dynamic>();
     native.onStop = () => stopping.future;
@@ -197,17 +209,19 @@ void main() {
     expectIdle();
   });
 
-  lifecycleTest('missing completion stops speech and reports a bounded failure',
-      (tester) async {
-    final speech = service.speak('Synthetic deadline.');
-    final failure = expectLater(speech, throwsA(isA<TimeoutException>()));
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 3));
-    await failure;
-    expect(native.calls.where((c) => c == 'stop').length, 2);
-    expectIdle();
-    await expectLater(service.speak('Synthetic retry.'), throwsStateError);
-  });
+  lifecycleTest(
+    'missing completion stops speech and reports a bounded failure',
+    (tester) async {
+      final speech = service.speak('Synthetic deadline.');
+      final failure = expectLater(speech, throwsA(isA<TimeoutException>()));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 3));
+      await failure;
+      expect(native.calls.where((c) => c == 'stop').length, 2);
+      expectIdle();
+      await expectLater(service.speak('Synthetic retry.'), throwsStateError);
+    },
+  );
 
   lifecycleTest('rejection and a thrown speak release leases', (tester) async {
     native.onSpeak = (_) async => 0;
@@ -218,8 +232,9 @@ void main() {
     expectIdle();
   });
 
-  lifecycleTest('callback error is a failure and cancel is terminal',
-      (tester) async {
+  lifecycleTest('callback error is a failure and cancel is terminal', (
+    tester,
+  ) async {
     final first = service.speak('Synthetic error callback.');
     final failure = expectLater(first, throwsStateError);
     await tester.pump();
@@ -233,8 +248,9 @@ void main() {
     expectIdle();
   });
 
-  lifecycleTest('completion before speak acknowledgement is retained',
-      (tester) async {
+  lifecycleTest('completion before speak acknowledgement is retained', (
+    tester,
+  ) async {
     native.onSpeak = (_) async {
       await native.event('speak.onComplete');
       return 1;
@@ -244,31 +260,33 @@ void main() {
   });
 
   lifecycleTest(
-      'late rejected acknowledgement cannot finish replacement speech',
-      (tester) async {
-    final acknowledgement = Completer<dynamic>();
-    native.onSpeak = (_) => acknowledgement.future;
-    final first = service.speak('Synthetic alpha.');
-    await tester.pump();
-    var returned = false;
-    final second =
-        service.speak('Synthetic beta.').then((_) => returned = true);
-    await tester.pump();
-    expect(native.spoken, ['Synthetic alpha.']);
-    native.onSpeak = null;
-    acknowledgement.complete(0);
-    await tester.pump();
-    await first;
-    expect(native.spoken, ['Synthetic alpha.', 'Synthetic beta.']);
-    expect(returned, isFalse);
-    expect(NeuraAudioFocus.instance.speechActive, isTrue);
-    await native.event('speak.onComplete');
-    await second;
-    expectIdle();
-  });
+    'late rejected acknowledgement cannot finish replacement speech',
+    (tester) async {
+      final acknowledgement = Completer<dynamic>();
+      native.onSpeak = (_) => acknowledgement.future;
+      final first = service.speak('Synthetic alpha.');
+      await tester.pump();
+      var returned = false;
+      final second =
+          service.speak('Synthetic beta.').then((_) => returned = true);
+      await tester.pump();
+      expect(native.spoken, ['Synthetic alpha.']);
+      native.onSpeak = null;
+      acknowledgement.complete(0);
+      await tester.pump();
+      await first;
+      expect(native.spoken, ['Synthetic alpha.', 'Synthetic beta.']);
+      expect(returned, isFalse);
+      expect(NeuraAudioFocus.instance.speechActive, isTrue);
+      await native.event('speak.onComplete');
+      await second;
+      expectIdle();
+    },
+  );
 
-  lifecycleTest('stop ignores callbacks until native stop acknowledges',
-      (tester) async {
+  lifecycleTest('stop ignores callbacks until native stop acknowledges', (
+    tester,
+  ) async {
     var returned = false;
     final speech =
         service.speak('Synthetic alpha.').then((_) => returned = true);
@@ -286,28 +304,35 @@ void main() {
     expectIdle();
   });
 
-  lifecycleTest('hung speak acknowledgement fails closed despite late response',
-      (tester) async {
-    final acknowledgement = Completer<dynamic>();
-    native.onSpeak = (_) => acknowledgement.future;
-    final failure = expectLater(
-        service.speak('Synthetic hung.'), throwsA(isA<TimeoutException>()));
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
-    await failure;
-    expectIdle();
-    acknowledgement.complete(1);
-    await tester.pump();
-    await expectLater(service.speak('Synthetic retry.'), throwsStateError);
-    expect(native.spoken, ['Synthetic hung.']);
-  });
+  lifecycleTest(
+    'hung speak acknowledgement fails closed despite late response',
+    (tester) async {
+      final acknowledgement = Completer<dynamic>();
+      native.onSpeak = (_) => acknowledgement.future;
+      final failure = expectLater(
+        service.speak('Synthetic hung.'),
+        throwsA(isA<TimeoutException>()),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await failure;
+      expectIdle();
+      acknowledgement.complete(1);
+      await tester.pump();
+      await expectLater(service.speak('Synthetic retry.'), throwsStateError);
+      expect(native.spoken, ['Synthetic hung.']);
+    },
+  );
 
-  lifecycleTest('hung initialization cannot resume configuring or speaking',
-      (tester) async {
+  lifecycleTest('hung initialization cannot resume configuring or speaking', (
+    tester,
+  ) async {
     final initializing = Completer<dynamic>();
     native.onRate = () => initializing.future;
-    final failure = expectLater(service.speak('Synthetic hung init.'),
-        throwsA(isA<TimeoutException>()));
+    final failure = expectLater(
+      service.speak('Synthetic hung init.'),
+      throwsA(isA<TimeoutException>()),
+    );
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     await failure;
@@ -318,8 +343,9 @@ void main() {
     expectIdle();
   });
 
-  lifecycleTest('stop failure releases leases and prevents further speech',
-      (tester) async {
+  lifecycleTest('stop failure releases leases and prevents further speech', (
+    tester,
+  ) async {
     final speech = service.speak('Synthetic alpha.');
     final failure = expectLater(speech, throwsStateError);
     await tester.pump();
@@ -330,15 +356,20 @@ void main() {
     expectIdle();
   });
 
-  lifecycleTest('hung stop releases leases with failure and blocks reuse',
-      (tester) async {
+  lifecycleTest('hung stop releases leases with failure and blocks reuse', (
+    tester,
+  ) async {
     final speechFailure = expectLater(
-        service.speak('Synthetic alpha.'), throwsA(isA<TimeoutException>()));
+      service.speak('Synthetic alpha.'),
+      throwsA(isA<TimeoutException>()),
+    );
     await tester.pump();
     final acknowledgement = Completer<dynamic>();
     native.onStop = () => acknowledgement.future;
-    final stopFailure =
-        expectLater(service.stop(), throwsA(isA<TimeoutException>()));
+    final stopFailure = expectLater(
+      service.stop(),
+      throwsA(isA<TimeoutException>()),
+    );
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     await speechFailure;
@@ -351,8 +382,10 @@ void main() {
   });
 
   lifecycleTest('rejected stop blocks a replacement utterance', (tester) async {
-    final speechFailure =
-        expectLater(service.speak('Synthetic alpha.'), throwsStateError);
+    final speechFailure = expectLater(
+      service.speak('Synthetic alpha.'),
+      throwsStateError,
+    );
     await tester.pump();
     native.onStop = () async => 0;
     await expectLater(service.speak('Synthetic beta.'), throwsStateError);
@@ -361,8 +394,9 @@ void main() {
     expectIdle();
   });
 
-  lifecycleTest('Safe Mode blocks initialization and stops active playback',
-      (tester) async {
+  lifecycleTest('Safe Mode blocks initialization and stops active playback', (
+    tester,
+  ) async {
     SafeBoot.instance.safeMode.value = true;
     await tester.pump();
     native.calls.clear();
@@ -383,36 +417,43 @@ void main() {
     expect(native.spoken, ['Synthetic alpha.']);
   });
 
-  lifecycleTest('disposal revokes pending initialization and detaches listener',
-      (tester) async {
-    final initializing = Completer<dynamic>();
-    native.onRate = () => initializing.future;
-    final speech = service.speak('Synthetic disposed.');
-    await tester.pump();
-    final disposing = service.dispose();
-    initializing.complete(1);
-    await tester.pump();
-    await disposing;
-    await speech;
-    final calls = native.calls.length;
-    await service.dispose();
-    SafeBoot.instance.safeMode.value = true;
-    SafeBoot.instance.safeMode.value = false;
-    await service.speak('Synthetic after disposal.');
-    await tester.pump();
-    expect(native.calls.length, calls);
-    expect(native.spoken, isEmpty);
-    expectIdle();
-  });
+  lifecycleTest(
+    'disposal revokes pending initialization and detaches listener',
+    (tester) async {
+      final initializing = Completer<dynamic>();
+      native.onRate = () => initializing.future;
+      final speech = service.speak('Synthetic disposed.');
+      await tester.pump();
+      final disposing = service.dispose();
+      initializing.complete(1);
+      await tester.pump();
+      await disposing;
+      await speech;
+      final calls = native.calls.length;
+      await service.dispose();
+      SafeBoot.instance.safeMode.value = true;
+      SafeBoot.instance.safeMode.value = false;
+      await service.speak('Synthetic after disposal.');
+      await tester.pump();
+      expect(native.calls.length, calls);
+      expect(native.spoken, isEmpty);
+      expectIdle();
+    },
+  );
 
-  lifecycleTest('stop while preview selects a voice invalidates the preview',
-      (tester) async {
+  lifecycleTest('stop while preview selects a voice invalidates the preview', (
+    tester,
+  ) async {
     final selecting = Completer<dynamic>();
     native.onVoice = () => selecting.future;
     final preview = service.previewVoice(
-        const NeuraVoiceOption(
-            name: 'Synthetic', locale: 'en-US', gender: 'female'),
-        'Synthetic sample.');
+      const NeuraVoiceOption(
+        name: 'Synthetic',
+        locale: 'en-US',
+        gender: 'female',
+      ),
+      'Synthetic sample.',
+    );
     await tester.pump();
     await service.stop();
     selecting.complete(1);
@@ -422,10 +463,12 @@ void main() {
     expectIdle();
   });
 
-  lifecycleTest('reentrant stop on focus acquisition prevents native speak',
-      (tester) async {
-    final subscription =
-        NeuraAudioFocus.instance.speechActivity.listen((active) {
+  lifecycleTest('reentrant stop on focus acquisition prevents native speak', (
+    tester,
+  ) async {
+    final subscription = NeuraAudioFocus.instance.speechActivity.listen((
+      active,
+    ) {
       if (active) unawaited(service.stop());
     });
     await tester.pump();
@@ -437,6 +480,58 @@ void main() {
     expect(native.spoken, isEmpty);
     expectIdle();
   });
+
+  for (final terminal in [
+    'speak.onComplete',
+    'speak.onCancel',
+    'speak.onError',
+    'stop',
+    'dispatch error',
+  ]) {
+    lifecycleTest('$terminal clears speech motion and pending fallback beats', (
+      tester,
+    ) async {
+      NeuraMotion.instance.start();
+      addTearDown(NeuraMotion.instance.stop);
+      final gestures = <NeuraGestureEvent>[];
+      final unsubscribe = NeuraEventBus.I.on<NeuraGestureEvent>(gestures.add);
+      addTearDown(unsubscribe);
+      addTearDown(NeuraSpeechBeats.instance.end);
+      if (terminal == 'dispatch error') {
+        native.onSpeak =
+            (_) async => throw StateError('Synthetic dispatch failure');
+      }
+      final speech = service
+          .speak('Synthetic question with a later beat?')
+          .catchError((Object _) {});
+      await tester.pump();
+      if (terminal == 'dispatch error') {
+        await speech;
+      } else {
+        await native.event('speak.onStart');
+        await tester.pump();
+        for (var i = 0; i < 20; i++) {
+          NeuraMotion.instance.engine.tick(0.016);
+        }
+        expect(NeuraMotion.instance.engine.phase, NeuraBodyPhase.speaking);
+        if (terminal == 'stop') {
+          final stopping = service.stop();
+          await tester.pump();
+          await stopping;
+        } else {
+          await native.event(
+            terminal,
+            terminal == 'speak.onError' ? 'Synthetic error' : null,
+          );
+        }
+        await speech;
+      }
+      expect(NeuraMotion.instance.engine.pose, same(NeuraPose.neutral));
+      await tester.pump(const Duration(seconds: 2));
+      expect(gestures, isEmpty);
+      expectIdle();
+    });
+  }
 
   group('process-scoped native queue', () {
     late _SyntheticTts sharedNative;
