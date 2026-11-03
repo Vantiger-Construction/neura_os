@@ -13,6 +13,12 @@ They do not automatically merge updates or publish releases.
 
 ## Default-branch merge policy
 
+Activation is pending: GitHub requested account identity confirmation when saving
+the prepared rules. The last verified saved configuration targets no branches,
+so the policy below is not yet enforced. Complete GitHub's **Confirm access**
+prompt, finish saving, and verify that the live ruleset targets `Neura` before
+treating these checks as required.
+
 The `neura safety` ruleset is intended to target the default branch, `Neura`,
 with no bypass actors. Its baseline is:
 
