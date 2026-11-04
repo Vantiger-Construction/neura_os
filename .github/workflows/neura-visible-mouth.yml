@@ -29,7 +29,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SAPI_HEAD: '4240e006949352740c5e20e50403b0188f6e4cbd'
+  SAPI_HEAD: '65dd3e52ed1ecd38f27f1a98b165f63f3fa99dd3'
   # #149 was squash-merged and its feature branch was deleted.
   MOTION_HEAD: '4e66869078442392e2dde0282826c7a97c9dee74'
   MOTION_IN_BASE: 'true'
@@ -78,7 +78,7 @@ jobs:
         run: bash tools/compose_avatar_sources.sh
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
-          flutter-version: '3.47.5'
+          flutter-version: '3.47.9'
           channel: stable
           cache: true
       - name: Restore reviewed dependencies
