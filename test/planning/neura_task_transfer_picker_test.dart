@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -10,42 +11,37 @@ import 'package:neuro_companion/planning/neura_task_transfer.dart';
 import 'package:neuro_companion/planning/neura_task_transfer_screen.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 
-class _Picker extends FilePicker {
-  final requests = <Completer<FilePickerResult?>>[];
+import '../helpers/fake_picked_file.dart';
+
+class _Picker extends FilePickerPlatform {
+  final requests = <Completer<PlatformFile?>>[];
 
   @override
-  Future<FilePickerResult?> pickFiles({
+  Future<PlatformFile?> pickFile({
     String? dialogTitle,
     String? initialDirectory,
     FileType type = FileType.any,
     List<String>? allowedExtensions,
     Function(FilePickerStatus)? onFileLoading,
-    bool allowCompression = false,
     int compressionQuality = 0,
-    bool allowMultiple = false,
-    bool withData = false,
-    bool withReadStream = false,
-    bool lockParentWindow = false,
-    bool readSequential = false,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
   }) {
     expect(type, FileType.custom);
     expect(allowedExtensions, ['neuratask']);
-    expect(allowMultiple, false);
-    expect(withData, false);
-    expect(withReadStream, true);
-    final request = Completer<FilePickerResult?>();
+    final request = Completer<PlatformFile?>();
     requests.add(request);
     return request.future;
   }
 }
 
-FilePickerResult _file(String packet, {int? size, Stream<List<int>>? stream}) =>
-    FilePickerResult([
-      PlatformFile(
-          name: 'synthetic.neuratask',
-          size: size ?? utf8.encode(packet).length,
-          readStream: stream ?? Stream.value(utf8.encode(packet)))
-    ]);
+PlatformFile _file(String packet, {int? size, Stream<List<int>>? stream}) =>
+    FakePickedFile(
+        'synthetic.neuratask', stream ?? Stream.value(utf8.encode(packet)),
+        declaredLength: size ?? utf8.encode(packet).length);
 
 TextEditingController _packet(WidgetTester tester) =>
     tester.widget<TextField>(find.byType(TextField).first).controller!;
@@ -88,12 +84,12 @@ Future<void> _resume(WidgetTester tester) async {
 
 void main() {
   late _Picker picker;
-  late FilePicker originalPicker;
+  late FilePickerPlatform originalPicker;
   late NeuraTaskPacket sealed;
 
   setUpAll(() async {
     // Flutter's Linux test runner does not register the native picker plugin.
-    FilePicker.platform = _Picker();
+    FilePickerPlatform.instance = _Picker();
     sealed = await NeuraTaskTransfer.seal(NeuraTaskSnapshot(
         goal: 'Synthetic transferred goal',
         steps: ['First synthetic step', 'Second synthetic step'],
@@ -101,15 +97,15 @@ void main() {
   });
 
   setUp(() {
-    originalPicker = FilePicker.platform;
+    originalPicker = FilePickerPlatform.instance;
     picker = _Picker();
-    FilePicker.platform = picker;
+    FilePickerPlatform.instance = picker;
     SafeBoot.instance.safeMode.value = false;
     SafeBoot.instance.restartRequired.value = false;
   });
 
   tearDown(() {
-    FilePicker.platform = originalPicker;
+    FilePickerPlatform.instance = originalPicker;
     SafeBoot.instance.safeMode.value = false;
     SafeBoot.instance.restartRequired.value = false;
   });
@@ -379,13 +375,14 @@ void main() {
     'reported oversize',
     'streamed oversize',
     'invalid UTF-8',
-    'missing stream',
-    'multiple files'
+    // file_picker 13 always returns one file with a stream; an unreadable
+    // stream replaces the former missing-stream and multiple-file cases.
+    'unreadable stream'
   ]) {
     testWidgets('rejects $invalidFile without restoring a key', (tester) async {
       await mount(tester);
       await _tap(tester, 'Load encrypted packet file');
-      final FilePickerResult result;
+      final PlatformFile result;
       switch (invalidFile) {
         case 'reported oversize':
           result = _file(sealed.packet,
@@ -398,12 +395,9 @@ void main() {
               ]));
         case 'invalid UTF-8':
           result = _file('x', stream: Stream.value([0xff]));
-        case 'missing stream':
-          result =
-              FilePickerResult([PlatformFile(name: 'task.neuratask', size: 1)]);
         default:
-          result = FilePickerResult(
-              [..._file(sealed.packet).files, ..._file(sealed.packet).files]);
+          result = _file('x',
+              stream: Stream.error(const FileSystemException('unreadable')));
       }
       picker.requests.single.complete(result);
       await tester.runAsync(() async {});
