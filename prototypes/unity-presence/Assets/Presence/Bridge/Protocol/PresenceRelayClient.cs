@@ -49,7 +49,9 @@ namespace Neura.Presence.Bridge
         // Asks the relay to resend the current state on this connection.
         public void RequestResync()
         {
-            try { resync.Release(); } catch (SemaphoreFullException) { } catch (ObjectDisposedException) { }
+            try { resync.Release(); }
+            catch (SemaphoreFullException) { /* A resync is already pending; one is enough. */ }
+            catch (ObjectDisposedException) { /* Client disposed; nothing to resync. */ }
         }
 
         // Drops the current connection (for a hung link); the loop reconnects.
@@ -57,7 +59,8 @@ namespace Neura.Presence.Bridge
         {
             var link = Volatile.Read(ref current);
             if (link == null) return;
-            try { link.Cancel(); } catch (ObjectDisposedException) { }
+            try { link.Cancel(); }
+            catch (ObjectDisposedException) { /* That connection already ended; the loop is reconnecting. */ }
         }
 
         public void Dispose()
@@ -98,11 +101,16 @@ namespace Neura.Presence.Bridge
                         Task pump = PumpResyncAsync(socket, link.Token);
                         await ReceiveAsync(socket, link.Token).ConfigureAwait(false);
                         link.Cancel();
-                        try { await pump.ConfigureAwait(false); } catch (OperationCanceledException) { }
+                        try { await pump.ConfigureAwait(false); }
+                        catch (OperationCanceledException) { /* Expected: the pump stops with the link. */ }
                     }
-                    catch (OperationCanceledException) { }
-                    catch (WebSocketException) { }
-                    catch (InvalidOperationException) { }
+                    // Every failure ends this connection the same way: the finally
+                    // block bumps the epoch (the bridge shows safe Still) and the
+                    // loop reconnects with backoff. No detail is surfaced, so
+                    // nothing about the endpoint or credential can leak.
+                    catch (OperationCanceledException) { /* Stopped, reconnect requested, or connect timeout. */ }
+                    catch (WebSocketException) { /* Refused (including a bad token) or dropped. */ }
+                    catch (InvalidOperationException) { /* Connection closed mid-operation. */ }
                     finally
                     {
                         Volatile.Write(ref current, null);

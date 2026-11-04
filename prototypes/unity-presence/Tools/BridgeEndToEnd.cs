@@ -22,6 +22,8 @@ public static class BridgeEndToEnd
             Console.WriteLine("Bridge end-to-end: PASS");
             return 0;
         }
+        // Top-level harness reporter: any failure, of any type, must turn
+        // into a FAIL line and a non-zero exit for CI.
         catch (Exception error)
         {
             Console.Error.WriteLine("Bridge end-to-end: FAIL " + error.Message);
