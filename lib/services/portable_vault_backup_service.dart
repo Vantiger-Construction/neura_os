@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -91,39 +93,38 @@ class PortableVaultBackupService {
       },
     );
 
-    final path = await FilePicker.platform.saveFile(
+    final uri = await FilePicker.saveFile(
       dialogTitle: 'Export encrypted Neura backup',
       fileName: 'neura-vault-${_dateStamp()}.neurabackup',
-      type: FileType.custom,
-      allowedExtensions: const ['neurabackup'],
+      bytes: Uint8List.fromList(utf8.encode(envelope)),
     );
-    if (path == null) return null;
-
-    final file = File(path);
-    await file.writeAsString(envelope, flush: true);
-    return file.path;
+    if (uri == null) return null;
+    return uri.scheme == 'file' ? uri.toFilePath() : uri.toString();
   }
 
   Future<int?> importFromFile({
     required String pin,
     required String passphrase,
   }) async {
-    final selection = await FilePicker.platform.pickFiles(
+    final file = await FilePicker.pickFile(
       dialogTitle: 'Import encrypted Neura backup',
       type: FileType.custom,
       allowedExtensions: const ['neurabackup'],
-      allowMultiple: false,
-      withData: false,
     );
-    final path = selection?.files.single.path;
-    if (path == null) return null;
+    if (file == null) return null;
 
-    final file = File(path);
-    final length = await file.length();
-    if (length <= 0 || length > _maxBackupBytes) {
+    final length = file.lengthSync();
+    if (length != null && (length <= 0 || length > _maxBackupBytes)) {
       throw const FormatException('The selected backup has an invalid size.');
     }
-    final envelope = await file.readAsString();
+    final bytes = BytesBuilder(copy: false);
+    await for (final chunk in file.readAsByteStream()) {
+      if (bytes.length + chunk.length > _maxBackupBytes) {
+        throw const FormatException('The selected backup has an invalid size.');
+      }
+      bytes.add(chunk);
+    }
+    final envelope = utf8.decode(bytes.takeBytes());
     final payload = await _codec.decrypt(
       envelope: envelope,
       passphrase: passphrase,

@@ -4,6 +4,8 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import '../../services/neura_secure_storage.dart';
 import '../core/app_log.dart';
 import 'memory_vault_models.dart';
 import '../../services/vault_item_source.dart';
@@ -24,7 +26,7 @@ class MemoryVaultStore implements VaultItemSource {
 
   // Legacy v1 blob (XOR) is stored here. We transparently migrate it to v2.
   static const _keyDataLegacy = 'neura.vault.data.v1';
-  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
+  static const FlutterSecureStorage _secureStorage = neuraSecureStorage;
 
   // Crypto / format constants
   static const int _kPbkdf2Iterations = 120000;

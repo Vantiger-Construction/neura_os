@@ -66,6 +66,7 @@ class NeuraRecapExportService {
   }
 
   Future<void> share(String path) async {
-    await Share.shareXFiles([XFile(path)], text: 'My Neura Recap');
+    await SharePlus.instance
+        .share(ShareParams(files: [XFile(path)], text: 'My Neura Recap'));
   }
 }

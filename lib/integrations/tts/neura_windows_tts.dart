@@ -23,6 +23,12 @@ class NeuraWindowsTts extends FlutterTts {
   int? _active;
   bool _polling = false;
   bool _failed = false;
+  int? _lastViseme;
+
+  /// Receives SAPI SPVISEMES ids (0..21) for the active utterance as the
+  /// native engine reports them on the audio clock. Only changes are
+  /// delivered. An id is a mouth shape, never text.
+  void Function(int sapiViseme)? visemeHandler;
 
   // FlutterTts's constructor installs this handler on its legacy channel.
   // Even unsolicited old-plugin events must never bypass our request IDs.
@@ -105,6 +111,7 @@ class NeuraWindowsTts extends FlutterTts {
       }
       switch (reply['state']) {
         case 'speaking':
+          _deliverViseme(reply['viseme']);
           return;
         case 'completed':
           _clear();
@@ -130,10 +137,23 @@ class NeuraWindowsTts extends FlutterTts {
     }
   }
 
+  void _deliverViseme(Object? value) {
+    if (value is! int || value < 0 || value > 21 || value == _lastViseme) {
+      return;
+    }
+    _lastViseme = value;
+    try {
+      visemeHandler?.call(value);
+    } catch (_) {
+      // Animation must never fail an otherwise healthy utterance.
+    }
+  }
+
   void _clear() {
     _timer?.cancel();
     _timer = null;
     _active = null;
+    _lastViseme = null;
   }
 
   @override

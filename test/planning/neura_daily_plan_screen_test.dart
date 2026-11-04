@@ -29,6 +29,24 @@ void main() {
     await tester.scrollUntilVisible(find.text('1 of 2 steps complete'), -100,
         scrollable: find.byType(Scrollable).first);
     expect(find.text('1 of 2 steps complete'), findsOneWidget);
+    await tester.ensureVisible(find.text('This feels too big'));
+    await tester.tap(find.text('This feels too big'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.descendant(
+            of: find.byType(AlertDialog), matching: find.byType(TextField)),
+        'Stand up for one minute');
+    await tester.tap(find.text('Preview smaller step'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 of 2 steps complete'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Use this plan'), 200,
+        scrollable: find.byType(Scrollable).first);
+    expect(find.text('Stand up for one minute'), findsOneWidget);
+    expect(
+        tester
+            .widget<CheckboxListTile>(find.byType(CheckboxListTile).last)
+            .onChanged,
+        isNull);
     await tester.scrollUntilVisible(find.text('My goal'), -200,
         scrollable: find.byType(Scrollable).first);
     await tester.enterText(find.byType(TextField).first, 'New goal');

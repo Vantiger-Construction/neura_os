@@ -85,6 +85,8 @@ void main() {
       expect(gate.apply({'gesture': 'nod', 'intensity': 'max'}), isFalse);
       expect(gate.apply({'mood': double.nan}), isFalse);
       expect(gate.apply({'gesture': 'shiftWeight'}), isFalse);
+      expect(gate.apply({'mood': 0.5, 'gesture': 'unknown'}), isFalse);
+      expect(gate.apply({'mood': 0.5, 'intensity': 'max'}), isFalse);
       expect(gate.apply({}), isFalse);
       await _flush();
       expect(seen, isEmpty);

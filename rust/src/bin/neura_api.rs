@@ -418,7 +418,7 @@ where
             biased;
             _ = out.session.revoked() => break,
             _ = out.ended() => break,
-            result = tokio::time::timeout(WRITE_TIMEOUT, socket.send(Message::Text(text))) => result,
+            result = tokio::time::timeout(WRITE_TIMEOUT, socket.send(Message::Text(text.into()))) => result,
         };
         if !matches!(sent, Ok(Ok(()))) {
             break;

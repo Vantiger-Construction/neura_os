@@ -44,10 +44,10 @@ class _LegacyVaultToolsScreenState extends State<LegacyVaultToolsScreen> {
     setState(() => _busy = true);
     try {
       final file = await LegacyVaultService.instance.exportVaultZip();
-      await Share.shareXFiles(
-        [XFile(file.path)],
+      await SharePlus.instance.share(ShareParams(
+        files: [XFile(file.path)],
         text: 'Neura Companion — Legacy Vault Backup\nKeep this file safe.',
-      );
+      ));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Backup share sheet opened.')));
@@ -71,11 +71,11 @@ class _LegacyVaultToolsScreenState extends State<LegacyVaultToolsScreen> {
         decryptEncrypted: true,
         passphrase: pass,
       );
-      await Share.shareXFiles(
-        [XFile(file.path)],
+      await SharePlus.instance.share(ShareParams(
+        files: [XFile(file.path)],
         text:
             'Neura Companion — Legacy Vault Backup (decrypted)\nTreat as sensitive.',
-      );
+      ));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Decrypted backup share sheet opened.')));

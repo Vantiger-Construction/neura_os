@@ -33,8 +33,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  FLUTTER_VERSION: '3.47.5'
-  FLUTTER_SHA256: '0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8'
+  FLUTTER_VERSION: '3.47.9'
+  FLUTTER_SHA256: 'd8e2b5977e09082c6440f89dc1aa887b94c8fbcc3b39222797046295a3f68a9e'
 
 jobs:
   android:
@@ -643,7 +643,7 @@ jobs:
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Check out source
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: source
 
@@ -689,7 +689,7 @@ jobs:
           # Retain only checksum-verified tools and Gradle's reusable wrapper.
           # Dependency downloads are run-local; resolve the lockfile every run.
           $persistentToolRoot = Join-Path $env:RUNNER_TOOL_CACHE 'neura-android'
-          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.47.5'
+          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.47.9'
           $gradleHome = Join-Path $buildRoot 'gradle-home'
           $persistentGradleHome = Join-Path $persistentToolRoot 'gradle-home'
           $persistentGradleWrapper = Join-Path $persistentGradleHome 'wrapper'
@@ -718,7 +718,7 @@ jobs:
           New-Item -ItemType Junction `
             -Path (Join-Path $gradleHome 'wrapper') `
             -Target $persistentGradleWrapper | Out-Null
-          # Gradle 9.3.1 Kotlin DSL must load plugin jars from ordinary paths.
+          # Gradle 9.8.2 Kotlin DSL must load plugin jars from ordinary paths.
           # Keep downloads run-local too: the modules-2 junction still exposed
           # Flutter's included Gradle build to the linked-classpath regression.
           # Existing headroom checks and run-root cleanup cover this directory.
@@ -742,7 +742,7 @@ jobs:
             "TMP=$tempRoot"
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Enable pinned Flutter 3.47.5
+      - name: Enable pinned Flutter 3.47.9
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           & "$env:NEURA_ANDROID_SOURCE_ROOT\tools\Enable-NeuraFlutter.ps1" `
@@ -867,14 +867,21 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $requiredPackages = @(
             (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'cmdline-tools\\latest\\bin\\sdkmanager.bat'),
+            (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'cmdline-tools\\latest\\source.properties'),
             (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'platform-tools\\adb.exe'),
             (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'platforms\\android-36\\android.jar'),
+            (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'platforms\\android-37.0\\android.jar'),
             (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'build-tools\\36.0.0\\aapt2.exe'),
             (Join-Path $env:NEURA_ANDROID_SDK_ROOT 'ndk\\28.2.13676358\\source.properties')
           )
           $sdkCacheComplete = @($requiredPackages | Where-Object {
             -not (Test-Path -LiteralPath $_ -PathType Leaf)
           }).Count -eq 0
+
+          $commandLineProperties = Join-Path $env:NEURA_ANDROID_SDK_ROOT 'cmdline-tools\\latest\\source.properties'
+          $sdkCacheComplete = $sdkCacheComplete -and (
+            Select-String -LiteralPath $commandLineProperties -Pattern '^Pkg\.Revision=23\.0$' -Quiet
+          )
 
           if ($sdkCacheComplete) {
             Write-Host "Reusing verified Android SDK package cache at $env:NEURA_ANDROID_SDK_ROOT."
@@ -885,8 +892,8 @@ jobs:
 
             $archive = Join-Path $env:NEURA_ANDROID_TOOL_ROOT 'command-line-tools.zip'
             $extract = Join-Path $env:NEURA_ANDROID_TOOL_ROOT '_extract'
-            $uri = 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip'
-            $expected = '90ae805d20434428bffcb699c290860f19bb5f66a67e6b330067e3de801fb04a'
+            $uri = 'https://dl.google.com/android/repository/commandlinetools-win-16111833_latest.zip'
+            $expected = 'e5885e2e59038c0778a85fc19f01de7ce7c567c105553f7617b936b1e0e87b2b'
 
             $maxRetries = 3
             $retryCount = 0
@@ -939,6 +946,7 @@ jobs:
               "--sdk_root=$env:NEURA_ANDROID_SDK_ROOT" `
               'platform-tools' `
               'platforms;android-36' `
+              'platforms;android-37.0' `
               'build-tools;36.0.0' `
               'ndk;28.2.13676358'
             if ($LASTEXITCODE -ne 0) { throw "Android SDK install failed: $LASTEXITCODE" }

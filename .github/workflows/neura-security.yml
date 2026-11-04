@@ -44,7 +44,7 @@ jobs:
             os: ubuntu-latest
     steps:
       - name: Check out the analyzed revision
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Record source identity
@@ -64,8 +64,8 @@ jobs:
         if: matrix.language == 'rust'
         shell: bash
         run: |
-          rustup toolchain install 1.99.0 --profile minimal
-          rustup default 1.99.0
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
           rustc --version
           cargo --version
           cargo metadata --manifest-path rust/Cargo.toml --locked --format-version 1 > "$RUNNER_TEMP/neura-cargo-metadata.json"
@@ -74,7 +74,7 @@ jobs:
         if: matrix.language == 'c-cpp'
         shell: pwsh
         run: |
-          & ./tools/Enable-NeuraFlutter.ps1 -Version '3.47.5' -ExpectedSha256 '0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8'
+          & ./tools/Enable-NeuraFlutter.ps1 -Version '3.47.9' -ExpectedSha256 'd8e2b5977e09082c6440f89dc1aa887b94c8fbcc3b39222797046295a3f68a9e'
       - name: Prepare genuine Flutter headers and locked plugins
         if: matrix.language == 'c-cpp'
         shell: pwsh
@@ -89,7 +89,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Enable reviewed .NET SDK for C# source compilation
         if: matrix.language == 'csharp'
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '8.0.426'
       - name: Prepare verified Unity references and unmodified test-framework assembly
@@ -179,7 +179,7 @@ jobs:
               raise SystemExit('Incomplete source extraction; retain diagnostics and repair coverage before acceptance')
       - name: Preserve native extraction and compiler diagnostics
         if: always() && matrix.language == 'c-cpp'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: neura-native-extraction-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -197,7 +197,7 @@ jobs:
           retention-days: 14
       - name: Preserve C# source and reference identities
         if: always() && matrix.language == 'csharp'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: neura-csharp-source-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/neura-csharp/csharp-source-receipt.json
@@ -205,7 +205,7 @@ jobs:
           retention-days: 14
       - name: Preserve SARIF even if upload fails
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: neura-codeql-security-${{ matrix.language }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/neura-codeql-results/*.sarif
@@ -217,7 +217,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Test incomplete-scan and finding handling
@@ -234,7 +234,7 @@ jobs:
         run: python3 tools/security/scan_dependencies.py --scanner "$RUNNER_TEMP/osv-scanner" --output "$RUNNER_TEMP/neura-dependency-audit"
       - name: Preserve scan results and source receipt, including failures
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: neura-dependency-security-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/neura-dependency-audit/

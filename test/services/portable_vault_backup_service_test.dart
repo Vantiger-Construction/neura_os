@@ -1,5 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:cross_file/cross_file.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -67,8 +71,13 @@ void main() {
   late _FakeVaultItemSource store;
   late ScheduledBackupSettings settings;
   late PortableVaultBackupService service;
+  late FilePickerPlatform originalPicker;
+  late _BackupPicker picker;
 
   setUp(() async {
+    originalPicker = FilePickerPlatform.instance;
+    picker = _BackupPicker();
+    FilePickerPlatform.instance = picker;
     tempDir = Directory.systemTemp.createTempSync('neura_backup_test_');
     store = _FakeVaultItemSource()..items = [_item('a'), _item('b')];
     settings = ScheduledBackupSettings.forTesting(
@@ -86,7 +95,54 @@ void main() {
   });
 
   tearDown(() {
+    FilePickerPlatform.instance = originalPicker;
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+  });
+
+  group('file picker migration', () {
+    test('exports encrypted bytes and imports a content URI with unknown size',
+        () async {
+      const passphrase = 'a very good passphrase';
+      final destination = await service.exportToFile(
+        pin: '1234',
+        passphrase: passphrase,
+      );
+      expect(destination, 'content://backups/export.neurabackup');
+      final saved = picker.savedBytes!;
+      expect(utf8.decode(saved), isNot(contains('Body a')));
+
+      picker.selected = _BackupFile([saved]);
+      store.items = [];
+      expect(
+          await service.importFromFile(pin: '1234', passphrase: passphrase), 2);
+      expect(store.items.map((item) => item.id), ['a', 'b']);
+    });
+
+    test('cancelled import leaves existing items unchanged', () async {
+      expect(
+        await service.importFromFile(
+          pin: '1234',
+          passphrase: 'a very good passphrase',
+        ),
+        isNull,
+      );
+      expect(store.items.map((item) => item.id), ['a', 'b']);
+    });
+
+    test('unknown-size streams cannot exceed the backup byte limit', () async {
+      picker.selected = _BackupFile([
+        Uint8List(25 * 1024 * 1024),
+        Uint8List(1),
+      ]);
+      await expectLater(
+        service.importFromFile(
+          pin: '1234',
+          passphrase: 'a very good passphrase',
+        ),
+        throwsFormatException,
+      );
+      expect(store.items.map((item) => item.id), ['a', 'b']);
+    });
   });
 
   group('verifyBackupIntegrity', () {
@@ -271,4 +327,68 @@ void main() {
       expect(verified.itemCount, 3);
     });
   });
+}
+
+class _BackupPicker extends FilePickerPlatform {
+  Uint8List? savedBytes;
+  PlatformFile? selected;
+
+  @override
+  Future<Uri?> saveFile({
+    required String fileName,
+    required Uint8List bytes,
+    String mimeType = 'application/octet-stream',
+    String? dialogTitle,
+    String? initialDirectory,
+    Function(FilePickerStatus)? onFileSaving,
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async {
+    savedBytes = bytes;
+    return Uri.parse('content://backups/export.neurabackup');
+  }
+
+  @override
+  Future<PlatformFile?> pickFile({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async =>
+      selected;
+}
+
+final class _BackupFile extends PlatformFile {
+  _BackupFile(this.chunks);
+  final List<Uint8List> chunks;
+
+  @override
+  String get name => 'export.neurabackup';
+
+  @override
+  Uri get uri => Uri.parse('content://backups/export.neurabackup');
+
+  @override
+  int? lengthSync() => null;
+
+  @override
+  Future<int?> length() async => null;
+
+  @override
+  XFile get xFile => throw UnsupportedError('Use the bounded stream');
+
+  @override
+  Future<Uint8List> readAsBytes() =>
+      throw UnsupportedError('Use the bounded stream');
+
+  @override
+  Stream<Uint8List> readAsByteStream() => Stream.fromIterable(chunks);
 }

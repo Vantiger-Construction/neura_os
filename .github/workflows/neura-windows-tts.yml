@@ -5,6 +5,9 @@ on:
     branches: [Neura]
     paths:
       - 'lib/integrations/tts/**'
+      - 'lib/avatar/viseme/sapi_viseme_map.dart'
+      - 'test/avatar/sapi_viseme_map_test.dart'
+      - 'test/services/neura_native_viseme_lifecycle_test.dart'
       - 'lib/services/neura_tts_service.dart'
       - 'windows/runner/neura*tts*'
       - 'windows/runner/flutter_window.*'
@@ -32,13 +35,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Verify read-only evidence helper with synthetic fixtures (no speech)
         shell: powershell
         run: tools/windows_speech_validation/Test-EvidenceHelper.ps1
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
-          flutter-version: '3.47.5'
+          flutter-version: '3.47.9'
           channel: stable
           cache: true
       - name: Verify legacy TTS plugin is excluded after regeneration
@@ -51,11 +54,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Analyze speech code
         run: |
-          flutter analyze --no-pub lib/integrations/tts lib/services/neura_tts_service.dart test/services/neura_windows_tts_test.dart test/services/neura_windows_tts_routing_test.dart test/services/neura_tts_lifecycle_test.dart
+          flutter analyze --no-pub lib/integrations/tts lib/services/neura_tts_service.dart test/services/neura_native_viseme_lifecycle_test.dart test/avatar/sapi_viseme_map_test.dart test/services/neura_windows_tts_test.dart test/services/neura_windows_tts_routing_test.dart test/services/neura_tts_lifecycle_test.dart
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Synthetic Dart speech tests only
         run: |
-          flutter test --no-pub --reporter expanded test/services/neura_windows_tts_test.dart test/services/neura_windows_tts_routing_test.dart test/services/neura_tts_lifecycle_test.dart test/screens/neura_voice_settings_lifecycle_test.dart test/modules/chat/neura_voice_commands_test.dart test/modules/chat/neura_offline_chat_test.dart
+          flutter test --no-pub --reporter expanded test/services/neura_native_viseme_lifecycle_test.dart test/avatar/sapi_viseme_map_test.dart test/services/neura_windows_tts_test.dart test/services/neura_windows_tts_routing_test.dart test/services/neura_tts_lifecycle_test.dart test/screens/neura_voice_settings_lifecycle_test.dart test/modules/chat/neura_voice_commands_test.dart test/modules/chat/neura_offline_chat_test.dart
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile real Windows owner and run audio-free ownership tests
         run: |

@@ -45,11 +45,11 @@ class _LifeTimelineScreenState extends State<LifeTimelineScreen> {
       };
       await file
           .writeAsString(const JsonEncoder.withIndent('  ').convert(payload));
-      await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'application/json')],
+      await SharePlus.instance.share(ShareParams(
+        files: [XFile(file.path, mimeType: 'application/json')],
         subject: 'Neura Life Timeline Export',
         text: 'Your Life Timeline export from Neura (local data).',
-      );
+      ));
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

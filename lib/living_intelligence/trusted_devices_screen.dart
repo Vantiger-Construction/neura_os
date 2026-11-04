@@ -439,7 +439,8 @@ class _MyPairingCodeDialogState extends State<_MyPairingCodeDialog> {
           label: const Text('Copy'),
         ),
         TextButton.icon(
-          onPressed: () => unawaited(Share.share(encoded)),
+          onPressed: () =>
+              unawaited(SharePlus.instance.share(ShareParams(text: encoded))),
           icon: const Icon(Icons.share_outlined),
           label: const Text('Share'),
         ),

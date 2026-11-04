@@ -283,6 +283,14 @@ lockfile stay unmodified; upstream drift stops configuration for review. Source
 hash receipts identify both upstream and compiled source. Callback registration
 moves to a non-coroutine member with the same event bodies, order and ownership.
 
+The November dependency refresh re-audited `local_auth_windows` 2.0.2, whose
+normalized source SHA-256 is
+`5d95868f9f8ac2c937a8f0249f7e4584373e4151f82ad71827f15f5e8d5c8c9f`.
+Its new authentication result enum and availability cases are preserved. The
+same legacy coroutine flag, return statement, and COM activation remain upstream,
+so the bounded correction still applies. The media and notification plugin
+sources retain their previously reviewed hashes.
+
 The native workflow now retains verbose build output, CodeQL extraction logs and
 diagnostics, compiler configuration and the plugin source receipt for 14 days.
 The existing compiler-error/invocation/diagnostic completeness gate, all queries,
