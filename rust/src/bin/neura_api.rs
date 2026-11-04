@@ -26,6 +26,10 @@ use tokio::{
 use tracing::{info, warn};
 use uuid::Uuid;
 
+#[path = "../presence_relay.rs"]
+mod presence_relay;
+use presence_relay::{Delivery, PresenceHub, PublisherGuard, Snapshot, SubscriberView};
+
 const OUTBOUND_CAPACITY: usize = 32;
 const MAX_MESSAGE_BYTES: usize = 4096;
 const MAX_CLIENTS: usize = 4;
@@ -160,6 +164,7 @@ impl Drop for RunGuard {
 struct AppState {
     session: Session,
     adapter: Adapter,
+    presence: Option<PresenceHub>,
 }
 
 // Supplied by an explicit trusted launcher, never by a URL or a built-in default.
@@ -232,15 +237,28 @@ async fn bind_local(value: &str) -> std::io::Result<TcpListener> {
     TcpListener::bind(address).await
 }
 
+#[cfg(test)]
 fn app_with(session: Session, adapter: Adapter) -> Router {
+    app_with_presence(session, adapter, None)
+}
+
+fn app_with_presence(session: Session, adapter: Adapter, presence: Option<PresenceHub>) -> Router {
     Router::new()
         .route("/", get(ws_handler))
         .route("/session/revoke", post(revoke_session))
-        .with_state(AppState { session, adapter })
+        .with_state(AppState {
+            session,
+            adapter,
+            presence,
+        })
 }
 
 async fn ws_handler(
-    State(AppState { session, adapter }): State<AppState>,
+    State(AppState {
+        session,
+        adapter,
+        presence,
+    }): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
@@ -258,7 +276,7 @@ async fn ws_handler(
         .max_write_buffer_size(MAX_MESSAGE_BYTES * 2)
         .on_upgrade(move |socket| async move {
             let _permit = permit;
-            client(socket, session, adapter).await;
+            client(socket, session, adapter, presence).await;
         }))
 }
 
@@ -680,7 +698,62 @@ fn spawn_echo(fixture: SyntheticFixture, out: Outbound) -> OwnedTask {
     }))
 }
 
-async fn client(socket: WebSocket, session: Session, adapter: Adapter) {
+/// This connection's role in the opt-in presence relay. Fixed by its first
+/// presence message; a connection is never both publisher and subscriber.
+enum PresenceRole {
+    None,
+    Publisher(PublisherGuard),
+    Subscriber {
+        resync: Arc<tokio::sync::Notify>,
+        task: OwnedTask,
+    },
+}
+
+fn presence_frame(delivery: Delivery) -> String {
+    match delivery {
+        Delivery::Presence(snapshot) => frame(presence_relay::KIND_PRESENCE, snapshot.to_value()),
+        Delivery::Cleared(reason) => frame(
+            presence_relay::KIND_CLEARED,
+            json!({"reason": reason.as_str()}),
+        ),
+    }
+}
+
+/// Delivers the latest presence state to one subscriber: on every change, at
+/// each keepalive, and once when the published snapshot goes stale.
+async fn forward_presence(hub: PresenceHub, out: Outbound, resync: Arc<tokio::sync::Notify>) {
+    let mut published_rx = hub.subscribe();
+    let mut view = SubscriberView::new(hub.ttl, hub.keepalive);
+    loop {
+        let published = *published_rx.borrow_and_update();
+        if let Some(delivery) = view.next(published, tokio::time::Instant::now()) {
+            if !out.send(presence_frame(delivery)) {
+                break;
+            }
+        }
+        let deadline = view.deadline(published);
+        tokio::select! {
+            biased;
+            _ = out.session.revoked() => break,
+            _ = out.ended() => break,
+            changed = published_rx.changed() => if changed.is_err() { break },
+            _ = resync.notified() => view.reset(),
+            _ = async {
+                match deadline {
+                    Some(deadline) => tokio::time::sleep_until(deadline).await,
+                    None => std::future::pending().await,
+                }
+            } => {}
+        }
+    }
+}
+
+async fn client(
+    socket: WebSocket,
+    session: Session,
+    adapter: Adapter,
+    presence: Option<PresenceHub>,
+) {
     // Recheck after the asynchronous HTTP upgrade, including revocation races.
     if !session.is_active() {
         return;
@@ -691,6 +764,7 @@ async fn client(socket: WebSocket, session: Session, adapter: Adapter) {
     let writer = OwnedTask(tokio::spawn(write_outbound(socket_tx, out_rx, writer_out)));
     let mut generation: Option<OwnedTask> = None;
     let mut probe: Option<OwnedTask> = None;
+    let mut role = PresenceRole::None;
 
     loop {
         let message = tokio::select! {
@@ -719,7 +793,7 @@ async fn client(socket: WebSocket, session: Session, adapter: Adapter) {
             "hello" => {
                 out.send(frame(
                     "hello",
-                    json!({"service":"neura-api","version":"0.4.0","protocol_version":1,"input_scope":"synthetic-only","model_adapter":adapter.name()}),
+                    json!({"service":"neura-api","version":"0.4.0","protocol_version":1,"input_scope":"synthetic-only","model_adapter":adapter.name(),"presence_relay":presence.is_some()}),
                 ));
             }
             "room_entered" => {
@@ -783,6 +857,10 @@ async fn client(socket: WebSocket, session: Session, adapter: Adapter) {
                     }
                 }
             }
+            "presence_publish" | "presence_clear" | "presence_subscribe" if presence.is_some() => {
+                let hub = presence.as_ref().expect("checked by the match guard");
+                handle_presence(&input.kind, input.data, hub, &mut role, &out);
+            }
             "cancel" => break,
             _ => {
                 // Never log an untrusted kind, envelope, prompt or credential.
@@ -801,7 +879,85 @@ async fn client(socket: WebSocket, session: Session, adapter: Adapter) {
     if let Some(task) = probe {
         task.stop().await;
     }
+    match role {
+        // Dropping the guard withdraws the published snapshot.
+        PresenceRole::Publisher(guard) => drop(guard),
+        PresenceRole::Subscriber { task, .. } => task.stop().await,
+        PresenceRole::None => {}
+    }
     writer.stop().await;
+}
+
+fn handle_presence(
+    kind: &str,
+    data: Value,
+    hub: &PresenceHub,
+    role: &mut PresenceRole,
+    out: &Outbound,
+) {
+    match kind {
+        "presence_subscribe" => match role {
+            PresenceRole::None => {
+                let resync = Arc::new(tokio::sync::Notify::new());
+                let task = OwnedTask(tokio::spawn(forward_presence(
+                    hub.clone(),
+                    out.clone(),
+                    resync.clone(),
+                )));
+                *role = PresenceRole::Subscriber { resync, task };
+            }
+            // Subscribing again asks for the current state to be re-sent.
+            PresenceRole::Subscriber { resync, .. } => resync.notify_one(),
+            PresenceRole::Publisher(_) => {
+                out.send(frame(
+                    "error",
+                    json!({"message":"presence publisher cannot subscribe"}),
+                ));
+            }
+        },
+        "presence_publish" => {
+            if matches!(role, PresenceRole::None) {
+                match hub.claim() {
+                    Some(guard) => *role = PresenceRole::Publisher(guard),
+                    None => {
+                        out.send(frame(
+                            "error",
+                            json!({"message":"presence publisher already active"}),
+                        ));
+                        return;
+                    }
+                }
+            }
+            let PresenceRole::Publisher(guard) = role else {
+                out.send(frame(
+                    "error",
+                    json!({"message":"presence subscriber cannot publish"}),
+                ));
+                return;
+            };
+            match Snapshot::parse(data) {
+                Some(snapshot) => guard.publish(snapshot),
+                None => {
+                    // Fail closed: an invalid snapshot withdraws the last one.
+                    guard.clear();
+                    out.send(frame(
+                        "error",
+                        json!({"message":"invalid presence snapshot"}),
+                    ));
+                }
+            }
+        }
+        "presence_clear" => match role {
+            PresenceRole::Publisher(guard) => guard.clear(),
+            _ => {
+                out.send(frame(
+                    "error",
+                    json!({"message":"only the presence publisher can clear"}),
+                ));
+            }
+        },
+        _ => unreachable!("presence kinds are matched by the caller"),
+    }
 }
 
 fn now_iso8601() -> String {
@@ -835,6 +991,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(std::env::VarError::NotPresent) => Adapter::Echo,
         Err(_) => Adapter::from_setting(Some(""))?,
     };
+    // Absent leaves the presence relay off; only "1" enables it.
+    let presence =
+        PresenceHub::from_env_setting(std::env::var(presence_relay::PRESENCE_RELAY_ENV))?;
     let listener = bind_local(&address).await?;
     let address = listener.local_addr()?;
     // Only a trusted child pipe carries this bounded, credential-free startup
@@ -845,10 +1004,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         writeln!(std::io::stdout(), "NEURA_IPC_READY {address}")?;
         std::io::stdout().flush()?;
     }
-    info!(%address, adapter = adapter.name(), "Neura synthetic local brain listening");
+    info!(%address, adapter = adapter.name(), presence_relay = presence.is_some(), "Neura synthetic local brain listening");
     axum::serve(
         listener,
-        app_with(session, adapter).into_make_service_with_connect_info::<SocketAddr>(),
+        app_with_presence(session, adapter, presence)
+            .into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await?;
     Ok(())

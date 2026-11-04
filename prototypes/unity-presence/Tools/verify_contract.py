@@ -95,6 +95,34 @@ class ContractSourceChecks(unittest.TestCase):
         manifest = json.loads((PROJECT / "Packages/manifest.json").read_text())
         self.assertEqual({"com.unity.modules.imgui", "com.unity.modules.physics", "com.unity.test-framework"}, set(manifest["dependencies"]))
 
+    def test_live_bridge_is_isolated_opt_in_and_credential_safe(self):
+        bridge = PROJECT / "Assets/Presence/Bridge"
+        sources = {path: path.read_text() for path in bridge.rglob("*.cs")}
+        self.assertEqual(
+            {"PresenceBridgeConfig.cs", "PresenceEnvelope.cs", "PresenceRelayClient.cs", "PresenceLiveBridge.cs"},
+            {path.name for path in sources},
+        )
+        forbidden = r"System\.(?:IO|Diagnostics)|DllImport|UnityWebRequest|Microphone\.|AudioSource|AudioListener|PlayerPrefs|Application\.OpenURL|\bProcess\.|Debug\.Log|Console\.|\bFile\.|GetCommandLineArgs|SerializeField"
+        for path, text in sources.items():
+            self.assertIsNone(re.search(forbidden, text), path.name)
+            if path.parent.name == "Protocol":
+                # Only the relay client networks, and only over WebSockets.
+                self.assertIsNone(re.search(r"System\.Net(?!\.WebSockets)|\bDns\.|\b(?:Socket|TcpClient|UdpClient|HttpClient)\b", text), path.name)
+            else:
+                self.assertIsNone(re.search(r"System\.Net", text), path.name)
+        config = sources[bridge / "Protocol/PresenceBridgeConfig.cs"]
+        self.assertIn("internal string Token", config)
+        self.assertNotIn("localhost", config)
+        # The credential is read only from the launcher-set environment.
+        reads = [p.name for p, t in sources.items() if "GetEnvironmentVariable" in t]
+        self.assertEqual(["PresenceLiveBridge.cs"], reads)
+        for folder, name in (("Protocol", "Neura.Presence.Bridge.Protocol"), ("Live", "Neura.Presence.Bridge")):
+            asmdef = json.loads((bridge / folder / (name + ".asmdef")).read_text())
+            self.assertEqual(["WebGL"], asmdef["excludePlatforms"])
+        for folder, name in (("Core", "Neura.Presence.Core"), ("Runtime", "Neura.Presence.Runtime")):
+            asmdef = json.loads((PROJECT / "Assets/Presence" / folder / (name + ".asmdef")).read_text())
+            self.assertFalse(any("Bridge" in ref for ref in asmdef.get("references", [])), name)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

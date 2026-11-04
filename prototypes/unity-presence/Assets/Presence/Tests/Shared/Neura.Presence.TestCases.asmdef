@@ -1,6 +1,6 @@
 {
   "name": "Neura.Presence.TestCases",
-  "references": ["Neura.Presence.Core"],
+  "references": ["Neura.Presence.Core", "Neura.Presence.Bridge.Protocol"],
   "includePlatforms": ["Editor"],
   "autoReferenced": false,
   "noEngineReferences": true
