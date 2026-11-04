@@ -154,7 +154,25 @@ class AvatarSourceCompositionTests(unittest.TestCase):
             (checkout / workflow.relative_to(self.origin)).read_text(),
             'reviewed current harness\n',
         )
-        self.assertIn('Conversation workflow retained from source PR head:', report)
+        self.assertIn('Conversation workflow conflict policy keeps source PR head:', report)
+
+    def test_conflicting_windows_speech_harness_keeps_source_version(self):
+        workflow = self.origin / '.github/workflows/neura-windows-tts.yml'
+        workflow.parent.mkdir(parents=True)
+        workflow.write_text('reviewed startup voice harness\n')
+        self.commit('current speech workflow')
+        self.git(self.origin, 'checkout', SAPI)
+        workflow.parent.mkdir(parents=True, exist_ok=True)
+        workflow.write_text('dependency speech harness\n')
+        self.sapi = self.commit('dependency speech workflow')
+        self.git(self.origin, 'checkout', 'subject')
+        result, report, checkout = self.compose()
+        self.assert_success(result, report, checkout)
+        self.assertEqual(
+            (checkout / workflow.relative_to(self.origin)).read_text(),
+            'reviewed startup voice harness\n',
+        )
+        self.assertIn('Windows speech workflow conflict policy keeps source PR head:', report)
 
 
 if __name__ == '__main__':

@@ -46,7 +46,21 @@ regressions. On Windows it compiles the genuine SAPI owner, runs the native
 ownership/escaping tests without audio, and builds the production application
 while checking that the legacy `flutter_tts_plugin.dll` is absent.
 
-All integration pins must still equal their source branch heads. A changed
+The composer initializes its report before checking dependencies and retains
+the failing phase, exit status and unmerged paths. It reports a combined tree
+only after all merges succeed. Twelve local repository regressions cover
+success, shallow history, stale pins, deleted branches and merge failures.
+
+Motion #149 is pinned to its squash merge
+`4e66869078442392e2dde0282826c7a97c9dee74`; `MOTION_IN_BASE=true` requires that
+exact commit to be an ancestor of the reviewed base, without depending on the
+deleted feature branch. SAPI remains pinned to its live branch head.
+Conflicts in only the conversation and Windows speech workflow definitions
+retain their source-PR versions during disposable composition; all application, test and
+lockfile conflicts still fail. The conversation job executes the complete
+combined test suite, including startup voice and native-viseme regressions.
+
+Live integration pins must still equal their source branch heads. A changed
 dependency fails the workflow and requires a reviewed pin refresh. Before
 merging, recheck the PR head, checks, review decisions, unresolved threads,
 and applicable branch/ruleset protections. A clean local merge or green test

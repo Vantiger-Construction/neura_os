@@ -1,0 +1,63 @@
+version: 2
+
+# Keep update proposals small enough to review against the native/platform gates.
+# Security updates remain enabled in repository settings; nothing auto-merges.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 2
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: pub
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:15'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 2
+    versioning-strategy: increase-if-necessary
+    groups:
+      flutter-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: cargo
+    directory: /rust
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:30'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 2
+    versioning-strategy: increase-if-necessary
+    groups:
+      rust-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /tools/sync_tests
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:45'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 2
+    versioning-strategy: increase-if-necessary
+    groups:
+      sync-tests-minor-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: gradle
+    directory: /android
+    schedule:
+      interval: weekly
+      day: monday
+      time: '10:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 2
+    groups:
+      android-minor-patch:
+        update-types: [minor, patch]

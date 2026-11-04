@@ -1,10 +1,16 @@
+import 'neura_swarm_policy.dart';
+
 /// Non-native fallback used on web, where Neura does not currently package a
 /// WASM build of the Rust swarm. The primary Dart AI path remains independent.
 class NeuraSwarmService {
   NeuraSwarmService._();
   static final NeuraSwarmService instance = NeuraSwarmService._();
 
-  Future<void> init(String apiKey) {
+  Future<void> init(
+    String apiKey, {
+    required NeuraSwarmApproval approval,
+    required bool foreground,
+  }) {
     return Future<void>.error(
       UnsupportedError('The native Neura swarm is unavailable on web.'),
     );
@@ -18,6 +24,8 @@ class NeuraSwarmService {
     required String transcript,
     required String draftReply,
     required String userMessage,
+    required NeuraSwarmApproval approval,
+    required bool foreground,
   }) async {
     return const SwarmOutcome(concernNote: null, facts: []);
   }
