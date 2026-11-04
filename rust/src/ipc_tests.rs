@@ -1036,7 +1036,7 @@ async fn receive_raw(socket: &mut ClientSocket) -> String {
     let ClientMessage::Text(text) = message else {
         panic!("expected an envelope");
     };
-    text
+    text.to_string()
 }
 
 /// Next presence frame, skipping keepalive repeats of `skip_same`.
