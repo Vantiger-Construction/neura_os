@@ -261,6 +261,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       await NeuraTtsService.instance
           .speak(
             "Hi, I'm Neura. I'm here and ready to listen.",
+            requireCompletion: true,
           )
           .timeout(const Duration(seconds: 15));
       if (!_voiceSessionActive(session) ||
@@ -484,6 +485,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     WidgetsBinding.instance.removeObserver(this);
     SafeBoot.instance.safeMode.removeListener(_stopForSafeMode);
     SafeBoot.instance.restartRequired.removeListener(_stopForSafeMode);
+    _voiceStatusSub?.cancel();
+    if (widget.startWithVoice) {
+      NeuraStartupVoicePrefs.instance.enabled
+          .removeListener(_onStartupVoiceChanged);
+    }
     _voiceSub?.cancel();
     _finalPhraseSub?.cancel();
     _replyUpdates?.dispose();

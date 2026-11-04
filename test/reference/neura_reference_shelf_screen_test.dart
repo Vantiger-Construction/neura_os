@@ -7,30 +7,25 @@ import 'package:neuro_companion/reference/neura_reference_shelf_screen.dart';
 import 'package:neuro_companion/reference/neura_reference_shelf.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import '../helpers/data_wipe_fixture.dart';
+import '../helpers/fake_picked_file.dart';
 
-class _Picker extends FilePicker {
+class _Picker extends FilePickerPlatform {
   @override
-  Future<FilePickerResult?> pickFiles(
-      {String? dialogTitle,
-      String? initialDirectory,
-      FileType type = FileType.any,
-      List<String>? allowedExtensions,
-      Function(FilePickerStatus)? onFileLoading,
-      bool allowCompression = true,
-      int compressionQuality = 30,
-      bool allowMultiple = false,
-      bool withData = false,
-      bool withReadStream = false,
-      bool lockParentWindow = false,
-      bool readSequential = false}) async {
-    final bytes =
-        utf8.encode('Private reference heading\nClean the filter monthly.');
-    return FilePickerResult([
-      PlatformFile(
-          name: 'manual.txt',
-          size: bytes.length,
-          readStream: Stream.value(bytes))
-    ]);
+  Future<PlatformFile?> pickFile({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async {
+    return FakePickedFile.fromBytes('manual.txt',
+        utf8.encode('Private reference heading\nClean the filter monthly.'));
   }
 }
 
@@ -38,7 +33,7 @@ void main() {
   testWidgets(
       'selected document quotes are visible locally and wiped by background',
       (tester) async {
-    FilePicker.platform = _Picker();
+    FilePickerPlatform.instance = _Picker();
     SafeBoot.instance.safeMode.value = false;
     SafeBoot.instance.restartRequired.value = false;
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -68,7 +63,7 @@ void main() {
     await tester.runAsync(() async {
       fixture = await DataWipeFixture.create();
     });
-    final oldPicker = FilePicker.platform;
+    final oldPicker = FilePickerPlatform.instance;
     const channel = MethodChannel('neura/engine_synthetic_session');
     var requests = 0;
     var reply = jsonEncode({
@@ -76,7 +71,7 @@ void main() {
         {'passage': 1, 'text': 'Clean the filter monthly.'}
       ]
     });
-    FilePicker.platform = _Picker();
+    FilePickerPlatform.instance = _Picker();
     SafeBoot.instance.safeMode.value = false;
     SafeBoot.instance.restartRequired.value = false;
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -87,7 +82,7 @@ void main() {
       return null;
     });
     addTearDown(() {
-      FilePicker.platform = oldPicker;
+      FilePickerPlatform.instance = oldPicker;
       tester.binding.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
       SafeBoot.instance.safeMode.value = false;

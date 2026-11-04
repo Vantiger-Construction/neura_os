@@ -18,6 +18,7 @@ class _LocalInput implements NeuraSpeechInput {
   final finals = StreamController<String>.broadcast();
   final statuses = StreamController<String>.broadcast();
   int starts = 0;
+  int stops = 0;
   @override
   bool isListening = false;
   @override
@@ -35,6 +36,7 @@ class _LocalInput implements NeuraSpeechInput {
 
   @override
   Future<String> stopRecording() async {
+    stops++;
     isListening = false;
     return '';
   }
@@ -53,10 +55,16 @@ void main() {
   late _LocalInput input;
   late NeuraShellState shell;
   final spoken = <String>[];
+  bool rejectGreeting = false;
 
   Future<void> completeGreeting() async {
     await binding.defaultBinaryMessenger.handlePlatformMessage(channel.name,
         codec.encodeMethodCall(const MethodCall('speak.onComplete')), (_) {});
+  }
+
+  Future<void> cancelGreeting() async {
+    await binding.defaultBinaryMessenger.handlePlatformMessage(channel.name,
+        codec.encodeMethodCall(const MethodCall('speak.onCancel')), (_) {});
   }
 
   setUpAll(() async {
@@ -66,6 +74,7 @@ void main() {
   setUp(() async {
     await NeuraPrefsCache.prefs.clear();
     spoken.clear();
+    rejectGreeting = false;
     SafeBoot.instance.safeMode.value = false;
     SafeBoot.instance.restartRequired.value = false;
     NeuraStartupVoicePrefs.instance.enabled.value = true;
@@ -85,6 +94,7 @@ void main() {
         spoken.add(call.arguments is Map
             ? (call.arguments as Map)['text'] as String
             : call.arguments as String);
+        if (rejectGreeting) return 0;
       }
       return 1;
     });
@@ -92,6 +102,7 @@ void main() {
   tearDown(() async {
     binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null);
     NeuraStartupVoicePrefs.instance.enabled.value = false;
+    NeuraTtsService.instance.enabled = true;
     SafeBoot.instance.safeMode.value = false;
     SafeBoot.instance.restartRequired.value = false;
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
@@ -191,6 +202,51 @@ void main() {
     expect(spoken, isEmpty);
     expect(input.starts, 0);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  startupTest('a rejected greeting never opens the microphone', (tester) async {
+    rejectGreeting = true;
+    await pumpChat(tester);
+    expect(spoken, hasLength(1));
+    expect(input.starts, 0);
+    expect(find.text('Startup voice could not start. You can still type.'),
+        findsOneWidget);
+  });
+
+  startupTest('a cancelled greeting never opens the microphone',
+      (tester) async {
+    await pumpChat(tester);
+    await cancelGreeting();
+    await tester.pump();
+    expect(input.starts, 0);
+    expect(input.isListening, isFalse);
+  });
+
+  startupTest(
+      'disabled speech cannot skip the greeting and open the microphone',
+      (tester) async {
+    NeuraTtsService.instance.enabled = false;
+    await pumpChat(tester);
+    expect(spoken, isEmpty);
+    expect(input.starts, 0);
+  });
+
+  startupTest('closing startup chat releases status and consent listeners',
+      (tester) async {
+    await pumpChat(tester);
+    expect(input.statuses.hasListener, isTrue);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(input.statuses.hasListener, isFalse);
+    final stops = input.stops;
+    input.statuses.add('Synthetic late shutdown status');
+    NeuraStartupVoicePrefs.instance.enabled.value = false;
+    await completeGreeting();
+    await tester.pump();
+    expect(input.starts, 0);
+    expect(input.stops, stops,
+        reason: 'A disposed route must not respond to consent changes.');
+    expect(tester.takeException(), isNull);
   });
 
   startupTest('startup route without a saved opt-in never activates audio',
