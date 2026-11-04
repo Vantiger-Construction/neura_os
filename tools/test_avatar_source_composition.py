@@ -138,6 +138,42 @@ class AvatarSourceCompositionTests(unittest.TestCase):
         result, report, _ = self.compose(MOTION_IN_BASE='true')
         self.assert_failure(result, report, 'verify merged motion ancestry')
 
+    def test_only_conflicting_conversation_harness_keeps_source_version(self):
+        workflow = self.origin / '.github/workflows/neura-avatar-conversation.yml'
+        workflow.parent.mkdir(parents=True)
+        workflow.write_text('reviewed current harness\n')
+        self.commit('current workflow')
+        self.git(self.origin, 'checkout', SAPI)
+        workflow.parent.mkdir(parents=True, exist_ok=True)
+        workflow.write_text('older dependency harness\n')
+        self.sapi = self.commit('dependency workflow')
+        self.git(self.origin, 'checkout', 'subject')
+        result, report, checkout = self.compose()
+        self.assert_success(result, report, checkout)
+        self.assertEqual(
+            (checkout / workflow.relative_to(self.origin)).read_text(),
+            'reviewed current harness\n',
+        )
+        self.assertIn('Conversation workflow conflict policy keeps source PR head:', report)
+
+    def test_conflicting_windows_speech_harness_keeps_source_version(self):
+        workflow = self.origin / '.github/workflows/neura-windows-tts.yml'
+        workflow.parent.mkdir(parents=True)
+        workflow.write_text('reviewed startup voice harness\n')
+        self.commit('current speech workflow')
+        self.git(self.origin, 'checkout', SAPI)
+        workflow.parent.mkdir(parents=True, exist_ok=True)
+        workflow.write_text('dependency speech harness\n')
+        self.sapi = self.commit('dependency speech workflow')
+        self.git(self.origin, 'checkout', 'subject')
+        result, report, checkout = self.compose()
+        self.assert_success(result, report, checkout)
+        self.assertEqual(
+            (checkout / workflow.relative_to(self.origin)).read_text(),
+            'reviewed startup voice harness\n',
+        )
+        self.assertIn('Windows speech workflow conflict policy keeps source PR head:', report)
+
 
 if __name__ == '__main__':
     unittest.main()

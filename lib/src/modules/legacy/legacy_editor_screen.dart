@@ -218,14 +218,12 @@ class _LegacyEditorScreenState extends State<LegacyEditorScreen> {
   }
 
   Future<void> _importAttachment() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: false);
-    if (result == null || result.files.isEmpty) return;
-    final path = result.files.single.path;
-    if (path == null || path.trim().isEmpty) return;
+    final file = await FilePicker.pickFile();
+    if (file == null) return;
 
     final rel = await LegacyVaultService.instance.importAttachment(
       capsuleId: _draftId,
-      sourcePath: path,
+      source: file,
     );
 
     setState(() {

@@ -23,14 +23,14 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out the reviewed head
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Use the repository Flutter version
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
-          flutter-version: '3.47.5'
+          flutter-version: '3.47.9'
           channel: stable
           cache: true
       - name: Restore locked dependencies

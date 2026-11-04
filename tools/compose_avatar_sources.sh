@@ -71,6 +71,16 @@ fi
 phase='fetch pinned history'
 git config user.name 'Neura integration validation'
 git config user.email 'validation@local.invalid'
+# Keep this job's reviewed harness when a dependency carries older CI pins.
+# This driver applies only to these workflow files; application, test, lockfile
+# and other merge conflicts still fail normally. Nothing is pushed from here.
+attributes=$(git rev-parse --git-path info/attributes)
+mkdir -p "$(dirname "$attributes")"
+printf '\n/.github/workflows/neura-avatar-conversation.yml merge=neura-ci-harness\n' >> "$attributes"
+printf '/.github/workflows/neura-windows-tts.yml merge=neura-ci-harness\n' >> "$attributes"
+git config merge.neura-ci-harness.driver true
+printf 'Conversation workflow conflict policy keeps source PR head: %s\n' "$source_head" >> "$report"
+printf 'Windows speech workflow conflict policy keeps source PR head: %s\n' "$source_head" >> "$report"
 # Fetch only these commits, avoiding Windows' Neura/neura ref-name collision.
 fetch_options=(--no-tags --filter=blob:none)
 if [ "$(git rev-parse --is-shallow-repository)" = true ]; then

@@ -49,25 +49,21 @@ regressions. On Windows it compiles the genuine SAPI owner, runs the native
 ownership/escaping tests without audio, and builds the production application
 while checking that the legacy `flutter_tts_plugin.dll` is absent.
 
-Both conversation and visible-mouth workflows initialize the source report before
-composition. `tools/compose_avatar_sources.sh` retains expected/observed heads,
-the last attempted phase, exit status and any unmerged paths even when a guard,
-fetch or merge fails. Only successful composition records a combined tree;
-the artifact is source evidence, not a test-pass attestation. Checkout failure
-leaves a report saying composition did not start. Local fixture regressions cover
-shallow/full checkout success, source-branch identity, stale pins, missing
-branches, fetch failure and conflicting merges.
+The composer initializes its report before checking dependencies and retains
+the failing phase, exit status and unmerged paths. It reports a combined tree
+only after all merges succeed. Twelve local repository regressions cover
+success, shallow history, stale pins, deleted branches and merge failures.
 
-Motion #149 was squash-merged as
-`4e66869078442392e2dde0282826c7a97c9dee74`, and its feature branch was deleted.
-Both conversation and visible-mouth workflows pin that merged commit and set
-`MOTION_IN_BASE=true`. After fetching, the composer verifies that the exact
-motion commit is an ancestor of the reviewed base; an unrelated pin fails.
-It no longer requires the deleted motion branch. The manual-dispatch base
-fallback includes this merged commit as well.
+Motion #149 is pinned to its squash merge
+`4e66869078442392e2dde0282826c7a97c9dee74`; `MOTION_IN_BASE=true` requires that
+exact commit to be an ancestor of the reviewed base, without depending on the
+deleted feature branch. SAPI remains pinned to its live branch head.
+Conflicts in only the conversation and Windows speech workflow definitions
+retain their source-PR versions during disposable composition; all application, test and
+lockfile conflicts still fail. The conversation job executes the complete
+combined test suite, including startup voice and native-viseme regressions.
 
-Live external integration pins must still equal their source branch heads. The
-feature branch under test uses its exact checked-out revision. A changed
+Live integration pins must still equal their source branch heads. A changed
 dependency fails the workflow and requires a reviewed pin refresh. Before
 merging, recheck the PR head, checks, review decisions, unresolved threads,
 and applicable branch/ruleset protections. A clean local merge or green test

@@ -81,7 +81,7 @@ impl LocalConversation {
         if !grant.is_active() {
             return Err(LocalConversationError::Revoked);
         }
-        let client = Client::builder()
+        let client = crate::http_client::builder()
             .no_proxy()
             .redirect(Policy::none())
             .connect_timeout(Duration::from_secs(2))

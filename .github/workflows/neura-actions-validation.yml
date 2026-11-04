@@ -1,0 +1,55 @@
+name: Neura Actions validation
+
+on:
+  pull_request:
+    branches: [Neura]
+    # Required workflow validation must report on every PR, including docs-only.
+  push:
+    branches: [Neura]
+    paths:
+      - '.github/**'
+      - '.gitattributes'
+      - 'tools/ci/**'
+      - 'tools/compose_avatar_sources.sh'
+      - 'tools/test_avatar_source_composition.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-actions-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Validate workflow configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Validate all workflows with checksum-pinned actionlint
+        run: bash tools/ci/lint_workflows.sh
+
+  composition:
+    name: Source composition contracts (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Exercise successful and failing source compositions
+        shell: bash
+        run: |
+          export COMPOSER_BASH="$BASH"
+          if [ "$RUNNER_OS" = Windows ]; then
+            export COMPOSER_BASH="$(cygpath -w "$BASH")"
+          fi
+          python tools/test_avatar_source_composition.py

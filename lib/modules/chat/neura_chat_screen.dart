@@ -1048,21 +1048,15 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
 
   Future<void> _pickTextContext() async {
     try {
-      final selection = await FilePicker.platform.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: NeuraSelectedContext.extensions,
-        withReadStream: true,
-        withData: false,
       );
-      if (selection == null || !mounted) return;
-      final file = selection.files.single;
-      if (file.size > NeuraSelectedContext.maxBytes) {
+      if (file == null || !mounted) return;
+      if ((file.lengthSync() ?? 0) > NeuraSelectedContext.maxBytes) {
         throw const FormatException('Choose a text file up to 32 KB.');
       }
-      final stream = file.readStream;
-      if (stream == null) {
-        throw const FormatException('This file could not be read.');
-      }
+      final stream = file.readAsByteStream();
       final bytes = <int>[];
       await for (final chunk in stream) {
         if (bytes.length + chunk.length > NeuraSelectedContext.maxBytes) {

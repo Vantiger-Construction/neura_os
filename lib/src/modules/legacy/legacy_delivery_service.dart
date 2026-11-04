@@ -77,7 +77,7 @@ class LegacyDeliveryService {
   Future<void> shareFiles(
       {required List<String> filePaths, String? text}) async {
     final files = filePaths.map((p) => XFile(p)).toList();
-    await Share.shareXFiles(files, text: text);
+    await SharePlus.instance.share(ShareParams(files: files, text: text));
   }
 
   Future<String?> _promptPassphrase(BuildContext context,

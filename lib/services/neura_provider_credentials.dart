@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'neura_secure_storage.dart';
+
 /// Minimal credential-store boundary used to make migration and deletion
 /// behavior testable without ever exposing a real provider key.
 abstract interface class NeuraCredentialStorage {
@@ -14,7 +16,7 @@ abstract interface class NeuraCredentialStorage {
 class _NeuraSecureCredentialStorage implements NeuraCredentialStorage {
   const _NeuraSecureCredentialStorage();
 
-  static const FlutterSecureStorage _storage = FlutterSecureStorage();
+  static const FlutterSecureStorage _storage = neuraSecureStorage;
 
   @override
   Future<String?> read({required String key}) => _storage.read(key: key);
