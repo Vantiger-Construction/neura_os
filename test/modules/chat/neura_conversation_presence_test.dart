@@ -565,4 +565,47 @@ void main() {
     expect(avatar.signals.isThinking, isFalse);
     expect(avatar.signals.isListening, isFalse);
   });
+
+  conversationTest(
+      'covering chat clears its continuity before a fresh avatar turn',
+      (tester) async {
+    await chat(tester);
+    await tester.tap(find.byTooltip('Chat options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Conversation thread'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.enterText(
+      find.byWidgetPredicate((widget) =>
+          widget is TextField &&
+          widget.decoration?.labelText == 'Current topic or goal'),
+      'Synthetic private continuity marker',
+    );
+    await tester.tap(find.text('Apply for this session'));
+    await tester.pumpAndSettle();
+    expect(find.text('Temporary conversation thread on'), findsOneWidget);
+    await ask(tester);
+    expect(jsonEncode(payloads.single),
+        contains('Synthetic private continuity marker'));
+
+    final navigator =
+        Navigator.of(tester.element(find.byType(NeuraChatScreen)));
+    final covering = navigator.push<void>(MaterialPageRoute(
+        builder: (_) => const Scaffold(body: Text('Continuity route'))));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await drain(tester);
+    expect(avatar.signals.isThinking, isFalse);
+    expect(nativeCalls, contains('engine:cancelOllama'));
+    navigator.pop();
+    await covering;
+    await drain(tester);
+    expect(find.text('Temporary conversation thread on'), findsNothing);
+
+    payloads.clear();
+    events.clear();
+    await ask(tester);
+    expect(jsonEncode(payloads.single),
+        isNot(contains('Synthetic private continuity marker')));
+  });
 }
