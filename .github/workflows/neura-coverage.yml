@@ -72,7 +72,33 @@ jobs:
         run: |
           mkdir -p coverage/flutter
           flutter test --no-pub --concurrency 2 --timeout 2m \
+            --file-reporter json:test-results.json \
             --coverage --coverage-path=coverage/flutter/raw.lcov.info
+      - name: DIAGNOSTIC (do not merge) annotate each failing test
+        if: ${{ !cancelled() && steps.tests.outcome == 'failure' }}
+        shell: python
+        run: |
+          import json
+          tests, suites, failed = {}, {}, []
+          for raw in open('test-results.json', encoding='utf-8'):
+              try:
+                  e = json.loads(raw)
+              except ValueError:
+                  continue
+              t = e.get('type')
+              if t == 'suite':
+                  suites[e['suite']['id']] = e['suite'].get('path') or '?'
+              elif t == 'testStart':
+                  tests[e['test']['id']] = e['test']
+              elif t == 'error':
+                  test = tests.get(e['testID'], {})
+                  path = suites.get(test.get('suiteID'), '?')
+                  first = (e.get('error') or '').strip().splitlines()[:3]
+                  failed.append((path, test.get('name', '?'), ' | '.join(first)[:600]))
+          print(f'{len(failed)} error events')
+          for n, (path, name, err) in enumerate(failed, 1):
+              level = 'error' if n <= 10 else 'warning' if n <= 20 else 'notice'
+              print(f'::{level} file={path}::{name} :: {err}'.replace('\n', ' '))
       - name: Render measured Flutter coverage
         if: ${{ !cancelled() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure') }}
         env:

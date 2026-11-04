@@ -61,7 +61,20 @@ jobs:
       - name: Check all application and test formatting
         run: dart format --output=none --set-exit-if-changed lib test
       - name: Require zero analyzer errors, warnings and infos
-        run: dart analyze --fatal-infos
+        shell: bash
+        run: |
+          # DIAGNOSTIC (do not merge): surface each diagnostic as an annotation.
+          rc=0
+          dart analyze --fatal-infos --format=machine > analyze.txt 2>&1 || rc=$?
+          echo "dart analyze exit code: $rc; diagnostics: $(grep -c '|' analyze.txt || true)"
+          n=0
+          while IFS='|' read -r sev type code file line col len msg; do
+            [ -n "${line:-}" ] || continue
+            n=$((n+1))
+            level=error; [ "$n" -gt 10 ] && level=warning; [ "$n" -gt 20 ] && level=notice
+            echo "::${level} file=${file#"$PWD"/},line=${line},col=${col}::[${sev} ${code}] ${msg}"
+          done < analyze.txt
+          exit "$rc"
       - name: Record the analyzed source
         shell: bash
         run: |
