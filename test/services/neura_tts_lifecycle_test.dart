@@ -126,7 +126,7 @@ void main() {
   );
 
   test(
-    'proactive startup speech stays disabled pending Windows acceptance',
+    'legacy ambient greeting stays disabled independently of startup voice',
     () {
       expect(kEnableProactiveGreetingTts, isFalse);
     },

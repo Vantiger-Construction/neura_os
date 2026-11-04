@@ -78,9 +78,11 @@ attributes=$(git rev-parse --git-path info/attributes)
 mkdir -p "$(dirname "$attributes")"
 printf '\n/.github/workflows/neura-avatar-conversation.yml merge=neura-ci-harness\n' >> "$attributes"
 printf '/.github/workflows/neura-windows-tts.yml merge=neura-ci-harness\n' >> "$attributes"
+printf '/.github/workflows/neura-visible-mouth.yml merge=neura-ci-harness\n' >> "$attributes"
 git config merge.neura-ci-harness.driver true
 printf 'Conversation workflow conflict policy keeps source PR head: %s\n' "$source_head" >> "$report"
 printf 'Windows speech workflow conflict policy keeps source PR head: %s\n' "$source_head" >> "$report"
+printf 'Visible mouth workflow conflict policy keeps source PR head: %s\n' "$source_head" >> "$report"
 # Fetch only these commits, avoiding Windows' Neura/neura ref-name collision.
 fetch_options=(--no-tags --filter=blob:none)
 if [ "$(git rev-parse --is-shallow-repository)" = true ]; then

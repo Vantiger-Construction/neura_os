@@ -167,10 +167,9 @@ class _NeuraTaskTransferScreenState extends State<NeuraTaskTransferScreen>
     // Explicit save may complete in the OS picker after focus changes. Only
     // ciphertext is handed to the picker; plaintext and key are never files.
     try {
-      await FilePicker.platform.saveFile(
+      // file_picker 13 removed the no-op type/extension filters on save.
+      await FilePicker.saveFile(
           fileName: 'neura-task.neuratask',
-          type: FileType.custom,
-          allowedExtensions: ['neuratask'],
           bytes: Uint8List.fromList(utf8.encode(sealed.packet)));
     } catch (_) {
       if (_current(epoch)) {
@@ -191,12 +190,10 @@ class _NeuraTaskTransferScreenState extends State<NeuraTaskTransferScreen>
       _status = null;
     });
     try {
-      final result = await FilePicker.platform.pickFiles(
-          type: FileType.custom,
-          allowedExtensions: ['neuratask'],
-          withData: false,
-          withReadStream: true);
-      if (result == null || !_pickerCurrent(request)) return;
+      // file_picker 13: one file, streamed on demand; nothing is preloaded.
+      final file = await FilePicker.pickFile(
+          type: FileType.custom, allowedExtensions: ['neuratask']);
+      if (file == null || !_pickerCurrent(request)) return;
       // Android may deliver the selection before Flutter regains focus. Do not
       // read it in the background or carry a transfer key through the picker.
       if (WidgetsBinding.instance.lifecycleState != null &&
@@ -213,13 +210,13 @@ class _NeuraTaskTransferScreenState extends State<NeuraTaskTransferScreen>
       _awaitingPicker = false;
       final epoch = _epoch;
       readEpoch = epoch;
-      final file = result.files.single;
-      if (file.size > NeuraTaskTransfer.maxPacketCharacters ||
-          file.readStream == null) {
+      // A size the platform reports up front is checked before reading; the
+      // streamed cap below still bounds files whose size is unknown.
+      if ((file.lengthSync() ?? 0) > NeuraTaskTransfer.maxPacketCharacters) {
         throw const FormatException('Invalid packet file.');
       }
       final bytes = <int>[];
-      await for (final chunk in file.readStream!) {
+      await for (final chunk in file.readAsByteStream()) {
         if (!_pickerCurrent(request) || !_current(epoch)) return;
         if (bytes.length + chunk.length >
             NeuraTaskTransfer.maxPacketCharacters) {

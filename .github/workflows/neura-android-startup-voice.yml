@@ -1,0 +1,98 @@
+name: Android startup voice safety
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths:
+      - 'android/**'
+      - 'lib/services/neura*speech*'
+      - 'lib/services/neura*voice*'
+      - 'lib/services/neura_tts_service.dart'
+      - 'lib/modules/chat/**'
+      - 'lib/modules/navigation/**'
+      - 'lib/screens/neura_voice_settings_screen.dart'
+      - 'lib/startup/**'
+      - 'lib/src/core/data_wipe_service.dart'
+      - 'test/startup/neura_startup_voice_test.dart'
+      - 'test/services/neura_local_speech_input_test.dart'
+      - 'test/services/neura_startup_voice_prefs_test.dart'
+      - 'test/screens/neura_startup_voice_settings_test.dart'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/neura-android-startup-voice.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-android-startup-voice-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android startup voice tests and APK
+    # Build PR code without secrets on an ephemeral runner. The separate
+    # Windows package lane retains its existing disk and delivery safeguards.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.workers.max=2'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Record exact Android source
+        run: |
+          {
+            printf 'Commit: %s\nTree: %s\n' "$(git rev-parse HEAD)" "$(git rev-parse 'HEAD^{tree}')"
+            printf 'Debug-signed test APK. Physical speech, microphone shutdown and installation acceptance remain required.\n'
+          } | tee android-startup-voice-source.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - name: Restore locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Synthetic startup, permission, cancellation and settings tests
+        run: >-
+          flutter test --no-pub --concurrency 2 --timeout 2m
+          test/startup/neura_startup_voice_test.dart
+          test/services/neura_local_speech_input_test.dart
+          test/services/neura_startup_voice_prefs_test.dart
+          test/screens/neura_startup_voice_settings_test.dart
+      - name: Install the existing Android build baseline
+        run: >-
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          'platforms;android-36' 'platforms;android-37.0'
+          'build-tools;36.0.0' 'ndk;28.2.13676358'
+      - name: Compile the real Android application and local recognizer
+        run: |
+          set -o pipefail
+          flutter build apk --debug --no-pub 2>&1 | tee android-startup-voice-build.log
+      - name: Verify the APK and record its checksum
+        run: |
+          apk=build/app/outputs/flutter-apk/app-debug.apk
+          test -s "$apk"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest permissions "$apk" | grep -Fx 'android.permission.RECORD_AUDIO'
+          sha256sum "$apk" > android-startup-voice-sha256.txt
+          git diff --exit-code -- lib test android pubspec.lock rust/Cargo.lock
+      - name: Preserve Android build evidence and test APK
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: startup-voice-android-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            android-startup-voice-*.log
+            android-startup-voice-*.txt
+            build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

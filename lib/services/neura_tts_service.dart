@@ -170,6 +170,40 @@ class NeuraTtsService with WidgetsBindingObserver {
     await _ensureInit();
   }
 
+  /// Startup speech must not select an Android network voice implicitly.
+  /// Windows already restricts its owned SAPI catalog to Microsoft desktop
+  /// voices. Unsupported/missing local voices leave voice startup unavailable.
+  Future<void> prepareLocalStartupVoice() async {
+    if (kIsWeb ||
+        (defaultTargetPlatform != TargetPlatform.windows &&
+            defaultTargetPlatform != TargetPlatform.android)) {
+      throw UnsupportedError('Local startup voice is unavailable.');
+    }
+    if (!await _ensureInit() || !playbackAllowed) {
+      throw StateError('Local startup voice is unavailable.');
+    }
+    if (defaultTargetPlatform == TargetPlatform.windows) return;
+    final voices = await _tts!.getVoices as List<dynamic>;
+    final local = voices.whereType<Map>().where((voice) =>
+        voice['network_required']?.toString() == '0' &&
+        !(voice['features']?.toString().contains('notInstalled') ?? false));
+    if (local.isEmpty) throw StateError('No installed on-device voice.');
+    final selected = local.firstWhere((v) => v['name'] == _selectedVoiceName,
+        orElse: () => local.firstWhere(
+            (v) =>
+                v['locale']?.toString().toLowerCase().startsWith('en') ?? false,
+            orElse: () => local.first));
+    if (!playbackAllowed) return;
+    final result = await _tts!.setVoice({
+      'name': selected['name'].toString(),
+      'locale': selected['locale'].toString(),
+    });
+    if (result == 0) {
+      throw StateError('Local startup voice could not be selected.');
+    }
+    _selectedVoiceName = selected['name'].toString();
+  }
+
   Future<bool> _ensureInit() {
     if (!_engineUsable) return Future<bool>.value(false);
     // Reading voice preferences and Safe Mode no-ops must stay usable before
@@ -209,7 +243,7 @@ class NeuraTtsService with WidgetsBindingObserver {
     await NeuraFlutterTtsVisemeBridge.attach(
       tts,
       onCompletion: _completeSpeak,
-      onCancel: _completeSpeak,
+      onCancel: () => _completeSpeak(completed: false),
       onError: (_) => _completeSpeak(error: StateError('Local speech failed.')),
       playbackAllowed: () => _acceptCallbacks && _engineUsable,
     );
@@ -238,12 +272,18 @@ class NeuraTtsService with WidgetsBindingObserver {
     return true;
   }
 
-  void _completeSpeak({Object? error}) {
-    if (_acceptCallbacks) _finish(_playing, error: error);
+  void _completeSpeak({Object? error, bool completed = true}) {
+    if (_acceptCallbacks) {
+      _finish(_playing, error: error, completed: completed);
+    }
   }
 
-  void _finish(_TtsPlayback? playback, {Object? error, StackTrace? stack}) {
+  void _finish(_TtsPlayback? playback,
+      {Object? error, StackTrace? stack, bool completed = false}) {
     if (playback == null || playback.done.isCompleted) return;
+    if (error == null && playback.requireCompletion && !completed) {
+      error = StateError('Local startup greeting did not complete.');
+    }
     playback.deadline?.cancel();
     playback.focus?.release();
     playback.presence?.release();
@@ -473,9 +513,16 @@ class NeuraTtsService with WidgetsBindingObserver {
   }
 
   /// Waits for completion, cancellation or a bounded failure in Dart.
-  /// Startup speech remains disabled until physical Windows acceptance.
-  Future<void> speak(String text) {
+  /// Startup speech requires the separate saved startup-voice opt-in.
+  /// With [requireCompletion], skipped, rejected or cancelled speech fails
+  /// instead of authorizing the startup microphone to open.
+  Future<void> speak(String text, {bool requireCompletion = false}) {
     if (!playbackAllowed || !enabled || text.trim().isEmpty) {
+      if (requireCompletion) {
+        return Future<void>.error(
+          StateError('Local startup greeting is unavailable.'),
+        );
+      }
       return Future<void>.value();
     }
     if (_nativeUncertain) {
@@ -485,7 +532,7 @@ class NeuraTtsService with WidgetsBindingObserver {
     }
 
     final generation = ++_speechGeneration;
-    final playback = _TtsPlayback();
+    final playback = _TtsPlayback(requireCompletion: requireCompletion);
     bool current() =>
         generation == _speechGeneration && _engineUsable && enabled;
     final dispatch = _queueNative(() async {
@@ -584,6 +631,8 @@ class NeuraTtsService with WidgetsBindingObserver {
 }
 
 class _TtsPlayback {
+  _TtsPlayback({required this.requireCompletion});
+  final bool requireCompletion;
   final done = Completer<void>();
   Timer? deadline;
   NeuraAudioFocusLease? focus;

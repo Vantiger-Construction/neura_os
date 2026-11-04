@@ -1,8 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../services/neura_tts_service.dart';
+import '../services/neura_local_speech_input.dart';
+import '../services/neura_startup_voice_prefs.dart';
+import '../reliability/safe_boot.dart';
+import '../modules/chat/neura_chat_screen.dart';
 
 const _sampleText = "Hi, I'm Neura. This is what I sound like.";
 
@@ -22,6 +28,90 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
   double _pitch = 1.05;
   double _volume = 1.0;
   NeuraReplySpeechMode _replySpeechMode = NeuraReplySpeechMode.off;
+  bool _savingStartup = false;
+
+  Future<void> _setStartupVoice(bool value) async {
+    setState(() => _savingStartup = true);
+    try {
+      if (value) {
+        if (!await NeuraLocalSpeechInput.instance.isAvailable()) {
+          throw StateError('Install an on-device speech language pack first.');
+        }
+        if (defaultTargetPlatform == TargetPlatform.android &&
+            !(await Permission.microphone.request()).isGranted) {
+          throw StateError('Allow microphone access to use startup voice.');
+        }
+        if (!mounted ||
+            SafeBoot.instance.safeMode.value ||
+            SafeBoot.instance.restartRequired.value) {
+          return;
+        }
+        await NeuraTtsService.instance.prepareLocalStartupVoice();
+      }
+      await NeuraStartupVoicePrefs.instance.setEnabled(value);
+      if (value &&
+          NeuraTtsService.instance.replySpeechMode ==
+              NeuraReplySpeechMode.off) {
+        await NeuraTtsService.instance
+            .setReplySpeechMode(NeuraReplySpeechMode.afterComplete);
+      }
+      if (mounted) {
+        setState(
+            () => _replySpeechMode = NeuraTtsService.instance.replySpeechMode);
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(error is StateError
+              ? error.message.toString()
+              : 'Startup voice could not be saved. You can still type.'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _savingStartup = false);
+    }
+  }
+
+  Widget _startupVoiceControls() => ValueListenableBuilder<bool>(
+        valueListenable: NeuraStartupVoicePrefs.instance.enabled,
+        builder: (context, enabled, _) => Column(children: [
+          SwitchListTile(
+            key: const Key('startup-voice-switch'),
+            title: const Text('Voice on startup'),
+            subtitle: const Text(
+                'Open voice chat, greet you, then listen on this device. '
+                'Stops when Neura leaves the foreground. Cloud replies still need approval.'),
+            value: enabled,
+            onChanged: _savingStartup ||
+                    kIsWeb ||
+                    SafeBoot.instance.safeMode.value ||
+                    SafeBoot.instance.restartRequired.value ||
+                    (defaultTargetPlatform != TargetPlatform.windows &&
+                        defaultTargetPlatform != TargetPlatform.android)
+                ? null
+                : _setStartupVoice,
+          ),
+          if (enabled)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: OutlinedButton.icon(
+                onPressed: _savingStartup ||
+                        SafeBoot.instance.safeMode.value ||
+                        SafeBoot.instance.restartRequired.value
+                    ? null
+                    : () {
+                        Navigator.of(context).push(MaterialPageRoute<void>(
+                          builder: (_) =>
+                              const NeuraChatScreen(startWithVoice: true),
+                        ));
+                      },
+                icon: const Icon(Icons.mic),
+                label: const Text('Start voice now'),
+              ),
+            ),
+          const Divider(),
+        ]),
+      );
 
   @override
   void initState() {
@@ -106,8 +196,9 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
       appBar: AppBar(title: const Text("Neura's Voice")),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : Column(
+          : ListView(
               children: [
+                _startupVoiceControls(),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
                   child: Column(
@@ -174,28 +265,23 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
                   ),
                 ),
                 if (_voices.isEmpty)
-                  const Expanded(
-                    child: Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Text(
-                          'No voices found on this system. Windows Speech may not be installed.',
-                          textAlign: TextAlign.center,
-                        ),
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        'No voices found on this system. Windows Speech may not be installed.',
+                        textAlign: TextAlign.center,
                       ),
                     ),
                   )
                 else
-                  Expanded(
-                    child: RadioGroup<String>(
-                      groupValue: _selected,
-                      onChanged: _select,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        itemCount: _voices.length,
-                        itemBuilder: (context, index) {
-                          final voice = _voices[index];
-                          return RadioListTile<String>(
+                  RadioGroup<String>(
+                    groupValue: _selected,
+                    onChanged: _select,
+                    child: Column(
+                      children: [
+                        for (final voice in _voices)
+                          RadioListTile<String>(
                             value: voice.name,
                             title: Text(voice.name),
                             subtitle: Text(
@@ -209,9 +295,8 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
                                 _sampleText,
                               ),
                             ),
-                          );
-                        },
-                      ),
+                          )
+                      ],
                     ),
                   ),
               ],

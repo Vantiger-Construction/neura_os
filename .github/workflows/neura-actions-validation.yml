@@ -12,6 +12,8 @@ on:
       - 'tools/ci/**'
       - 'tools/compose_avatar_sources.sh'
       - 'tools/test_avatar_source_composition.py'
+      - 'tools/Publish-NeuraReleaseAssets.ps1'
+      - 'tools/Publish-NeuraReleaseAssets.Tests.ps1'
   workflow_dispatch:
 
 permissions:
@@ -53,3 +55,11 @@ jobs:
             export COMPOSER_BASH="$(cygpath -w "$BASH")"
           fi
           python tools/test_avatar_source_composition.py
+      - name: Verify release checksum containment on PowerShell Core
+        shell: pwsh
+        run: ./tools/Publish-NeuraReleaseAssets.Tests.ps1
+      - name: Verify release checksums on Windows PowerShell 5.1
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./tools/Publish-NeuraReleaseAssets.Tests.ps1
+
