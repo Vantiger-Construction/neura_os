@@ -142,22 +142,22 @@ class LegacyVaultService {
   /// Returns a **relative** path (relative to the vault root) to store in the capsule model.
   Future<String> importAttachment({
     required String capsuleId,
-    required String sourcePath,
+    required PlatformFile source,
   }) async {
-    final src = File(sourcePath);
-    if (!await src.exists()) {
-      throw StateError('Attachment file not found.');
-    }
-
     final attachDir = await capsuleAttachmentDir(capsuleId);
-    final baseName = sourcePath.split(Platform.pathSeparator).last;
+    final baseName = source.name;
     final safeName = baseName.replaceAll(RegExp(r'[^a-zA-Z0-9._ -]'), '_');
 
     // Avoid collisions.
     final stamp = DateTime.now().microsecondsSinceEpoch.toString();
     final outName = '${stamp}_$safeName';
     final out = File('${attachDir.path}/$outName');
-    await src.copy(out.path);
+    final sink = out.openWrite();
+    try {
+      await sink.addStream(source.readAsByteStream());
+    } finally {
+      await sink.close();
+    }
 
     final vault = await _vaultDir();
     final rel =
@@ -241,21 +241,21 @@ class LegacyVaultService {
   /// Optional: pick a .zip export and import it back into the local vault.
   /// This is conservative: it will **not** overwrite existing capsule IDs.
   Future<int> importVaultZipInteractive() async {
-    final result = await FilePicker.platform.pickFiles(
+    final file = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: const ['zip'],
-      withData: false,
     );
-    if (result == null || result.files.isEmpty) return 0;
-    final path = result.files.single.path;
-    if (path == null) return 0;
-    return importVaultZip(File(path));
+    if (file == null) return 0;
+    return _importVaultBytes(await file.readAsBytes());
   }
 
   /// Import from a previously exported zip.
   Future<int> importVaultZip(File zipFile) async {
     if (!await zipFile.exists()) return 0;
-    final bytes = await zipFile.readAsBytes();
+    return _importVaultBytes(await zipFile.readAsBytes());
+  }
+
+  Future<int> _importVaultBytes(List<int> bytes) async {
     final decoded = ZipDecoder().decodeBytes(bytes);
 
     final vault = await _vaultDir();

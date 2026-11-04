@@ -120,9 +120,9 @@ class WeeklySnapshotExportService {
 
   Future<void> shareFiles(List<String> paths, {String? text}) async {
     if (paths.isEmpty) return;
-    await Share.shareXFiles(
-      [for (final p in paths) XFile(p)],
+    await SharePlus.instance.share(ShareParams(
+      files: [for (final p in paths) XFile(p)],
       text: text ?? 'Neura Weekly Life Snapshot',
-    );
+    ));
   }
 }

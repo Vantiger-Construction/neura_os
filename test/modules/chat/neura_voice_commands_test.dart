@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:cross_file/cross_file.dart';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -48,7 +50,7 @@ void main() {
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     await NeuraPrefsCache.init();
-    FilePicker.platform = _ContextFilePicker();
+    FilePickerPlatform.instance = _ContextFilePicker();
   });
 
   setUp(() async {
@@ -519,24 +521,44 @@ void main() {
   });
 }
 
-class _ContextFilePicker extends FilePicker {
+class _ContextFilePicker extends FilePickerPlatform {
   @override
-  Future<FilePickerResult?> pickFiles({
+  Future<PlatformFile?> pickFile({
     String? dialogTitle,
     String? initialDirectory,
     FileType type = FileType.any,
     List<String>? allowedExtensions,
     Function(FilePickerStatus)? onFileLoading,
-    bool allowCompression = false,
     int compressionQuality = 0,
-    bool allowMultiple = false,
-    bool withData = false,
-    bool withReadStream = false,
-    bool lockParentWindow = false,
-    bool readSequential = false,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
   }) async =>
-      FilePickerResult([
-        PlatformFile(
-            name: 'notes.txt', size: 3, readStream: Stream.value([97, 98, 99])),
-      ]);
+      _ContextFile();
+}
+
+final class _ContextFile extends PlatformFile {
+  @override
+  String get name => 'notes.txt';
+
+  @override
+  Uri get uri => Uri.parse('content://selected/notes.txt');
+
+  @override
+  XFile get xFile =>
+      XFile.fromData(Uint8List.fromList([97, 98, 99]), name: name);
+
+  @override
+  int? lengthSync() => 3;
+
+  @override
+  Future<int?> length() async => lengthSync();
+
+  @override
+  Future<Uint8List> readAsBytes() async => Uint8List.fromList([97, 98, 99]);
+
+  @override
+  Stream<Uint8List> readAsByteStream() => Stream.fromFuture(readAsBytes());
 }

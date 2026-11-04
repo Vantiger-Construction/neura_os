@@ -9,6 +9,7 @@ pub mod anthropic_client;
 pub mod api;
 mod engine_session;
 mod frb_generated;
+pub mod http_client;
 pub mod local_conversation;
 pub mod local_model;
 mod local_session;

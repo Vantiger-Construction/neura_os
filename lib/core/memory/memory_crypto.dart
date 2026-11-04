@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../../services/neura_secure_storage.dart';
+
 import '../../startup/neura_prefs_cache.dart';
 
 /// App-layer encryption (AES-GCM) so memory is encrypted at rest even in plain SQLite.
@@ -12,7 +14,7 @@ class MemoryCrypto {
   static const _legacyKeySeed = 'neura.memoryGraph.seed.v1';
   static const _secureKeySeed = 'neura.memoryGraph.seed.v2';
   static const _secureKeyMarker = 'neura.memoryGraph.seed.secure.v2';
-  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
+  static const FlutterSecureStorage _secureStorage = neuraSecureStorage;
   static MemoryCrypto? _shared;
   static Future<MemoryCrypto>? _loadFuture;
   static int _generation = 0;

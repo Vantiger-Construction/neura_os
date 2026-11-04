@@ -80,8 +80,10 @@ Offline Ollama selected.
   this adapter does not fall back to an unspecified model source.
   The separately installed daemon and its model files must be trusted. Metadata
   checks are not cryptographic model verification or an OS security sandbox.
-- Files, images, recalled personal memories and earlier private-source replies
-  are rejected. Start a fresh chat if previous turns used such sources. Ollama
+- Ordinary chat rejects files, images, recalled personal memories and earlier
+  private-source replies. The separate **Offline reference shelf** can send only
+  displayed passages for one explicitly approved local answer; see
+  [the companion upgrade guide](COMPANION_NEXT_STAGE_2026_10.md). Start a fresh chat if previous turns used such sources. Ollama
   turns are not automatically written to Neura's long-term memory. Stored mood
   is excluded from the model prompt; local safety screening may still use it.
 - Input and reply guardrails remain in the main chat path. Prompt rules do not

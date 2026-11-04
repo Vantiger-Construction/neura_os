@@ -26,7 +26,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SAPI_HEAD: '4240e006949352740c5e20e50403b0188f6e4cbd'
+  SAPI_HEAD: '25369433cc5d0fce354ea230e8902ee158ac1c2d'
   # #149 was squash-merged and its feature branch was deleted.
   MOTION_HEAD: '4e66869078442392e2dde0282826c7a97c9dee74'
   MOTION_IN_BASE: 'true'
@@ -74,7 +74,7 @@ jobs:
         run: bash tools/compose_avatar_sources.sh
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
-          flutter-version: '3.47.5'
+          flutter-version: '3.47.9'
           channel: stable
           cache: true
       - name: Restore reviewed dependencies
@@ -141,7 +141,7 @@ jobs:
         run: git diff --exit-code -- lib test pubspec.lock rust/Cargo.lock
       - name: Preserve exact source composition
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: avatar-conversation-source-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: avatar-integration-source.txt

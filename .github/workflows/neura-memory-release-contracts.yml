@@ -42,7 +42,7 @@ jobs:
       matrix:
         source: [current]
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -61,7 +61,7 @@ jobs:
           git diff --cached --stat > validation/memory/integration-diff.txt
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
-          flutter-version: '3.47.5'
+          flutter-version: '3.47.9'
           channel: stable
           cache: true
       - name: Restore locked dependencies
@@ -104,7 +104,7 @@ jobs:
             lib/src/core/data_wipe_service.dart
       - name: Preserve synthetic evidence
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: neura-memory-contracts-${{ matrix.source }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: validation/memory/

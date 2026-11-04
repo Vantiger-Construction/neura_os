@@ -16,6 +16,9 @@ on:
       - 'lib/screens/neura_speech_prototype_screen.dart'
       - 'docs/FLUTTER_MOUTH_PROTOTYPE.md'
       - '.github/workflows/neura-visible-mouth.yml'
+      - 'tools/compose_avatar_sources.sh'
+      - 'tools/test_avatar_source_composition.py'
+      - '.gitattributes'
   workflow_dispatch:
 
 permissions:
@@ -26,12 +29,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SAPI_HEAD: 'fe97cf8016fe64cdc1bcb2258e1440a65aeb6299'
+  SAPI_HEAD: '25369433cc5d0fce354ea230e8902ee158ac1c2d'
   # #149 was squash-merged and its feature branch was deleted.
   MOTION_HEAD: '4e66869078442392e2dde0282826c7a97c9dee74'
   MOTION_IN_BASE: 'true'
   # #157 (conversation presence) is merged into Neura, so the base carries it.
-  BASE_HEAD: ${{ github.event.pull_request.base.sha || 'ef3d9635cd8ed4fcc0e4c8831655d2c2580e4f33' }}
+  BASE_HEAD: ${{ github.event.pull_request.base.sha || '4e66869078442392e2dde0282826c7a97c9dee74' }}
 
 jobs:
   conversation:
@@ -46,7 +49,8 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - id: checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           # Fetch only this head, never every branch: on Windows' case-
@@ -54,15 +58,27 @@ jobs:
           # `neura/` branch directory and checkout fails.
           fetch-depth: 1
           persist-credentials: false
-      # Shared, tested composer (tools/compose_avatar_sources.sh): the branch
-      # under test uses this checkout; merged motion is verified in the base.
+      - name: Initialize source diagnostics
+        if: always()
+        env:
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          printf 'Source PR head: %s\nCheckout: %s\nComposition: not started\n' "$SOURCE_HEAD" "$CHECKOUT_OUTCOME" > avatar-integration-source.txt
+      - name: Verify source-composition failure diagnostics
+        run: |
+          export COMPOSER_BASH="$BASH"
+          if [ "$RUNNER_OS" = Windows ]; then
+            export COMPOSER_BASH="$(cygpath -w "$BASH")"
+          fi
+          python tools/test_avatar_source_composition.py
       - name: Compose pinned source heads in this disposable checkout
         env:
           HEAD_REF: ${{ github.head_ref || github.ref_name }}
         run: bash tools/compose_avatar_sources.sh
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
-          flutter-version: '3.47.5'
+          flutter-version: '3.47.9'
           channel: stable
           cache: true
       - name: Restore reviewed dependencies

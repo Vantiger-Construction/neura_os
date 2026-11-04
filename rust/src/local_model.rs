@@ -114,7 +114,7 @@ impl LoopbackClient {
         {
             return Err(());
         }
-        let inner = reqwest::Client::builder()
+        let inner = crate::http_client::builder()
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(2))

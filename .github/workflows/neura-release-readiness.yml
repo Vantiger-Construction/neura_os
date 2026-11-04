@@ -29,8 +29,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  FLUTTER_VERSION: "3.47.5"
-  FLUTTER_SHA256: "0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8"
+  FLUTTER_VERSION: "3.47.9"
+  FLUTTER_SHA256: "d8e2b5977e09082c6440f89dc1aa887b94c8fbcc3b39222797046295a3f68a9e"
   POWERSHELL_VERSION: "7.4.6"
 
 jobs:
@@ -40,7 +40,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out source
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Provision pinned PowerShell Core
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         run: |
@@ -100,7 +100,7 @@ jobs:
     timeout-minutes: 120
     steps:
       - name: Check out source
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Provision pinned PowerShell Core
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         run: |
@@ -148,7 +148,7 @@ jobs:
             throw "Expected PowerShell $requiredVersion; found $installedVersion."
           }
           $installRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-      - name: Enable pinned Flutter 3.47.5
+      - name: Enable pinned Flutter 3.47.9
         shell: pwsh
         run: |
           & "$env:GITHUB_WORKSPACE\tools\Enable-NeuraFlutter.ps1" `
@@ -182,7 +182,7 @@ jobs:
           ./tools/release/Test-NeuraReleaseReadiness.ps1 @arguments
       - name: Upload verified release evidence
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Neura-release-readiness-evidence
           path: |
