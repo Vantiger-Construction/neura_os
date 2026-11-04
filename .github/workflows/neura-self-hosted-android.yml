@@ -9,6 +9,7 @@ on:
       - 'test/**'
       - 'tools/New-NeuraClientBuildConfig.ps1'
       - 'tools/Publish-NeuraReleaseAssets.ps1'
+      - 'tools/Publish-NeuraReleaseAssets.Tests.ps1'
       - 'tools/Repair-NeuraCiStorage.ps1'
       - 'tools/Repair-NeuraCiStorage.Tests.ps1'
       - 'tools/Save-NeuraConfiguredPackage.ps1'
@@ -85,6 +86,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
         env:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
+      - name: Validate release checksum handling before building
+        shell: pwsh
+        run: ./tools/Publish-NeuraReleaseAssets.Tests.ps1
       - name: Enable pinned Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:

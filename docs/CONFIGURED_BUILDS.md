@@ -34,6 +34,12 @@ storage safeguards: 16 GB free on the system/build volume, or an eligible
 non-system build volume with 12 GB plus separate SDK staging space. The hosted
 job only removes unrelated preinstalled toolchains from its disposable VM.
 
+Hosted debug builds use the disposable runner's debug keystore. Their signatures
+can differ from earlier hosted or laptop builds, so they are not guaranteed to
+update an existing installation. Stable signing and an upgrade/data-preservation
+test are required before update distribution. Do not uninstall an existing app
+with unbacked-up journals to work around a signature mismatch.
+
 The helper creates a temporary UTF-8 Dart define file and removes it after the
 job. The Flutter defines remain `SUPABASE_URL` and `SUPABASE_ANON_KEY`; the latter
 accepts the public publishable key. The workflows retain their existing tests,
