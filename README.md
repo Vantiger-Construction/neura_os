@@ -2,6 +2,13 @@
 
 This is the **merged** Neura OS Flutter project with the upgrades/patches you uploaded applied into one codebase.
 
+## GitHub coding agents
+
+Six [Neura specialist agents](docs/GITHUB_AGENTS.md) cover CI repair, privacy and
+memory, voice and avatar, offline intelligence, dependencies, and release
+readiness. Select one in GitHub's agent picker for a focused task. Shared project
+boundaries and validation commands are in [AGENTS.md](AGENTS.md).
+
 ## Included modules
 - Legacy Vault
 - Neura Spaces (rooms + map)
@@ -26,14 +33,19 @@ same fixed fixtures on a pinned local model
 are incomplete, and reflection and personal sources are not enabled.
 
 ## Quick start (Windows)
-1. Install Flutter (and Android Studio if you want APK builds)
-2. From this folder, run:
-   - `scripts\\Install-Neura-OS.bat`  (or)
-   - `scripts\\Install-Neura-OS.ps1`
+
+1. Follow the [developer guide](docs/DeveloperGuide.md) to install the SDKs and
+   Windows native build prerequisites for this branch.
+2. Run `Neura.bat` from the repository root. It repairs shortcuts, verifies or
+   builds the payload, and starts Neura through `tools/Start-Neura.ps1`.
+
+For configured packages, see [build configuration](docs/CONFIGURED_BUILDS.md).
+An Actions artifact is a development candidate until its identity and relevant
+platform/device checks have been verified.
 
 ## Manual commands
 ```bash
-flutter pub get
+flutter pub get --enforce-lockfile
 flutter run
 # Release build:
 flutter build apk --release
@@ -47,6 +59,10 @@ The Voice Lab screen lets you:
 - Play a voice clip
 - Toggle live microphone mouth/viseme driver (offline)
 
-## Notes
-- Android/iOS permission files may need to be added depending on the Flutter template you deploy into.
-- If you already have a fuller Android/ios folder in your main repo, drop this `lib/` + `assets/` + `pubspec.yaml` in and run `flutter pub get`.
+## Contributing and support
+
+Use [CONTRIBUTING.md](CONTRIBUTING.md) for the PR workflow and
+[SUPPORT.md](SUPPORT.md) for bug reports and questions. Report vulnerabilities
+privately using [SECURITY.md](SECURITY.md). The
+[repository setup guide](docs/GITHUB_REPOSITORY_SETUP.md) records merge checks
+and remaining account prerequisites.

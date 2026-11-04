@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security or privacy vulnerability privately
+    url: https://github.com/Vantiger-Construction/neura_os/security/advisories/new
+    about: Use private reporting for suspected vulnerabilities.
+  - name: Questions and discussion
+    url: https://github.com/Vantiger-Construction/neura_os/discussions
+    about: Ask non-sensitive usage questions and discuss ideas.

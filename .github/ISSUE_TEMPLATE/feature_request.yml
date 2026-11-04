@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose an improvement with a clear outcome and acceptance criteria.
+title: '[Feature] '
+body:
+  - type: markdown
+    attributes:
+      value: Describe the need using sample information. A request does not authorize private-data access, background microphone capture or cloud submission.
+  - type: textarea
+    id: need
+    attributes:
+      label: What would this help you do?
+      description: Describe the problem and who benefits.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Proposed behavior
+      description: Include the platform and any simpler alternative.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: How would we know it works?
+      description: Give observable acceptance criteria, including cancellation or offline behavior where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Privacy, accessibility and device constraints
+      description: Mention relevant consent, retention, reduced motion, memory or storage limits.

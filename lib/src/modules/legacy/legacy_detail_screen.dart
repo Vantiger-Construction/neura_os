@@ -153,10 +153,10 @@ class _LegacyDetailScreenState extends State<LegacyDetailScreen> {
         decryptIfPossible: true,
         context: context,
       );
-      await Share.shareXFiles(
-        [xfile],
+      await SharePlus.instance.share(ShareParams(
+        files: [xfile],
         text: 'Neura Legacy Letter — ${c.title.isEmpty ? 'capsule' : c.title}',
-      );
+      ));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -172,10 +172,10 @@ class _LegacyDetailScreenState extends State<LegacyDetailScreen> {
         decryptIfPossible: true,
         context: context,
       );
-      await Share.shareXFiles(
-        [xfile],
+      await SharePlus.instance.share(ShareParams(
+        files: [xfile],
         text: 'Neura Legacy Packet — ${c.title.isEmpty ? 'capsule' : c.title}',
-      );
+      ));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -218,8 +218,8 @@ class _LegacyDetailScreenState extends State<LegacyDetailScreen> {
         passphrase: pass,
         decrypted: decrypted,
       );
-      await Share.shareXFiles([XFile(file.path)],
-          text: 'Legacy Capsule export (.json)');
+      await SharePlus.instance.share(ShareParams(
+          files: [XFile(file.path)], text: 'Legacy Capsule export (.json)'));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -351,8 +351,9 @@ class _LegacyDetailScreenState extends State<LegacyDetailScreen> {
                             onTap: () async {
                               final f = await LegacyVaultService.instance
                                   .resolveAttachmentFile(p);
-                              await Share.shareXFiles([XFile(f.path)],
-                                  text: 'Attachment from Legacy Capsule');
+                              await SharePlus.instance.share(ShareParams(
+                                  files: [XFile(f.path)],
+                                  text: 'Attachment from Legacy Capsule'));
                             },
                           ),
                         ),

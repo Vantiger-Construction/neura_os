@@ -1,4 +1,4 @@
-# local_auth_windows 1.0.11 mixes C++20 with legacy /await. Its source also
+# local_auth_windows 2.0.2 mixes C++20 with legacy /await. Its source also
 # returns a value from a coroutine, and routes a native COM IID through a
 # constexpr __uuidof conversion that CodeQL 2.27.3 cannot extract. Build the
 # same reviewed source correction in production and security builds. Never
@@ -8,7 +8,7 @@ function(neura_prepare_local_auth_source source output_dir)
   string(REPLACE "\r\n" "\n" original "${original}")
   string(SHA256 source_sha "${original}")
   if(NOT source_sha STREQUAL
-      "3bc3e319fc1e5b9a6eb7f538ea232e43fd3a2cfcbe5cd34d74aa576c89a72b7d")
+      "5d95868f9f8ac2c937a8f0249f7e4584373e4151f82ad71827f15f5e8d5c8c9f")
     message(FATAL_ERROR
       "local_auth_windows source changed; review the C++20/COM correction before building")
   endif()
@@ -28,12 +28,17 @@ function(neura_prepare_local_auth_source source output_dir)
         user_consent_verifier_interop.put_void()));]=] patched "${patched}")
   string(REPLACE "    return consent_result;" "    co_return consent_result;"
     patched "${patched}")
+  if(patched MATCHES "winrt::impl::com_ref<IUserConsentVerifierInterop>" OR
+      NOT patched MATCHES "::RoGetActivationFactory" OR
+      NOT patched MATCHES "co_return consent_result;")
+    message(FATAL_ERROR "Expected complete local_auth coroutine/COM correction")
+  endif()
 
   file(MAKE_DIRECTORY "${output_dir}")
   file(WRITE "${output_dir}/local_auth_plugin.cpp" "${patched}")
   string(SHA256 patched_sha "${patched}")
   file(WRITE "${output_dir}/local_auth_source_receipt.txt"
-    "local_auth_windows 1.0.11\nupstream_sha256=${source_sha}\nbuild_sha256=${patched_sha}\n")
+    "local_auth_windows 2.0.2\nupstream_sha256=${source_sha}\nbuild_sha256=${patched_sha}\n")
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${source}")
 endfunction()
 

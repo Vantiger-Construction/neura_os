@@ -4,10 +4,10 @@
 `digest 0.10`. The advisory's patched version is `block-buffer 0.12.1`:
 https://github.com/advisories/GHSA-qwgh-2vcv-g2f7
 
-The pinned `flutter_rust_bridge_macros 2.12.0` requires `md-5 ^0.10.6`.
-`axum 0.7.9` and `tungstenite 0.24.0` require `sha1 ^0.10`. Those upstream
-constraints cannot resolve the patched buffer generation. Updating the entire
-Flutter bridge or WebSocket framework would also change unrelated APIs.
+The pinned `flutter_rust_bridge_macros 2.13.0` requires `md-5 ^0.10.6`.
+`axum 0.8.9` and its transitive `tungstenite 0.29.0` require `sha1 ^0.10`. Those upstream
+constraints cannot resolve the patched buffer generation. The directly used `tungstenite 0.30.0` already uses the patched generation,
+but Axum still needs the SHA-1 adapter.
 
 The two **local, unpublished** `0.10.99` adapter packages satisfy those
 consumers' version constraints and re-export the unmodified registry releases

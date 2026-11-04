@@ -28,6 +28,10 @@ class NeuraTtsLifecycle {
       stream_ = 0;
     }
   }
+  // True only for events from the active utterance's own SAPI stream.
+  bool Owns(uint32_t stream) const {
+    return state_ == "speaking" && stream_ != 0 && stream == stream_;
+  }
   void Fail() {
     failed_ = true;
     stream_ = 0;

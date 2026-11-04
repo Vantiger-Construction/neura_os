@@ -1,13 +1,15 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'neura_secure_storage.dart';
+
 import 'neura_provider_credentials.dart' show NeuraCredentialStorage;
 import '../startup/neura_prefs_cache.dart';
 
 class _SecureScheduledBackupStorage implements NeuraCredentialStorage {
   const _SecureScheduledBackupStorage();
 
-  static const FlutterSecureStorage _storage = FlutterSecureStorage();
+  static const FlutterSecureStorage _storage = neuraSecureStorage;
 
   @override
   Future<String?> read({required String key}) => _storage.read(key: key);

@@ -1,0 +1,75 @@
+name: Neura source quality
+
+on:
+  pull_request:
+    branches: [Neura]
+  push:
+    branches: [Neura]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-source-quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter:
+    name: Flutter formatting and strict analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source without persistent credentials
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Read the branch's existing Flutter pin
+        id: toolchain
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          source = Path('.github/workflows/neura-coverage.yml').read_text()
+          versions = re.findall(
+              r'^  FLUTTER_VERSION: [\'\"]([0-9]+\.[0-9]+\.[0-9]+)[\'\"]\s*$',
+              source, re.MULTILINE,
+          )
+          if len(versions) != 1:
+              raise SystemExit('Expected one exact FLUTTER_VERSION in coverage CI')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print(f'flutter_version={versions[0]}', file=output)
+          PY
+      - name: Install the matching Flutter SDK
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ steps.toolchain.outputs.flutter_version }}
+          channel: stable
+          cache: true
+      - name: Restore locked dependencies and the committed analyzer policy
+        shell: bash
+        run: |
+          flutter config --no-analytics
+          flutter pub get --enforce-lockfile
+          git diff --exit-code -- pubspec.lock
+          # Flutter's project migration may add analyzer excludes during pub get.
+          # Analyze with the exact reviewed policy, including its platform scope.
+          git restore --source=HEAD -- analysis_options.yaml
+      - name: Check all application and test formatting
+        run: dart format --output=none --set-exit-if-changed lib test
+      - name: Require zero analyzer errors, warnings and infos
+        run: dart analyze --fatal-infos
+      - name: Record the analyzed source
+        shell: bash
+        run: |
+          {
+            echo '### Flutter source quality'
+            echo "Commit: $(git rev-parse HEAD)"
+            echo "Tree: $(git rev-parse HEAD^{tree})"
+            flutter --version
+            echo 'Formatting and strict analysis passed using the committed analyzer policy.'
+            echo 'Application tests, native builds and physical acceptance have separate checks.'
+          } >> "$GITHUB_STEP_SUMMARY"

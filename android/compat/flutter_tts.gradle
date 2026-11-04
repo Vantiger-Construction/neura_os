@@ -4,7 +4,7 @@ def args = ["-Xlint:deprecation"]
 group 'com.eyedeadevelopment.fluttertts'
 version '1.0-SNAPSHOT'
 
-ext.kotlin_version = '2.2.20'
+ext.kotlin_version = '2.4.21'
 
 rootProject.allprojects {
     repositories {

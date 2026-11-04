@@ -36,7 +36,7 @@ class _AuthGuardState extends State<AuthGuard> {
           !kIsWeb && defaultTargetPlatform != TargetPlatform.windows;
       return await _auth.authenticate(
         localizedReason: 'Please authenticate to open Neura',
-        options: AuthenticationOptions(biometricOnly: biometricOnly),
+        biometricOnly: biometricOnly,
       );
     } catch (e) {
       return false;

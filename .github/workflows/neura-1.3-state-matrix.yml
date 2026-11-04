@@ -17,8 +17,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  FLUTTER_VERSION: "3.47.5"
-  FLUTTER_SHA256: "0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8"
+  FLUTTER_VERSION: "3.47.9"
+  FLUTTER_SHA256: "d8e2b5977e09082c6440f89dc1aa887b94c8fbcc3b39222797046295a3f68a9e"
 
 jobs:
   state-matrix:
@@ -73,7 +73,7 @@ jobs:
               }
             }
           }
-          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.47.5'
+          $pubCache = Join-Path $env:RUNNER_TOOL_CACHE 'neura-dependencies\pub-cache-flutter-3.47.9'
           New-Item -ItemType Directory -Path $workspace -Force | Out-Null
           New-Item -ItemType Directory -Path $pubCache -Force | Out-Null
           New-Item -ItemType Directory -Path (Join-Path $root 'temp') -Force | Out-Null
@@ -87,7 +87,7 @@ jobs:
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Check out source
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: source
 
