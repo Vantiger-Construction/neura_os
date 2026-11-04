@@ -3,7 +3,8 @@ using UnityEngine;
 
 namespace Neura.Presence
 {
-    // Standalone synthetic harness. This is not a live app bridge or an IPC host.
+    // Standalone presence harness. It hosts no listener or IPC; live input arrives
+    // only through the separate, opt-in Bridge assembly calling ApplyLiveSnapshot.
     public sealed class PresencePrototype : MonoBehaviour
     {
         private static readonly string[] Rooms = {
@@ -71,7 +72,14 @@ namespace Neura.Presence
         }
 
         // Call only on Unity's main thread. No listener, polling, file input or queue.
-        public bool ApplySyntheticSnapshot(string json)
+        public bool ApplySyntheticSnapshot(string json) { return ApplySnapshot(json); }
+
+        // Entry point for the opt-in, launcher-authorized relay bridge
+        // (Assets/Presence/Bridge). Same guards as synthetic input: main
+        // thread only, refused while unfocused or paused, strictly validated.
+        public bool ApplyLiveSnapshot(string json) { return ApplySnapshot(json); }
+
+        private bool ApplySnapshot(string json)
         {
             if (!isActiveAndEnabled || !hasFocus || paused)
             {

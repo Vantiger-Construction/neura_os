@@ -1,0 +1,73 @@
+name: Neura presence bridge
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths:
+      - 'prototypes/unity-presence/**'
+      - 'rust/src/presence_relay.rs'
+      - 'rust/src/bin/neura_api.rs'
+      - 'rust/src/ipc_tests.rs'
+      - 'rust/Cargo.toml'
+      - 'rust/Cargo.lock'
+      - 'lib/avatar/neura_avatar_runtime_bridge.dart'
+      - 'lib/avatar/presence_relay/**'
+      - 'lib/neura_shell/models/neura_room*.dart'
+      - 'lib/services/neura_companion_presence.dart'
+      - 'lib/src/shell/shell_prefs.dart'
+      - 'tools/Start-NeuraPresenceBridge.ps1'
+      - '.github/workflows/neura-presence-bridge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-presence-bridge-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  RUST_VERSION: '1.99.0'
+
+jobs:
+  bridge:
+    name: Presence bridge contract and end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Install Mono and Rust
+        run: |
+          set -euo pipefail
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends mono-mcs mono-runtime libmono-system4.0-cil
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
+
+      - name: Unity core and live-bridge protocol scenarios
+        run: bash prototypes/unity-presence/Tools/run_core_tests.sh
+
+      - name: Dart producer, schema and bridge isolation audit
+        run: python3 prototypes/unity-presence/Tools/verify_contract.py
+
+      - name: neura_api presence relay tests
+        run: cargo test --manifest-path rust/Cargo.toml --locked --bin neura_api presence
+
+      - name: Real relay end-to-end with the Unity relay client
+        run: bash prototypes/unity-presence/Tools/run_bridge_e2e.sh
+
+      - name: Launcher parses
+        shell: pwsh
+        run: |
+          $tokens = $null; $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path tools/Start-NeuraPresenceBridge.ps1), [ref]$tokens, [ref]$errors)
+          if ($errors) { $errors | ForEach-Object { Write-Error $_.ToString() }; exit 1 }

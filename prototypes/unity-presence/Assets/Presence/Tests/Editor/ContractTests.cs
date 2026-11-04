@@ -10,6 +10,9 @@ namespace Neura.Presence.Tests
         [TestCaseSource(typeof(ContractCases), nameof(ContractCases.Names))]
         public void ContractScenario(string name) { ContractCases.Run(name); }
 
+        [TestCaseSource(typeof(BridgeCases), nameof(BridgeCases.Names))]
+        public void BridgeScenario(string name) { BridgeCases.Run(name); }
+
         [Test]
         public void BootstrapSceneAndShaderArePresent()
         {

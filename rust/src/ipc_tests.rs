@@ -26,10 +26,25 @@ impl Server {
     }
 
     async fn start_with(adapter: Adapter) -> Self {
+        Self::start_router(|session| app_with(session, adapter)).await
+    }
+
+    async fn start_presence(ttl: Duration, keepalive: Duration) -> Self {
+        Self::start_router(|session| {
+            app_with_presence(
+                session,
+                Adapter::Echo,
+                Some(PresenceHub::new(ttl, keepalive)),
+            )
+        })
+        .await
+    }
+
+    async fn start_router(make: impl FnOnce(Session) -> Router) -> Self {
         let session = Session::new("ab".repeat(32)).unwrap();
         let listener = bind_local("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
-        let router = app_with(session.clone(), adapter);
+        let router = make(session.clone());
         let task = tokio::spawn(async move {
             axum::serve(
                 listener,
@@ -995,4 +1010,225 @@ async fn a_run_cancelled_immediately_is_still_recorded() {
     let run = local.last_run().unwrap();
     assert_eq!(run.fixture, "hello");
     assert_eq!(run.outcome, "cancelled");
+}
+
+// ---- Opt-in avatar presence relay -------------------------------------------
+
+const RELAY_TTL: Duration = Duration::from_millis(600);
+const RELAY_KEEPALIVE: Duration = Duration::from_millis(200);
+
+fn presence_snapshot(phase: &str) -> Value {
+    json!({"v":1,"room_id":"mood_den","phase":phase,"stance":"grounding",
+           "motion":"subtle","scale":"standard","safe_mode":false})
+}
+
+async fn receive_raw(socket: &mut ClientSocket) -> String {
+    let message = timeout(TEST_TIMEOUT, socket.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let ClientMessage::Text(text) = message else {
+        panic!("expected an envelope");
+    };
+    text
+}
+
+/// Next presence frame, skipping keepalive repeats of `skip_same`.
+async fn next_presence(socket: &mut ClientSocket, skip_same: Option<&Value>) -> Value {
+    loop {
+        let frame = receive(socket).await;
+        if skip_same
+            .is_some_and(|same| frame["kind"] == "avatar_presence" && &frame["data"] == same)
+        {
+            continue;
+        }
+        return frame;
+    }
+}
+
+async fn assert_no_frame_within(socket: &mut ClientSocket, window: Duration) {
+    assert!(
+        timeout(window, socket.next()).await.is_err(),
+        "unexpected frame"
+    );
+}
+
+#[tokio::test]
+async fn presence_relay_is_unsupported_unless_enabled() {
+    let server = Server::start().await;
+    let mut socket = server.connect().await;
+    send(&mut socket, "hello", json!({})).await;
+    assert_eq!(receive(&mut socket).await["data"]["presence_relay"], false);
+    for kind in ["presence_subscribe", "presence_publish", "presence_clear"] {
+        send(&mut socket, kind, presence_snapshot("idle")).await;
+        let reply = receive(&mut socket).await;
+        assert_eq!(reply["kind"], "error", "{kind}");
+        assert_eq!(
+            reply["data"]["message"],
+            "unsupported event; synthetic inputs only"
+        );
+    }
+}
+
+#[tokio::test]
+async fn presence_relay_delivers_latest_snapshot_with_a_pinned_envelope_layout() {
+    let server = Server::start_presence(RELAY_TTL, Duration::from_secs(30)).await;
+    let mut unity = server.connect().await;
+    send(&mut unity, "hello", json!({})).await;
+    assert_eq!(receive(&mut unity).await["data"]["presence_relay"], true);
+    send(&mut unity, "presence_subscribe", json!({})).await;
+    let first = receive(&mut unity).await;
+    assert_eq!(first["kind"], "avatar_presence_cleared");
+    assert_eq!(first["data"]["reason"], "no_publisher");
+
+    let mut app = server.connect().await;
+    send(&mut app, "presence_publish", presence_snapshot("thinking")).await;
+    // The Unity receiver relies on this exact prefix and key order.
+    let raw = receive_raw(&mut unity).await;
+    assert!(
+        raw.starts_with(r#"{"v":1,"kind":"avatar_presence","id":""#),
+        "{raw}"
+    );
+    let id_end = raw.find(r#"","data":{"#).expect("data follows id");
+    assert_eq!(
+        id_end - r#"{"v":1,"kind":"avatar_presence","id":""#.len(),
+        36
+    );
+    assert!(raw.ends_with('}'));
+    let frame: Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(frame["data"], presence_snapshot("thinking"));
+
+    // An unchanged heartbeat is coalesced; a change is delivered.
+    send(&mut app, "presence_publish", presence_snapshot("thinking")).await;
+    assert_no_frame_within(&mut unity, Duration::from_millis(150)).await;
+    send(&mut app, "presence_publish", presence_snapshot("speaking")).await;
+    let changed = receive(&mut unity).await;
+    assert_eq!(changed["data"]["phase"], "speaking");
+}
+
+#[tokio::test]
+async fn presence_relay_keepalive_staleness_and_resync() {
+    let server = Server::start_presence(RELAY_TTL, RELAY_KEEPALIVE).await;
+    let mut unity = server.connect().await;
+    send(&mut unity, "presence_subscribe", json!({})).await;
+    assert_eq!(receive(&mut unity).await["kind"], "avatar_presence_cleared");
+    let mut app = server.connect().await;
+    let snap = presence_snapshot("idle");
+    send(&mut app, "presence_publish", snap.clone()).await;
+    assert_eq!(receive(&mut unity).await["data"], snap);
+    // Keepalive repeats the live snapshot while it is fresh.
+    let repeat = receive(&mut unity).await;
+    assert_eq!(
+        (repeat["kind"].as_str(), &repeat["data"]),
+        (Some("avatar_presence"), &snap)
+    );
+
+    // A publisher that stops republishing goes stale once.
+    let stale = next_presence(&mut unity, Some(&snap)).await;
+    assert_eq!(stale["kind"], "avatar_presence_cleared");
+    assert_eq!(stale["data"]["reason"], "stale");
+    assert_no_frame_within(&mut unity, RELAY_KEEPALIVE * 2).await;
+
+    // Republishing restores it; subscribing again resends the current state.
+    send(&mut app, "presence_publish", snap.clone()).await;
+    assert_eq!(receive(&mut unity).await["data"], snap);
+    send(&mut unity, "presence_subscribe", json!({})).await;
+    assert_eq!(receive(&mut unity).await["data"], snap);
+}
+
+#[tokio::test]
+async fn presence_relay_fails_closed_on_invalid_input_and_canonicalizes_safe_mode() {
+    let server = Server::start_presence(Duration::from_secs(30), Duration::from_secs(30)).await;
+    let mut unity = server.connect().await;
+    send(&mut unity, "presence_subscribe", json!({})).await;
+    receive(&mut unity).await;
+    let mut app = server.connect().await;
+    send(&mut app, "presence_publish", presence_snapshot("speaking")).await;
+    assert_eq!(receive(&mut unity).await["kind"], "avatar_presence");
+
+    let mut leaked = presence_snapshot("speaking");
+    leaked["journal"] = json!("private text");
+    send(&mut app, "presence_publish", leaked).await;
+    let error = receive(&mut app).await;
+    assert_eq!(error["data"]["message"], "invalid presence snapshot");
+    assert!(!error.to_string().contains("private text"));
+    let cleared = receive(&mut unity).await;
+    assert_eq!(cleared["kind"], "avatar_presence_cleared");
+    assert_eq!(cleared["data"]["reason"], "no_publisher");
+
+    let mut unsafe_motion = presence_snapshot("idle");
+    unsafe_motion["safe_mode"] = json!(true);
+    unsafe_motion["motion"] = json!("expressive");
+    send(&mut app, "presence_publish", unsafe_motion).await;
+    let safe = receive(&mut unity).await["data"].clone();
+    assert_eq!(
+        (safe["phase"].as_str(), safe["motion"].as_str()),
+        (Some("safeMode"), Some("still"))
+    );
+
+    send(&mut app, "presence_clear", json!({})).await;
+    assert_eq!(receive(&mut unity).await["kind"], "avatar_presence_cleared");
+}
+
+#[tokio::test]
+async fn presence_relay_has_one_publisher_and_fixed_roles() {
+    let server = Server::start_presence(Duration::from_secs(30), Duration::from_secs(30)).await;
+    let mut unity = server.connect().await;
+    send(&mut unity, "presence_subscribe", json!({})).await;
+    receive(&mut unity).await;
+    send(&mut unity, "presence_publish", presence_snapshot("idle")).await;
+    assert_eq!(
+        receive(&mut unity).await["data"]["message"],
+        "presence subscriber cannot publish"
+    );
+
+    let mut app = server.connect().await;
+    send(&mut app, "presence_publish", presence_snapshot("idle")).await;
+    assert_eq!(receive(&mut unity).await["kind"], "avatar_presence");
+    send(&mut app, "presence_subscribe", json!({})).await;
+    assert_eq!(
+        receive(&mut app).await["data"]["message"],
+        "presence publisher cannot subscribe"
+    );
+
+    let mut rival = server.connect().await;
+    send(
+        &mut rival,
+        "presence_publish",
+        presence_snapshot("speaking"),
+    )
+    .await;
+    assert_eq!(
+        receive(&mut rival).await["data"]["message"],
+        "presence publisher already active"
+    );
+
+    // The publisher disconnecting withdraws presence and frees the slot.
+    drop(app);
+    let cleared = receive(&mut unity).await;
+    assert_eq!(cleared["kind"], "avatar_presence_cleared");
+    send(
+        &mut rival,
+        "presence_publish",
+        presence_snapshot("speaking"),
+    )
+    .await;
+    assert_eq!(receive(&mut unity).await["data"]["phase"], "speaking");
+}
+
+#[tokio::test]
+async fn presence_relay_requires_the_session_token_and_ends_on_revocation() {
+    let server = Server::start_presence(Duration::from_secs(30), Duration::from_secs(30)).await;
+    assert_rejected(server.request(None), StatusCode::UNAUTHORIZED).await;
+    assert_rejected(
+        server.request(Some(&"cd".repeat(32))),
+        StatusCode::UNAUTHORIZED,
+    )
+    .await;
+    let mut unity = server.connect().await;
+    send(&mut unity, "presence_subscribe", json!({})).await;
+    receive(&mut unity).await;
+    server.session.revoke();
+    assert_closed_without_completion(&mut unity).await;
 }

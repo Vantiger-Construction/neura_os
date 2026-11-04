@@ -3,9 +3,11 @@
 Experimental Unity project, separate from the Flutter application, native
 launchers, installers and release workflows. It consumes the existing
 [`NeuraAvatarRuntimeSnapshot.toJson()`](../../lib/avatar/neura_avatar_runtime_bridge.dart)
-v1 presentation shape through **manual synthetic input only**. It has no live
-transport and is not enabled in Neura. Physical-device acceptance of the
-existing app remains the release priority.
+v1 presentation shape through manual synthetic input, or, when started by
+`tools/Start-NeuraPresenceBridge.ps1`, through the opt-in, token-authorized
+**live presence bridge** (see [Live presence bridge](#live-presence-bridge)).
+Without that launcher it has no live transport. Physical-device acceptance of
+the existing app remains the release priority.
 
 ## What is implemented
 
@@ -26,9 +28,11 @@ existing app remains the release priority.
 - Boot, focus changes, pause, disable and reset return to safe Still. The
   local Safe Mode override wins over all incoming synthetic states. Returning
   to the foreground or releasing the override requires a fresh valid input.
-- The prototype code has no microphone, audio playback, network, user-file,
-  credential, conversation, journal, private-memory or action-service access.
-  Its runtime assembly depends only on the pure contract core and Unity.
+- The prototype's Core and Runtime assemblies have no microphone, audio
+  playback, network, user-file, credential, conversation, journal,
+  private-memory or action-service access, and depend only on the pure
+  contract core and Unity. Networking lives only in the separate Bridge
+  assemblies, which the contract audit keeps isolated.
 
 ## Open the project
 
@@ -137,10 +141,39 @@ feet-aligned and within the stage at all scales. The prototype owns its
 transforms; third-party scripts, Animator/root motion, lip-sync and autonomous
 behaviors are outside this seam and need separate review and safety tests.
 
-No legacy command server, audio subsystem, avatar model download, Unity player
-launcher or Flutter subscription has been added. A future live bridge needs
-its own lifecycle, session authorization and freshness design; do not turn
-`ApplySyntheticSnapshot` into a listener as part of release packaging.
+No legacy command server, audio subsystem or avatar model download has been
+added. `ApplySyntheticSnapshot` remains a direct call, never a listener.
+
+## Live presence bridge
+
+The live bridge has its own lifecycle, session authorization and freshness
+design, documented in [`docs/NEURA_PRESENCE_BRIDGE.md`](../../docs/NEURA_PRESENCE_BRIDGE.md):
+
+- **Off by default.** `PresenceLiveBridge` attaches itself after scene load
+  only when the launcher set `NEURA_PRESENCE_RELAY_ADDR` and
+  `NEURA_PRESENCE_TOKEN`. The scene and Runtime assembly are unchanged apart
+  from the `ApplyLiveSnapshot` entry point, which shares every
+  `ApplySyntheticSnapshot` guard.
+- **Authorized.** It subscribes to `neura_api`'s presence relay with the same
+  loopback-only, constant-time bearer session the app uses. The token comes
+  only from the launcher's child environment and is never stored or shown.
+- **Fail-closed.** Connects, drops, cleared or invalid frames, focus loss,
+  pause and 8 s of silence all return to safe Still; motion resumes only on a
+  fresh, strictly validated snapshot.
+- **Isolated.** `Bridge/Protocol` (pure C#, WebSockets only) and `Bridge/Live`
+  are separate assemblies excluded from WebGL; Core and Runtime never
+  reference them, which `verify_contract.py` enforces.
+
+Repeat the bridge checks (Mono and Cargo required):
+
+```bash
+bash prototypes/unity-presence/Tools/run_core_tests.sh     # includes 9 bridge scenarios
+bash prototypes/unity-presence/Tools/run_bridge_e2e.sh     # real neura_api relay end to end
+```
+
+Still to do in the Editor: run the new `BridgeScenario` EditMode cases, then
+start the stage through the launcher and confirm the status line reaches
+`live` and follows Neura's phase changes.
 
 Remaining acceptance: approve the avatar/rights and pinned local importer,
 import and save a verified prefab, run Editor tests and visual QA, validate
