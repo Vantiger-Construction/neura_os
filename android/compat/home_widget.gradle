@@ -1,8 +1,10 @@
-// Built-in Kotlin migration of home_widget 0.7.0+1; package sources unchanged.
+// Built-in Kotlin migration of home_widget 0.10.0; package sources unchanged.
+// Its bundled AGP 8 classpath still selects the external KGP branch under our
+// legacy AGP DSL. Match the app compiler and current AndroidX compile SDK.
 group 'es.antonborri.home_widget'
 version '1.0-SNAPSHOT'
 
-ext.kotlin_version = '1.9.0'
+ext.kotlin_version = '2.4.21'
 
 rootProject.allprojects {
     repositories {
@@ -14,17 +16,14 @@ rootProject.allprojects {
 apply plugin: 'com.android.library'
 
 android {
-    // Conditional for compatibility with AGP <4.2.
-    if (project.android.hasProperty("namespace")) {
-        namespace 'es.antonborri.home_widget'
-    }
-    compileSdk 34
+    namespace 'es.antonborri.home_widget'
+    compileSdk 37
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
     }
     defaultConfig {
-        minSdkVersion 16
+        minSdkVersion 23
     }
     lintOptions {
         disable 'InvalidPackage'
@@ -35,13 +34,16 @@ android {
     }
 }
 
-dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
-    implementation 'androidx.glance:glance-appwidget:1.0.0'
-}
-
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8
     }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+    api "androidx.glance:glance-appwidget:1.2.0"
+    implementation "androidx.core:core:1.13.1"
+    implementation "androidx.work:work-runtime-ktx:2.11.2"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2"
 }

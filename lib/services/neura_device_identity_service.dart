@@ -5,6 +5,8 @@ import 'dart:math';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'neura_secure_storage.dart';
+
 import '../startup/neura_prefs_cache.dart';
 
 /// This device's own signing identity for the Trusted Devices pairing flow
@@ -22,7 +24,7 @@ class NeuraDeviceIdentityService {
   static const _kPublicKeyKey = 'neura.device_identity.public_key';
   static const _kPrivateKeySecureKey = 'neura.device_identity.private_key.v1';
 
-  static const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
+  static const FlutterSecureStorage _secureStorage = neuraSecureStorage;
   static final _algorithm = Ed25519();
 
   String? _deviceId;

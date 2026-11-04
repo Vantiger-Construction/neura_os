@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'neura_secure_storage.dart';
+
 import 'neura_model_types.dart';
 
 abstract interface class NeuraModelCredentialStorage {
@@ -12,7 +14,7 @@ abstract interface class NeuraModelCredentialStorage {
 class NeuraSecureModelCredentialStorage implements NeuraModelCredentialStorage {
   const NeuraSecureModelCredentialStorage();
 
-  static const FlutterSecureStorage _storage = FlutterSecureStorage();
+  static const FlutterSecureStorage _storage = neuraSecureStorage;
 
   @override
   Future<String?> read({required String key}) => _storage.read(key: key);

@@ -87,7 +87,7 @@ async fn assert_rejected(request: axum::http::Request<()>, expected: StatusCode)
 async fn send(socket: &mut ClientSocket, kind: &str, data: Value) {
     socket
         .send(ClientMessage::Text(
-            json!({"v":1,"kind":kind,"data":data}).to_string(),
+            json!({"v":1,"kind":kind,"data":data}).to_string().into(),
         ))
         .await
         .unwrap();
@@ -306,7 +306,10 @@ async fn cancel_closes_the_connection_without_a_late_completion_or_replay() {
 #[tokio::test]
 async fn revocation_requires_auth_and_ends_all_current_and_future_access() {
     let server = Server::start().await;
-    let http = reqwest::Client::builder().no_proxy().build().unwrap();
+    let http = neura_swarm::http_client::builder()
+        .no_proxy()
+        .build()
+        .unwrap();
     let endpoint = format!("http://{}/session/revoke", server.address);
     let unauthorized = http.post(&endpoint).send().await.unwrap();
     assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
@@ -373,7 +376,9 @@ async fn oversized_inbound_messages_close_the_connection() {
     let server = Server::start().await;
     let mut socket = server.connect().await;
     socket
-        .send(ClientMessage::Text("x".repeat(MAX_MESSAGE_BYTES + 1)))
+        .send(ClientMessage::Text(
+            "x".repeat(MAX_MESSAGE_BYTES + 1).into(),
+        ))
         .await
         .unwrap();
     assert_closed_without_completion(&mut socket).await;

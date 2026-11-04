@@ -39,9 +39,9 @@ defaults:
     shell: bash
 
 env:
-  FLUTTER_VERSION: '3.47.5'
+  FLUTTER_VERSION: '3.47.9'
   # Same compiler used by the current hosted Rust adapter validation.
-  RUST_VERSION: '1.99.0'
+  RUST_VERSION: '1.99.1'
 
 jobs:
   flutter:
@@ -50,11 +50,11 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Check out source
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Use Python for dependency-free reports
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
       - name: Validate report accuracy and failure handling
@@ -83,7 +83,7 @@ jobs:
             --commit "$GITHUB_SHA" --test-outcome "$COVERAGE_TEST_OUTCOME"
       - name: Preserve Flutter coverage reports
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: neura-flutter-coverage-${{ github.run_id }}-${{ github.run_attempt }}
           path: coverage/flutter/
@@ -108,11 +108,11 @@ jobs:
       COVERAGE_REPORT_DIR: coverage/rust-${{ matrix.os }}
     steps:
       - name: Check out source
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Use Python for dependency-free reports
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
       - name: Validate report accuracy and failure handling
@@ -126,7 +126,7 @@ jobs:
           cargo --version
       - name: Install pinned prebuilt cargo-llvm-cov
         # taiki-e/install-action v2.87.27; checksum/attestation verification stays enabled.
-        uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe
+        uses: taiki-e/install-action@1919c4a95903d2c33e4a221102edca87309fc14b # v2.89.0
         with:
           tool: cargo-llvm-cov@0.9.1
       - name: Run all existing Rust targets once with instrumentation
@@ -150,7 +150,7 @@ jobs:
             --commit "$GITHUB_SHA" --test-outcome "$COVERAGE_TEST_OUTCOME"
       - name: Preserve Rust coverage reports
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: neura-rust-coverage-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ env.COVERAGE_REPORT_DIR }}/
