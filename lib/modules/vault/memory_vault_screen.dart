@@ -8,6 +8,7 @@ import '../../widgets/neura_explain.dart';
 import 'memory_vault_models.dart';
 import 'memory_vault_store.dart';
 import 'vault_session.dart';
+import 'backup_restore_screen.dart';
 
 class MemoryVaultScreen extends StatefulWidget {
   const MemoryVaultScreen({super.key});
@@ -228,31 +229,10 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
       await _load();
       if (!mounted || VaultSession.sessionPin == null) return;
     }
-    final passphrase = await _requestBackupPassphrase(
-      title: 'Import encrypted backup',
-      confirm: false,
-    );
-    if (!mounted || passphrase == null) return;
-
-    try {
-      final count = await _backup.importFromFile(
-        pin: VaultSession.sessionPin!,
-        passphrase: passphrase,
-      );
-      if (!mounted || count == null) return;
-      await _load();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Imported $count vault entries.')),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Backup rejected. Check the file and passphrase.'),
-        ),
-      );
-    }
+    await Navigator.of(context).push<bool>(MaterialPageRoute(
+        builder: (_) => BackupRestoreScreen(
+            service: _backup, sessionPin: () => VaultSession.sessionPin)));
+    if (mounted) await _load();
   }
 
   Future<void> _openScheduledBackupSettings() async {
@@ -392,7 +372,7 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
             icon: const Icon(Icons.file_upload_outlined),
           ),
           IconButton(
-            tooltip: 'Import encrypted backup',
+            tooltip: 'Verify or restore encrypted backup',
             onPressed: _importBackup,
             icon: const Icon(Icons.file_download_outlined),
           ),

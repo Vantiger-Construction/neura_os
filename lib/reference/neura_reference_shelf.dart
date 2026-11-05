@@ -3,6 +3,14 @@ import 'package:flutter/foundation.dart';
 
 import '../services/neura_selected_context.dart';
 
+enum NeuraReferenceSearchMode { words, phrase }
+
+class NeuraReferenceLine {
+  const NeuraReferenceLine(this.number, this.text);
+  final int number;
+  final String text;
+}
+
 class NeuraReferencePassage {
   const NeuraReferencePassage(this.number, this.line, this.text);
   final int number;
@@ -29,9 +37,59 @@ class NeuraReferenceShelf extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  List<NeuraReferencePassage> find(String question) {
+  /// Local reading context only. These extra lines never enter a model grant.
+  List<NeuraReferenceLine> contextAround(int line) {
+    final document = _document;
+    if (_disposed || document == null) return const [];
+    final lines = document.text.split('\n');
+    if (line < 1 || line > lines.length) return const [];
+    return List.unmodifiable([
+      for (var i = (line - 3).clamp(0, lines.length);
+          i < (line + 2).clamp(0, lines.length);
+          i++)
+        NeuraReferenceLine(i + 1, lines[i]),
+    ]);
+  }
+
+  List<NeuraReferencePassage> find(String question,
+      {NeuraReferenceSearchMode mode = NeuraReferenceSearchMode.words}) {
     final document = _document;
     if (_disposed || document == null || question.length > 250) return const [];
+    if (mode == NeuraReferenceSearchMode.phrase) {
+      final phrase = question.trim();
+      if (phrase.isEmpty || phrase.length > 160 || phrase.contains('\n')) {
+        return const [];
+      }
+      final pattern = RegExp(RegExp.escape(phrase), caseSensitive: false);
+      final matches = <NeuraReferencePassage>[];
+      final lines = document.text.split('\n');
+      for (var line = 0; line < lines.length && matches.length < 3; line++) {
+        final text = lines[line];
+        final match = pattern.firstMatch(text);
+        if (match == null) continue;
+        final offset = match.start;
+        // Center the match so phrases crossing the usual chunk boundary remain
+        // searchable. Preserve exact source text and UTF-16 pairs.
+        var start = (offset - 30).clamp(0, text.length);
+        var end = (start + 220).clamp(0, text.length);
+        if (start > 0 &&
+            text.codeUnitAt(start) >= 0xdc00 &&
+            text.codeUnitAt(start) <= 0xdfff) {
+          start--;
+        }
+        if (end < text.length &&
+            text.codeUnitAt(end - 1) >= 0xd800 &&
+            text.codeUnitAt(end - 1) <= 0xdbff) {
+          end--;
+        }
+        final excerpt = text.substring(start, end);
+        if (utf8.encode(excerpt).length <= 600) {
+          matches.add(
+              NeuraReferencePassage(matches.length + 1, line + 1, excerpt));
+        }
+      }
+      return List.unmodifiable(matches);
+    }
     final words =
         _words(question).where((w) => !_stopWords.contains(w)).toSet();
     if (words.isEmpty) return const [];
@@ -73,11 +131,12 @@ class NeuraReferenceShelf extends ChangeNotifier {
   }
 
   NeuraReferenceGrant authorize(String question,
-      {required bool directUserGesture}) {
+      {required bool directUserGesture,
+      NeuraReferenceSearchMode mode = NeuraReferenceSearchMode.words}) {
     if (!directUserGesture || _document == null || _disposed) {
       throw StateError('Select and review a source first.');
     }
-    final found = find(question);
+    final found = find(question, mode: mode);
     if (found.isEmpty) throw StateError('No matching passages.');
     return NeuraReferenceGrant._(this, _generation, question, found);
   }
