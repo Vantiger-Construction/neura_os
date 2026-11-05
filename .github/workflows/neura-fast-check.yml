@@ -92,7 +92,8 @@ jobs:
             "NEURA_SOURCE_ROOT=$env:GITHUB_WORKSPACE",
             "NEURA_BUILD_VOLUME=$runRoot",
             "PUB_CACHE=$(Join-Path $runRoot 'pub-cache')",
-            "CARGO_TARGET_DIR=$(Join-Path $runRoot 'cargo-target')",
+            # CMake copies the Rust DLL/API from this authored package path.
+            "CARGO_TARGET_DIR=$(Join-Path $env:GITHUB_WORKSPACE 'rust\target')",
             "NUGET_PACKAGES=$(Join-Path $runRoot 'nuget-packages')"
           ) | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           @(
