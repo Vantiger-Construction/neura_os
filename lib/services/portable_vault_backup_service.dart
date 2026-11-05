@@ -26,6 +26,28 @@ class BackupVerificationResult {
 
 enum ScheduledBackupStatus { skipped, succeeded, failed }
 
+/// Decrypted items held only for one explicit restore review. Revocation and
+/// consumption discard the service's references; neither persists a second copy.
+class PortableBackupPreview {
+  PortableBackupPreview._(this._owner, List<VaultItem> items)
+      : _items = List.unmodifiable(items.map((item) => VaultItem(
+            id: item.id,
+            createdAt: item.createdAt,
+            title: item.title,
+            body: item.body,
+            tags: List.unmodifiable(item.tags))));
+  final PortableVaultBackupService _owner;
+  List<VaultItem> _items;
+  bool _current = true;
+  bool get isCurrent => _current;
+  List<VaultItem> get items => _items;
+
+  void revoke() {
+    _current = false;
+    _items = const [];
+  }
+}
+
 /// Outcome of one [PortableVaultBackupService.runScheduledBackupIfDue] call.
 class ScheduledBackupRunResult {
   const ScheduledBackupRunResult._(this.status, {this.reason, this.itemCount});
@@ -113,23 +135,82 @@ class PortableVaultBackupService {
     );
     if (file == null) return null;
 
+    final envelope = await readBackupFile(file);
+    final preview = await previewRestore(envelope, passphrase: passphrase);
+    try {
+      if (preview.items.isEmpty) return 0;
+      return await restorePreview(
+          pin: pin,
+          preview: preview,
+          selected: {for (var i = 0; i < preview.items.length; i++) i});
+    } finally {
+      preview.revoke();
+    }
+  }
+
+  /// Reads ciphertext only; the caller owns native picker and foreground checks.
+  Future<String> readBackupFile(PlatformFile file,
+      {bool Function()? mayRead}) async {
+    void checkCurrent() {
+      if (mayRead != null && !mayRead()) {
+        throw StateError('Backup selection ended.');
+      }
+    }
+
+    checkCurrent();
     final length = file.lengthSync();
     if (length != null && (length <= 0 || length > _maxBackupBytes)) {
       throw const FormatException('The selected backup has an invalid size.');
     }
     final bytes = BytesBuilder(copy: false);
     await for (final chunk in file.readAsByteStream()) {
+      checkCurrent();
       if (bytes.length + chunk.length > _maxBackupBytes) {
         throw const FormatException('The selected backup has an invalid size.');
       }
       bytes.add(chunk);
     }
+    checkCurrent();
+    if (bytes.isEmpty) throw const FormatException('The backup is empty.');
     final envelope = utf8.decode(bytes.takeBytes());
+    return envelope;
+  }
+
+  /// Verify/decrypt without writing to the live vault or reading existing items.
+  Future<PortableBackupPreview> previewRestore(
+    String envelope, {
+    required String passphrase,
+  }) async {
+    if (envelope.length > _maxBackupBytes ||
+        utf8.encode(envelope).length > _maxBackupBytes) {
+      throw const FormatException('The backup is too large.');
+    }
     final payload = await _codec.decrypt(
       envelope: envelope,
       passphrase: passphrase,
     );
     final items = _parseVaultPayload(payload);
+    return PortableBackupPreview._(this, items);
+  }
+
+  Future<int> restorePreview(
+      {required String pin,
+      required PortableBackupPreview preview,
+      required Set<int> selected}) async {
+    if (!identical(preview._owner, this) || !preview.isCurrent) {
+      throw StateError('Verify this backup again before restoring.');
+    }
+    if (selected.isEmpty ||
+        selected.any((i) => i < 0 || i >= preview.items.length)) {
+      throw ArgumentError('Select existing backup entries.');
+    }
+    final items = [
+      for (var i = 0; i < preview.items.length; i++)
+        if (selected.contains(i)) preview.items[i]
+    ];
+    // Consume synchronously before the first write await. Double taps and
+    // retries cannot re-use the prior review, even when a write fails.
+    preview.revoke();
     return _store.importItems(pin: pin, imported: items);
   }
 
@@ -164,6 +245,16 @@ class PortableVaultBackupService {
     final items = <VaultItem>[];
     for (final raw in payload['items'] as List) {
       if (raw is! Map) {
+        throw const FormatException('A backup entry is malformed.');
+      }
+      if (raw['id'] is! String ||
+          (raw['id'] as String).trim().isEmpty ||
+          raw['title'] is! String ||
+          raw['body'] is! String ||
+          raw['createdAt'] is! String ||
+          DateTime.tryParse(raw['createdAt'] as String) == null ||
+          raw['tags'] is! List ||
+          !(raw['tags'] as List).every((tag) => tag is String)) {
         throw const FormatException('A backup entry is malformed.');
       }
       items.add(VaultItem.fromJson(raw.cast<String, dynamic>()));

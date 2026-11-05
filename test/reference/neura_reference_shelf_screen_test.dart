@@ -56,6 +56,34 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('phrase search exposes surrounding lines only for local reading',
+      (tester) async {
+    final oldPicker = FilePickerPlatform.instance;
+    FilePickerPlatform.instance = _Picker();
+    addTearDown(() => FilePickerPlatform.instance = oldPicker);
+    SafeBoot.instance.safeMode.value = false;
+    SafeBoot.instance.restartRequired.value = false;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester
+        .pumpWidget(const MaterialApp(home: NeuraReferenceShelfScreen()));
+    await tester.tap(find.text('Select a text document'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Exact phrase'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'the filter');
+    await tester.tap(find.text('Find source passages'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Read surrounding lines'));
+    await tester.tap(find.text('Read surrounding lines'));
+    await tester.pumpAndSettle();
+    expect(find.text('1: Private reference heading'), findsOneWidget);
+    SafeBoot.instance.safeMode.value = true;
+    await tester.pumpAndSettle();
+    expect(find.text('1: Private reference heading'), findsNothing);
+    SafeBoot.instance.safeMode.value = false;
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
       'explicit approval shows separate exact excerpts or uncertainty and Safe Mode clears both',
       (tester) async {

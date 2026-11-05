@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../reliability/safe_boot.dart';
 import 'neura_daily_plan.dart';
+import 'neura_plan_templates.dart';
 import 'neura_task_transfer.dart';
 import 'neura_task_transfer_screen.dart';
 
@@ -21,6 +24,14 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
   int _epoch = 0;
   Object? _transferRequest;
   TextEditingController? _adjustment;
+  bool _focusNext = false;
+
+  bool get _allowed =>
+      mounted &&
+      !SafeBoot.instance.safeMode.value &&
+      !SafeBoot.instance.restartRequired.value &&
+      (WidgetsBinding.instance.lifecycleState == null ||
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed);
 
   @override
   void initState() {
@@ -37,7 +48,12 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
     _goal.clear();
     _steps.clear();
     _plan.clear();
-    if (mounted) setState(() => _error = null);
+    if (mounted) {
+      setState(() {
+        _error = null;
+        _focusNext = false;
+      });
+    }
   }
 
   void _onSafety() {
@@ -69,10 +85,7 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
   }
 
   void _preview() {
-    if (SafeBoot.instance.safeMode.value ||
-        SafeBoot.instance.restartRequired.value) {
-      return;
-    }
+    if (!_allowed) return;
     try {
       _plan.preview(_goal.text, _steps.text.split('\n'));
       setState(() => _error = null);
@@ -83,7 +96,82 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
     }
   }
 
+  void _editPlan(VoidCallback edit) {
+    if (!_allowed) return;
+    try {
+      edit();
+      _steps.text = _plan.steps.join('\n');
+      setState(() {
+        _error = null;
+        _focusNext = false;
+      });
+    } on ArgumentError {
+      setState(() => _error = 'Keep 1–8 steps, up to 160 characters each.');
+    }
+  }
+
+  Future<void> _chooseTemplate(NeuraPlanTemplate template) async {
+    if (!_allowed) return;
+    final epoch = _epoch;
+    if (_goal.text.isNotEmpty || _steps.text.isNotEmpty) {
+      final replace = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+                  title: const Text('Replace this plan?'),
+                  content: const Text(
+                      'The template replaces this draft and its progress.'),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Keep my plan')),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Use template')),
+                  ]));
+      if (replace != true || !_allowed || epoch != _epoch) return;
+    }
+    _clear();
+    _goal.text = template.goal;
+    _steps.text = template.steps.join('\n');
+  }
+
+  Future<void> _editStep(int? index) async {
+    if (!_allowed || _adjustment != null) return;
+    if (index != null && (index < 0 || index >= _plan.steps.length)) return;
+    final epoch = _epoch;
+    final controller =
+        TextEditingController(text: index == null ? '' : _plan.steps[index]);
+    _adjustment = controller;
+    final route = DialogRoute<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+              title: Text(index == null ? 'Add a step' : 'Edit step'),
+              content: TextField(
+                  controller: controller,
+                  maxLength: 160,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'Step')),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancel')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Preview change')),
+              ],
+            ));
+    final accepted = await Navigator.of(context).push(route);
+    await route.completed;
+    final text = controller.text;
+    _adjustment = null;
+    controller.dispose();
+    if (!_allowed || epoch != _epoch || accepted != true) return;
+    _editPlan(() =>
+        index == null ? _plan.addStep(text) : _plan.editStep(index, text));
+  }
+
   Future<void> _smallerStep() async {
+    if (!_allowed || _adjustment != null) return;
     final epoch = _epoch;
     final controller = TextEditingController();
     _adjustment = controller;
@@ -110,7 +198,7 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
     final text = controller.text;
     _adjustment = null;
     controller.dispose();
-    if (!mounted || epoch != _epoch || accepted != true) return;
+    if (!_allowed || epoch != _epoch || accepted != true) return;
     try {
       _plan.makeCurrentStepSmaller(text);
       _steps.text = _plan.steps.join('\n');
@@ -173,11 +261,26 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
                 'close this screen, or enter Safe Mode. Nothing runs automatically.',
               ),
               const SizedBox(height: 16),
+              PopupMenuButton<NeuraPlanTemplate>(
+                tooltip: 'Choose a plan template',
+                onSelected: _chooseTemplate,
+                itemBuilder: (_) => [
+                  for (final template in NeuraPlanTemplate.values)
+                    PopupMenuItem(value: template, child: Text(template.name))
+                ],
+                child: const ListTile(
+                    leading: Icon(Icons.list_alt),
+                    title: Text('Choose a plan template'),
+                    trailing: Icon(Icons.arrow_drop_down)),
+              ),
               TextField(
                 controller: _goal,
                 maxLength: 200,
                 decoration: const InputDecoration(labelText: 'My goal'),
-                onChanged: (_) => _plan.clear(),
+                onChanged: (_) {
+                  _plan.clear();
+                  setState(() => _focusNext = false);
+                },
               ),
               TextButton.icon(
                 onPressed: () {
@@ -200,7 +303,10 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
                   hintText:
                       'Choose a first step that takes five minutes\nTake a short break\nReview what helped',
                 ),
-                onChanged: (_) => _plan.clear(),
+                onChanged: (_) {
+                  _plan.clear();
+                  setState(() => _focusNext = false);
+                },
               ),
               if (_error != null)
                 Text(
@@ -217,6 +323,30 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
                 Text(
                   '${_plan.completedCount} of ${_plan.steps.length} steps complete',
                 ),
+                LinearProgressIndicator(
+                  value: _plan.completedCount / _plan.steps.length,
+                  semanticsLabel: 'Plan progress',
+                ),
+                Wrap(spacing: 8, children: [
+                  TextButton.icon(
+                      onPressed:
+                          _plan.steps.length < 8 ? () => _editStep(null) : null,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add a step')),
+                  TextButton.icon(
+                      onPressed: _plan.canUndo
+                          ? () => _editPlan(_plan.undoEdit)
+                          : null,
+                      icon: const Icon(Icons.undo),
+                      label: const Text('Undo last edit')),
+                ]),
+                if (_plan.approved)
+                  SwitchListTile(
+                      title: const Text('Focus on next step'),
+                      subtitle:
+                          const Text('Show one unfinished step at a time.'),
+                      value: _focusNext,
+                      onChanged: (value) => setState(() => _focusNext = value)),
                 if (_plan.approved)
                   Card(
                       child: Padding(
@@ -247,13 +377,44 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
                                 ],
                               ]))),
                 for (var index = 0; index < _plan.steps.length; index++)
-                  CheckboxListTile(
-                    title: Text(_plan.steps[index]),
-                    value: _plan.isComplete(index),
-                    onChanged: _plan.approved && !_plan.paused
-                        ? (value) => _plan.complete(index, value ?? false)
-                        : null,
-                  ),
+                  if (!_focusNext ||
+                      !_plan.approved ||
+                      index == _plan.nextStepIndex)
+                    CheckboxListTile(
+                      title: Text(_plan.steps[index]),
+                      secondary: PopupMenuButton<String>(
+                        tooltip: 'Options for step ${index + 1}',
+                        onSelected: (action) {
+                          switch (action) {
+                            case 'edit':
+                              unawaited(_editStep(index));
+                            case 'up':
+                              _editPlan(() => _plan.moveStep(index, index - 1));
+                            case 'down':
+                              _editPlan(() => _plan.moveStep(index, index + 1));
+                            case 'remove':
+                              _editPlan(() => _plan.removeStep(index));
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          const PopupMenuItem(
+                              value: 'edit', child: Text('Edit step')),
+                          if (index > 0)
+                            const PopupMenuItem(
+                                value: 'up', child: Text('Move up')),
+                          if (index + 1 < _plan.steps.length)
+                            const PopupMenuItem(
+                                value: 'down', child: Text('Move down')),
+                          if (_plan.steps.length > 1)
+                            const PopupMenuItem(
+                                value: 'remove', child: Text('Remove step')),
+                        ],
+                      ),
+                      value: _plan.isComplete(index),
+                      onChanged: _plan.approved && !_plan.paused
+                          ? (value) => _plan.complete(index, value ?? false)
+                          : null,
+                    ),
                 if (!_plan.approved)
                   FilledButton(
                     onPressed: _plan.approve,

@@ -26,6 +26,7 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
   String? _status;
   bool _busy = false;
   bool _picking = false;
+  NeuraReferenceSearchMode _searchMode = NeuraReferenceSearchMode.words;
   Object? _pickerRequest;
   bool _awaitingPicker = false;
   Completer<void>? _pickerResumed;
@@ -87,6 +88,7 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
       setState(() {
         _passages = const [];
         _status = null;
+        _searchMode = NeuraReferenceSearchMode.words;
       });
     }
   }
@@ -172,7 +174,7 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
     if (!_allowed || _busy) return;
     setState(() {
       _answer = null;
-      _passages = _shelf.find(_question.text.trim());
+      _passages = _shelf.find(_question.text.trim(), mode: _searchMode);
       _status = _passages.isEmpty
           ? 'No matching passages found. Try a specific word from the document; I cannot establish an answer from this search.'
           : null;
@@ -183,7 +185,8 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
     if (!_allowed || _busy || _passages.isEmpty) return;
     final epoch = ++_epoch;
     final question = _question.text.trim();
-    final grant = _shelf.authorize(question, directUserGesture: true);
+    final grant =
+        _shelf.authorize(question, directUserGesture: true, mode: _searchMode);
     _grant = grant;
     setState(() {
       _busy = true;
@@ -237,12 +240,36 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
             icon: const Icon(Icons.description_outlined),
             label: const Text('Select a text document')),
         if (_shelf.name != null) Text('Source: ${_shelf.name}'),
+        Wrap(spacing: 8, children: [
+          for (final mode in NeuraReferenceSearchMode.values)
+            ChoiceChip(
+              label: Text(mode == NeuraReferenceSearchMode.words
+                  ? 'Any matching words'
+                  : 'Exact phrase'),
+              selected: _searchMode == mode,
+              onSelected: _busy || _picking
+                  ? null
+                  : (_) {
+                      if (!_allowed) return;
+                      _stop();
+                      setState(() {
+                        _searchMode = mode;
+                        _passages = const [];
+                        _status = null;
+                      });
+                    },
+            ),
+        ]),
         TextField(
             controller: _question,
-            maxLength: 250,
+            maxLength:
+                _searchMode == NeuraReferenceSearchMode.phrase ? 160 : 250,
             enabled: !_busy && !_picking,
-            decoration: const InputDecoration(
-                labelText: 'Question about this document'),
+            decoration: InputDecoration(
+                labelText: 'Question about this document',
+                helperText: _searchMode == NeuraReferenceSearchMode.phrase
+                    ? 'Find this phrase on a single line, ignoring case.'
+                    : null),
             onChanged: (_) => setState(() {
                   _epoch++;
                   _passages = const [];
@@ -263,6 +290,23 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
                       children: [
                         Text('[${p.number}] ${_shelf.name}, line ${p.line}'),
                         SelectableText(p.text),
+                        ExpansionTile(
+                          key: ValueKey('context-$_epoch-${p.number}'),
+                          title: const Text('Read surrounding lines'),
+                          children: [
+                            const Padding(
+                                padding: EdgeInsets.all(8),
+                                child: Text(
+                                    'For your inspection only. Extra lines are not included in the local answer approval.')),
+                            for (final line in _shelf.contextAround(p.line))
+                              Padding(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: SelectableText(
+                                          '${line.number}: ${line.text}'))),
+                          ],
+                        ),
                       ]))),
         if (_passages.isNotEmpty &&
             !kIsWeb &&
