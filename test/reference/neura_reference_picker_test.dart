@@ -7,39 +7,34 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/reference/neura_reference_shelf_screen.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 
-class _Picker extends FilePicker {
-  final requests = <Completer<FilePickerResult?>>[];
+import '../helpers/fake_picked_file.dart';
+
+class _Picker extends FilePickerPlatform {
+  final requests = <Completer<PlatformFile?>>[];
 
   @override
-  Future<FilePickerResult?> pickFiles({
+  Future<PlatformFile?> pickFile({
     String? dialogTitle,
     String? initialDirectory,
     FileType type = FileType.any,
     List<String>? allowedExtensions,
     Function(FilePickerStatus)? onFileLoading,
-    bool allowCompression = false,
     int compressionQuality = 0,
-    bool allowMultiple = false,
-    bool withData = false,
-    bool withReadStream = false,
-    bool lockParentWindow = false,
-    bool readSequential = false,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
   }) {
-    expect(withData, false);
-    expect(withReadStream, true);
-    final request = Completer<FilePickerResult?>();
+    final request = Completer<PlatformFile?>();
     requests.add(request);
     return request.future;
   }
 }
 
-FilePickerResult _file({Stream<List<int>>? stream}) => FilePickerResult([
-      PlatformFile(
-          name: 'private.txt',
-          size: 25,
-          readStream:
-              stream ?? Stream.value(utf8.encode('Clean the filter monthly.')))
-    ]);
+PlatformFile _file({Stream<List<int>>? stream}) => FakePickedFile('private.txt',
+    stream ?? Stream.value(utf8.encode('Clean the filter monthly.')),
+    declaredLength: 25);
 
 Future<void> _tap(WidgetTester tester, String text) async {
   await tester.ensureVisible(find.text(text));
@@ -51,7 +46,7 @@ void main() {
   late _Picker picker;
   setUp(() {
     picker = _Picker();
-    FilePicker.platform = picker;
+    FilePickerPlatform.instance = picker;
     SafeBoot.instance.safeMode.value = false;
     SafeBoot.instance.restartRequired.value = false;
   });
