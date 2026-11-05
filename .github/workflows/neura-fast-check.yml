@@ -1,4 +1,4 @@
-name: Neura Local Runner Check
+name: Neura Windows Package
 
 on:
   pull_request:
@@ -17,6 +17,7 @@ on:
       - 'tools/Test-NeuraLauncher.ps1'
       - 'tools/New-NeuraClientBuildConfig.ps1'
       - 'tools/Publish-NeuraReleaseAssets.ps1'
+      - 'tools/Publish-NeuraReleaseAssets.Tests.ps1'
       - 'tools/Save-NeuraConfiguredPackage.ps1'
       - 'pubspec.yaml'
       - 'pubspec.lock'
@@ -35,8 +36,7 @@ on:
         default: true
 
 permissions:
-  # Configured package delivery publishes download-verified prerelease assets.
-  contents: write
+  contents: read
 
 concurrency:
   group: neura-local-runner-${{ github.ref }}
@@ -45,10 +45,146 @@ concurrency:
 env:
   FLUTTER_VERSION: '3.47.9'
   FLUTTER_SHA256: 'd8e2b5977e09082c6440f89dc1aa887b94c8fbcc3b39222797046295a3f68a9e'
+  RUST_VERSION: '1.99.1'
 
 jobs:
+  validate_pr:
+    name: validate
+    # Publishing is limited to same-repository maintainer PRs. The laptop is
+    # reserved for explicit manual dispatch, never PR checkout or cleanup.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+    runs-on: windows-2022
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: powershell
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_DEV_DEBUG: '1'
+      CARGO_PROFILE_TEST_DEBUG: '1'
+    steps:
+      - name: Check out the tested PR merge
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare isolated hosted Windows storage
+        env:
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
+            throw 'This PR job requires an isolated GitHub-hosted Windows runner.'
+          }
+          foreach ($path in @($env:GITHUB_WORKSPACE, $env:RUNNER_TEMP)) {
+            $drive = [IO.DriveInfo]::new([IO.Path]::GetPathRoot($path))
+            Write-Host ("Hosted volume {0}: {1:N2} GB free" -f $drive.Name, ($drive.AvailableFreeSpace / 1GB))
+            if ($drive.AvailableFreeSpace -lt 8GB) { throw 'Windows validation requires at least 8 GB free.' }
+          }
+          $runRoot = Join-Path $env:RUNNER_TEMP 'neura-windows'
+          New-Item -ItemType Directory -Path $runRoot -Force | Out-Null
+          @(
+            "NEURA_SOURCE_ROOT=$env:GITHUB_WORKSPACE",
+            "NEURA_BUILD_VOLUME=$runRoot",
+            "PUB_CACHE=$(Join-Path $runRoot 'pub-cache')",
+            "CARGO_TARGET_DIR=$(Join-Path $runRoot 'cargo-target')",
+            "NUGET_PACKAGES=$(Join-Path $runRoot 'nuget-packages')"
+          ) | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          @(
+            '### Hosted Windows source',
+            "PR head: $env:PR_HEAD",
+            "Packaged commit: $(& git rev-parse HEAD)",
+            "Packaged tree: $(& git rev-parse 'HEAD^{tree}')"
+          ) | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test storage, compiler discovery and release checksum guards
+        run: |
+          ./tools/Repair-NeuraCiStorage.Tests.ps1
+          ./tools/VisualCppDiscovery.Tests.ps1
+          ./tools/Publish-NeuraReleaseAssets.Tests.ps1
+      - name: Enable pinned Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: false
+      - name: Enable pinned Rust and verify hosted native tools
+        run: |
+          rustup toolchain install $env:RUST_VERSION --profile minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup default $env:RUST_VERSION
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustc --version
+          cargo --version
+          cmake --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $nugetHelp = @(nuget help)
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host ($nugetHelp | Select-Object -First 1)
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $installations = @(& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
+          if ($LASTEXITCODE -ne 0 -or $installations.Count -eq 0) { throw 'The hosted MSVC toolchain is missing.' }
+          flutter --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test the synthetic Rust IPC boundary
+        run: |
+          cargo test --manifest-path rust/Cargo.toml --locked --bin neura_api
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --manifest-path rust/Cargo.toml --locked --test engine_session_lifecycle
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare existing public client configuration
+        id: client_config
+        env:
+          NEURA_SUPABASE_URL: ${{ vars.NEURA_SUPABASE_URL }}
+          NEURA_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEURA_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          ./tools/New-NeuraClientBuildConfig.ps1 -OutputPath (Join-Path $env:RUNNER_TEMP 'neura-windows-client.json')
+      - name: Restore locked dependencies and check source contracts
+        run: |
+          flutter pub get --enforce-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/Neura-FastCheck.ps1 -Root $env:GITHUB_WORKSPACE -BuildWindows -Phase Prepare
+          git diff --exit-code -- pubspec.lock rust/Cargo.lock
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Analyze Flutter with fatal infos
+        run: ./tools/Neura-FastCheck.ps1 -Root $env:GITHUB_WORKSPACE -BuildWindows -Phase Analyze
+      - name: Run startup, recovery, and complete Flutter tests
+        run: ./tools/Neura-FastCheck.ps1 -Root $env:GITHUB_WORKSPACE -BuildWindows -Phase Tests -TestConcurrency 2
+      - name: Build configured Windows release
+        run: |
+          $drive = [IO.DriveInfo]::new([IO.Path]::GetPathRoot($env:GITHUB_WORKSPACE))
+          Write-Host ("Free space before Windows compilation: {0:N2} GB" -f ($drive.AvailableFreeSpace / 1GB))
+          if ($drive.AvailableFreeSpace -lt 8GB) { throw 'Windows compilation requires at least 8 GB free.' }
+          ./tools/Neura-FastCheck.ps1 -Root $env:GITHUB_WORKSPACE -BuildWindows -Phase WindowsBuild
+          git diff --exit-code -- pubspec.lock rust/Cargo.lock
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify Windows runtime payload and packaged launch
+        run: ./tools/Neura-FastCheck.ps1 -Root $env:GITHUB_WORKSPACE -BuildWindows -Phase WindowsPackage
+      - name: Preserve configured Windows package
+        if: steps.client_config.outputs.configured == 'true'
+        id: configured_package
+        run: ./tools/Save-NeuraConfiguredPackage.ps1 -SourceRoot $env:GITHUB_WORKSPACE -Platform windows -BuildVolume $env:NEURA_BUILD_VOLUME
+      - name: Publish required Windows release assets
+        if: steps.client_config.outputs.configured == 'true'
+        timeout-minutes: 25
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NEURA_RELEASE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          NEURA_RELEASE_PR_NUMBER: ${{ github.event.pull_request.number }}
+          NEURA_PACKAGE_PATH: ${{ steps.configured_package.outputs.package_path }}
+        run: ./tools/Publish-NeuraReleaseAssets.ps1 -Platform windows -PackagePath $env:NEURA_PACKAGE_PATH -BuildVolume $env:NEURA_BUILD_VOLUME
+      - name: Remove temporary public client settings
+        if: always()
+        run: Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'neura-windows-client.json') -Force -ErrorAction SilentlyContinue
+
   reclaim-runner-space:
     name: Select bounded CI output volumes
+    if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, Windows, X64, neura]
     timeout-minutes: 30
     outputs:
@@ -635,8 +771,11 @@ jobs:
           )
 
   validate:
-    name: validate
+    name: Validate Windows on the local runner
+    if: github.event_name == 'workflow_dispatch'
     needs: reclaim-runner-space
+    permissions:
+      contents: write
     runs-on: [self-hosted, Windows, X64, neura]
     # The self-hosted laptop needs 60-95 minutes for this job depending on
     # load and power state; 90 minutes cancelled otherwise-green runs during
@@ -710,6 +849,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: source
+          persist-credentials: false
 
       - name: Test bounded storage recovery
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'

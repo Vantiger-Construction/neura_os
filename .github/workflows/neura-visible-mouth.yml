@@ -29,7 +29,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SAPI_HEAD: '65dd3e52ed1ecd38f27f1a98b165f63f3fa99dd3'
+  SAPI_HEAD: '6db2a911f2e4f1b3cd160f65ff541a17dd7634ec'
   # #149 was squash-merged and its feature branch was deleted.
   MOTION_HEAD: '4e66869078442392e2dde0282826c7a97c9dee74'
   MOTION_IN_BASE: 'true'
