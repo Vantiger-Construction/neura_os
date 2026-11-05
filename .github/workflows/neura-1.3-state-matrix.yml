@@ -23,11 +23,14 @@ env:
 jobs:
   state-matrix:
     name: Startup, platform, recovery, and Safe Mode states
-    runs-on: [self-hosted, Windows, X64, neura]
+    # Automatic validation must not depend on the personal runner staying online.
+    # Explicit manual dispatch retains its bounded local storage/toolchain path.
+    runs-on: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["self-hosted", "Windows", "X64", "neura"]' || '["windows-2022"]') }}
     timeout-minutes: 90
 
     steps:
       - name: Route checkout and temporary data off the system volume
+        if: github.event_name == 'workflow_dispatch'
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-StrictMode -Version Latest
@@ -86,10 +89,28 @@ jobs:
             "TMP=$(Join-Path $root 'temp')"
           ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Prepare isolated hosted Windows storage
+        if: github.event_name != 'workflow_dispatch'
+        shell: powershell
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') {
+            throw 'Automatic State Matrix validation requires an isolated GitHub-hosted Windows runner.'
+          }
+          $pubCache = Join-Path $env:RUNNER_TEMP 'neura-state-matrix-pub'
+          New-Item -ItemType Directory -Path $pubCache -Force | Out-Null
+          @(
+            "NEURA_SOURCE_ROOT=$(Join-Path $env:GITHUB_WORKSPACE 'source')",
+            "PUB_CACHE=$pubCache"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 10
         with:
           path: source
+          persist-credentials: false
 
       - name: Test Flutter provisioning health probe
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
@@ -97,18 +118,29 @@ jobs:
           & "$env:NEURA_SOURCE_ROOT\tools\Enable-NeuraFlutter.Tests.ps1"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Enable pinned Flutter
+      - name: Enable pinned Flutter on the local runner
+        if: github.event_name == 'workflow_dispatch'
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           & "$env:NEURA_SOURCE_ROOT\tools\Enable-NeuraFlutter.ps1" `
             -Version $env:FLUTTER_VERSION `
             -ExpectedSha256 $env:FLUTTER_SHA256
 
+      - name: Enable pinned Flutter on the hosted runner
+        if: github.event_name != 'workflow_dispatch'
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: false
+
       - name: Restore dependencies
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
-          flutter pub get
+          flutter pub get --enforce-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff --exit-code -- pubspec.lock rust/Cargo.lock
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Test startup animation and avatar caching
@@ -213,7 +245,7 @@ jobs:
           Write-Host 'Diagnostic evidence recorded in the run summary.'
 
       - name: Release completed validation output
-        if: always()
+        if: always() && github.event_name == 'workflow_dispatch'
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           $ErrorActionPreference = 'Stop'
@@ -238,4 +270,3 @@ jobs:
           } else {
             Write-Host 'Checkout did not provide the cleanup helper; leaving early-failure recovery to the next storage preflight.'
           }
-
