@@ -1,0 +1,12 @@
+{
+  "name": "Neura.Presence.Bridge",
+  "rootNamespace": "Neura.Presence.Bridge",
+  "references": [
+    "Neura.Presence.Core",
+    "Neura.Presence.Runtime",
+    "Neura.Presence.Bridge.Protocol"
+  ],
+  "excludePlatforms": [
+    "WebGL"
+  ]
+}
