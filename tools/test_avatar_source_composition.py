@@ -54,7 +54,7 @@ class AvatarSourceCompositionTests(unittest.TestCase):
         summary = self.root / 'summary.txt'
         env = dict(os.environ, BASE_HEAD=self.base, SAPI_HEAD=self.sapi,
                    MOTION_HEAD=self.motion, HEAD_REF=branch,
-                   MOTION_IN_BASE='false',
+                   SAPI_IN_BASE='false', MOTION_IN_BASE='false',
                    GITHUB_STEP_SUMMARY=str(summary))
         env.update(overrides)
         result = subprocess.run(
@@ -137,6 +137,29 @@ class AvatarSourceCompositionTests(unittest.TestCase):
     def test_merged_motion_outside_base_fails_closed(self):
         result, report, _ = self.compose(MOTION_IN_BASE='true')
         self.assert_failure(result, report, 'verify merged motion ancestry')
+
+    def test_merged_sapi_does_not_need_deleted_feature_branch(self):
+        self.git(self.origin, 'merge', '--no-edit', SAPI)
+        self.base = self.sapi
+        self.git(self.origin, 'branch', '-D', SAPI)
+        result, report, checkout = self.compose(SAPI_IN_BASE='true')
+        self.assert_success(result, report, checkout)
+        self.assertIn('Verified merged SAPI commit is contained', report)
+
+    def test_merged_sapi_ignores_later_feature_branch_changes(self):
+        self.git(self.origin, 'merge', '--no-edit', SAPI)
+        self.base = self.sapi
+        self.git(self.origin, 'checkout', SAPI)
+        (self.origin / 'unreviewed.txt').write_text('later branch change\n')
+        self.commit('later unreviewed speech')
+        self.git(self.origin, 'checkout', 'subject')
+        result, report, checkout = self.compose(SAPI_IN_BASE='true')
+        self.assert_success(result, report, checkout)
+        self.assertFalse((checkout / 'unreviewed.txt').exists())
+
+    def test_merged_sapi_outside_base_fails_closed(self):
+        result, report, _ = self.compose(SAPI_IN_BASE='true')
+        self.assert_failure(result, report, 'verify merged SAPI ancestry')
 
     def test_only_conflicting_conversation_harness_keeps_source_version(self):
         workflow = self.origin / '.github/workflows/neura-avatar-conversation.yml'
