@@ -172,7 +172,15 @@ function Assert-SourceChecksums {
         [Parameter(Mandatory)][string]$ChecksumPath
     )
 
-    $rootPrefix = [IO.Path]::GetFullPath($Root).TrimEnd('\') + '\'
+    $separators = [char[]]@([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    $rootPrefix = [IO.Path]::GetFullPath($Root).TrimEnd($separators) + [IO.Path]::DirectorySeparatorChar
+    # Windows paths are case-insensitive; Linux sibling directories can differ
+    # only by case. Keep containment strict on the platform doing the upload.
+    $pathComparison = if ([IO.Path]::DirectorySeparatorChar -eq '\') {
+        [StringComparison]::OrdinalIgnoreCase
+    } else {
+        [StringComparison]::Ordinal
+    }
     $lines = @(Get-Content -LiteralPath $ChecksumPath | Where-Object {
         -not [string]::IsNullOrWhiteSpace($_)
     })
@@ -190,7 +198,7 @@ function Assert-SourceChecksums {
             throw "Checksum entry must be relative: $relativePath"
         }
         $candidate = [IO.Path]::GetFullPath((Join-Path $Root $relativePath))
-        if (-not $candidate.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        if (-not $candidate.StartsWith($rootPrefix, $pathComparison)) {
             throw "Checksum entry escapes the package directory: $relativePath"
         }
         if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
@@ -545,3 +553,4 @@ try {
         }
     }
 }
+
