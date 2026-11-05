@@ -26,11 +26,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SAPI_HEAD: 'd601140ed3feb712b4806222606c835f6a5c972e'
+  # #158 is squash-merged; verify its commit in the base, not the old branch.
+  SAPI_HEAD: '238feca40b094675ca6cc0cd47fa405ed2623872'
+  SAPI_IN_BASE: 'true'
   # #149 was squash-merged and its feature branch was deleted.
   MOTION_HEAD: '4e66869078442392e2dde0282826c7a97c9dee74'
   MOTION_IN_BASE: 'true'
-  BASE_HEAD: ${{ github.event.pull_request.base.sha || '4e66869078442392e2dde0282826c7a97c9dee74' }}
+  BASE_HEAD: ${{ github.event.pull_request.base.sha || github.sha }}
 
 jobs:
   conversation:
