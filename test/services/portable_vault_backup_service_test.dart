@@ -36,6 +36,7 @@ class _FakeSecureStorage implements NeuraCredentialStorage {
 class _FakeVaultItemSource implements VaultItemSource {
   List<VaultItem> items = const [];
   String? lastPin;
+  int imports = 0;
 
   @override
   Future<List<VaultItem>> getItems({required String pin}) async {
@@ -48,6 +49,7 @@ class _FakeVaultItemSource implements VaultItemSource {
     required String pin,
     required List<VaultItem> imported,
   }) async {
+    imports++;
     items = imported;
     return imported.length;
   }
@@ -142,6 +144,97 @@ void main() {
         throwsFormatException,
       );
       expect(store.items.map((item) => item.id), ['a', 'b']);
+    });
+  });
+
+  group('reviewed restore', () {
+    Future<String> envelope() => PortableBackupCodec()
+            .encrypt(passphrase: 'a very good passphrase', payload: {
+          'type': 'neura-memory-vault',
+          'version': 1,
+          'items': [_item('a').toJson(), _item('b').toJson()]
+        });
+
+    test(
+        'verification writes nothing and restores only explicitly selected entries',
+        () async {
+      final preview = await service.previewRestore(await envelope(),
+          passphrase: 'a very good passphrase');
+      expect(store.imports, 0);
+      expect(preview.items.map((item) => item.id), ['a', 'b']);
+      expect(() => preview.items.clear(), throwsUnsupportedError);
+      expect(() => preview.items.first.tags.clear(), throwsUnsupportedError);
+      expect(
+          await service
+              .restorePreview(pin: '1234', preview: preview, selected: {1}),
+          1);
+      expect(store.items.single.id, 'b');
+      expect(store.imports, 1);
+      expect(preview.isCurrent, false);
+      expect(preview.items, isEmpty);
+      await expectLater(
+          service.restorePreview(pin: '1234', preview: preview, selected: {0}),
+          throwsStateError);
+      expect(store.imports, 1);
+    });
+
+    test('revoked and foreign reviews cannot write to the vault', () async {
+      final preview = await service.previewRestore(await envelope(),
+          passphrase: 'a very good passphrase');
+      final foreign = PortableVaultBackupService(store: store);
+      await expectLater(
+          foreign.restorePreview(pin: '1234', preview: preview, selected: {0}),
+          throwsStateError);
+      preview.revoke();
+      await expectLater(
+          service.restorePreview(pin: '1234', preview: preview, selected: {0}),
+          throwsStateError);
+      expect(store.imports, 0);
+    });
+
+    test('empty and invalid selections write nothing and leave review usable',
+        () async {
+      final preview = await service.previewRestore(await envelope(),
+          passphrase: 'a very good passphrase');
+      for (final selection in [
+        <int>{},
+        {-1},
+        {2}
+      ]) {
+        await expectLater(
+            service.restorePreview(
+                pin: '1234', preview: preview, selected: selection),
+            throwsArgumentError);
+      }
+      expect(store.imports, 0);
+      expect(preview.isCurrent, true);
+      preview.revoke();
+    });
+
+    test('malformed records fail verification before any restore', () async {
+      final bad = _item('a').toJson()..['id'] = '';
+      final encoded = await PortableBackupCodec()
+          .encrypt(passphrase: 'a very good passphrase', payload: {
+        'type': 'neura-memory-vault',
+        'version': 1,
+        'items': [bad]
+      });
+      await expectLater(
+          service.previewRestore(encoded, passphrase: 'a very good passphrase'),
+          throwsFormatException);
+      final result = await service.verifyBackupIntegrity(encoded,
+          passphrase: 'a very good passphrase');
+      expect(result.isValid, false);
+      expect(store.imports, 0);
+    });
+
+    test('a revoked file read is rejected before the stream is opened',
+        () async {
+      await expectLater(
+          service.readBackupFile(_BackupFile([Uint8List(2)]),
+              mayRead: () => false),
+          throwsStateError);
+      expect(store.imports, 0);
     });
   });
 

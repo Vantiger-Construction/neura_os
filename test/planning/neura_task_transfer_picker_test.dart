@@ -477,7 +477,8 @@ void main() {
             .onChanged,
         isNull);
     await _tap(tester, 'Use this plan');
-    await tester.ensureVisible(find.text('Second synthetic step'));
+    await tester.scrollUntilVisible(find.text('Second synthetic step'), 150,
+        scrollable: find.byType(Scrollable).first);
     expect(
         tester
             .widget<CheckboxListTile>(find.byType(CheckboxListTile).last)

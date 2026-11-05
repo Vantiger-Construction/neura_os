@@ -3,6 +3,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/planning/neura_daily_plan_screen.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 
+Future<void> reveal(WidgetTester tester, Finder finder) async {
+  tester
+      .state<ScrollableState>(find.byType(Scrollable).first)
+      .position
+      .jumpTo(0);
+  await tester.pump();
+  await tester.scrollUntilVisible(finder, 150,
+      scrollable: find.byType(Scrollable).first);
+  await tester.pumpAndSettle();
+  await Scrollable.ensureVisible(tester.element(finder), alignment: 0.5);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets(
       'user previews, approves and records progress; edits revoke approval',
@@ -14,22 +27,22 @@ void main() {
     await tester.ensureVisible(find.text('Preview my plan'));
     await tester.tap(find.text('Preview my plan'));
     await tester.pump();
+    await reveal(
+        tester, find.widgetWithText(CheckboxListTile, 'Clear one corner'));
     expect(
         tester
             .widget<CheckboxListTile>(find.byType(CheckboxListTile).first)
             .onChanged,
         isNull);
-    await tester.scrollUntilVisible(find.text('Use this plan'), 200,
-        scrollable: find.byType(Scrollable).first);
+    await reveal(tester, find.text('Use this plan'));
     await tester.tap(find.text('Use this plan'));
     await tester.pump();
-    await tester.ensureVisible(find.text('Clear one corner'));
+    await reveal(tester, find.text('Clear one corner'));
     await tester.tap(find.text('Clear one corner'));
     await tester.pump();
-    await tester.scrollUntilVisible(find.text('1 of 2 steps complete'), -100,
-        scrollable: find.byType(Scrollable).first);
+    await reveal(tester, find.text('1 of 2 steps complete'));
     expect(find.text('1 of 2 steps complete'), findsOneWidget);
-    await tester.ensureVisible(find.text('This feels too big'));
+    await reveal(tester, find.text('This feels too big'));
     await tester.tap(find.text('This feels too big'));
     await tester.pumpAndSettle();
     await tester.enterText(
@@ -39,16 +52,14 @@ void main() {
     await tester.tap(find.text('Preview smaller step'));
     await tester.pumpAndSettle();
     expect(find.text('1 of 2 steps complete'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Use this plan'), 200,
-        scrollable: find.byType(Scrollable).first);
-    expect(find.text('Stand up for one minute'), findsOneWidget);
+    await reveal(tester, find.text('Use this plan'));
+    await reveal(tester, find.text('Stand up for one minute'));
     expect(
         tester
             .widget<CheckboxListTile>(find.byType(CheckboxListTile).last)
             .onChanged,
         isNull);
-    await tester.scrollUntilVisible(find.text('My goal'), -200,
-        scrollable: find.byType(Scrollable).first);
+    await reveal(tester, find.text('My goal'));
     await tester.enterText(find.byType(TextField).first, 'New goal');
     await tester.pump();
     expect(find.byType(CheckboxListTile), findsNothing);
