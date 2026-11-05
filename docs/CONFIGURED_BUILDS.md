@@ -16,11 +16,19 @@ In repository Settings > Secrets and variables > Actions > Variables, set:
 Use the same project on both platforms. Do not commit actual values or define
 files. Never use a service-role, secret, database or model-provider key here.
 
-Run **Neura Local Runner Check** and **Neura Android Package** on
+Run **Neura Windows Package** and **Neura Android Package** on
 the branch containing these workflow changes. For manual dispatch, leave
 `require_sync_configuration` checked. A requested configured build fails if the
 settings are missing; partial or invalid settings always fail. Ordinary PR
 validation keeps its local-only behavior if both settings are absent.
+
+Windows packaging for same-repository maintainer PRs runs on a fresh
+GitHub-hosted Windows Server 2022 VM. It retains the full Flutter suite, strict
+analysis, source/native ASR contracts, synthetic Rust IPC tests, runtime payload
+checks, packaged-launch self-test and verified release delivery. Flutter and
+Rust use the branch's pinned versions, and dependency locks must remain unchanged.
+The hosted job keeps the 8 GB storage floor and limits test/Cargo concurrency to
+two. Manual Windows dispatch retains the laptop runner and its storage safeguards.
 
 Android packaging for same-repository maintainer PRs runs on a fresh
 GitHub-hosted Ubuntu 24.04 VM. It uses the pinned Flutter version, JDK 17,
@@ -73,7 +81,7 @@ required release upload or download-verification failure fails the job even if
 compilation succeeded; the retained copy remains available to the runner's
 operator. Do not classify a delivery failure as a Flutter compile failure.
 
-Hosted Android packages are staged under the ephemeral runner's temporary
+Hosted Windows and Android packages are staged under the ephemeral runner's temporary
 directory. The download-verified GitHub prerelease is their durable copy; a
 failed hosted delivery requires rerunning the job because the VM is discarded.
 
