@@ -1,4 +1,4 @@
-name: Neura Self-Hosted Android Package
+name: Neura Android Package
 
 on:
   pull_request:
@@ -9,6 +9,7 @@ on:
       - 'test/**'
       - 'tools/New-NeuraClientBuildConfig.ps1'
       - 'tools/Publish-NeuraReleaseAssets.ps1'
+      - 'tools/Publish-NeuraReleaseAssets.Tests.ps1'
       - 'tools/Repair-NeuraCiStorage.ps1'
       - 'tools/Repair-NeuraCiStorage.Tests.ps1'
       - 'tools/Save-NeuraConfiguredPackage.ps1'
@@ -25,8 +26,7 @@ on:
 
 
 permissions:
-  # Package delivery publishes download-verified prerelease assets.
-  contents: write
+  contents: read
 
 concurrency:
   group: neura-self-hosted-android-${{ github.ref }}
@@ -37,9 +37,136 @@ env:
   FLUTTER_SHA256: 'd8e2b5977e09082c6440f89dc1aa887b94c8fbcc3b39222797046295a3f68a9e'
 
 jobs:
-  android:
+  android_pr:
     name: Build installable Android debug APK
+    # Maintainer PR packages retain verified release delivery. Forks must never
+    # receive a publishing token or execute on the persistent laptop runner.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the tested PR merge
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare isolated hosted build storage
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          # Only this disposable VM's unrelated preinstalled toolchains are
+          # removed. No laptop volumes, retained packages or shared caches.
+          sudo rm -rf -- /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h "$GITHUB_WORKSPACE"
+          free_bytes=$(df --output=avail -B1 "$GITHUB_WORKSPACE" | tail -1 | tr -d ' ')
+          test "$free_bytes" -ge $((16 * 1024 * 1024 * 1024))
+          test -x "$JAVA_HOME_17_X64/bin/javac"
+          test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          {
+            echo "JAVA_HOME=$JAVA_HOME_17_X64"
+            echo "ANDROID_SDK_ROOT=$ANDROID_HOME"
+            echo "GRADLE_USER_HOME=$RUNNER_TEMP/neura-android-gradle"
+            echo "PUB_CACHE=$RUNNER_TEMP/neura-android-pub"
+            echo "NEURA_ANDROID_PACKAGE=$RUNNER_TEMP/neura-packages/android/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          } >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          {
+            echo '### Hosted Android source'
+            echo "PR head: $PR_HEAD"
+            echo "Packaged commit: $(git rev-parse HEAD)"
+            echo "Packaged tree: $(git rev-parse 'HEAD^{tree}')"
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+      - name: Validate release checksum handling before building
+        shell: pwsh
+        run: ./tools/Publish-NeuraReleaseAssets.Tests.ps1
+      - name: Enable pinned Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: false
+      - name: Prepare Android SDK and bounded Gradle workers
+        run: |
+          set -euo pipefail
+          java -version
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          # Hosted images already carry accepted SDK licenses. Installation
+          # must fail if any required package cannot be installed normally.
+          "$sdkmanager" --sdk_root="$ANDROID_HOME" \
+            'platform-tools' 'platforms;android-36' 'platforms;android-37.0' \
+            'build-tools;36.0.0' 'ndk;28.2.13676358'
+          mkdir -p "$GRADLE_USER_HOME"
+          cat > "$GRADLE_USER_HOME/gradle.properties" <<'PROPERTIES'
+          org.gradle.jvmargs=-Xmx4G -XX:MaxMetaspaceSize=2G -XX:ReservedCodeCacheSize=512m
+          org.gradle.workers.max=2
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          PROPERTIES
+          flutter --version
+          flutter pub get --enforce-lockfile
+          git diff --exit-code -- pubspec.lock rust/Cargo.lock
+      - name: Prepare existing public client configuration
+        id: client_config
+        shell: pwsh
+        env:
+          NEURA_SUPABASE_URL: ${{ vars.NEURA_SUPABASE_URL }}
+          NEURA_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEURA_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          ./tools/New-NeuraClientBuildConfig.ps1 -OutputPath (Join-Path $env:RUNNER_TEMP 'neura-android-client.json')
+      - name: Build APK with the locked dependencies
+        run: |
+          set -euo pipefail
+          free_bytes=$(df --output=avail -B1 "$GITHUB_WORKSPACE" | tail -1 | tr -d ' ')
+          echo "Free bytes before Android compilation: $free_bytes"
+          test "$free_bytes" -ge $((12 * 1024 * 1024 * 1024))
+          args=(build apk --debug --no-pub --build-number "$GITHUB_RUN_NUMBER")
+          if [[ -n "${NEURA_DART_DEFINE_FILE:-}" ]]; then
+            test -f "$NEURA_DART_DEFINE_FILE"
+            args+=("--dart-define-from-file=$NEURA_DART_DEFINE_FILE")
+          fi
+          flutter "${args[@]}" 2>&1 | tee "$RUNNER_TEMP/neura-android-build.log"
+          git diff --exit-code -- pubspec.lock rust/Cargo.lock
+      - name: Verify and preserve the installable APK
+        run: |
+          set -euo pipefail
+          apk=build/app/outputs/flutter-apk/app-debug.apk
+          test -s "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" > "$RUNNER_TEMP/neura-apk-badging.txt"
+          grep -q "^package: name='com.neurocompanion.app'" "$RUNNER_TEMP/neura-apk-badging.txt"
+          grep -q "versionCode='$GITHUB_RUN_NUMBER'" "$RUNNER_TEMP/neura-apk-badging.txt"
+          mkdir -p "$NEURA_ANDROID_PACKAGE"
+          cp "$apk" "$NEURA_ANDROID_PACKAGE/NeuraCompanion-Android-debug.apk"
+          (cd "$NEURA_ANDROID_PACKAGE" && sha256sum NeuraCompanion-Android-debug.apk > SHA256SUMS.txt)
+      - name: Publish required download-verified Android assets
+        id: release_delivery
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NEURA_RELEASE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          NEURA_RELEASE_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          ./tools/Publish-NeuraReleaseAssets.ps1 -Platform android -PackagePath $env:NEURA_ANDROID_PACKAGE -BuildVolume $env:RUNNER_TEMP
+      - name: Remove temporary public client settings
+        if: always()
+        run: rm -f -- "$RUNNER_TEMP/neura-android-client.json"
+
+  android:
+    name: Build Android APK on the local Windows runner
+    if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, Windows, X64, neura]
+    permissions:
+      contents: write
     # Cold self-hosted builds plus download-verified release delivery and
     # bounded cleanup can exceed three hours; keep a four-hour job ceiling.
     timeout-minutes: 240

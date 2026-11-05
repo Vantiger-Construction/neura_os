@@ -174,6 +174,38 @@ class AvatarSourceCompositionTests(unittest.TestCase):
         )
         self.assertIn('Windows speech workflow conflict policy keeps source PR head:', report)
 
+    def test_conflicting_visible_mouth_harness_keeps_source_version(self):
+        workflow = self.origin / '.github/workflows/neura-visible-mouth.yml'
+        workflow.parent.mkdir(parents=True)
+        workflow.write_text('reviewed visible mouth harness\n')
+        self.commit('current visible mouth workflow')
+        self.git(self.origin, 'checkout', SAPI)
+        workflow.parent.mkdir(parents=True, exist_ok=True)
+        workflow.write_text('dependency visible mouth harness\n')
+        self.sapi = self.commit('dependency visible mouth workflow')
+        self.git(self.origin, 'checkout', 'subject')
+        result, report, checkout = self.compose()
+        self.assert_success(result, report, checkout)
+        self.assertEqual(
+            (checkout / workflow.relative_to(self.origin)).read_text(),
+            'reviewed visible mouth harness\n',
+        )
+        self.assertIn('Visible mouth workflow conflict policy keeps source PR head:', report)
+
+    def test_conflicting_speech_application_source_still_fails(self):
+        source = self.origin / 'lib/services/neura_tts_service.dart'
+        source.parent.mkdir(parents=True)
+        source.write_text('reviewed startup speech\n')
+        self.commit('current application speech')
+        self.git(self.origin, 'checkout', SAPI)
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text('dependency application speech\n')
+        self.sapi = self.commit('dependency application speech')
+        self.git(self.origin, 'checkout', 'subject')
+        result, report, _ = self.compose()
+        self.assert_failure(result, report, 'merge SAPI')
+        self.assertIn('Unmerged paths:\nlib/services/neura_tts_service.dart\n', report)
+
 
 if __name__ == '__main__':
     unittest.main()
