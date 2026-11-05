@@ -1,0 +1,8 @@
+{
+  "name": "Neura.Presence.Bridge.Protocol",
+  "rootNamespace": "Neura.Presence.Bridge",
+  "excludePlatforms": [
+    "WebGL"
+  ],
+  "noEngineReferences": true
+}

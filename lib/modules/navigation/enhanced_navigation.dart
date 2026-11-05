@@ -15,6 +15,7 @@ import '../../services/neura_companion_presence.dart';
 import '../../services/update_check_service.dart';
 import '../../services/wake_word_prefs.dart';
 import '../../avatar/neura_avatar_runtime_bridge.dart';
+import '../../avatar/presence_relay/neura_presence_relay.dart';
 import '../../src/shell/shell_prefs.dart';
 
 import '../../care/screens/neura_care_loop_screen.dart';
@@ -154,6 +155,8 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     _avatarDocked = true;
     unawaited(shell.setAvatarDockedInApp(true));
     _publishAvatarState();
+    // Opt-in: connects only when launched by Start-NeuraPresenceBridge.ps1.
+    NeuraPresenceRelayPublisher.startFromEnvironment();
   }
 
   @override
