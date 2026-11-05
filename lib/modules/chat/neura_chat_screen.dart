@@ -40,6 +40,10 @@ import '../../widgets/neura_activity_badge.dart';
 import '../../planning/neura_daily_plan_screen.dart';
 import '../../services/neura_reply_batch.dart';
 import '../../services/neura_speech_to_text_service.dart';
+import '../../services/neura_speech_input.dart';
+import '../../services/neura_local_speech_input.dart';
+import '../../services/neura_startup_voice_prefs.dart';
+import '../../services/ambient_listening_service.dart';
 import '../../services/neura_tone_runtime.dart';
 import '../../services/neura_tts_service.dart';
 import '../../services/neura_voice_command.dart';
@@ -58,7 +62,13 @@ class NeuraChatScreen extends StatefulWidget {
     this.memoryService,
     this.aiService,
     this.ttsService,
+    this.startWithVoice = false,
+    this.speechInput,
   });
+
+  /// Requires the saved startup-voice opt-in; never uses online OS dictation.
+  final bool startWithVoice;
+  final NeuraSpeechInput? speechInput;
 
   /// Optional test seam. The screen owns and disposes the supplied session.
   final LocalConversationSession? localSession;
@@ -117,8 +127,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   _ChatLine? _activeBotLine;
   int _generationSerial = 0;
 
-  final NeuraSpeechToTextService _voiceInput =
-      NeuraSpeechToTextService.instance;
+  late final NeuraSpeechInput _voiceInput;
+  StreamSubscription<String>? _voiceStatusSub;
+  bool _startupGreeting = false;
   final ImagePicker _imagePicker = ImagePicker();
   StreamSubscription<String>? _voiceSub;
   StreamSubscription<String>? _finalPhraseSub;
@@ -161,6 +172,22 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
+    _voiceInput = widget.speechInput ??
+        (widget.startWithVoice
+            ? NeuraLocalSpeechInput.instance
+            : NeuraSpeechToTextService.instance);
+    if (widget.startWithVoice) {
+      _voiceStatusSub = _voiceInput.statusStream.listen((message) {
+        if (!mounted || !_continuousMode) return;
+        unawaited(_endConversation().catchError((_) {}));
+        _showVoiceNotice(message);
+      });
+      NeuraStartupVoicePrefs.instance.enabled
+          .addListener(_onStartupVoiceChanged);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_greetAndListen());
+      });
+    }
     _localSession = widget.localSession ?? LocalConversationSession();
     _localSession.addListener(_onLocalChanged);
     SafeBoot.instance.safeMode.addListener(_stopForSafeMode);
@@ -197,6 +224,58 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     if (wasCurrent && !current) {
       _clearThread();
       unawaited(_endConversation().catchError((_) {}));
+    }
+    if (widget.startWithVoice &&
+        !current &&
+        (_listening || _startingListening || _startupGreeting)) {
+      unawaited(_endConversation().catchError((_) {}));
+    }
+  }
+
+  void _onStartupVoiceChanged() {
+    if (!NeuraStartupVoicePrefs.instance.enabled.value) {
+      unawaited(_endConversation().catchError((_) {}));
+    }
+  }
+
+  Future<void> _greetAndListen() async {
+    if (!mounted || !NeuraStartupVoicePrefs.instance.enabled.value) return;
+    _continuousMode = true;
+    final session = ++_voiceSession;
+    if (!_voiceSessionActive(session)) {
+      _continuousMode = false;
+      return;
+    }
+    setState(() => _startupGreeting = true);
+    try {
+      await WakeWordListenerService.instance
+          .stop()
+          .timeout(const Duration(seconds: 3));
+      await AmbientListeningService.instance
+          .stop()
+          .timeout(const Duration(seconds: 3));
+      if (!_voiceSessionActive(session)) return;
+      await NeuraTtsService.instance.prepareLocalStartupVoice();
+      if (!_voiceSessionActive(session)) return;
+      // Completion is awaited: Neura must not hear and submit her own greeting.
+      await NeuraTtsService.instance
+          .speak(
+            "Hi, I'm Neura. I'm here and ready to listen.",
+            requireCompletion: true,
+          )
+          .timeout(const Duration(seconds: 15));
+      if (!_voiceSessionActive(session) ||
+          !NeuraStartupVoicePrefs.instance.enabled.value) {
+        return;
+      }
+      await _startListeningTurn();
+    } catch (_) {
+      if (_voiceSessionActive(session)) {
+        await _endConversation();
+        _showVoiceNotice('Startup voice could not start. You can still type.');
+      }
+    } finally {
+      if (mounted) setState(() => _startupGreeting = false);
     }
   }
 
@@ -406,16 +485,23 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     WidgetsBinding.instance.removeObserver(this);
     SafeBoot.instance.safeMode.removeListener(_stopForSafeMode);
     SafeBoot.instance.restartRequired.removeListener(_stopForSafeMode);
+    _voiceStatusSub?.cancel();
+    if (widget.startWithVoice) {
+      NeuraStartupVoicePrefs.instance.enabled
+          .removeListener(_onStartupVoiceChanged);
+    }
     _voiceSub?.cancel();
     _finalPhraseSub?.cancel();
     _replyUpdates?.dispose();
     _replySpeech?.cancel();
     _ai.cancelActiveGeneration();
-    unawaited(_tts.stop());
+    unawaited(_tts.stop().catchError((_) {}));
     if (_listening || _startingListening || _voiceInput.isListening) {
       unawaited(_voiceInput.stopRecording());
     }
-    unawaited(WakeWordListenerService.instance.resume());
+    if (!widget.startWithVoice) {
+      unawaited(WakeWordListenerService.instance.resume());
+    }
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -576,6 +662,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
 
   Future<void> _toggleListening() async {
     if (_localSelected) return;
+    if (_startupGreeting) {
+      await _endConversation();
+      return;
+    }
     if (_startingListening) {
       await _endConversation();
       return;
@@ -625,6 +715,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       _continuousMode &&
       session == _voiceSession &&
       !SafeBoot.instance.safeMode.value &&
+      !SafeBoot.instance.restartRequired.value &&
+      (!widget.startWithVoice ||
+          (NeuraStartupVoicePrefs.instance.enabled.value &&
+              WidgetsBinding.instance.lifecycleState ==
+                  AppLifecycleState.resumed)) &&
       (ModalRoute.of(context)?.isCurrent ?? true);
 
   Future<void> _startListeningTurn() async {
@@ -639,6 +734,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final session = ++_voiceSession;
     _startingListening = true;
     try {
+      if (widget.startWithVoice) {
+        await NeuraTtsService.instance.prepareLocalStartupVoice();
+        if (!_voiceSessionActive(session)) return;
+      }
       await _voiceSub?.cancel();
       await _finalPhraseSub?.cancel();
       if (!_voiceSessionActive(session)) return;
@@ -670,6 +769,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         return;
       }
       setState(() => _listening = true);
+    } catch (_) {
+      if (_voiceSessionActive(session)) {
+        await _endConversation();
+        _showVoiceNotice(
+            'Local voice input is unavailable. You can still type.');
+      }
     } finally {
       _startingListening = false;
     }
@@ -1599,7 +1704,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     setState(() => _speechEnabled = !_speechEnabled);
     if (!_speechEnabled) {
       _replySpeech?.cancel();
-      unawaited(_tts.stop());
+      unawaited(_tts.stop().catchError((_) {}));
     }
   }
 

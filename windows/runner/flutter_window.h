@@ -9,6 +9,7 @@
 #include "neura_on_device_asr.h"
 #include "neura_engine_session.h"
 #include "neura_local_conversation.h"
+#include "neura_local_speech_input.h"
 #include "neura_speech_recognizer.h"
 #include "neura_window_role.h"
 #include "neura_windows_tts.h"
@@ -50,6 +51,7 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<NeuraEngineSession> engine_session_;
   std::unique_ptr<NeuraLocalConversation> local_conversation_;
   std::unique_ptr<NeuraWindowsTts> local_tts_;
+  std::unique_ptr<NeuraLocalSpeechInput> local_speech_input_;
 
   int window_id_;
   bool is_mascot_;
