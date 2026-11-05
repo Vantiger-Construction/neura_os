@@ -64,6 +64,8 @@ bool FlutterWindow::OnCreate() {
       std::make_unique<NeuraSpeechRecognizer>(engine->messenger());
   if (!is_mascot_) {
     local_tts_ = std::make_unique<NeuraWindowsTts>(engine->messenger());
+    local_speech_input_ =
+        std::make_unique<NeuraLocalSpeechInput>(engine->messenger(), GetHandle());
     on_device_asr_ =
         std::make_unique<NeuraOnDeviceAsr>(engine->messenger(), GetHandle());
     if (window_id_ == 0) {
@@ -91,6 +93,7 @@ bool FlutterWindow::OnCreate() {
 
 
 void FlutterWindow::OnDestroy() {
+  local_speech_input_.reset();
   local_tts_.reset();
   local_conversation_.reset();
   engine_session_.reset();
@@ -121,6 +124,7 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
        (message == WM_POWERBROADCAST && wparam == PBT_APMSUSPEND) ||
        message == WM_CLOSE) {
     if (local_tts_) local_tts_->Background();
+    if (local_speech_input_) local_speech_input_->Background();
     if (local_conversation_) local_conversation_->Background();
     if (engine_session_) engine_session_->Background();
   }
