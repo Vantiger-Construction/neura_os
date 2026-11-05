@@ -28,11 +28,12 @@ Map<String, dynamic> payload() => {
 // UI fixtures only. Service/codec tests exercise real encrypted envelopes.
 class _Codec extends PortableBackupCodec {
   Completer<Map<String, dynamic>>? pending;
+  String expectedPassphrase = 'synthetic passphrase';
   @override
   Future<Map<String, dynamic>> decrypt(
       {required String envelope, required String passphrase}) async {
     if (envelope != 'synthetic-ciphertext' ||
-        passphrase != 'synthetic passphrase') {
+        passphrase != expectedPassphrase) {
       throw const FormatException('Synthetic failure');
     }
     return pending == null ? payload() : await pending!.future;
@@ -152,6 +153,19 @@ void main() {
     expect(store.writes.single.map((item) => item.id), ['b']);
     expect(find.text('Restored 1 entry. Existing entries were preserved.'),
         findsOneWidget);
+  });
+
+  testWidgets('existing long backup passphrases are never truncated',
+      (tester) async {
+    await mount(tester);
+    await select(tester);
+    codec.expectedPassphrase = 'synthetic-long-passphrase-' * 20;
+    await tester.enterText(find.byType(TextField), codec.expectedPassphrase);
+    await tap(tester, 'Verify without importing');
+    await tester.pumpAndSettle();
+    expect(find.text('Verified 2 entries. Your vault has not changed.'),
+        findsOneWidget);
+    expect(store.writes, isEmpty);
   });
 
   testWidgets('native picker waits for resume before reading ciphertext',

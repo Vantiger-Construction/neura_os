@@ -294,7 +294,6 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen>
               controller: _passphrase,
               enabled: !_busy,
               obscureText: true,
-              maxLength: 256,
               enableSuggestions: false,
               autocorrect: false,
               decoration: const InputDecoration(labelText: 'Backup passphrase'),
