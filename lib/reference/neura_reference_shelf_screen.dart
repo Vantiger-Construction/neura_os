@@ -115,12 +115,11 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
     setState(() => _picking = true);
     int? readEpoch;
     try {
-      final selected = await FilePicker.platform.pickFiles(
+      // file_picker 13: one file, streamed on demand; nothing is preloaded.
+      final file = await FilePicker.pickFile(
           type: FileType.custom,
-          allowedExtensions: NeuraSelectedContext.extensions,
-          withData: false,
-          withReadStream: true);
-      if (selected == null || !_pickerCurrent(request)) return;
+          allowedExtensions: NeuraSelectedContext.extensions);
+      if (file == null || !_pickerCurrent(request)) return;
       // Android can deliver the result before the app resumes. Do not read
       // private source bytes in the background, or revive a revoked selection.
       if (WidgetsBinding.instance.lifecycleState != null &&
@@ -137,13 +136,13 @@ class _NeuraReferenceShelfScreenState extends State<NeuraReferenceShelfScreen>
       _awaitingPicker = false;
       final epoch = _epoch;
       readEpoch = epoch;
-      final file = selected.files.single;
-      if (file.size > NeuraSelectedContext.maxBytes ||
-          file.readStream == null) {
+      // A size the platform reports up front is checked before reading; the
+      // streamed cap below still bounds files whose size is unknown.
+      if ((file.lengthSync() ?? 0) > NeuraSelectedContext.maxBytes) {
         throw const FormatException('Choose a text file up to 32 KB.');
       }
       final bytes = <int>[];
-      await for (final chunk in file.readStream!) {
+      await for (final chunk in file.readAsByteStream()) {
         if (!_pickerCurrent(request) || !_allowed || epoch != _epoch) return;
         if (bytes.length + chunk.length > NeuraSelectedContext.maxBytes) {
           throw const FormatException('Choose a text file up to 32 KB.');
