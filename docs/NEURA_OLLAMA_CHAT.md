@@ -65,6 +65,56 @@ this change. This version returns the complete reply rather than token deltas.
 While it is working, **Stop offline reply** cancels the current request and keeps
 Offline Ollama selected.
 
+## Check readiness before speaking
+
+With **Offline Ollama** selected in ordinary chat, open **Chat options → Offline
+readiness and controls**, then press **Check offline readiness**. Opening the
+dialog or selecting Ollama does not run a check. Opening these controls ends an
+active hands-free session; closing them never resumes capture automatically.
+
+The explicit check reports separate results for:
+
+- Ollama answering on the fixed loopback listener.
+- A supported stable version (currently at least 0.18.0).
+- The required local `qwen3:4b-instruct` tag, reviewed manifest digest, Qwen3
+  family, 4.0B size and Q4_K_M quantization. Remote aliases, missing models,
+  mismatched or malformed metadata fail closed.
+- Current physical memory and admission against the unchanged 7 GiB total /
+  3.5 GiB available floors. Unknown memory does not count as admitted. Memory
+  is reported even when Ollama is unavailable; low memory does not prevent the
+  metadata-only inspection, which never loads weights.
+
+The Rust check reuses `local_model::verify_model`, the verifier behind both
+conversation submission and the existing evidence sidecar. Only `/api/version`,
+`/api/tags` and `/api/show` are queried; no text, audio, inference, warm-up,
+download, cloud substitution or daemon/process startup is requested. Results
+are fixed numeric stages mapped to local messages; daemon error strings and
+model text are never displayed or retained. The snapshot is held only in the
+open dialog and is not a persisted readiness grant. Every actual reply still
+performs its own model verification and memory admission.
+
+**Cancel check**, closing the dialog, backgrounding, window deactivation, Safe
+Mode or recovery cancel ownership and suppress late results. Safe Mode and
+recovery remain latched until restart. Readiness shares chat's native worker,
+so a busy worker is rejected rather than replaced. Metadata requests have a
+three-second per-request deadline and a ten-second overall native deadline;
+Dart polling also has a twelve-second budget. No automatic retries occur.
+
+Follow the displayed manual setup steps when a prerequisite is missing. Neura
+never runs `ollama pull` for you. A successful result means the prerequisites
+were met at that moment. It does not prove successful inference, low latency,
+actual weight integrity, conversation quality, local speech availability or
+physical microphone/speaker behavior. Select **Companion**, choose **After
+reply** in voice preferences, then start **Talk freely (hands-free)** yourself.
+Restricted local-profile mode remains text-only and has no readiness/voice
+controls added by this change.
+
+`tools/Collect-NeuraEngineEvidence.ps1` is a separate opt-in diagnostic: it
+**does load the installed model** several times and requires
+`-ConfirmLocalModel`. The readiness dialog never invokes it. Physical Windows
+conversation acceptance and measured model performance remain separate from
+the synthetic metadata, lifecycle and UI regressions.
+
 ## Boundaries
 
 - Only `http://127.0.0.1:11434` endpoints `/api/version`, `/api/tags`,
