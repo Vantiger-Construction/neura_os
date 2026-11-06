@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "scope": "APK_SIGNATURE_AND_STATIC_IDENTITY_ONLY",
+  "application_id": "com.neurocompanion.app",
+  "version_code": "596",
+  "version_name": "1.5.1",
+  "signer_certificate_sha256": [
+    "4827f8ec9f68b78abd93c1c65b38d8561788f676f09d5f9347fc9c79256e58e8"
+  ],
+  "apk_sha256": "dbf1a2ea2d0cfed0e768cbd77650bd51493585fa88f384324fc7c1a3e40644b8",
+  "source_commit": "e8d99229321a025d2c3f3a2ab173e489b1343195",
+  "hardware_acceptance": "NOT RUN",
+  "migration_acceptance": "BLOCKED"
+}

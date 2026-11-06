@@ -1,0 +1,47 @@
+name: Startup voice diagnostic helpers
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths:
+      - 'tools/startup_voice_diagnostics/**'
+      - 'docs/STARTUP_VOICE_DIAGNOSTICS.md'
+      - '.github/workflows/neura-startup-voice-diagnostics.yml'
+  push:
+    branches: [Neura]
+    paths:
+      - 'tools/startup_voice_diagnostics/**'
+      - '.github/workflows/neura-startup-voice-diagnostics.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  helpers:
+    name: Synthetic diagnostic helpers (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Package identity, isolation and privacy fixtures
+        run: python -m unittest discover -s tools/startup_voice_diagnostics -p "test_*.py" -v
+      - name: Parse prerequisites using Windows PowerShell 5.1
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          $path = Join-Path $env:GITHUB_WORKSPACE 'tools\startup_voice_diagnostics\Test-WindowsPrerequisites.ps1'
+          [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) > $null
+          if ($errors.Count -ne 0) { throw 'Windows PowerShell parsing failed.' }
+          Write-Host 'Syntax only. No SAPI voice, recognizer, microphone or application was opened.'

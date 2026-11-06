@@ -1,0 +1,319 @@
+{
+  "status": "PASS",
+  "scope": "PINNED_RELEASE_BYTE_IDENTITY_ONLY",
+  "source_commit": "e8d99229321a025d2c3f3a2ab173e489b1343195",
+  "source_tree": "c4c234dbe15711d28e0d6c21933d31cea14e969d",
+  "head_commit": "d6edfbc90bc619da7c8d2df8a6bfeeb2292949ab",
+  "platform": "windows",
+  "run_id": "41944653817",
+  "release_tag": "neura-ci-pr-161-d6edfbc90bc6-e8d99229321a",
+  "configured_backend": true,
+  "device_qa_in_manifest": "pending",
+  "assets": [
+    {
+      "name": "NeuraCompanion-Windows-d6edfbc90bc6-41944653817-1-build-manifest.json",
+      "bytes": 594,
+      "sha256": "a7b880a39743fac71d731dffc2c59e0345e791ffb799aa1621cc9f5c895011b5"
+    },
+    {
+      "name": "NeuraCompanion-Windows-d6edfbc90bc6-41944653817-1-SHA256SUMS.txt",
+      "bytes": 258,
+      "sha256": "cced383d6b45541b921eb5e51ae05044ba3c97a75fa45776c5e42fdf92f98356"
+    },
+    {
+      "name": "NeuraCompanion-Windows-d6edfbc90bc6-41944653817-1.zip",
+      "bytes": 82208363,
+      "sha256": "3f15b979db4bf64933a0641c41266a03b1277ce3e0a13663e508de532b2eaf2d"
+    }
+  ],
+  "archive": {
+    "status": "PASS",
+    "scope": "STATIC_BYTES_ONLY",
+    "members": 56,
+    "uncompressed_bytes": 128398758,
+    "payload_sha256": [
+      {
+        "name": "app_links_plugin.dll",
+        "bytes": 142336,
+        "sha256": "a8a5733c391921086b97a1c0fc25ff2f76d49a2b5d8614ab2f858a2280f0a230"
+      },
+      {
+        "name": "audioplayers_windows_plugin.dll",
+        "bytes": 202752,
+        "sha256": "712e621a0a01e7637d6be35777909fc93f76255ddb8b0d452e93e23af7168148"
+      },
+      {
+        "name": "connectivity_plus_plugin.dll",
+        "bytes": 102912,
+        "sha256": "c010d57a5a31cdedb76264181e0e061018fbccba7e3381e2c312983764c10aab"
+      },
+      {
+        "name": "dartjni.dll",
+        "bytes": 59904,
+        "sha256": "518b6095d00d3df83085ed8b3957b12d9dc2f611973dc8b9904da66ebccfa436"
+      },
+      {
+        "name": "data/app.so",
+        "bytes": 15025032,
+        "sha256": "8e4c2c59c9973601baa485e8d9bb64aa5f70b7bc8284f407c46bccc4476ce55d"
+      },
+      {
+        "name": "data/flutter_assets/AssetManifest.bin",
+        "bytes": 1566,
+        "sha256": "3606f90560038d10ff6e1f6dc074853c503b346d7ffb00529bb890fff2ff8dc0"
+      },
+      {
+        "name": "data/flutter_assets/assets/audio/neura/envelopes/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "data/flutter_assets/assets/audio/neura/Recording.wav",
+        "bytes": 7856722,
+        "sha256": "b8917b366a8af169866f3e1e009707f6c758c7bb9f1215cfa0ee61992d4ba6bc"
+      },
+      {
+        "name": "data/flutter_assets/assets/audio/neura/Recording_upbeat.wav",
+        "bytes": 5475922,
+        "sha256": "b1c988f38e82b85fb4a79cc5f6a1387219ef9bfc8ac81c88d67474e4fc8a171e"
+      },
+      {
+        "name": "data/flutter_assets/assets/audio/neura/to_tigger_vxxx1.wav",
+        "bytes": 21233362,
+        "sha256": "8ab6d8823d486136e928c40e5bf700110bae1ee41a8653fb17cb9919f805ec3e"
+      },
+      {
+        "name": "data/flutter_assets/assets/audio/neura/to_tigger_vxxx2.wav",
+        "bytes": 17222482,
+        "sha256": "7c1417f48885ddf8f631133cf7bf51aa6a8f7d8e62e24bdd06f3cd0c8e91109c"
+      },
+      {
+        "name": "data/flutter_assets/assets/audio/neura/to_tigger_vxxx3.wav",
+        "bytes": 20707282,
+        "sha256": "b6d43b6dcd32f9d2b287f13212d51769805e41a62d8b4e53ccee1bb10654545c"
+      },
+      {
+        "name": "data/flutter_assets/assets/audio/neura/visemes/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "data/flutter_assets/assets/images/ai_avatar.png",
+        "bytes": 40,
+        "sha256": "d7a8ae935fc68a7c9d2ad25a2c71ab9582917d16f52b45e9acdd2fe1f5b6076a"
+      },
+      {
+        "name": "data/flutter_assets/assets/images/neura_fullbody.png",
+        "bytes": 675165,
+        "sha256": "1a158ac9691f5305d537a0df1d0f4181f338994f93b5a212036080318d98cc95"
+      },
+      {
+        "name": "data/flutter_assets/assets/images/README.txt",
+        "bytes": 54,
+        "sha256": "070c6859cfc021677cab40e82e49981305d2b2de6d422434459be8dafd51adfd"
+      },
+      {
+        "name": "data/flutter_assets/assets/lottie/.gitkeep",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "data/flutter_assets/assets/lottie/README.txt",
+        "bytes": 214,
+        "sha256": "ad429c47a8c3856d97d71e02693029e9c739b3ded0d108a4cd5c7bfe2f78a2a2"
+      },
+      {
+        "name": "data/flutter_assets/assets/rive/README.txt",
+        "bytes": 354,
+        "sha256": "33b673b25895ff76d4a78ed531e8d725aa4c332c616d6c7b96dec044962ef14b"
+      },
+      {
+        "name": "data/flutter_assets/assets/sounds/ambient_loop.mp3",
+        "bytes": 43,
+        "sha256": "d867f8fe7f44887ddf4bc8f85c735fb7dd88dd752a99d5e63248d95d51f37f90"
+      },
+      {
+        "name": "data/flutter_assets/assets/sounds/breathe.mp3",
+        "bytes": 38,
+        "sha256": "1550263033a269fb2c125a97088511051a2c77b60235631b8c0fe39c8eadcbb5"
+      },
+      {
+        "name": "data/flutter_assets/assets/sounds/check.mp3",
+        "bytes": 36,
+        "sha256": "d2071fe58dd3784695f301bd9633f7a2df34ac734fb0c16846e6871da5225986"
+      },
+      {
+        "name": "data/flutter_assets/assets/sounds/ocean.mp3",
+        "bytes": 36,
+        "sha256": "158c6e97632476e0742a3daaa0de7143c330dec24b5fd98f7ec7e1dc0d765159"
+      },
+      {
+        "name": "data/flutter_assets/assets/sounds/startup.mp3",
+        "bytes": 38,
+        "sha256": "5bc9d04a4d899a18a40626ae05e9e494069406a91bbc2dc98d0c27a30acaebd7"
+      },
+      {
+        "name": "data/flutter_assets/assets/sounds/wind.mp3",
+        "bytes": 35,
+        "sha256": "3b6ef6726cdcf67c51b7b0e1cb73029d165b21c48c8ed1c3e1ff90ee090d80df"
+      },
+      {
+        "name": "data/flutter_assets/FontManifest.json",
+        "bytes": 82,
+        "sha256": "28b1eb2b3d2e1ad60b8c8b0f9100b1ccbf492f7fa97f5bebb51ea97e73926e7d"
+      },
+      {
+        "name": "data/flutter_assets/fonts/MaterialIcons-Regular.otf",
+        "bytes": 42424,
+        "sha256": "bf6770ca3a054a606b508c2c4a76d90c931d69bcedf89266e8135ac587c82193"
+      },
+      {
+        "name": "data/flutter_assets/NativeAssetsManifest.json",
+        "bytes": 45,
+        "sha256": "9548a31e4a048135c1d94f919328bfb62ae2c7bb3cab96557c7941daa97776cb"
+      },
+      {
+        "name": "data/flutter_assets/NOTICES.Z",
+        "bytes": 120768,
+        "sha256": "8cdcdf063d11a7c08b97b43f0863397f84427d9dd66b583a4f7379d07741b034"
+      },
+      {
+        "name": "data/flutter_assets/packages/flutter_local_notifications_web/web/notifications_service_worker.js",
+        "bytes": 3407,
+        "sha256": "566f47dccc0f417f0164a3d0852334c340d0941472af43fc65ee50a314555058"
+      },
+      {
+        "name": "data/flutter_assets/shaders/ink_sparkle.frag",
+        "bytes": 21856,
+        "sha256": "1fe8436a743884cb65078fe8c7b38e18f5365f2a2961270916f426fd13c604af"
+      },
+      {
+        "name": "data/flutter_assets/shaders/stretch_effect.frag",
+        "bytes": 17616,
+        "sha256": "bc7599dbbbaab310efe41520574138d21fb18a88c8fe4495ed79315309336f6f"
+      },
+      {
+        "name": "data/icudtl.dat",
+        "bytes": 864880,
+        "sha256": "325a86063d26334c2eabe1743cea073b612540fbf3d8fc2ef0b5708e3763a8c7"
+      },
+      {
+        "name": "file_selector_windows_plugin.dll",
+        "bytes": 111616,
+        "sha256": "a0319bfc3c395c2080345a5f6a04f522c4660a29453655da94e83bfa2b6d55b1"
+      },
+      {
+        "name": "flutter_local_notifications_windows.dll",
+        "bytes": 91648,
+        "sha256": "94da6f98b8fdd46c2c702d5ffbe39905246ab44a5be5f4704a393544c2fdcadf"
+      },
+      {
+        "name": "flutter_secure_storage_windows_plugin.dll",
+        "bytes": 159744,
+        "sha256": "5381d94e6104d9e8464ae93966c5ca83cfa321e16113582b61f53bad5fc485a7"
+      },
+      {
+        "name": "flutter_windows.dll",
+        "bytes": 21289472,
+        "sha256": "30494fb08f9f101a8fbe42568110aaa160efbd7341f3cfe877dc14214be3a233"
+      },
+      {
+        "name": "local_auth_windows_plugin.dll",
+        "bytes": 179200,
+        "sha256": "a9794ce956f9850f26965eb5c0773734f3bbf3af8daec08e4ce9a56ec7e03f27"
+      },
+      {
+        "name": "msvcp140.dll",
+        "bytes": 557728,
+        "sha256": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9"
+      },
+      {
+        "name": "neura_api.exe",
+        "bytes": 5331968,
+        "sha256": "247e035669c1d7b7245b5208e21e93d580855af801a4092c9651875f07cec536"
+      },
+      {
+        "name": "neura_swarm.dll",
+        "bytes": 4483072,
+        "sha256": "543a5e2b4120ad34b1cc852825bbc8136dd5cca8a320eb54715fb73253e38782"
+      },
+      {
+        "name": "neuro_companion.exe",
+        "bytes": 392704,
+        "sha256": "c8b01dda3aab792f9856b99fa04fa876fa6bf6799d86f68208c63d50746b9251"
+      },
+      {
+        "name": "offline-text/NeuraLocalConversationPolicy.ps1",
+        "bytes": 2718,
+        "sha256": "67adceb08284477cb36e2417bc7cb719e8fc4bf407f737641b924eaa9cdfc85b"
+      },
+      {
+        "name": "offline-text/NeuraLocalConversationProcess.cs",
+        "bytes": 2668,
+        "sha256": "a8cf02bd4d6c93a01d1ad5fe5c904a359ecdcedd4c76c03203016910662cc701"
+      },
+      {
+        "name": "offline-text/Start-NeuraLocalConversation.ps1",
+        "bytes": 9729,
+        "sha256": "c06d408a5c835b5b3b3bbf67949b8b434f0ee90e4a404d44315d4410e0b5db5a"
+      },
+      {
+        "name": "pdfium.dll",
+        "bytes": 4749824,
+        "sha256": "0c88ebacc0393fd45fc3e7b35e31e72c9e55b633a846a7ecf4085694dba68abd"
+      },
+      {
+        "name": "permission_handler_windows_plugin.dll",
+        "bytes": 119808,
+        "sha256": "0717a55dc81f5fc913e9273fd7c359e49f41bf1b4e4c47dc7e1512e2a97bf019"
+      },
+      {
+        "name": "printing_plugin.dll",
+        "bytes": 140800,
+        "sha256": "9af70c4e7aeda2a0bde5f2c0ca338ca98ead57cf64e61b50f29b52e8eab411ac"
+      },
+      {
+        "name": "record_windows_plugin.dll",
+        "bytes": 216064,
+        "sha256": "7a29c7b1e7d4929f116d3457afa29595c57c37d9860e406ef6c45b88b2bcbfe0"
+      },
+      {
+        "name": "screen_retriever_windows_plugin.dll",
+        "bytes": 119296,
+        "sha256": "91cc90fdbbc6796475b02dbf6b7faf5cdf40ead719bf46de522c0374e9f263b2"
+      },
+      {
+        "name": "share_plus_plugin.dll",
+        "bytes": 134656,
+        "sha256": "311134ea07509984460dc370ebf19cd1d1458e4976256262c14d2e54889e1848"
+      },
+      {
+        "name": "speech_to_text_windows_plugin.dll",
+        "bytes": 99328,
+        "sha256": "63d5a0ea3768aa4cdc12d5a2b61d11f9113afd73cf67e86350ce5a27a9a26336"
+      },
+      {
+        "name": "url_launcher_windows_plugin.dll",
+        "bytes": 98304,
+        "sha256": "faee0290b7b0157e15f92081948864165790643aede99802ebfb1c79538e780b"
+      },
+      {
+        "name": "vcruntime140.dll",
+        "bytes": 124544,
+        "sha256": "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066"
+      },
+      {
+        "name": "vcruntime140_1.dll",
+        "bytes": 49792,
+        "sha256": "1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f"
+      },
+      {
+        "name": "window_manager_plus_plugin.dll",
+        "bytes": 156672,
+        "sha256": "a6dc592b81c6771dadecc3e30211500306b43556b9fa1ca6b7e900e941958b48"
+      }
+    ]
+  },
+  "hardware_acceptance": "NOT RUN",
+  "safe_to_upgrade_existing_data": "BLOCKED"
+}

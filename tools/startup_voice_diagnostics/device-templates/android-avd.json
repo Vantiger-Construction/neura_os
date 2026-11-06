@@ -1,0 +1,270 @@
+{
+  "schema": 1,
+  "created_utc": "2026-11-06T11:45:30.221773+00:00",
+  "device_alias": "avd-synthetic",
+  "platform": "android",
+  "build_catalog_id": "177-android",
+  "source_commit": "COPY_FROM_VERIFIED_PACKAGE_REPORT",
+  "source_tree": "COPY_FROM_VERIFIED_PACKAGE_REPORT",
+  "package_sha256": "COPY_FROM_VERIFIED_PACKAGE_REPORT",
+  "installed_identity_verified": false,
+  "isolated_synthetic_profile": false,
+  "device_os_build": "NOT RECORDED",
+  "recognizer_and_language": "NOT RECORDED",
+  "offline_output_voice": "NOT RECORDED",
+  "network_condition": "NOT RECORDED",
+  "overall_hardware_acceptance": "NOT RUN",
+  "results": [
+    {
+      "id": "isolation_and_build_identity",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "cold_start_opt_out",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "permission_denied",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "permission_dialog_resume",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "cold_start_opt_in",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "greeting_before_mic",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "one_local_phrase",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "airplane_or_disconnected",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "missing_local_engine",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "stop_during_greeting",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "stop_during_listening",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "mute_or_interruption",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "route_cover_and_close",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "background_during_greeting",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "background_during_listening",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "lock_or_suspend",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "resume_without_gesture",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "startup_opt_out",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "permission_revoked",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "silence_or_recognizer_error",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "safe_mode_during_greeting",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "safe_mode_during_listening",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "recovery_restart_required",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "cloud_approval_cancel",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "no_background_cloud",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "memory_consent_unchanged",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    },
+    {
+      "id": "disposable_wipe_shutdown",
+      "status": "NOT RUN",
+      "observed_utc": null,
+      "repetitions": 0,
+      "observer": "NONE",
+      "observation": "",
+      "sanitized_refs": []
+    }
+  ],
+  "status_rules": {
+    "PASS": "All stated observations actually completed on this device/build",
+    "FAIL": "Observed deviation, crash, early capture, late text/audio or unexpected request",
+    "BLOCKED": "Cannot safely execute or prerequisite/diagnostic access unavailable",
+    "NOT RUN": "No observation yet"
+  },
+  "privacy": "Synthetic phrases only; no real audio, transcripts, journals, keys, account IDs or credentials",
+  "record_kind": "PREPARED_TEMPLATE_NOT_DEVICE_OBSERVATIONS"
+}
