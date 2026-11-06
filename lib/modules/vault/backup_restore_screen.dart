@@ -230,8 +230,14 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen>
         _preview = null;
         _selected.clear();
       });
-      final count = await widget.service
-          .restorePreview(pin: pin, preview: preview, selected: selection);
+      final count = await widget.service.restorePreview(
+          pin: pin,
+          preview: preview,
+          selected: selection,
+          mayRestore: () =>
+              _current(epoch, operation) &&
+              widget.sessionPin() == pin &&
+              ModalRoute.of(context)?.isCurrent == true);
       if (!_current(epoch, operation)) return;
       setState(() {
         _restored = true;

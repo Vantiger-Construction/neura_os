@@ -85,6 +85,7 @@ class PortableVaultBackupService {
   static const _maxBackupBytes = 25 * 1024 * 1024;
   static const scheduledBackupFileName = 'neura-scheduled.neurabackup';
 
+  bool _restoring = false;
   final PortableBackupCodec _codec;
   final VaultItemSource _store;
   final ScheduledBackupSettings _scheduledSettings;
@@ -122,30 +123,6 @@ class PortableVaultBackupService {
     );
     if (uri == null) return null;
     return uri.scheme == 'file' ? uri.toFilePath() : uri.toString();
-  }
-
-  Future<int?> importFromFile({
-    required String pin,
-    required String passphrase,
-  }) async {
-    final file = await FilePicker.pickFile(
-      dialogTitle: 'Import encrypted Neura backup',
-      type: FileType.custom,
-      allowedExtensions: const ['neurabackup'],
-    );
-    if (file == null) return null;
-
-    final envelope = await readBackupFile(file);
-    final preview = await previewRestore(envelope, passphrase: passphrase);
-    try {
-      if (preview.items.isEmpty) return 0;
-      return await restorePreview(
-          pin: pin,
-          preview: preview,
-          selected: {for (var i = 0; i < preview.items.length; i++) i});
-    } finally {
-      preview.revoke();
-    }
   }
 
   /// Reads ciphertext only; the caller owns native picker and foreground checks.
@@ -196,7 +173,11 @@ class PortableVaultBackupService {
   Future<int> restorePreview(
       {required String pin,
       required PortableBackupPreview preview,
-      required Set<int> selected}) async {
+      required Set<int> selected,
+      required bool Function() mayRestore}) async {
+    if (_restoring || !mayRestore()) {
+      throw StateError('Restore is unavailable. Review again.');
+    }
     if (!identical(preview._owner, this) || !preview.isCurrent) {
       throw StateError('Verify this backup again before restoring.');
     }
@@ -211,7 +192,13 @@ class PortableVaultBackupService {
     // Consume synchronously before the first write await. Double taps and
     // retries cannot re-use the prior review, even when a write fails.
     preview.revoke();
-    return _store.importItems(pin: pin, imported: items);
+    _restoring = true;
+    try {
+      return await _store.importItems(
+          pin: pin, imported: items, mayWrite: mayRestore);
+    } finally {
+      _restoring = false;
+    }
   }
 
   /// Decrypts and checksums [envelope] -- parsing every entry -- without
