@@ -32,9 +32,10 @@ and encrypted vault backups. It is based on `Neura` commit
 - A restore review can authorize one write only. Clearing a review revokes a
   pending confirmation and blocks overlapping operations while a previously
   confirmed write finishes. Clear does not undo a write that has already begun.
-- No dependencies, native platform code, model downloads, provider permissions,
-  microphone behavior, or automatic memory collection change. Existing backup
-  encryption and duplicate handling remain in use.
+- The original PR did not change dependencies, native platform code, model
+  downloads, provider permissions, microphone behavior, or automatic memory
+  collection. The follow-up dependency correction is documented below. Existing
+  backup encryption and duplicate handling remain in use.
 
 ## Validation and acceptance
 
@@ -50,4 +51,63 @@ Windows or Android picker behavior. Before release, exercise the three screens
 on each supported target, including large text, native file selection, background
 and resume, Safe Mode, wrong passphrases, and selective restore from a disposable
 synthetic vault. Check that unselected entries are never imported and that
-existing entries survive conflicts. This change does not publish an app release.
+existing entries survive conflicts. Automated preview packaging does not
+establish public-release acceptance.
+
+
+## November 6 safety review and follow-up
+
+PR #175 merged as `90de867221a325f3e95b61c2c592ae3df5604907`. Its 25 successful
+checks and four skipped checks did not prove preservation under failed vault
+reads or concurrent writes. Three new tests reproduced overwritten unreadable
+ciphertext, a lost entry from concurrent restores, and wipe completing before
+an admitted restore. The follow-up serializes vault reads/migrations and
+mutations, refuses unreadable or malformed live data, checks the current PIN,
+and rechecks a revocable restore permit before the final data write. Wipe
+revokes queued operations and drains admitted work before deleting and verifying
+storage. Full-data wipe closes admission synchronously until restart. The unused
+all-entry import API has been removed; callers must select entries explicitly.
+
+Cancellation, background, Safe Mode, clear, or disposal can revoke a pending
+restore before storage admission. A platform write already admitted cannot be
+retracted; a subsequent wipe waits for it and then removes its result. Do not
+interpret closing a screen as undoing an already committed restore.
+
+The dependency has returned to exact `flutter_secure_storage` **10.3.4**. The
+[upstream v11 removal notice](https://pub.dev/packages/flutter_secure_storage/changelog)
+requires v10 migration of existing v9 ciphers; the
+[10.3.4 changelog](https://pub.dev/packages/flutter_secure_storage/versions/10.3.4/changelog)
+also includes migration/data-preservation fixes beyond the original 10.3.1
+pin. `resetOnError: false`, migration backup, existing namespaces, key names,
+and encrypted record formats remain unchanged. The solver also selects Darwin
+0.3.2, which is the v10-compatible line; Windows remains 4.2.2. Dependabot major
+proposals for this package are held, and a security regression rejects silently
+skipping the migration stage. This change cannot recover keys already lost by
+an earlier installation.
+
+Before distributing an upgrade, use disposable synthetic vaults to verify:
+
+- Android v9 to this v10 build, including skipped app versions; all original
+  keys and encrypted memories must remain readable without resetting storage.
+- Already migrated v10 and v11 preview installations to this candidate; compare
+  all keys and records, reboot, and repeat unlock/restore. Do not test a downgrade
+  against the only copy of real memories.
+- Windows existing-install upgrade and native file picker; Android picker,
+  background/resume, Safe Mode, cancellation during restore, and selective
+  duplicate/conflict handling.
+- Full-data wipe during a blocked write, followed by restart and verified
+  absence of old keys, entries and late recreated data.
+
+Automated fixtures and package builds are separate from this installed-device
+acceptance. Independent GitHub review was requested; the configured Claude
+workflow failed before review because provider authentication was absent.
+A follow-up must remain unmerged until review and its applicable current-head
+checks are complete. CI preview artifacts are not public-release acceptance.
+
+
+Local follow-up validation with Flutter 3.47.9 / Dart 3.13.7: all 1,313 Flutter
+tests passed; committed-policy strict analysis and formatting passed; 17 source
+composition and 11 security regressions passed; Actionlint 1.7.12 passed.
+OSV-Scanner 2.7.0 reported no known findings across the exact 225 Pub, 228 Cargo,
+and one npm locked package. Native Windows/Android and hosted integration
+results must be recorded against the follow-up head, not borrowed from #175.
