@@ -25,6 +25,8 @@ import '../../core/neura_events.dart';
 import '../../core/neura_events_extra.dart';
 import '../../neura_shell/models/neura_room_presence_profile.dart';
 import '../../reliability/safe_boot.dart';
+import '../../persona/services/neura_persona_service.dart';
+import '../../startup/neura_prefs_cache.dart';
 import '../../services/neura_companion_presence.dart';
 import '../../src/shell/shell_prefs.dart';
 import '../neura_avatar_runtime_bridge.dart';
@@ -123,17 +125,23 @@ class NeuraMotion with WidgetsBindingObserver {
     NeuraCompanionPresence.instance.state.addListener(_syncPhase);
     ShellPrefsController.instance.prefs.addListener(_syncPrefs);
     NeuraAvatarRuntimeBridge.instance.snapshot.addListener(_syncStance);
+    NeuraPersonaService.instance.addListener(_syncPersonality);
     _unsubs.add(() {
       SafeBoot.instance.safeMode.removeListener(_syncSafety);
       SafeBoot.instance.restartRequired.removeListener(_syncSafety);
       NeuraCompanionPresence.instance.state.removeListener(_syncPhase);
       ShellPrefsController.instance.prefs.removeListener(_syncPrefs);
       NeuraAvatarRuntimeBridge.instance.snapshot.removeListener(_syncStance);
+      NeuraPersonaService.instance.removeListener(_syncPersonality);
     });
 
     _syncSafety();
     _syncPrefs();
     _syncStance();
+    _syncPersonality();
+    if (NeuraPrefsCache.prefsOrNull != null) {
+      unawaited(NeuraPersonaService.instance.load());
+    }
     _syncPhase();
     _syncSafety();
   }
@@ -194,6 +202,15 @@ class NeuraMotion with WidgetsBindingObserver {
   void _syncStance() {
     final snap = NeuraAvatarRuntimeBridge.instance.snapshot.value;
     if (snap != null) engine.setStance(bodyStanceFor(snap.stance));
+  }
+
+  void _syncPersonality() {
+    final persona = NeuraPersonaService.instance.current;
+    engine.setPersonality(
+      energy: persona.energy,
+      warmth: persona.warmth,
+      playfulness: persona.humor,
+    );
   }
 
   void _syncPhase() {

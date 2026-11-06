@@ -157,6 +157,9 @@ class NeuraMotionEngine {
   NeuraBodyStance _stance = NeuraBodyStance.welcoming;
   double _mood = 0; // −1..1
   double _energy = 0.5; // 0..1
+  double _personaEnergy = 0.5;
+  double _personaWarmth = 0.6;
+  double _playfulness = 0.5;
   double _mouthOpen = 0; // 0..1 (from viseme/TTS)
   bool _frozen = false; // safe mode / reduced motion
 
@@ -164,6 +167,11 @@ class NeuraMotionEngine {
   NeuraBodyMotionLevel get level => _level;
   double get mood => _mood;
   double get energy => _energy;
+  double get personaEnergy => _personaEnergy;
+  double get personaWarmth => _personaWarmth;
+  double get playfulness => _playfulness;
+  double get _expressedEnergy =>
+      (_energy + (_personaEnergy - 0.5) * 0.5).clamp(0.0, 1.0);
   bool get isStill => _frozen || _level == NeuraBodyMotionLevel.still;
 
   // ── Springs ───────────────────────────────────────────────────────────────
@@ -242,6 +250,19 @@ class NeuraMotionEngine {
 
   void setMouthOpen(double open) =>
       _mouthOpen = open.isFinite ? open.clamp(0.0, 1.0) : 0;
+
+  /// Presentation only. Never changes activity, mood or permission to animate.
+  /// Defaults preserve the original balanced motion. Inputs remain bounded
+  /// even when preferences or a mascot payload are malformed.
+  void setPersonality({
+    required double energy,
+    required double warmth,
+    required double playfulness,
+  }) {
+    _personaEnergy = energy.isFinite ? energy.clamp(0.0, 1.0) : 0.5;
+    _personaWarmth = warmth.isFinite ? warmth.clamp(0.0, 1.0) : 0.6;
+    _playfulness = playfulness.isFinite ? playfulness.clamp(0.0, 1.0) : 0.5;
+  }
 
   /// Safe Mode / OS reduced-motion. Freezing snaps to neutral immediately —
   /// no spring-out, so nothing "moves" after the user asked it to stop.
@@ -353,7 +374,7 @@ class NeuraMotionEngine {
     final amp = _levelAmp;
     final low = (-_mood).clamp(0.0, 1.0); // sadness
     final high = _mood.clamp(0.0, 1.0); // happiness
-    final e = _energy;
+    final e = _expressedEnergy;
 
     // Base posture per phase.
     var dy = 0.0, lean = 0.0, tilt = 0.0, scale = 1.0, glow = 0.15;
@@ -422,7 +443,7 @@ class NeuraMotionEngine {
     _scale.target = 1 + (scale - 1 + o.scale) * amp;
     _squash.target = o.squash * amp;
     _glow.target = (glow + o.glow).clamp(0.0, 1.0);
-    _warmth.target = _mood;
+    _warmth.target = (_mood + (_personaWarmth - 0.6) * 0.5).clamp(-1.0, 1.0);
     _breathRate.target = breathRate;
     _breathAmp.target = breathAmp + o.breath;
     _swayAmp.target = swayAmp;
@@ -548,7 +569,7 @@ class NeuraMotionEngine {
 
   void _scheduleIdle({double min = 4}) {
     // More energy → she fidgets more often.
-    final spread = 8.0 - _energy * 4.0;
+    final spread = 8.0 - _expressedEnergy * 4.0;
     _nextIdleAt = _clock + min + _rng.nextDouble() * spread;
   }
 
@@ -565,12 +586,13 @@ class NeuraMotionEngine {
       NeuraGesture.glanceLeft: 2,
       NeuraGesture.glanceRight: 2,
       NeuraGesture.shiftWeight: 2.5,
-      NeuraGesture.settle: 1 + (1 - _energy),
+      NeuraGesture.settle: 1 + (1 - _expressedEnergy),
       NeuraGesture.lookUp: _mood > 0.25 ? 1.5 : 0.3,
       NeuraGesture.lookDown: _mood < -0.25 ? 1.5 : 0.2,
-      NeuraGesture.bounce: (_mood > 0.4 && _energy > 0.6) ? 1.2 : 0,
-      NeuraGesture.stretch: _energy < 0.35 ? 0.8 : 0.15,
-      NeuraGesture.tiltRight: 0.5,
+      NeuraGesture.bounce:
+          (_mood > 0.4 && _expressedEnergy > 0.6) ? 2.4 * _playfulness : 0,
+      NeuraGesture.stretch: _expressedEnergy < 0.35 ? 0.8 : 0.15,
+      NeuraGesture.tiltRight: 0.25 + 0.5 * _playfulness,
     };
     final total = choices.values.fold<double>(0, (a, b) => a + b);
     var pick = _rng.nextDouble() * total;

@@ -92,7 +92,12 @@ void main() {
       await event('talking', {'on': true});
       await tester.pump();
       expect(tester.binding.transientCallbackCount, greaterThan(0));
-      await event('body', blocked);
+      await event('body', {
+        ...blocked,
+        'personaEnergy': 1.0,
+        'personaWarmth': double.nan,
+        'personaPlayfulness': 'malformed',
+      });
       await event('pulse', {'wave': true});
       await tester.pumpAndSettle();
       expect(body(tester).animate, isFalse);

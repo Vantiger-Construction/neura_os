@@ -13,6 +13,7 @@ class NeuraPersonaService extends ChangeNotifier {
   final _selfHeal = SelfHealService.instance;
 
   PersonaProfile _current = PersonaProfile.neutral();
+  int _generation = 0;
   PersonaProfile get current => _current;
 
   Future<void> load() async {
@@ -32,21 +33,35 @@ class NeuraPersonaService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> update(PersonaProfile profile) async {
-    _current = profile;
-    notifyListeners();
+  Future<bool> update(PersonaProfile profile) async {
+    final generation = _generation;
+    final normalized = PersonaProfile.fromMap(profile.toMap());
     try {
       final prefs = NeuraPrefsCache.prefs;
-      await prefs.setString(
+      final saved = await prefs.setString(
         _keyPersona,
-        jsonEncode(profile.toMap()),
+        jsonEncode(normalized.toMap()),
       );
+      if (!saved) throw StateError('Persona preferences could not be saved.');
+      if (generation != _generation) return false;
+      _current = normalized;
+      notifyListeners();
+      return true;
     } catch (e, st) {
+      // SharedPreferences updates its cache before the platform write resolves.
+      // Reload after rejection so the next prompt cannot adopt an unsaved draft.
+      try {
+        await NeuraPrefsCache.prefs.reload();
+      } catch (_) {
+        // Keep the last confirmed in-memory profile when storage is unavailable.
+      }
       await _selfHeal.recordError('NeuraPersonaService.update', e, st);
+      return false;
     }
   }
 
   void resetAfterDataWipe() {
+    _generation++;
     _current = PersonaProfile.neutral();
     notifyListeners();
   }
