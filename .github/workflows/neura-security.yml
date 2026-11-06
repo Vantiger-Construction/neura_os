@@ -103,7 +103,7 @@ jobs:
           dotnet restore "$RUNNER_TEMP/neura-csharp/authored/neura.csproj" --nologo
           sha256sum "$RUNNER_TEMP/neura-csharp/framework/bin/Debug/net8.0/UnityEngine.TestRunner.dll" >> "$GITHUB_STEP_SUMMARY"
       - name: Initialize dedicated security queries
-        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        uses: github/codeql-action/init@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode || 'none' }}
@@ -142,7 +142,7 @@ jobs:
           dotnet build "$RUNNER_TEMP/neura-csharp/authored/neura.csproj" --no-restore --no-incremental -p:UseSharedCompilation=false --nologo
           git diff --exit-code
       - name: Analyze and upload security results
-        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        uses: github/codeql-action/analyze@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4
         with:
           category: /neura-security/language:${{ matrix.language }}
           output: ${{ runner.temp }}/neura-codeql-results
