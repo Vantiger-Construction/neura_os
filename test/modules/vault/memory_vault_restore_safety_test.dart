@@ -120,6 +120,32 @@ void main() {
     expect((await store.getItems(pin: '1234')).single.title, 'Correct');
   });
 
+  test('overlapping PIN setup cannot replace the first configured verifier',
+      () async {
+    final first = store.configurePin('1234');
+    final second = expectLater(store.configurePin('4321'), throwsStateError);
+    await first;
+    await second;
+    await store.add(pin: '1234', title: 'Existing', body: 'Preserved');
+    final original = Map.of(fixture.preferences.data);
+    await expectLater(store.configurePin('4321'), throwsStateError);
+    expect(fixture.preferences.data, original);
+    expect(await store.validatePin('1234'), isTrue);
+    expect((await store.getItems(pin: '1234')).single.title, 'Existing');
+  });
+
+  test('PIN setup cannot replace a missing verifier beside existing ciphertext',
+      () async {
+    await store.configurePin('1234');
+    await store.add(pin: '1234', title: 'Existing', body: 'Preserved');
+    await NeuraPrefsCache.prefs.remove('neura.vault.pinVerifier.v1');
+    final original = Map.of(fixture.preferences.data);
+    final secrets = Map.of(fixture.secrets);
+    await expectLater(store.configurePin('4321'), throwsStateError);
+    expect(fixture.preferences.data, original);
+    expect(fixture.secrets, secrets);
+  });
+
   test('legacy duplicate IDs preserve every entry with stable repair IDs',
       () async {
     await store.configurePin('1234');

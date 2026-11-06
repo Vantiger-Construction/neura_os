@@ -105,7 +105,7 @@ A follow-up must remain unmerged until review and its applicable current-head
 checks are complete. CI preview artifacts are not public-release acceptance.
 
 
-Local follow-up validation with Flutter 3.47.9 / Dart 3.13.7: all 1,313 Flutter
+Initial follow-up validation with Flutter 3.47.9 / Dart 3.13.7: all 1,313 Flutter
 tests passed; committed-policy strict analysis and formatting passed; 17 source
 composition and 11 security regressions passed; Actionlint 1.7.12 passed.
 OSV-Scanner 2.7.0 reported no known findings across the exact 225 Pub, 228 Cargo,
@@ -162,3 +162,9 @@ check and file replacement. Add/delete validate the PIN even for an empty
 vault. Existing duplicate IDs from the older timestamp generator receive stable,
 non-conflicting IDs in memory without losing entries; the next explicit mutation
 persists those IDs. Required-field corruption still fails closed.
+
+PIN setup is creation-only: an existing verifier, legacy PIN, or encrypted
+data prevents it from replacing the PIN. This also rejects a second overlapping
+setup request and a missing-verifier state beside preserved ciphertext. Existing
+vaults must use unlock or the recoverable PIN-change path. Current validation
+counts and native/review results are recorded against the latest PR head.

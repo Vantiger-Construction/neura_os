@@ -353,7 +353,15 @@ class MemoryVaultStore implements VaultItemSource {
     return verifier != null && verifier.trim().isNotEmpty;
   }
 
-  Future<void> configurePin(String pin) => _operate(() => _configurePin(pin));
+  Future<void> configurePin(String pin) => _operate(() async {
+        final prefs = NeuraPrefsCache.prefs;
+        if ([_keyPinVerifier, _keyPinLegacy, _keyData, _keyDataLegacy]
+            .any(prefs.containsKey)) {
+          throw StateError(
+              'Existing vault state requires unlock or PIN recovery.');
+        }
+        await _configurePin(pin);
+      });
 
   Future<void> _configurePin(String pin) async {
     final enc = await _encryptJson(_verifierPlain, pin: pin.trim());
