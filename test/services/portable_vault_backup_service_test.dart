@@ -48,6 +48,7 @@ class _FakeVaultItemSource implements VaultItemSource {
   Future<int> importItems({
     required String pin,
     required List<VaultItem> imported,
+    bool Function()? mayWrite,
   }) async {
     imports++;
     items = imported;
@@ -102,48 +103,30 @@ void main() {
   });
 
   group('file picker migration', () {
-    test('exports encrypted bytes and imports a content URI with unknown size',
+    test('exported content URI is read and verified without importing',
         () async {
       const passphrase = 'a very good passphrase';
-      final destination = await service.exportToFile(
-        pin: '1234',
-        passphrase: passphrase,
-      );
+      final destination =
+          await service.exportToFile(pin: '1234', passphrase: passphrase);
       expect(destination, 'content://backups/export.neurabackup');
       final saved = picker.savedBytes!;
       expect(utf8.decode(saved), isNot(contains('Body a')));
-
-      picker.selected = _BackupFile([saved]);
-      store.items = [];
-      expect(
-          await service.importFromFile(pin: '1234', passphrase: passphrase), 2);
-      expect(store.items.map((item) => item.id), ['a', 'b']);
-    });
-
-    test('cancelled import leaves existing items unchanged', () async {
-      expect(
-        await service.importFromFile(
-          pin: '1234',
-          passphrase: 'a very good passphrase',
-        ),
-        isNull,
-      );
-      expect(store.items.map((item) => item.id), ['a', 'b']);
+      final ciphertext = await service.readBackupFile(_BackupFile([saved]));
+      final preview =
+          await service.previewRestore(ciphertext, passphrase: passphrase);
+      expect(preview.items.map((item) => item.id), ['a', 'b']);
+      expect(store.imports, 0);
+      preview.revoke();
     });
 
     test('unknown-size streams cannot exceed the backup byte limit', () async {
-      picker.selected = _BackupFile([
-        Uint8List(25 * 1024 * 1024),
-        Uint8List(1),
-      ]);
       await expectLater(
-        service.importFromFile(
-          pin: '1234',
-          passphrase: 'a very good passphrase',
-        ),
-        throwsFormatException,
-      );
-      expect(store.items.map((item) => item.id), ['a', 'b']);
+          service.readBackupFile(_BackupFile([
+            Uint8List(25 * 1024 * 1024),
+            Uint8List(1),
+          ])),
+          throwsFormatException);
+      expect(store.imports, 0);
     });
   });
 
@@ -165,15 +148,22 @@ void main() {
       expect(() => preview.items.clear(), throwsUnsupportedError);
       expect(() => preview.items.first.tags.clear(), throwsUnsupportedError);
       expect(
-          await service
-              .restorePreview(pin: '1234', preview: preview, selected: {1}),
+          await service.restorePreview(
+              pin: '1234',
+              preview: preview,
+              mayRestore: () => true,
+              selected: {1}),
           1);
       expect(store.items.single.id, 'b');
       expect(store.imports, 1);
       expect(preview.isCurrent, false);
       expect(preview.items, isEmpty);
       await expectLater(
-          service.restorePreview(pin: '1234', preview: preview, selected: {0}),
+          service.restorePreview(
+              pin: '1234',
+              preview: preview,
+              mayRestore: () => true,
+              selected: {0}),
           throwsStateError);
       expect(store.imports, 1);
     });
@@ -183,11 +173,19 @@ void main() {
           passphrase: 'a very good passphrase');
       final foreign = PortableVaultBackupService(store: store);
       await expectLater(
-          foreign.restorePreview(pin: '1234', preview: preview, selected: {0}),
+          foreign.restorePreview(
+              pin: '1234',
+              preview: preview,
+              mayRestore: () => true,
+              selected: {0}),
           throwsStateError);
       preview.revoke();
       await expectLater(
-          service.restorePreview(pin: '1234', preview: preview, selected: {0}),
+          service.restorePreview(
+              pin: '1234',
+              preview: preview,
+              mayRestore: () => true,
+              selected: {0}),
           throwsStateError);
       expect(store.imports, 0);
     });
@@ -203,7 +201,10 @@ void main() {
       ]) {
         await expectLater(
             service.restorePreview(
-                pin: '1234', preview: preview, selected: selection),
+                pin: '1234',
+                preview: preview,
+                mayRestore: () => true,
+                selected: selection),
             throwsArgumentError);
       }
       expect(store.imports, 0);

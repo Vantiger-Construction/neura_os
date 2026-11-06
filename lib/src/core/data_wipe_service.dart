@@ -122,6 +122,7 @@ class NeuraDataWipeService {
     // Keep the live gate closed for the rest of this process; the next launch
     // starts clean after the persisted Safe Boot marker is deleted.
     SafeBoot.instance.safeMode.value = true;
+    MemoryVaultStore.instance.suspendForDataWipe();
     CompanionMemoryService.suspendAllForDataWipe();
     EncryptedMemoryDurableScopedAdapter.suspendAllForDataWipe();
     NeuraAiService.instance.cancelActiveGeneration();
