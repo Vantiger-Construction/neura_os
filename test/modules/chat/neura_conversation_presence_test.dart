@@ -12,6 +12,11 @@ import 'package:neuro_companion/services/neura_ai_service.dart';
 import 'package:neuro_companion/services/neura_model_router.dart';
 import 'package:neuro_companion/services/neura_ollama_chat.dart';
 import 'package:neuro_companion/avatar/avatar_controller.dart';
+import 'package:neuro_companion/avatar/avatar_globals.dart';
+import 'package:neuro_companion/avatar/avatar_registry.dart';
+import 'package:neuro_companion/avatar/motion/neura_motion.dart';
+import 'package:neuro_companion/avatar/renderers/flutter_mouth_avatar_view.dart';
+import 'package:neuro_companion/avatar/renderers/neura_mouth_layer.dart';
 import 'package:neuro_companion/avatar/avatar_orchestrator.dart';
 import 'package:neuro_companion/avatar/avatar_orchestrator_viseme_ext.dart';
 import 'package:neuro_companion/avatar/avatar_rive_inputs.dart';
@@ -298,6 +303,53 @@ void main() {
       }
     });
   }
+
+  conversationTest(
+      'selected face articulates an ordinary chat reply on its route',
+      (tester) async {
+    orchestrator.dispose();
+    wiring.stop();
+    final controller = AvatarGlobals.controller;
+    controller.setTalking(false);
+    controller.setNumberInput('viseme', 0);
+    controller.setNumberInput('mouthOpen', 0);
+    orchestrator =
+        AvatarOrchestrator(controller: controller, bus: NeuraEventBus.I)
+          ..start();
+    wiring = AvatarVisemeWiring(controller: controller, bus: NeuraEventBus.I)
+      ..start();
+    try {
+      AvatarGlobals.service.resetForTesting();
+      await AvatarGlobals.service.selectAvatar(AvatarRegistry.expressiveFaceId);
+      await chat(tester);
+      expect(find.byType(FlutterMouthAvatarView), findsOneWidget);
+      expect(nativeCalls, isNot(contains('sapi:speak')));
+      NeuraMotion.instance.start();
+      await tester.pump();
+      NeuraMouthPose pose() => tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((w) => w.painter)
+          .whereType<NeuraMouthPainter>()
+          .single
+          .pose;
+      await ask(tester);
+      await answer(tester);
+      expect(pose().viseme, NeuraViseme.MBP);
+      expect(pose().open, 0);
+      viseme = 3;
+      await tester.pump(const Duration(milliseconds: 40));
+      await tester.pump();
+      expect(pose().viseme, NeuraViseme.O);
+      expect(pose().open, greaterThan(0));
+      speechState = 'completed';
+      await tester.pump(const Duration(milliseconds: 40));
+      await drain(tester);
+      expect(pose(), NeuraMouthPose.rest);
+    } finally {
+      NeuraMotion.instance.stop();
+      AvatarGlobals.service.resetAfterDataWipe();
+    }
+  });
 
   conversationTest(
     'microphone, thinking, first answer, speech and rest (native visemes: $_nativeVisemes)',
