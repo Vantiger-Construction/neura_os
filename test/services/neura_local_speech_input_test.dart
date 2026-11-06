@@ -117,6 +117,7 @@ void main() {
       () async {
     final heard = <String>[];
     final sub = input.finalPhraseStream.listen(heard.add);
+    final received = input.finalPhraseStream.first;
     handler = (call) async {
       if (call.method != 'poll') return true;
       return {
@@ -127,8 +128,10 @@ void main() {
       };
     };
     expect(await input.startRecording(), isTrue);
-    await Future<void>.delayed(const Duration(milliseconds: 150));
-    await Future<void>.delayed(Duration.zero);
+    // Wait for the final itself, then stop as chat does. Wall-clock sleeps can
+    // admit several polls on a busy runner and repeat this synthetic packet.
+    expect(await received.timeout(const Duration(seconds: 5)),
+        'Synthetic local phrase');
     expect(heard, ['Synthetic local phrase']);
     expect(await input.stopRecording(), 'Synthetic local phrase');
     expect(await input.stopRecording(), isEmpty);

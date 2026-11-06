@@ -17,7 +17,7 @@ device, encrypted-state, and release-package validation gates still apply.
 | Android compile SDK / NDK | 37.0 / 28.2.13676358 |
 | Flutter/Rust bridge, runtime and generated bindings | 2.13.0 |
 | Supabase Flutter | 2.18.3, exact pin |
-| Secure storage | 10.3.1, exact migration-stage pin |
+| Secure storage | 10.3.4, exact migration-stage pin (restored after #171) |
 | PGlite SQL migration tests | 0.5.14 |
 | Apple deployment minimums | iOS 15 / macOS 12 |
 
