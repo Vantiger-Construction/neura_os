@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../services/neura_secure_storage.dart';
@@ -12,8 +13,23 @@ import '../../services/vault_item_source.dart';
 import '../../startup/neura_prefs_cache.dart';
 
 class MemoryVaultStore implements VaultItemSource {
-  MemoryVaultStore._();
+  MemoryVaultStore._()
+      : _now = DateTime.now,
+        _wipeTimeout = const Duration(seconds: 30),
+        _operationTimeout = const Duration(seconds: 30);
+  @visibleForTesting
+  MemoryVaultStore.forTesting(
+      {DateTime Function()? now,
+      Duration wipeTimeout = const Duration(seconds: 30),
+      Duration operationTimeout = const Duration(seconds: 30)})
+      : _now = now ?? DateTime.now,
+        _wipeTimeout = wipeTimeout,
+        _operationTimeout = operationTimeout;
   static final MemoryVaultStore instance = MemoryVaultStore._();
+  final DateTime Function() _now;
+  final Duration _wipeTimeout;
+  final Duration _operationTimeout;
+  final _unconfirmedAdds = <String, VaultItem>{};
 
   // NOTE: We no longer store the PIN. We only store a verifier blob.
   // A PIN is requested once per app session and cached in memory.
@@ -23,6 +39,9 @@ class MemoryVaultStore implements VaultItemSource {
   static const _keySeedSecure = 'neura.vault.seed.secure.v2';
   static const _keySeedSecureMarker = 'neura.vault.seed.secure.marker.v2';
   static const _keyData = 'neura.vault.data.v2';
+  // Ciphertext-only rollback record. A PIN change is committed only when this
+  // record has been durably removed after both replacement values verify.
+  static const _keyPinChange = 'neura.vault.pinChange.v1';
 
   // Legacy v1 blob (XOR) is stored here. We transparently migrate it to v2.
   static const _keyDataLegacy = 'neura.vault.data.v1';
@@ -46,13 +65,77 @@ class MemoryVaultStore implements VaultItemSource {
     return previous.then((_) => operation()).whenComplete(release.complete);
   }
 
+  // Every vault read/migration and read-modify-write shares this queue. A
+  // screen-local busy flag cannot protect a second screen or a pending wipe.
+  Future<void> _vaultTail = Future<void>.value();
+  int _generation = 0;
+  bool _suspendedForWipe = false;
+  Future<void>? _wipeInFlight;
+  void Function() _checkAccess = () {};
+
+  Future<T> _enqueue<T>(Future<T> Function() operation) {
+    final previous = _vaultTail;
+    final release = Completer<void>();
+    _vaultTail = release.future;
+    return previous.then((_) => operation()).whenComplete(release.complete);
+  }
+
+  Future<T> _operate<T>(Future<T> Function() operation,
+      {bool Function()? mayWrite}) {
+    final generation = _generation;
+    var expired = false;
+    final admitted = !_suspendedForWipe && _wipeInFlight == null;
+    void check() {
+      if (!admitted ||
+          expired ||
+          _suspendedForWipe ||
+          generation != _generation ||
+          (mayWrite != null && !mayWrite())) {
+        throw StateError('Vault operation ended. Unlock and review again.');
+      }
+    }
+
+    final pending = _enqueue(() async {
+      check();
+      _checkAccess = check;
+      try {
+        await NeuraPrefsCache.prefs.reload();
+        check();
+        await _recoverPinChange();
+        return await operation();
+      } finally {
+        _checkAccess = () {};
+      }
+    });
+    return pending.timeout(_operationTimeout, onTimeout: () {
+      expired = true;
+      throw StateError('Vault storage has not responded. Keep the app open and '
+          'retry after storage recovers; the pending write remains tracked.');
+    });
+  }
+
+  @visibleForTesting
+  static Duration fullWipeDrainTimeout = const Duration(seconds: 30);
+
+  Future<void> drainForDataWipe() => _vaultTail.timeout(fullWipeDrainTimeout);
+
+  /// Revoke admission before any asynchronous full-data-wipe shutdown work.
+  /// This process must restart before it can create a new vault.
+  void suspendForDataWipe() {
+    _suspendedForWipe = true;
+    _generation++;
+    _clearKeyCache();
+    _unconfirmedAdds.clear();
+  }
+
   // Cache derived key per app session to avoid repeated PBKDF2 cost.
   SecretKey? _cachedKey;
   String? _cachedPinForKey;
   String? _cachedSeedForKey;
 
-  Future<String> _getOrCreateSeed() async {
+  Future<String> _getOrCreateSeed({bool allowCreate = true}) async {
     return await _protectSeed(() async {
+      _checkAccess();
       final sp = NeuraPrefsCache.prefs;
       final expectsSecureSeed = sp.getBool(_keySeedSecureMarker) == true;
       String? secureSeed;
@@ -60,14 +143,13 @@ class MemoryVaultStore implements VaultItemSource {
         secureSeed = (await _secureStorage.read(key: _keySeedSecure))?.trim();
       } catch (e, st) {
         await AppLog.instance.caught('vault_secure_seed_read_failed', e, st);
-        if (expectsSecureSeed) {
-          throw StateError(
-            'The OS credential store is unavailable; refusing to replace the '
-            'existing vault key.',
-          );
-        }
+        throw StateError(
+          'The OS credential store is unavailable; refusing to replace the '
+          'existing vault key.',
+        );
       }
 
+      _checkAccess();
       if (expectsSecureSeed) {
         if (!_isValidSeed(secureSeed)) {
           throw StateError(
@@ -87,6 +169,7 @@ class MemoryVaultStore implements VaultItemSource {
           if (verified != legacySeed) {
             throw StateError('The secure vault key could not be verified.');
           }
+          _checkAccess();
           await sp.setBool(_keySeedSecureMarker, true);
           await sp.remove(_keySeed);
           return verified!;
@@ -102,11 +185,16 @@ class MemoryVaultStore implements VaultItemSource {
 
       // A secure write may have completed immediately before its marker.
       if (_isValidSeed(secureSeed)) {
+        _checkAccess();
         await sp.setBool(_keySeedSecureMarker, true);
         await sp.remove(_keySeed);
         return secureSeed!;
       }
 
+      if (!allowCreate) {
+        throw StateError('The existing vault key is missing.');
+      }
+      _checkAccess();
       final bytes = List<int>.generate(
         _kSeedLengthBytes,
         (_) => Random.secure().nextInt(256),
@@ -119,6 +207,7 @@ class MemoryVaultStore implements VaultItemSource {
         if (verified != generated) {
           throw StateError('The secure vault key could not be verified.');
         }
+        _checkAccess();
         await sp.setBool(_keySeedSecureMarker, true);
         await sp.remove(_keySeed);
         return verified!;
@@ -189,6 +278,7 @@ class MemoryVaultStore implements VaultItemSource {
     final key = await _deriveKey(pin: pin, seed: seed);
     final alg = AesGcm.with256bits();
 
+    _checkAccess();
     final nonce = alg.newNonce();
     final box = await alg.encrypt(
       utf8.encode(json),
@@ -217,7 +307,7 @@ class MemoryVaultStore implements VaultItemSource {
         final cipherB = base64Url.decode(decoded['cipher'] as String);
         final macB = base64Url.decode(decoded['mac'] as String);
 
-        final seed = await _getOrCreateSeed();
+        final seed = await _getOrCreateSeed(allowCreate: false);
         final key = await _deriveKey(pin: pin, seed: seed);
         final alg = AesGcm.with256bits();
 
@@ -264,7 +354,7 @@ class MemoryVaultStore implements VaultItemSource {
 
     final legacyPin = sp.getString(_keyPinLegacy);
     if (legacyPin != null && legacyPin.trim().isNotEmpty) {
-      await configurePin(legacyPin.trim());
+      await _configurePin(legacyPin.trim());
       await sp.remove(_keyPinLegacy);
       await AppLog.instance.info('vault_event', {
         'msg': 'Vault PIN migrated to verifier (no PIN stored).',
@@ -272,17 +362,70 @@ class MemoryVaultStore implements VaultItemSource {
     }
   }
 
-  Future<bool> hasPinConfigured() async {
+  Future<bool> hasPinConfigured() => _operate(_hasPinConfigured);
+
+  Future<bool> _hasPinConfigured() async {
     await _migrateLegacyPinIfNeeded();
     final sp = NeuraPrefsCache.prefs;
     final verifier = sp.getString(_keyPinVerifier);
     return verifier != null && verifier.trim().isNotEmpty;
   }
 
-  Future<void> configurePin(String pin) async {
-    final sp = NeuraPrefsCache.prefs;
+  Future<void> configurePin(String pin) => _operate(() async {
+        final prefs = NeuraPrefsCache.prefs;
+        if ([_keyPinVerifier, _keyPinLegacy, _keyData, _keyDataLegacy]
+            .any(prefs.containsKey)) {
+          throw StateError(
+              'Existing vault state requires unlock or PIN recovery.');
+        }
+        await _configurePin(pin);
+      });
+
+  Future<void> _configurePin(String pin) async {
     final enc = await _encryptJson(_verifierPlain, pin: pin.trim());
-    await sp.setString(_keyPinVerifier, enc);
+    _checkAccess();
+    await _writeString(_keyPinVerifier, enc);
+  }
+
+  Future<void> _writeString(String key, String? value) async {
+    _checkAccess();
+    final sp = NeuraPrefsCache.prefs;
+    try {
+      value == null ? await sp.remove(key) : await sp.setString(key, value);
+    } catch (_) {
+      // A platform exception can arrive after a durable write. Read back the
+      // exact value before deciding whether this operation needs a retry.
+    }
+    // Platform failures can still mutate SharedPreferences' in-memory cache.
+    await sp.reload();
+    if (sp.getString(key) != value) {
+      throw StateError('The vault write could not be confirmed.');
+    }
+  }
+
+  Future<void> _recoverPinChange() async {
+    final sp = NeuraPrefsCache.prefs;
+    final pending = sp.getString(_keyPinChange);
+    if (pending == null) return;
+    final record = jsonDecode(pending);
+    if (record is! Map ||
+        record['version'] != 1 ||
+        record['verifier'] is! String ||
+        (record['verifier'] as String).isEmpty ||
+        !record.containsKey('data') ||
+        (record['data'] != null && record['data'] is! String)) {
+      throw StateError('Vault PIN recovery requires the preserved backup.');
+    }
+    // Keep the rollback record until both old values are durable again. A
+    // failed recovery leaves it available for the next unlock/restart.
+    if (sp.getString(_keyData) != record['data']) {
+      await _writeString(_keyData, record['data'] as String?);
+    }
+    if (sp.getString(_keyPinVerifier) != record['verifier']) {
+      await _writeString(_keyPinVerifier, record['verifier'] as String);
+    }
+    await _writeString(_keyPinChange, null);
+    _clearKeyCache();
   }
 
   bool _constantTimeEquals(Uint8List a, Uint8List b) {
@@ -294,7 +437,9 @@ class MemoryVaultStore implements VaultItemSource {
     return diff == 0;
   }
 
-  Future<bool> validatePin(String pin) async {
+  Future<bool> validatePin(String pin) => _operate(() => _validatePin(pin));
+
+  Future<bool> _validatePin(String pin) async {
     await _migrateLegacyPinIfNeeded();
     final sp = NeuraPrefsCache.prefs;
     final verifier = sp.getString(_keyPinVerifier);
@@ -308,44 +453,42 @@ class MemoryVaultStore implements VaultItemSource {
   }
 
   @override
-  Future<List<VaultItem>> getItems({required String pin}) async {
-    try {
-      final sp = NeuraPrefsCache.prefs;
+  Future<List<VaultItem>> getItems({required String pin}) =>
+      _operate(() => _readItems(pin: pin));
 
-      // Prefer v2.
-      final blobV2 = sp.getString(_keyData);
-      if (blobV2 != null && blobV2.trim().isNotEmpty) {
-        final clear = await _decryptJson(blobV2, pin: pin);
-        if (clear == null) return <VaultItem>[];
-        return decodeVaultItems(clear);
+  Future<List<VaultItem>> _readItems({required String pin}) async {
+    _checkAccess();
+    final sp = NeuraPrefsCache.prefs;
+    final blobV2 = sp.getString(_keyData);
+    if (blobV2 != null) {
+      if (blobV2.trim().isEmpty) throw StateError('The vault is unreadable.');
+      final clear = await _decryptJson(blobV2, pin: pin);
+      _checkAccess();
+      if (clear == null) {
+        throw StateError(
+            'The vault could not be decrypted. Existing data was preserved.');
       }
-
-      // Legacy v1: migrate if present.
-      final legacy = sp.getString(_keyDataLegacy);
-      if (legacy != null && legacy.trim().isNotEmpty) {
-        final clear = await _decryptJson(legacy, pin: pin);
-        final items = clear == null ? <VaultItem>[] : decodeVaultItems(clear);
-        // Migrate to v2.
-        final enc = await _encryptJson(encodeVaultItems(items), pin: pin);
-        await sp.setString(_keyData, enc);
-        await sp.remove(_keyDataLegacy);
-        await AppLog.instance
-            .info('vault_event', {'msg': 'Vault migrated to AES-GCM (v2).'});
-        return items;
-      }
-
-      return <VaultItem>[];
-    } catch (e, st) {
-      await AppLog.instance.caught('vault_items_read_failed', e, st);
-      return <VaultItem>[];
+      return decodeVaultItems(clear, strict: true);
     }
+    final legacy = sp.getString(_keyDataLegacy);
+    if (legacy != null) {
+      final clear = await _decryptJson(legacy, pin: pin);
+      _checkAccess();
+      if (clear == null) throw StateError('The legacy vault is unreadable.');
+      final items = decodeVaultItems(clear, strict: true);
+      await _save(items, pin: pin);
+      _checkAccess();
+      await sp.remove(_keyDataLegacy);
+      return items;
+    }
+    return <VaultItem>[];
   }
 
   Future<void> _save(List<VaultItem> items, {required String pin}) async {
-    final sp = NeuraPrefsCache.prefs;
     final json = encodeVaultItems(items);
     final enc = await _encryptJson(json, pin: pin);
-    await sp.setString(_keyData, enc);
+    _checkAccess();
+    await _writeString(_keyData, enc);
   }
 
   Future<void> add({
@@ -353,60 +496,99 @@ class MemoryVaultStore implements VaultItemSource {
     required String title,
     required String body,
     List<String> tags = const [],
-  }) async {
-    final items = await getItems(pin: pin);
-    final id = 'v_${DateTime.now().millisecondsSinceEpoch}';
-    items.add(
-      VaultItem(
-        id: id,
-        createdAt: DateTime.now(),
-        title: title,
-        body: body,
-        tags: tags,
-      ),
-    );
-    await _save(items, pin: pin);
-  }
+  }) =>
+      _operate(() async {
+        if (!await _validatePin(pin)) {
+          throw StateError('Unlock the current vault before adding an entry.');
+        }
+        final items = await _readItems(pin: pin);
+        final request = jsonEncode([title, body, tags]);
+        final unconfirmed = _unconfirmedAdds[request];
+        if (unconfirmed != null &&
+            items.any((item) =>
+                item.id == unconfirmed.id && _sameItem(item, unconfirmed))) {
+          _unconfirmedAdds.remove(request);
+          return;
+        }
+        final now = _now();
+        final baseId = unconfirmed?.id ?? 'v_${now.microsecondsSinceEpoch}';
+        var id = baseId;
+        var suffix = 0;
+        final ids = items.map((item) => item.id).toSet();
+        while (ids.contains(id)) {
+          id = '${baseId}_${++suffix}';
+        }
+        final added = VaultItem(
+          id: id,
+          createdAt: unconfirmed?.createdAt ?? now,
+          title: title,
+          body: body,
+          tags: tags,
+        );
+        _unconfirmedAdds[request] = added;
+        items.add(added);
+        await _save(items, pin: pin);
+        _checkAccess();
+        _unconfirmedAdds.remove(request);
+      });
 
-  Future<void> delete({required String pin, required String id}) async {
-    final items = await getItems(pin: pin);
-    items.removeWhere((e) => e.id == id);
-    await _save(items, pin: pin);
-  }
+  Future<void> delete({required String pin, required String id}) =>
+      _operate(() async {
+        if (!await _validatePin(pin)) {
+          throw StateError(
+              'Unlock the current vault before deleting an entry.');
+        }
+        final items = await _readItems(pin: pin);
+        items.removeWhere((e) => e.id == id);
+        await _save(items, pin: pin);
+      });
 
   /// Re-encrypts vault data and verifier with a new PIN.
   /// Throws StateError if the oldPin is incorrect or migration fails.
   Future<void> changePin({
     required String oldPin,
     required String newPin,
-  }) async {
-    final sp = NeuraPrefsCache.prefs;
-    final oldPinTrim = oldPin.trim();
-    final newPinTrim = newPin.trim();
+  }) =>
+      _operate(() async {
+        final sp = NeuraPrefsCache.prefs;
+        final oldPinTrim = oldPin.trim();
+        final newPinTrim = newPin.trim();
 
-    // Validate old PIN first
-    final verifier = sp.getString(_keyPinVerifier);
-    if (verifier == null || verifier.trim().isEmpty) {
-      throw StateError('No PIN configured');
-    }
-    final clear = await _decryptJson(verifier, pin: oldPinTrim);
-    if (clear == null) {
-      throw StateError('Old PIN is incorrect');
-    }
+        // Validate old PIN first
+        final verifier = sp.getString(_keyPinVerifier);
+        if (verifier == null || verifier.trim().isEmpty) {
+          throw StateError('No PIN configured');
+        }
+        final clear = await _decryptJson(verifier, pin: oldPinTrim);
+        if (clear == null) {
+          throw StateError('Old PIN is incorrect');
+        }
 
-    // Decrypt items with old PIN and re-encrypt with new PIN.
-    final items = await getItems(pin: oldPinTrim);
-    final encData =
-        await _encryptJson(encodeVaultItems(items), pin: newPinTrim);
-    final encVerifier = await _encryptJson(_verifierPlain, pin: newPinTrim);
+        // Decrypt items with old PIN and re-encrypt with new PIN.
+        final items = await _readItems(pin: oldPinTrim);
+        final encData =
+            await _encryptJson(encodeVaultItems(items), pin: newPinTrim);
+        final encVerifier = await _encryptJson(_verifierPlain, pin: newPinTrim);
 
-    // Persist atomically as much as possible
-    await sp.setString(_keyData, encData);
-    await sp.setString(_keyPinVerifier, encVerifier);
-
-    // Clear cached key to avoid mismatch
-    _clearKeyCache();
-  }
+        _checkAccess();
+        await _writeString(
+            _keyPinChange,
+            jsonEncode({
+              'version': 1,
+              'data': sp.getString(_keyData),
+              'verifier': verifier,
+            }));
+        try {
+          await _writeString(_keyData, encData);
+          await _writeString(_keyPinVerifier, encVerifier);
+          await _writeString(_keyPinChange, null);
+        } catch (_) {
+          await _recoverPinChange();
+          rethrow;
+        } finally {
+          _clearKeyCache();
+        }
+      });
 
   /// Atomically merges validated portable-backup items into the local vault.
   ///
@@ -416,47 +598,52 @@ class MemoryVaultStore implements VaultItemSource {
   Future<int> importItems({
     required String pin,
     required List<VaultItem> imported,
-  }) async {
-    final current = await getItems(pin: pin);
-    final byId = <String, VaultItem>{
-      for (final item in current) item.id: item,
-    };
-    var importedCount = 0;
-    var collisionIndex = 0;
+    required bool Function() mayWrite,
+  }) =>
+      _operate(() async {
+        if (!await _validatePin(pin)) {
+          throw StateError('Unlock the current vault before restoring.');
+        }
+        final current = await _readItems(pin: pin);
+        final byId = <String, VaultItem>{
+          for (final item in current) item.id: item,
+        };
+        var importedCount = 0;
+        var collisionIndex = 0;
 
-    for (final item in imported) {
-      if (item.id.trim().isEmpty) {
-        throw const FormatException('A backup entry has no identifier.');
-      }
-      final existing = byId[item.id];
-      if (existing == null) {
-        byId[item.id] = item;
-        importedCount++;
-        continue;
-      }
-      if (_sameItem(existing, item)) continue;
+        for (final item in imported) {
+          if (item.id.trim().isEmpty) {
+            throw const FormatException('A backup entry has no identifier.');
+          }
+          final existing = byId[item.id];
+          if (existing == null) {
+            byId[item.id] = item;
+            importedCount++;
+            continue;
+          }
+          if (_sameItem(existing, item)) continue;
 
-      String recoveredId;
-      do {
-        collisionIndex++;
-        recoveredId = '${item.id}_recovered_$collisionIndex';
-      } while (byId.containsKey(recoveredId));
-      byId[recoveredId] = VaultItem(
-        id: recoveredId,
-        createdAt: item.createdAt,
-        title: item.title,
-        body: item.body,
-        tags: item.tags,
-      );
-      importedCount++;
-    }
+          String recoveredId;
+          do {
+            collisionIndex++;
+            recoveredId = '${item.id}_recovered_$collisionIndex';
+          } while (byId.containsKey(recoveredId));
+          byId[recoveredId] = VaultItem(
+            id: recoveredId,
+            createdAt: item.createdAt,
+            title: item.title,
+            body: item.body,
+            tags: item.tags,
+          );
+          importedCount++;
+        }
 
-    if (importedCount == 0) return 0;
-    final merged = byId.values.toList()
-      ..sort((left, right) => left.createdAt.compareTo(right.createdAt));
-    await _save(merged, pin: pin);
-    return importedCount;
-  }
+        if (importedCount == 0) return 0;
+        final merged = byId.values.toList()
+          ..sort((left, right) => left.createdAt.compareTo(right.createdAt));
+        await _save(merged, pin: pin);
+        return importedCount;
+      }, mayWrite: mayWrite);
 
   bool _sameItem(VaultItem left, VaultItem right) {
     if (left.createdAt.toUtc() != right.createdAt.toUtc() ||
@@ -471,21 +658,51 @@ class MemoryVaultStore implements VaultItemSource {
     return true;
   }
 
-  Future<void> wipe() async {
+  Future<void> wipe() {
+    _unconfirmedAdds.clear();
+    final pending = _wipeInFlight;
+    if (pending != null) return _waitForWipe(pending);
+    _generation++;
+    final wiping = _enqueue(_wipe);
+    final completed = wiping.whenComplete(() => _wipeInFlight = null);
+    _wipeInFlight = completed;
+    return _waitForWipe(completed);
+  }
+
+  Future<void> _waitForWipe(Future<void> operation) =>
+      operation.timeout(_wipeTimeout, onTimeout: () {
+        // The underlying queue and closed admission remain in place. A late
+        // platform write must drain into deletion, never become a new vault.
+        throw StateError('Vault wipe is incomplete: storage has not responded. '
+            'Keep the app open and retry; no deletion success was confirmed.');
+      });
+
+  Future<void> _wipe() async {
     final sp = NeuraPrefsCache.prefs;
-    await sp.remove(_keyData);
-    await sp.remove(_keyDataLegacy);
-    await sp.remove(_keyPinVerifier);
+    var removed = true;
+    for (final key in [
+      _keyData,
+      _keyDataLegacy,
+      _keyPinVerifier,
+      _keyPinLegacy,
+      _keyPinChange,
+      _keySeedSecureMarker,
+      _keySeed
+    ]) {
+      if (!await sp.remove(key)) removed = false;
+    }
     await _secureStorage.delete(key: _keySeedSecure);
     final remaining = (await _secureStorage.read(key: _keySeedSecure))?.trim();
     if (remaining != null && remaining.isNotEmpty) {
       throw StateError('The secure vault key could not be deleted.');
     }
-    await sp.remove(_keySeedSecureMarker);
-    await sp.remove(_keySeed);
     // Clear cached key too
     _clearKeyCache();
-    if (sp.containsKey(_keySeedSecureMarker) ||
+    await sp.reload();
+    if (!removed ||
+        sp.containsKey(_keyPinChange) ||
+        sp.containsKey(_keyPinLegacy) ||
+        sp.containsKey(_keySeedSecureMarker) ||
         sp.containsKey(_keySeed) ||
         sp.containsKey(_keyPinVerifier) ||
         sp.containsKey(_keyData) ||

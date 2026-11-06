@@ -8,8 +8,11 @@ import '../modules/vault/memory_vault_models.dart';
 abstract interface class VaultItemSource {
   Future<List<VaultItem>> getItems({required String pin});
 
+  /// Recheck [mayWrite] after queued work and immediately before persisting.
+  /// A write already admitted to the platform must be drained by wipe.
   Future<int> importItems({
     required String pin,
     required List<VaultItem> imported,
+    required bool Function() mayWrite,
   });
 }
