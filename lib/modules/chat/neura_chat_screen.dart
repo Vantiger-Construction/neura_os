@@ -39,7 +39,6 @@ import '../../widgets/neura_offline_controls.dart';
 import '../../widgets/neura_activity_badge.dart';
 import '../../planning/neura_daily_plan_screen.dart';
 import '../../services/neura_reply_batch.dart';
-import '../../services/neura_speech_to_text_service.dart';
 import '../../services/neura_speech_input.dart';
 import '../../services/neura_local_speech_input.dart';
 import '../../services/neura_startup_voice_prefs.dart';
@@ -172,16 +171,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
-    _voiceInput = widget.speechInput ??
-        (widget.startWithVoice
-            ? NeuraLocalSpeechInput.instance
-            : NeuraSpeechToTextService.instance);
+    _voiceInput = widget.speechInput ?? NeuraLocalSpeechInput.instance;
+    _voiceStatusSub = _voiceInput.statusStream.listen((message) {
+      if (!mounted || !_continuousMode) return;
+      unawaited(_endConversation().catchError((_) {}));
+      _showVoiceNotice(message);
+    });
     if (widget.startWithVoice) {
-      _voiceStatusSub = _voiceInput.statusStream.listen((message) {
-        if (!mounted || !_continuousMode) return;
-        unawaited(_endConversation().catchError((_) {}));
-        _showVoiceNotice(message);
-      });
       NeuraStartupVoicePrefs.instance.enabled
           .addListener(_onStartupVoiceChanged);
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -499,9 +495,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     if (_listening || _startingListening || _voiceInput.isListening) {
       unawaited(_voiceInput.stopRecording());
     }
-    if (!widget.startWithVoice) {
-      unawaited(WakeWordListenerService.instance.resume());
-    }
+    // Closing a local conversation must not restart a different recognizer.
+    // Ambient/wake-word capture needs its own explicit start again.
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -734,8 +729,17 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final session = ++_voiceSession;
     _startingListening = true;
     try {
-      if (widget.startWithVoice) {
-        await NeuraTtsService.instance.prepareLocalStartupVoice();
+      await WakeWordListenerService.instance
+          .stop()
+          .timeout(const Duration(seconds: 3));
+      await AmbientListeningService.instance
+          .stop()
+          .timeout(const Duration(seconds: 3));
+      if (!_voiceSessionActive(session)) return;
+      if (widget.startWithVoice ||
+          (_speechEnabled &&
+              _tts.replySpeechMode != NeuraReplySpeechMode.off)) {
+        await _tts.prepareLocalStartupVoice();
         if (!_voiceSessionActive(session)) return;
       }
       await _voiceSub?.cancel();
@@ -1407,6 +1411,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       if (mounted) {
         setState(() => botLine.interrupted = true);
       }
+      if (_continuousMode) await _endConversation();
       return;
     } catch (error, stack) {
       if (!mounted || _activeReplyId != generationId) return;
@@ -1428,6 +1433,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
               'qwen3:4b-instruct is installed. No cloud request was made.';
           botLine.interrupted = true;
         });
+        if (_continuousMode) await _endConversation();
         return;
       }
       if (botLine.text.isEmpty) {

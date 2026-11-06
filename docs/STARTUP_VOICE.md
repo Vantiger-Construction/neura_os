@@ -32,9 +32,33 @@ of Dart delivery.
 
 This is foreground voice chat, independent of ambient clip recording and the
 existing Hey Neura preference. It does not enable either of those features.
-It pauses their active sessions before the greeting to avoid competing for the
-microphone. The existing manually opened chat/Voice Journal platform input
-paths are separate; this change does not label those legacy paths local-only.
+It stops their active sessions before the greeting to avoid competing for the
+microphone. Closing chat does not automatically restart a different recognizer.
+Voice Journal and the separate Hey Neura feature retain their own input paths;
+this does not label those legacy paths local-only.
+
+## Talk from ordinary chat
+
+The chat microphone uses the same local-only recognizer as startup voice. Tap
+**Talk freely (hands-free)** to start a foreground session; enabling automatic
+startup voice is not required. If reply speech is enabled, chat checks for an
+installed local output voice before opening the microphone. The saved reply
+speech preference is preserved: choose **After reply** in Neura's Voice to hear
+responses. A missing local recognizer or voice leaves typing available without
+an online speech fallback or model download.
+
+On Windows, explicitly select **Offline Ollama** for your installed Qwen model
+and **Companion** for the conversational style. The existing memory budget and
+per-request cloud approval rules still apply; selecting a voice session does
+not choose or authorize a model. Basic local replies remain limited responses.
+
+After a final phrase, chat stops capture, submits one message, waits for the
+reply and configured speech, then listens again. Recognition errors, Ollama
+failures and cancelled model turns end hands-free mode and clear the waiting
+state. A fresh microphone tap is required to retry. **End hands-free
+conversation**, focus loss, route coverage, Safe Mode and recovery stop the
+session without a silent restart. Interruption during a reply uses the mic
+button; simultaneous listening while Neura speaks is not enabled.
 
 Startup input keeps a bounded current phrase in RAM, sends it only into the
 visible chat flow, and clears its buffers on Stop. Native polling is identified
