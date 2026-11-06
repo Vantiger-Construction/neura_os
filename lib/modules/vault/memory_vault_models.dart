@@ -39,7 +39,27 @@ class VaultItem {
 String encodeVaultItems(List<VaultItem> list) =>
     jsonEncode(list.map((e) => e.toJson()).toList());
 
-List<VaultItem> decodeVaultItems(String raw) {
+List<VaultItem> decodeVaultItems(String raw, {bool strict = false}) {
+  if (strict) {
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) throw const FormatException('Invalid vault records.');
+    final ids = <String>{};
+    for (final item in decoded) {
+      if (item is! Map ||
+          item['id'] is! String ||
+          (item['id'] as String).trim().isEmpty ||
+          !ids.add(item['id'] as String) ||
+          item['title'] is! String ||
+          item['body'] is! String ||
+          item['createdAt'] is! String ||
+          DateTime.tryParse(item['createdAt'] as String) == null ||
+          (item.containsKey('tags') &&
+              (item['tags'] is! List ||
+                  !(item['tags'] as List).every((tag) => tag is String)))) {
+        throw const FormatException('Invalid vault record.');
+      }
+    }
+  }
   if (raw.trim().isEmpty) return <VaultItem>[];
   try {
     final decoded = jsonDecode(raw);
