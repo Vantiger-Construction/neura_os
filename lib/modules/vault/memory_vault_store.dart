@@ -13,10 +13,18 @@ import '../../services/vault_item_source.dart';
 import '../../startup/neura_prefs_cache.dart';
 
 class MemoryVaultStore implements VaultItemSource {
-  MemoryVaultStore._();
+  MemoryVaultStore._()
+      : _now = DateTime.now,
+        _wipeTimeout = const Duration(seconds: 30);
   @visibleForTesting
-  MemoryVaultStore.forTesting();
+  MemoryVaultStore.forTesting(
+      {DateTime Function()? now,
+      Duration wipeTimeout = const Duration(seconds: 30)})
+      : _now = now ?? DateTime.now,
+        _wipeTimeout = wipeTimeout;
   static final MemoryVaultStore instance = MemoryVaultStore._();
+  final DateTime Function() _now;
+  final Duration _wipeTimeout;
 
   // NOTE: We no longer store the PIN. We only store a verifier blob.
   // A PIN is requested once per app session and cached in memory.
@@ -26,6 +34,9 @@ class MemoryVaultStore implements VaultItemSource {
   static const _keySeedSecure = 'neura.vault.seed.secure.v2';
   static const _keySeedSecureMarker = 'neura.vault.seed.secure.marker.v2';
   static const _keyData = 'neura.vault.data.v2';
+  // Ciphertext-only rollback record. A PIN change is committed only when this
+  // record has been durably removed after both replacement values verify.
+  static const _keyPinChange = 'neura.vault.pinChange.v1';
 
   // Legacy v1 blob (XOR) is stored here. We transparently migrate it to v2.
   static const _keyDataLegacy = 'neura.vault.data.v1';
@@ -81,6 +92,9 @@ class MemoryVaultStore implements VaultItemSource {
       check();
       _checkAccess = check;
       try {
+        await NeuraPrefsCache.prefs.reload();
+        check();
+        await _recoverPinChange();
         return await operation();
       } finally {
         _checkAccess = () {};
@@ -342,10 +356,46 @@ class MemoryVaultStore implements VaultItemSource {
   Future<void> configurePin(String pin) => _operate(() => _configurePin(pin));
 
   Future<void> _configurePin(String pin) async {
-    final sp = NeuraPrefsCache.prefs;
     final enc = await _encryptJson(_verifierPlain, pin: pin.trim());
     _checkAccess();
-    await sp.setString(_keyPinVerifier, enc);
+    await _writeString(_keyPinVerifier, enc);
+  }
+
+  Future<void> _writeString(String key, String? value) async {
+    _checkAccess();
+    final sp = NeuraPrefsCache.prefs;
+    final ok =
+        value == null ? await sp.remove(key) : await sp.setString(key, value);
+    // Platform failures can still mutate SharedPreferences' in-memory cache.
+    await sp.reload();
+    if (!ok || sp.getString(key) != value) {
+      throw StateError('The vault write could not be confirmed.');
+    }
+  }
+
+  Future<void> _recoverPinChange() async {
+    final sp = NeuraPrefsCache.prefs;
+    final pending = sp.getString(_keyPinChange);
+    if (pending == null) return;
+    final record = jsonDecode(pending);
+    if (record is! Map ||
+        record['version'] != 1 ||
+        record['verifier'] is! String ||
+        (record['verifier'] as String).isEmpty ||
+        !record.containsKey('data') ||
+        (record['data'] != null && record['data'] is! String)) {
+      throw StateError('Vault PIN recovery requires the preserved backup.');
+    }
+    // Keep the rollback record until both old values are durable again. A
+    // failed recovery leaves it available for the next unlock/restart.
+    if (sp.getString(_keyData) != record['data']) {
+      await _writeString(_keyData, record['data'] as String?);
+    }
+    if (sp.getString(_keyPinVerifier) != record['verifier']) {
+      await _writeString(_keyPinVerifier, record['verifier'] as String);
+    }
+    await _writeString(_keyPinChange, null);
+    _clearKeyCache();
   }
 
   bool _constantTimeEquals(Uint8List a, Uint8List b) {
@@ -405,13 +455,10 @@ class MemoryVaultStore implements VaultItemSource {
   }
 
   Future<void> _save(List<VaultItem> items, {required String pin}) async {
-    final sp = NeuraPrefsCache.prefs;
     final json = encodeVaultItems(items);
     final enc = await _encryptJson(json, pin: pin);
     _checkAccess();
-    if (!await sp.setString(_keyData, enc)) {
-      throw StateError('The vault write could not be confirmed.');
-    }
+    await _writeString(_keyData, enc);
   }
 
   Future<void> add({
@@ -422,11 +469,18 @@ class MemoryVaultStore implements VaultItemSource {
   }) =>
       _operate(() async {
         final items = await _readItems(pin: pin);
-        final id = 'v_${DateTime.now().millisecondsSinceEpoch}';
+        final now = _now();
+        final baseId = 'v_${now.microsecondsSinceEpoch}';
+        var id = baseId;
+        var suffix = 0;
+        final ids = items.map((item) => item.id).toSet();
+        while (ids.contains(id)) {
+          id = '${baseId}_${++suffix}';
+        }
         items.add(
           VaultItem(
             id: id,
-            createdAt: DateTime.now(),
+            createdAt: now,
             title: title,
             body: body,
             tags: tags,
@@ -470,12 +524,23 @@ class MemoryVaultStore implements VaultItemSource {
         final encVerifier = await _encryptJson(_verifierPlain, pin: newPinTrim);
 
         _checkAccess();
-        // Persist atomically as much as possible
-        await sp.setString(_keyData, encData);
-        await sp.setString(_keyPinVerifier, encVerifier);
-
-        // Clear cached key to avoid mismatch
-        _clearKeyCache();
+        await _writeString(
+            _keyPinChange,
+            jsonEncode({
+              'version': 1,
+              'data': sp.getString(_keyData),
+              'verifier': verifier,
+            }));
+        try {
+          await _writeString(_keyData, encData);
+          await _writeString(_keyPinVerifier, encVerifier);
+          await _writeString(_keyPinChange, null);
+        } catch (_) {
+          await _recoverPinChange();
+          rethrow;
+        } finally {
+          _clearKeyCache();
+        }
       });
 
   /// Atomically merges validated portable-backup items into the local vault.
@@ -548,29 +613,48 @@ class MemoryVaultStore implements VaultItemSource {
 
   Future<void> wipe() {
     final pending = _wipeInFlight;
-    if (pending != null) return pending;
+    if (pending != null) return _waitForWipe(pending);
     _generation++;
     final wiping = _enqueue(_wipe);
     final completed = wiping.whenComplete(() => _wipeInFlight = null);
     _wipeInFlight = completed;
-    return completed;
+    return _waitForWipe(completed);
   }
+
+  Future<void> _waitForWipe(Future<void> operation) =>
+      operation.timeout(_wipeTimeout, onTimeout: () {
+        // The underlying queue and closed admission remain in place. A late
+        // platform write must drain into deletion, never become a new vault.
+        throw StateError('Vault wipe is incomplete: storage has not responded. '
+            'Keep the app open and retry; no deletion success was confirmed.');
+      });
 
   Future<void> _wipe() async {
     final sp = NeuraPrefsCache.prefs;
-    await sp.remove(_keyData);
-    await sp.remove(_keyDataLegacy);
-    await sp.remove(_keyPinVerifier);
+    var removed = true;
+    for (final key in [
+      _keyData,
+      _keyDataLegacy,
+      _keyPinVerifier,
+      _keyPinLegacy,
+      _keyPinChange,
+      _keySeedSecureMarker,
+      _keySeed
+    ]) {
+      if (!await sp.remove(key)) removed = false;
+    }
     await _secureStorage.delete(key: _keySeedSecure);
     final remaining = (await _secureStorage.read(key: _keySeedSecure))?.trim();
     if (remaining != null && remaining.isNotEmpty) {
       throw StateError('The secure vault key could not be deleted.');
     }
-    await sp.remove(_keySeedSecureMarker);
-    await sp.remove(_keySeed);
     // Clear cached key too
     _clearKeyCache();
-    if (sp.containsKey(_keySeedSecureMarker) ||
+    await sp.reload();
+    if (!removed ||
+        sp.containsKey(_keyPinChange) ||
+        sp.containsKey(_keyPinLegacy) ||
+        sp.containsKey(_keySeedSecureMarker) ||
         sp.containsKey(_keySeed) ||
         sp.containsKey(_keyPinVerifier) ||
         sp.containsKey(_keyData) ||

@@ -28,6 +28,139 @@ void main() {
     store = MemoryVaultStore.forTesting();
   });
 
+  test(
+      'rejected PIN configuration cannot succeed through the preferences cache',
+      () async {
+    fixture.preferences.refusedWrites.add('flutter.neura.vault.pinVerifier.v1');
+    await expectLater(store.configurePin('1234'), throwsStateError);
+    expect(await store.hasPinConfigured(), isFalse);
+  });
+
+  for (final rejectedKey in [dataKey, 'neura.vault.pinVerifier.v1']) {
+    test(
+        'PIN change preserves the old PIN and entries when $rejectedKey is rejected',
+        () async {
+      await store.configurePin('1234');
+      await store.importItems(pin: '1234', imported: [item('original')]);
+      final original = NeuraPrefsCache.prefs.getString(dataKey);
+      fixture.preferences.refusedWrites.add('flutter.$rejectedKey');
+      await expectLater(
+          store.changePin(oldPin: '1234', newPin: '4321'), throwsStateError);
+      expect(await store.validatePin('1234'), isTrue);
+      expect(await store.validatePin('4321'), isFalse);
+      expect((await store.getItems(pin: '1234')).single.id, 'original');
+      expect(NeuraPrefsCache.prefs.getString(dataKey), original);
+      expect(NeuraPrefsCache.prefs.containsKey('neura.vault.pinChange.v1'),
+          isFalse);
+    });
+  }
+
+  test('PIN rollback survives another rejected write and a new store instance',
+      () async {
+    await store.configurePin('1234');
+    await store.importItems(pin: '1234', imported: [item('original')]);
+    var dataWrites = 0;
+    fixture.preferences.beforeSetValue = (key) async {
+      if (key == 'flutter.$dataKey' && ++dataWrites == 2) {
+        fixture.preferences.refusedWrites.add(key);
+      }
+    };
+    fixture.preferences.refusedWrites.add('flutter.neura.vault.pinVerifier.v1');
+    await expectLater(
+        store.changePin(oldPin: '1234', newPin: '4321'), throwsStateError);
+    expect(fixture.preferences.data['flutter.neura.vault.pinChange.v1'],
+        isA<String>());
+    fixture.preferences.refusedWrites.clear();
+    fixture.preferences.beforeSetValue = null;
+    final reopened = MemoryVaultStore.forTesting();
+    expect(await reopened.validatePin('1234'), isTrue);
+    expect((await reopened.getItems(pin: '1234')).single.id, 'original');
+    expect(
+        NeuraPrefsCache.prefs.containsKey('neura.vault.pinChange.v1'), isFalse);
+  });
+
+  test(
+      'successful PIN change commits both values and removes its rollback copy',
+      () async {
+    await store.configurePin('1234');
+    await store.importItems(pin: '1234', imported: [item('original')]);
+    await store.changePin(oldPin: '1234', newPin: '4321');
+    final reopened = MemoryVaultStore.forTesting();
+    expect(await reopened.validatePin('1234'), isFalse);
+    expect(await reopened.validatePin('4321'), isTrue);
+    expect((await reopened.getItems(pin: '4321')).single.id, 'original');
+    expect(
+        NeuraPrefsCache.prefs.containsKey('neura.vault.pinChange.v1'), isFalse);
+  });
+
+  test('same-clock additions remain independently readable and deletable',
+      () async {
+    store = MemoryVaultStore.forTesting(now: () => DateTime.utc(2026));
+    await store.configurePin('1234');
+    await Future.wait([
+      for (var i = 0; i < 3; i++)
+        store.add(pin: '1234', title: 'Synthetic $i', body: 'Synthetic')
+    ]);
+    final items = await store.getItems(pin: '1234');
+    expect(items.map((e) => e.id).toSet(), hasLength(3));
+    await store.delete(pin: '1234', id: items.first.id);
+    expect(await store.getItems(pin: '1234'), hasLength(2));
+  });
+
+  for (final reportFailure in [false, true]) {
+    test(
+        'vault wipe verifies durable removal (reported failure: $reportFailure)',
+        () async {
+      await store.configurePin('1234');
+      await store.importItems(pin: '1234', imported: [item('original')]);
+      final failed = reportFailure
+          ? fixture.preferences.refusedRemovals
+          : fixture.preferences.ignoredRemovals;
+      failed.add('flutter.$dataKey');
+      await expectLater(store.wipe(), throwsStateError);
+      expect(fixture.preferences.data.containsKey('flutter.$dataKey'), isTrue);
+      failed.clear();
+      await store.wipe();
+      expect(fixture.preferences.data.containsKey('flutter.$dataKey'), isFalse);
+    });
+  }
+
+  test('older records may omit tags but malformed tags still fail closed', () {
+    final raw = item('legacy').toJson()..remove('tags');
+    expect(
+        decodeVaultItems(jsonEncode([raw]), strict: true).single.tags, isEmpty);
+    raw['tags'] = 'not-a-list';
+    expect(() => decodeVaultItems(jsonEncode([raw]), strict: true),
+        throwsFormatException);
+  });
+
+  test(
+      'timed-out wipe keeps admission closed and deletes a late platform write',
+      () async {
+    store = MemoryVaultStore.forTesting(
+        wipeTimeout: const Duration(milliseconds: 30));
+    await store.configurePin('1234');
+    final entered = Completer<void>();
+    final release = Completer<void>();
+    fixture.preferences.beforeSetValue = (key) async {
+      if (key == 'flutter.$dataKey') {
+        entered.complete();
+        await release.future;
+      }
+    };
+    final writing = store.importItems(pin: '1234', imported: [item('late')]);
+    await entered.future;
+    await expectLater(store.wipe(), throwsStateError);
+    final stale = expectLater(
+        store.add(pin: '1234', title: 'Denied', body: ''), throwsStateError);
+    release.complete();
+    await writing;
+    await stale;
+    await store.wipe();
+    expect(fixture.preferences.data.containsKey('flutter.$dataKey'), isFalse);
+    expect(fixture.secrets, isEmpty);
+  });
+
   test('restore refuses to replace unreadable existing ciphertext', () async {
     await store.configurePin('1234');
     final originalSecrets = Map.of(fixture.secrets);

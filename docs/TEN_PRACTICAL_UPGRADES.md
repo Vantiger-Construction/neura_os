@@ -78,7 +78,7 @@ The dependency has returned to exact `flutter_secure_storage` **10.3.4**. The
 requires v10 migration of existing v9 ciphers; the
 [10.3.4 changelog](https://pub.dev/packages/flutter_secure_storage/versions/10.3.4/changelog)
 also includes migration/data-preservation fixes beyond the original 10.3.1
-pin. `resetOnError: false`, migration backup, existing namespaces, key names,
+pin. `resetOnError: false`, migration backup, existing namespaces and key names,
 and encrypted record formats remain unchanged. The solver also selects Darwin
 0.3.2, which is the v10-compatible line; Windows remains 4.2.2. Dependabot major
 proposals for this package are held, and a security regression rejects silently
@@ -111,3 +111,38 @@ composition and 11 security regressions passed; Actionlint 1.7.12 passed.
 OSV-Scanner 2.7.0 reported no known findings across the exact 225 Pub, 228 Cargo,
 and one npm locked package. Native Windows/Android and hosted integration
 results must be recorded against the follow-up head, not borrowed from #175.
+
+### Independent review corrections
+
+Sourcery's November 6 review identified eight further failure paths. Scheduled
+backups now close admission synchronously at full-data wipe and all active
+instances drain before app-support deletion. A cancelled backup cannot record
+a late outcome or submit a new file write. Already submitted platform/file
+writes must finish before deletion can be confirmed.
+
+Vault deletion checks removal results and reloads platform preferences before
+verifying absence, including the legacy PIN and pending PIN-change record.
+If storage does not respond within 30 seconds, wipe reports an incomplete
+operation. Its underlying queue stays closed and continues waiting to delete
+any late write; retry may confirm completion. A timeout does not cancel a
+platform write or establish successful deletion. Full-data wipe retains its
+process-wide suspension until restart.
+
+PIN setup and data writes check platform results and read back durable values.
+PIN changes preserve the old encrypted data and verifier in the temporary
+`neura.vault.pinChange.v1` preference; it contains ciphertext, never the PIN or
+decrypted entries. Both replacements must verify before the rollback record is
+removed. Failed/interrupted changes restore the previous pair before the next
+vault operation; a failed rollback retains its record for recovery on a later
+unlock/restart. Full-data wipe removes this recovery record too. Existing
+encryption keys and ciphertext formats are preserved.
+
+New vault IDs are checked against existing entries even if multiple additions
+share a timestamp. Older entries may omit optional tags; malformed supplied
+tags and required fields still fail closed. Coach saves now surface storage
+errors instead of leaving an unhandled asynchronous error.
+
+Before release, add failed PIN setup/change/rollback, process restart during a
+PIN change, durable deletion failure, same-clock additions, and wipe during a
+scheduled backup to the disposable-vault device checks. Independent review and
+current-head CI remain required; implementing review comments is not approval.

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -78,6 +79,7 @@ void main() {
   late _BackupPicker picker;
 
   setUp(() async {
+    PortableVaultBackupService.resetWipeGateForTesting();
     originalPicker = FilePickerPlatform.instance;
     picker = _BackupPicker();
     FilePickerPlatform.instance = picker;
@@ -100,6 +102,38 @@ void main() {
   tearDown(() {
     FilePickerPlatform.instance = originalPicker;
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+  });
+
+  test('wipe closes backup admission and drains a delayed directory creation',
+      () async {
+    await settings.enable('a very good passphrase');
+    final entered = Completer<void>();
+    final release = Completer<void>();
+    service = PortableVaultBackupService(
+        store: store,
+        scheduledSettings: settings,
+        backupDirectory: () async {
+          entered.complete();
+          await release.future;
+          return tempDir;
+        });
+    final backingUp = service.runScheduledBackupIfDue(pin: '1234');
+    await entered.future;
+    PortableVaultBackupService.suspendForDataWipe();
+    var drained = false;
+    final draining = PortableVaultBackupService.drainForDataWipe()
+        .then((_) => drained = true);
+    await Future<void>.delayed(Duration.zero);
+    expect(drained, isFalse);
+    final rejected = await service.runScheduledBackupIfDue(pin: '1234');
+    expect(rejected.status, ScheduledBackupStatus.skipped);
+    release.complete();
+    expect((await backingUp).status, ScheduledBackupStatus.failed);
+    await draining;
+    expect(tempDir.listSync(), isEmpty);
+    expect(settings.lastRunAt, isNull,
+        reason:
+            'A cancelled backup cannot recreate outcome preferences after wipe.');
   });
 
   group('file picker migration', () {
