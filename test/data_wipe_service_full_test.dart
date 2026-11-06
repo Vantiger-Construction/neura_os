@@ -11,6 +11,7 @@ import 'package:neuro_companion/services/portable_vault_backup_service.dart';
 import 'package:neuro_companion/services/scheduled_backup_settings.dart';
 import 'package:neuro_companion/services/vault_item_source.dart';
 import 'package:neuro_companion/modules/vault/memory_vault_models.dart';
+import 'package:neuro_companion/modules/vault/memory_vault_store.dart';
 import 'package:neuro_companion/services/wake_word_listener_service.dart';
 import 'package:neuro_companion/services/wake_word_prefs.dart';
 import 'package:neuro_companion/src/core/data_wipe_service.dart';
@@ -26,12 +27,44 @@ class _EmptyVaultSource implements VaultItemSource {
   Future<int> importItems(
           {required String pin,
           required List<VaultItem> imported,
-          bool Function()? mayWrite}) =>
+          required bool Function() mayWrite}) =>
       throw UnsupportedError('No restore in this fixture.');
 }
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('full wipe cannot clear preferences ahead of a stalled vault write',
+      () async {
+    final f = await DataWipeFixture.create();
+    await f.run(() async {
+      final vault = MemoryVaultStore.instance;
+      await vault.configurePin('1234');
+      final entered = Completer<void>();
+      final release = Completer<void>();
+      f.preferences.beforeSetValue = (key) async {
+        if (key == 'flutter.neura.vault.data.v2') {
+          entered.complete();
+          await release.future;
+        }
+      };
+      final writing = expectLater(
+          vault.add(pin: '1234', title: 'Late', body: 'Synthetic'),
+          throwsStateError);
+      await entered.future;
+      MemoryVaultStore.fullWipeDrainTimeout = const Duration(milliseconds: 20);
+      await expectLater(
+          NeuraDataWipeService.wipeAllLocalData(),
+          throwsA(isA<NeuraDataWipeException>().having((e) => e.failedSteps,
+              'failed steps', contains('vault writer drain'))));
+      expect(f.preferences.clearCalls, 0);
+      release.complete();
+      await writing;
+      await NeuraDataWipeService.wipeAllLocalData();
+      expect(f.preferences.data, isEmpty);
+      expect(f.secrets, {DataWipeFixture.tombstoneKey: 'disabled'});
+    });
+  });
 
   test(
       'backup drain timeout stops deletion until late work settles and wipe is retried',

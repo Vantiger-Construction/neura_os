@@ -28,6 +28,64 @@ void main() {
     store = MemoryVaultStore.forTesting();
   });
 
+  test('stalled callers fail within a bound while late work stays serialized',
+      () async {
+    store = MemoryVaultStore.forTesting(
+        operationTimeout: const Duration(milliseconds: 30));
+    final entered = Completer<void>();
+    final release = Completer<void>();
+    fixture.preferences.beforeGetAll = () async {
+      if (!entered.isCompleted) entered.complete();
+      await release.future;
+    };
+    final first = expectLater(store.hasPinConfigured(), throwsStateError);
+    await entered.future;
+    final second = expectLater(store.configurePin('1234'), throwsStateError);
+    await first;
+    await second;
+    release.complete();
+    await store.drainForDataWipe();
+    fixture.preferences.beforeGetAll = null;
+    expect(fixture.secrets, isEmpty);
+    expect(await store.hasPinConfigured(), isFalse);
+  });
+
+  test('durable readback reconciles a platform write reported as failed',
+      () async {
+    await store.configurePin('1234');
+    fixture.preferences.misreportedWrites.add('flutter.$dataKey');
+    await store.add(pin: '1234', title: 'Confirmed', body: 'Synthetic');
+    expect((await store.getItems(pin: '1234')).single.title, 'Confirmed');
+  });
+
+  test('retry after an ambiguous timed-out add reuses the committed entry',
+      () async {
+    await store.configurePin('1234');
+    store = MemoryVaultStore.forTesting(
+        operationTimeout: const Duration(seconds: 10));
+    final entered = Completer<void>();
+    final release = Completer<void>();
+    fixture.preferences.beforeSetValue = (key) async {
+      if (key == 'flutter.$dataKey') {
+        entered.complete();
+        await release.future;
+      }
+    };
+    final writing = expectLater(
+        store.add(pin: '1234', title: 'Retry', body: 'Synthetic'),
+        throwsStateError);
+    await entered.future;
+    await writing;
+    release.complete();
+    await store.drainForDataWipe();
+    fixture.preferences.beforeSetValue = null;
+    await store.add(pin: '1234', title: 'Retry', body: 'Synthetic');
+    expect(await store.getItems(pin: '1234'), hasLength(1));
+    await store.add(pin: '1234', title: 'Retry', body: 'Synthetic');
+    expect(await store.getItems(pin: '1234'), hasLength(2),
+        reason: 'A new confirmed save may intentionally repeat the content.');
+  });
+
   test(
       'rejected PIN configuration cannot succeed through the preferences cache',
       () async {
@@ -41,7 +99,8 @@ void main() {
         'PIN change preserves the old PIN and entries when $rejectedKey is rejected',
         () async {
       await store.configurePin('1234');
-      await store.importItems(pin: '1234', imported: [item('original')]);
+      await store.importItems(
+          mayWrite: () => true, pin: '1234', imported: [item('original')]);
       final original = NeuraPrefsCache.prefs.getString(dataKey);
       fixture.preferences.refusedWrites.add('flutter.$rejectedKey');
       await expectLater(
@@ -58,7 +117,8 @@ void main() {
   test('PIN rollback survives another rejected write and a new store instance',
       () async {
     await store.configurePin('1234');
-    await store.importItems(pin: '1234', imported: [item('original')]);
+    await store.importItems(
+        mayWrite: () => true, pin: '1234', imported: [item('original')]);
     var dataWrites = 0;
     fixture.preferences.beforeSetValue = (key) async {
       if (key == 'flutter.$dataKey' && ++dataWrites == 2) {
@@ -83,7 +143,8 @@ void main() {
       'successful PIN change commits both values and removes its rollback copy',
       () async {
     await store.configurePin('1234');
-    await store.importItems(pin: '1234', imported: [item('original')]);
+    await store.importItems(
+        mayWrite: () => true, pin: '1234', imported: [item('original')]);
     await store.changePin(oldPin: '1234', newPin: '4321');
     final reopened = MemoryVaultStore.forTesting();
     expect(await reopened.validatePin('1234'), isFalse);
@@ -177,7 +238,8 @@ void main() {
         'vault wipe verifies durable removal (reported failure: $reportFailure)',
         () async {
       await store.configurePin('1234');
-      await store.importItems(pin: '1234', imported: [item('original')]);
+      await store.importItems(
+          mayWrite: () => true, pin: '1234', imported: [item('original')]);
       final failed = reportFailure
           ? fixture.preferences.refusedRemovals
           : fixture.preferences.ignoredRemovals;
@@ -213,7 +275,8 @@ void main() {
         await release.future;
       }
     };
-    final writing = store.importItems(pin: '1234', imported: [item('late')]);
+    final writing = store.importItems(
+        mayWrite: () => true, pin: '1234', imported: [item('late')]);
     await entered.future;
     await expectLater(store.wipe(), throwsStateError);
     final stale = expectLater(
@@ -231,7 +294,9 @@ void main() {
     final originalSecrets = Map.of(fixture.secrets);
     const damaged = '{"v":2,"cipher":"damaged"}';
     await NeuraPrefsCache.prefs.setString(dataKey, damaged);
-    await expectLater(store.importItems(pin: '1234', imported: [item('new')]),
+    await expectLater(
+        store.importItems(
+            mayWrite: () => true, pin: '1234', imported: [item('new')]),
         throwsStateError);
     expect(NeuraPrefsCache.prefs.getString(dataKey), damaged);
     expect(fixture.secrets, originalSecrets);
@@ -239,12 +304,17 @@ void main() {
 
   test('wrong PIN and missing OS key never replace existing entries', () async {
     await store.configurePin('1234');
-    await store.importItems(pin: '1234', imported: [item('existing')]);
+    await store.importItems(
+        mayWrite: () => true, pin: '1234', imported: [item('existing')]);
     final original = NeuraPrefsCache.prefs.getString(dataKey);
-    await expectLater(store.importItems(pin: '4321', imported: [item('new')]),
+    await expectLater(
+        store.importItems(
+            mayWrite: () => true, pin: '4321', imported: [item('new')]),
         throwsStateError);
     fixture.secrets.clear();
-    await expectLater(store.importItems(pin: '1234', imported: [item('new')]),
+    await expectLater(
+        store.importItems(
+            mayWrite: () => true, pin: '1234', imported: [item('new')]),
         throwsStateError);
     expect(NeuraPrefsCache.prefs.getString(dataKey), original);
     expect(fixture.secrets, isEmpty);
@@ -259,7 +329,9 @@ void main() {
       for (var i = 0; i < bytes.length; i++) bytes[i] ^ pin[i % pin.length]
     ]);
     await NeuraPrefsCache.prefs.setString(legacyKey, legacy);
-    await expectLater(store.importItems(pin: '1234', imported: [item('new')]),
+    await expectLater(
+        store.importItems(
+            mayWrite: () => true, pin: '1234', imported: [item('new')]),
         throwsFormatException);
     expect(NeuraPrefsCache.prefs.getString(legacyKey), legacy);
     expect(NeuraPrefsCache.prefs.containsKey(dataKey), false);
@@ -269,7 +341,8 @@ void main() {
       () async {
     await store.configurePin('1234');
     final original = item('same');
-    await store.importItems(pin: '1234', imported: [original]);
+    await store
+        .importItems(mayWrite: () => true, pin: '1234', imported: [original]);
     final conflicting = VaultItem(
         id: original.id,
         createdAt: original.createdAt,
@@ -277,7 +350,10 @@ void main() {
         body: original.body,
         tags: original.tags);
     expect(
-        await store.importItems(pin: '1234', imported: [original, conflicting]),
+        await store.importItems(
+            mayWrite: () => true,
+            pin: '1234',
+            imported: [original, conflicting]),
         1);
     final items = await store.getItems(pin: '1234');
     expect(
@@ -288,7 +364,8 @@ void main() {
   test('revocation during encryption preparation prevents the final data write',
       () async {
     await store.configurePin('1234');
-    await store.importItems(pin: '1234', imported: [item('existing')]);
+    await store.importItems(
+        mayWrite: () => true, pin: '1234', imported: [item('existing')]);
     final original = NeuraPrefsCache.prefs.getString(dataKey);
     final entered = Completer<void>();
     final release = Completer<void>();
@@ -318,12 +395,15 @@ void main() {
   test('full-data-wipe suspension rejects new and stale vault operations',
       () async {
     await store.configurePin('1234');
-    final pending = store.importItems(pin: '1234', imported: [item('stale')]);
+    final pending = store.importItems(
+        mayWrite: () => true, pin: '1234', imported: [item('stale')]);
     final rejected = expectLater(pending, throwsStateError);
     store.suspendForDataWipe();
     await store.wipe();
     await rejected;
-    await expectLater(store.importItems(pin: '1234', imported: [item('new')]),
+    await expectLater(
+        store.importItems(
+            mayWrite: () => true, pin: '1234', imported: [item('new')]),
         throwsStateError);
     await expectLater(store.configurePin('4321'), throwsStateError);
     expect(NeuraPrefsCache.prefs.containsKey(dataKey), false);
@@ -341,7 +421,8 @@ void main() {
         await release.future;
       }
     };
-    final restoring = store.importItems(pin: '1234', imported: [item('new')]);
+    final restoring = store.importItems(
+        mayWrite: () => true, pin: '1234', imported: [item('new')]);
     await entered.future;
     var wiped = false;
     final wiping = store.wipe().then((_) => wiped = true);
@@ -358,8 +439,10 @@ void main() {
   test('concurrent restores preserve both selected entries', () async {
     await store.configurePin('1234');
     await Future.wait([
-      store.importItems(pin: '1234', imported: [item('one')]),
-      store.importItems(pin: '1234', imported: [item('two')]),
+      store.importItems(
+          mayWrite: () => true, pin: '1234', imported: [item('one')]),
+      store.importItems(
+          mayWrite: () => true, pin: '1234', imported: [item('two')]),
     ]);
     expect((await store.getItems(pin: '1234')).map((e) => e.id),
         unorderedEquals(['one', 'two']));
@@ -367,7 +450,8 @@ void main() {
 
   test('wipe drains a restore blocked on an OS key read', () async {
     await store.configurePin('1234');
-    await store.importItems(pin: '1234', imported: [item('existing')]);
+    await store.importItems(
+        mayWrite: () => true, pin: '1234', imported: [item('existing')]);
     final entered = Completer<void>();
     final release = Completer<void>();
     var blocked = false;
@@ -393,7 +477,8 @@ void main() {
           throw PlatformException(code: 'UnexpectedMethod');
       }
     });
-    final restoring = store.importItems(pin: '1234', imported: [item('new')]);
+    final restoring = store.importItems(
+        mayWrite: () => true, pin: '1234', imported: [item('new')]);
     // Attach before releasing asynchronous work so failures are observed.
     final observedRestore =
         restoring.then<void>((_) {}, onError: (Object _) {});

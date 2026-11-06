@@ -51,6 +51,8 @@ class ScheduledBackupSettings {
   static const _keyLastRunAt = 'neura.scheduled_backup.last_run_at';
   static const _keyLastOutcome = 'neura.scheduled_backup.last_outcome';
   static const _keyLastError = 'neura.scheduled_backup.last_error';
+  static const _keyRemovalPending =
+      'neura.scheduled_backup.passphrase_removal_pending';
 
   final NeuraCredentialStorage _storage;
 
@@ -93,23 +95,45 @@ class ScheduledBackupSettings {
   }
 
   bool get enabled =>
-      NeuraPrefsCache.prefsOrNull?.getBool(_keyEnabled) ?? false;
+      (NeuraPrefsCache.prefsOrNull?.getBool(_keyEnabled) ?? false) &&
+      !passphraseRemovalPending;
+
+  bool get passphraseRemovalPending =>
+      NeuraPrefsCache.prefsOrNull?.getBool(_keyRemovalPending) ?? false;
 
   Future<void> enable(String passphrase) => _mutate(() async {
         await _storage.write(key: _keyPassphrase, value: passphrase);
         _checkMutation();
-        if (!await NeuraPrefsCache.prefs.setBool(_keyEnabled, true)) {
-          throw StateError('Backup settings could not be saved.');
-        }
+        await _writeFlag(_keyEnabled, true);
+        await _writeFlag(_keyRemovalPending, false);
       });
 
   Future<void> disable() => _mutate(() async {
-        if (!await NeuraPrefsCache.prefs.setBool(_keyEnabled, false)) {
-          throw StateError('Backup settings could not be saved.');
-        }
+        await _writeFlag(_keyRemovalPending, true);
+        await _writeFlag(_keyEnabled, false);
         _checkMutation();
         await _storage.delete(key: _keyPassphrase);
+        if ((await _storage.read(key: _keyPassphrase) ?? '').isNotEmpty) {
+          throw StateError(
+              'Backups are off, but passphrase removal needs retry.');
+        }
+        await _writeFlag(_keyRemovalPending, false);
       });
+
+  Future<void> _writeFlag(String key, bool value) async {
+    _checkMutation();
+    final prefs = NeuraPrefsCache.prefs;
+    try {
+      await prefs.setBool(key, value);
+    } catch (_) {
+      // Durable readback decides whether the flag was committed.
+    }
+    await prefs.reload();
+    _checkMutation();
+    if (prefs.getBool(key) != value) {
+      throw StateError('Backup settings could not be confirmed.');
+    }
+  }
 
   Future<String?> passphrase() => _storage.read(key: _keyPassphrase);
 
@@ -139,17 +163,27 @@ class ScheduledBackupSettings {
     String? error,
   }) =>
       _mutate(() async {
-        final prefs = NeuraPrefsCache.prefs;
-        await prefs.setString(_keyLastRunAt, at.toUtc().toIso8601String());
-        _checkMutation();
-        await prefs.setString(_keyLastOutcome, outcome.name);
-        _checkMutation();
-        if (error == null) {
-          await prefs.remove(_keyLastError);
-        } else {
-          await prefs.setString(_keyLastError, error);
-        }
+        await _writeMetadata(_keyLastRunAt, at.toUtc().toIso8601String());
+        await _writeMetadata(_keyLastOutcome, outcome.name);
+        await _writeMetadata(_keyLastError, error);
       });
+
+  Future<void> _writeMetadata(String key, String? value) async {
+    _checkMutation();
+    final prefs = NeuraPrefsCache.prefs;
+    try {
+      value == null
+          ? await prefs.remove(key)
+          : await prefs.setString(key, value);
+    } catch (_) {
+      // Verify durable state even when the platform reports a failure.
+    }
+    await prefs.reload();
+    _checkMutation();
+    if (prefs.getString(key) != value) {
+      throw StateError('Backup status could not be saved.');
+    }
+  }
 
   Future<void> clearForDataWipe() async {
     suspendForDataWipe();
@@ -160,7 +194,8 @@ class ScheduledBackupSettings {
       _keyEnabled,
       _keyLastRunAt,
       _keyLastOutcome,
-      _keyLastError
+      _keyLastError,
+      _keyRemovalPending
     ]) {
       if (!await prefs.remove(key)) removed = false;
     }
@@ -170,8 +205,13 @@ class ScheduledBackupSettings {
     }
     await prefs.reload();
     if (!removed ||
-        [_keyEnabled, _keyLastRunAt, _keyLastOutcome, _keyLastError]
-            .any(prefs.containsKey)) {
+        [
+          _keyEnabled,
+          _keyLastRunAt,
+          _keyLastOutcome,
+          _keyLastError,
+          _keyRemovalPending
+        ].any(prefs.containsKey)) {
       throw StateError('Scheduled backup settings deletion was not verified.');
     }
   }

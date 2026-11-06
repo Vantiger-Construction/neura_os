@@ -168,3 +168,29 @@ data prevents it from replacing the PIN. This also rejects a second overlapping
 setup request and a missing-verifier state beside preserved ciphertext. Existing
 vaults must use unlock or the recoverable PIN-change path. Current validation
 counts and native/review results are recorded against the latest PR head.
+
+Full-data wipe also drains the vault queue before clearing preferences; if an
+admitted vault call remains stalled, cleanup stops without claiming deletion.
+Ordinary vault calls report a bounded failure after 30 seconds while their
+underlying queue stays serialized. Timed-out queued operations lose permission
+to submit later writes. A submitted platform write cannot be cancelled: its
+late completion remains tracked and must drain before wipe proceeds.
+
+Restore imports now require a non-null permit. A navigator observer revokes a
+review permanently when any unrelated route covers it, even if that route is
+popped before the next frame. Only that review's own confirmation route is
+allowed; covering the confirmation revokes the review too.
+
+Preference write errors are reconciled against durable readback. An uncertain
+add retains its entry ID in memory so a retry in the same process can recognize
+the already-committed entry instead of duplicating it. Wipe clears that retry
+state. After a restart or an unconfirmed operation, inspect the vault before
+manually repeating the save; no cross-process exactly-once guarantee is claimed.
+
+Scheduled backup status is also read back from durable preferences. A failed
+last-run/outcome write cannot report a successful run; a valid backup file is
+preserved even if its status could not be recorded.
+Disabling backups persists a pending passphrase-removal marker before deleting
+the secret. If deletion fails, backups remain disabled and the settings dialog
+offers an explicit retry, including after restart. Deletion must be verified
+before that marker clears; full-data wipe removes and verifies the marker too.

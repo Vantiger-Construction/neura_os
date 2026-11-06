@@ -396,11 +396,16 @@ class PortableVaultBackupService {
         return ScheduledBackupRunResult.failed(
             'Backup cancelled by data wipe.');
       }
-      await _scheduledSettings.recordOutcome(
-        at: effectiveNow,
-        outcome: ScheduledBackupOutcome.failed,
-        error: error.toString(),
-      );
+      try {
+        await _scheduledSettings.recordOutcome(
+          at: effectiveNow,
+          outcome: ScheduledBackupOutcome.failed,
+          error: error.toString(),
+        );
+      } catch (_) {
+        return ScheduledBackupRunResult.failed(
+            'Backup status could not be saved. Check the local backup before retrying.');
+      }
       return ScheduledBackupRunResult.failed(error.toString());
     }
   }

@@ -285,9 +285,10 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
               }
               if (dialogContext.mounted) setDialogState(() {});
             } catch (_) {
+              if (dialogContext.mounted) setDialogState(() {});
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('Backup settings could not be changed.')));
+                  content: Text('Backup settings could not be confirmed.')));
             }
           }
 
@@ -333,6 +334,13 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
                   onChanged: (value) => unawaited(toggle(value)),
                   title: const Text('Enabled'),
                 ),
+                if (settings.passphraseRemovalPending) ...[
+                  const Text(
+                      'Backups are off. Removing the stored backup passphrase needs retry.'),
+                  OutlinedButton(
+                      onPressed: () => unawaited(toggle(false)),
+                      child: const Text('Retry passphrase removal')),
+                ],
                 if (settings.enabled) ...[
                   const SizedBox(height: 4),
                   Text(

@@ -13,6 +13,6 @@ abstract interface class VaultItemSource {
   Future<int> importItems({
     required String pin,
     required List<VaultItem> imported,
-    bool Function()? mayWrite,
+    required bool Function() mayWrite,
   });
 }
