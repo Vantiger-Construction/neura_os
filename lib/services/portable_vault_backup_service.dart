@@ -87,21 +87,33 @@ class PortableVaultBackupService {
   static const _maxBackupBytes = 25 * 1024 * 1024;
   static const scheduledBackupFileName = 'neura-scheduled.neurabackup';
   static bool _suspendedForWipe = false;
-  static final _scheduledWrites = <Future<void>>{};
+  static final _activeWrites = <Future<void>>{};
+  static Future<void> _scheduledTail = Future<void>.value();
+
+  @visibleForTesting
+  static Duration wipeDrainTimeout = const Duration(seconds: 30);
 
   static void suspendForDataWipe() => _suspendedForWipe = true;
 
   static Future<void> drainForDataWipe() async {
-    await Future.wait(_scheduledWrites.toList())
-        .timeout(const Duration(seconds: 30));
+    await Future.wait(_activeWrites.toList()).timeout(wipeDrainTimeout);
   }
 
   @visibleForTesting
   static void resetWipeGateForTesting() {
-    if (_scheduledWrites.isNotEmpty) {
+    if (_activeWrites.isNotEmpty) {
       throw StateError('Backups are still active.');
     }
     _suspendedForWipe = false;
+    wipeDrainTimeout = const Duration(seconds: 30);
+  }
+
+  static Future<T> _trackWrite<T>(Future<T> operation) {
+    final drained =
+        operation.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    _activeWrites.add(drained);
+    unawaited(drained.whenComplete(() => _activeWrites.remove(drained)));
+    return operation;
   }
 
   static void _checkBackupWrite() {
@@ -127,8 +139,16 @@ class PortableVaultBackupService {
   Future<String?> exportToFile({
     required String pin,
     required String passphrase,
+  }) =>
+      _trackWrite(_exportToFile(pin: pin, passphrase: passphrase));
+
+  Future<String?> _exportToFile({
+    required String pin,
+    required String passphrase,
   }) async {
+    _checkBackupWrite();
     final items = await _store.getItems(pin: pin);
+    _checkBackupWrite();
     final envelope = await _codec.encrypt(
       passphrase: passphrase,
       payload: {
@@ -139,11 +159,15 @@ class PortableVaultBackupService {
       },
     );
 
+    _checkBackupWrite();
+    // Native saveFile owns the bytes once submitted. Wipe must drain that
+    // future (including the picker), never delete while it can still write.
     final uri = await FilePicker.saveFile(
       dialogTitle: 'Export encrypted Neura backup',
       fileName: 'neura-vault-${_dateStamp()}.neurabackup',
       bytes: Uint8List.fromList(utf8.encode(envelope)),
     );
+    _checkBackupWrite();
     if (uri == null) return null;
     return uri.scheme == 'file' ? uri.toFilePath() : uri.toString();
   }
@@ -295,14 +319,16 @@ class PortableVaultBackupService {
       return Future.value(
           ScheduledBackupRunResult.skipped('data wipe in progress'));
     }
-    final operation =
-        _runScheduledBackupIfDue(pin: pin, interval: interval, now: now);
-    // Track all instances, including a screen disposed while encryption runs.
-    final drained =
+    // The due check and replacement share one queue across all instances.
+    final operation = _scheduledTail.then<ScheduledBackupRunResult>((_) async {
+      if (_suspendedForWipe) {
+        return ScheduledBackupRunResult.skipped('data wipe in progress');
+      }
+      return _runScheduledBackupIfDue(pin: pin, interval: interval, now: now);
+    });
+    _scheduledTail =
         operation.then<void>((_) {}, onError: (Object _, StackTrace __) {});
-    _scheduledWrites.add(drained);
-    unawaited(drained.whenComplete(() => _scheduledWrites.remove(drained)));
-    return operation;
+    return _trackWrite(operation);
   }
 
   Future<ScheduledBackupRunResult> _runScheduledBackupIfDue({

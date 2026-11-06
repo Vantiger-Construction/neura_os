@@ -248,6 +248,7 @@ class NeuraStartupCoordinator {
     // failure independently.
     _emit('Loading shell settings…', 0.30);
     await Future.wait<bool>([
+      _safe(AvatarGlobals.service.init, 'AvatarPreferences'),
       _safe(ShellPrefsController.instance.init, 'ShellPrefs'),
       _safe(FocusController.instance.init, 'FocusController'),
       _safe(HumanPrefsController.instance.init, 'HumanPrefs'),

@@ -38,9 +38,11 @@ class _FakeVaultItemSource implements VaultItemSource {
   List<VaultItem> items = const [];
   String? lastPin;
   int imports = 0;
+  Future<void> Function()? beforeRead;
 
   @override
   Future<List<VaultItem>> getItems({required String pin}) async {
+    await beforeRead?.call();
     lastPin = pin;
     return items;
   }
@@ -91,6 +93,7 @@ void main() {
     // SharedPreferences' mock store persists across tests in this file;
     // start every test from a clean enabled/last-run state.
     await settings.clearForDataWipe();
+    ScheduledBackupSettings.resetWipeGateForTesting();
     service = PortableVaultBackupService(
       codec: PortableBackupCodec(),
       store: store,
@@ -102,6 +105,90 @@ void main() {
   tearDown(() {
     FilePickerPlatform.instance = originalPicker;
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+  });
+
+  test('overlapping scheduled requests serialize the due check and replacement',
+      () async {
+    await settings.enable('a very good passphrase');
+    final entered = Completer<void>();
+    final release = Completer<void>();
+    var reads = 0;
+    store.beforeRead = () async {
+      reads++;
+      if (reads == 1) entered.complete();
+      await release.future;
+    };
+    final now = DateTime.utc(2026, 2, 1);
+    final first = service.runScheduledBackupIfDue(pin: '1234', now: now);
+    await entered.future;
+    final secondService = PortableVaultBackupService(
+        store: store,
+        scheduledSettings: settings,
+        backupDirectory: () async => tempDir);
+    final second = secondService.runScheduledBackupIfDue(pin: '1234', now: now);
+    await Future<void>.delayed(Duration.zero);
+    expect(reads, 1);
+    release.complete();
+    expect((await first).status, ScheduledBackupStatus.succeeded);
+    expect((await second).status, ScheduledBackupStatus.skipped);
+    final envelope = await (await service.scheduledBackupFile()).readAsString();
+    expect(
+        (await service.verifyBackupIntegrity(envelope,
+                passphrase: 'a very good passphrase'))
+            .itemCount,
+        2);
+    expect(reads, 1);
+  });
+
+  test('wipe revokes an export before native file saving is admitted',
+      () async {
+    final entered = Completer<void>();
+    final release = Completer<void>();
+    store.beforeRead = () async {
+      entered.complete();
+      await release.future;
+    };
+    final export =
+        service.exportToFile(pin: '1234', passphrase: 'a very good passphrase');
+    final rejected = expectLater(export, throwsStateError);
+    await entered.future;
+    PortableVaultBackupService.suspendForDataWipe();
+    var drained = false;
+    final draining = PortableVaultBackupService.drainForDataWipe()
+        .then((_) => drained = true);
+    await Future<void>.delayed(Duration.zero);
+    expect(drained, isFalse);
+    release.complete();
+    await rejected;
+    await draining;
+    expect(picker.savedBytes, isNull);
+  });
+
+  test('timed-out native export remains tracked until the picker finishes',
+      () async {
+    final entered = Completer<void>();
+    final release = Completer<void>();
+    picker.beforeSave = () async {
+      entered.complete();
+      await release.future;
+    };
+    final export =
+        service.exportToFile(pin: '1234', passphrase: 'a very good passphrase');
+    final rejected = expectLater(export, throwsStateError);
+    await entered.future;
+    PortableVaultBackupService.suspendForDataWipe();
+    PortableVaultBackupService.wipeDrainTimeout =
+        const Duration(milliseconds: 20);
+    await expectLater(PortableVaultBackupService.drainForDataWipe(),
+        throwsA(isA<TimeoutException>()));
+    expect(
+        PortableVaultBackupService.resetWipeGateForTesting, throwsStateError);
+    release.complete();
+    await rejected;
+    await PortableVaultBackupService.drainForDataWipe();
+    await expectLater(
+        service.exportToFile(pin: '1234', passphrase: 'a very good passphrase'),
+        throwsStateError);
   });
 
   test('wipe closes backup admission and drains a delayed directory creation',
@@ -459,6 +546,7 @@ void main() {
 
 class _BackupPicker extends FilePickerPlatform {
   Uint8List? savedBytes;
+  Future<void> Function()? beforeSave;
   PlatformFile? selected;
 
   @override
@@ -473,6 +561,7 @@ class _BackupPicker extends FilePickerPlatform {
     LinuxOptions linuxOptions = const LinuxOptions(),
     WebOptions webOptions = const WebOptions(),
   }) async {
+    await beforeSave?.call();
     savedBytes = bytes;
     return Uri.parse('content://backups/export.neurabackup');
   }

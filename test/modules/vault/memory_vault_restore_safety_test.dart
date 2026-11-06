@@ -107,6 +107,45 @@ void main() {
     expect(await store.getItems(pin: '1234'), hasLength(2));
   });
 
+  test('wrong PIN cannot create data in an empty configured vault', () async {
+    await store.configurePin('1234');
+    final original = Map.of(fixture.preferences.data);
+    await expectLater(
+        store.add(pin: '4321', title: 'Wrong', body: ''), throwsStateError);
+    await expectLater(
+        store.delete(pin: '4321', id: 'missing'), throwsStateError);
+    expect(fixture.preferences.data, original);
+    expect(await store.validatePin('1234'), isTrue);
+    await store.add(pin: '1234', title: 'Correct', body: 'Preserved');
+    expect((await store.getItems(pin: '1234')).single.title, 'Correct');
+  });
+
+  test('legacy duplicate IDs preserve every entry with stable repair IDs',
+      () async {
+    await store.configurePin('1234');
+    final records = [
+      item('collision').toJson(),
+      {...item('collision').toJson(), 'title': 'Second'},
+      item('collision_recovered_1').toJson(),
+    ];
+    final raw = utf8.encode(jsonEncode(records));
+    final pin = utf8.encode('1234');
+    await NeuraPrefsCache.prefs.setString(
+        'neura.vault.data.v1',
+        base64UrlEncode(
+            List.generate(raw.length, (i) => raw[i] ^ pin[i % pin.length])));
+    final first = await store.getItems(pin: '1234');
+    expect(first, hasLength(3));
+    expect(first.map((e) => e.id).toSet(), hasLength(3));
+    expect(first.singleWhere((e) => e.title == 'Second').id,
+        'collision_recovered_2');
+    final reopened = await MemoryVaultStore.forTesting().getItems(pin: '1234');
+    expect(reopened.map((e) => e.toJson()), first.map((e) => e.toJson()));
+    await store.delete(pin: '1234', id: 'collision');
+    expect((await store.getItems(pin: '1234')).map((e) => e.id).toSet(),
+        {'collision_recovered_1', 'collision_recovered_2'});
+  });
+
   for (final reportFailure in [false, true]) {
     test(
         'vault wipe verifies durable removal (reported failure: $reportFailure)',

@@ -146,3 +146,19 @@ Before release, add failed PIN setup/change/rollback, process restart during a
 PIN change, durable deletion failure, same-clock additions, and wipe during a
 scheduled backup to the disposable-vault device checks. Independent review and
 current-head CI remain required; implementing review comments is not approval.
+
+The next independent review also covered manual exports, scheduled-backup
+settings and overlapping runs. All backup file writes, including an admitted
+native save dialog, now join the wipe drain. Settings mutations close admission
+at wipe start and drain before passphrase deletion and durable preference
+verification. If either drain times out, full-data wipe stops before deleting
+their destinations, reports incomplete removal, and keeps admission closed.
+Finish/cancel the native dialog or wait for storage, then retry the wipe. A
+timeout never permits a late writer to race deletion. Previously exported
+user-owned copies still require separate deletion by their owner.
+
+Scheduled runs share a queue across service instances, including their due
+check and file replacement. Add/delete validate the PIN even for an empty
+vault. Existing duplicate IDs from the older timestamp generator receive stable,
+non-conflicting IDs in memory without losing entries; the next explicit mutation
+persists those IDs. Required-field corruption still fails closed.

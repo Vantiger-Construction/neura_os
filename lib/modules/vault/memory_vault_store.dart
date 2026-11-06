@@ -468,6 +468,9 @@ class MemoryVaultStore implements VaultItemSource {
     List<String> tags = const [],
   }) =>
       _operate(() async {
+        if (!await _validatePin(pin)) {
+          throw StateError('Unlock the current vault before adding an entry.');
+        }
         final items = await _readItems(pin: pin);
         final now = _now();
         final baseId = 'v_${now.microsecondsSinceEpoch}';
@@ -491,6 +494,10 @@ class MemoryVaultStore implements VaultItemSource {
 
   Future<void> delete({required String pin, required String id}) =>
       _operate(() async {
+        if (!await _validatePin(pin)) {
+          throw StateError(
+              'Unlock the current vault before deleting an entry.');
+        }
         final items = await _readItems(pin: pin);
         items.removeWhere((e) => e.id == id);
         await _save(items, pin: pin);

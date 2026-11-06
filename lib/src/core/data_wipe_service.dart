@@ -69,7 +69,7 @@ import '../../startup/neura_bootstrap_log.dart';
 import '../../mood/services/mood_state_service.dart';
 import '../modules/focus/focus_controller.dart';
 
-/// Raised only after every known deletion has been attempted.
+/// Raised when a writer cannot drain or a deletion cannot be verified.
 ///
 /// The labels intentionally omit paths and underlying platform messages so a
 /// privacy error cannot accidentally reveal user data in the UI.
@@ -113,7 +113,8 @@ class NeuraDataWipeService {
   /// Deletes all app-owned local state currently written by Neura.
   ///
   /// Active microphone producers and queued writers are stopped first. Every
-  /// secret store and file target is then attempted even if another step
+  /// backup writer must drain before deletion can begin. Each secret store
+  /// and file target is then attempted even if another deletion step
   /// fails; any unverified deletion is reported at the end instead of being
   /// hidden behind a false success message.
   static Future<void> wipeAllLocalData() async {
@@ -125,14 +126,14 @@ class NeuraDataWipeService {
     SafeBoot.instance.safeMode.value = true;
     MemoryVaultStore.instance.suspendForDataWipe();
     PortableVaultBackupService.suspendForDataWipe();
+    ScheduledBackupSettings.suspendForDataWipe();
     CompanionMemoryService.suspendAllForDataWipe();
     EncryptedMemoryDurableScopedAdapter.suspendAllForDataWipe();
     NeuraAiService.instance.cancelActiveGeneration();
     AmbientListeningPrefsController.instance.resetAfterDataWipe();
     WakeWordPrefsController.instance.resetAfterDataWipe();
     NeuraStartupVoicePrefs.instance.resetAfterDataWipe();
-    await _attempt(failures, 'scheduled backup writer drain',
-        PortableVaultBackupService.drainForDataWipe);
+    AvatarService.instance.resetAfterDataWipe();
     await _attempt(failures, 'startup microphone shutdown',
         NeuraLocalSpeechInput.instance.shutdownForDataWipe);
     await _attempt(
@@ -165,6 +166,18 @@ class NeuraDataWipeService {
       'sleep recording shutdown',
       SleepListenerService.resetAllAfterDataWipe,
     );
+    var backupWritersDrained = false;
+    await _attempt(failures, 'backup writer drain', () async {
+      await PortableVaultBackupService.drainForDataWipe();
+      await ScheduledBackupSettings.drainForDataWipe();
+      backupWritersDrained = true;
+    });
+    if (!backupWritersDrained) {
+      // A native save or secure-storage write cannot be cancelled once
+      // submitted. Do not delete its destinations while it can recreate them.
+      // Admission stays closed; retry after the pending operation finishes.
+      throw NeuraDataWipeException(List<String>.unmodifiable(failures));
+    }
     await _attempt(
       failures,
       'scheduled notification removal',
@@ -295,7 +308,6 @@ class NeuraDataWipeService {
     GoodwillController.instance.resetAfterDataWipe();
     SpaceMemoryEngine.instance.resetAfterDataWipe();
     VaultSession.lock();
-    AvatarService.instance.resetAfterDataWipe();
     NeuraToneRuntime.instance.resetAfterDataWipe();
     CoachStore.instance.resetAfterDataWipe();
     ModuleHealthMonitor.instance.resetAfterDataWipe();
@@ -342,6 +354,7 @@ class NeuraDataWipeService {
 
     await _attempt(failures, 'preferences deletion', () async {
       await NeuraStartupVoicePrefs.instance.drainForDataWipe();
+      await AvatarService.instance.drainForDataWipe();
       if (!proactiveWritesDrained) {
         // A submitted platform preference write cannot be cancelled. Keep
         // this store and its producers suspended until a retry can drain it;

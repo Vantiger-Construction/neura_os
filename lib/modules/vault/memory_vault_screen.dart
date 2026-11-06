@@ -272,17 +272,23 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
           Future<void> toggle(bool value) async {
-            if (value) {
-              final passphrase = await _requestBackupPassphrase(
-                title: 'Set an automatic-backup passphrase',
-                confirm: true,
-              );
-              if (passphrase == null) return;
-              await settings.enable(passphrase);
-            } else {
-              await settings.disable();
+            try {
+              if (value) {
+                final passphrase = await _requestBackupPassphrase(
+                  title: 'Set an automatic-backup passphrase',
+                  confirm: true,
+                );
+                if (passphrase == null || !dialogContext.mounted) return;
+                await settings.enable(passphrase);
+              } else {
+                await settings.disable();
+              }
+              if (dialogContext.mounted) setDialogState(() {});
+            } catch (_) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Backup settings could not be changed.')));
             }
-            setDialogState(() {});
           }
 
           Future<void> backUpNow() async {
@@ -292,7 +298,7 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
               pin: pin,
               interval: Duration.zero,
             );
-            setDialogState(() {});
+            if (dialogContext.mounted) setDialogState(() {});
             if (!mounted) return;
             final message = switch (result.status) {
               ScheduledBackupStatus.succeeded =>
