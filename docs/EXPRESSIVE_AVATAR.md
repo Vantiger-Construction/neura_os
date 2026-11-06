@@ -13,6 +13,16 @@ loads that same instance. A failed save retains the previous selection and
 shows an error. Unknown stored IDs fall back to Neura. The registry is the single
 catalog for rendering and selection.
 
+Data removal synchronously suspends avatar writes and drains the submitted
+write before clearing preferences. A drain timeout reports incomplete removal
+and keeps the writer closed for retry. A failed preference reload cannot make
+an unsaved cached selection visible. Production service construction shares
+one instance, so selection and deletion observe the same pending write.
+
+Source compatibility: `AvatarFormat.flutterFace` is a new enum case, appended
+after existing values. Downstream exhaustive switches must handle it. The
+built-in renderer uses an empty asset path and must not attempt an asset load.
+
 ## What actually moves
 
 The new `flutterFace` renderer uses the mouth-free vector portrait and

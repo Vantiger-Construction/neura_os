@@ -319,6 +319,7 @@ void main() {
     wiring = AvatarVisemeWiring(controller: controller, bus: NeuraEventBus.I)
       ..start();
     try {
+      AvatarGlobals.service.resetForTesting();
       await AvatarGlobals.service.selectAvatar(AvatarRegistry.expressiveFaceId);
       await chat(tester);
       expect(find.byType(FlutterMouthAvatarView), findsOneWidget);

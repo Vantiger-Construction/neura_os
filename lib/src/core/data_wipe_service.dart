@@ -128,6 +128,7 @@ class NeuraDataWipeService {
     AmbientListeningPrefsController.instance.resetAfterDataWipe();
     WakeWordPrefsController.instance.resetAfterDataWipe();
     NeuraStartupVoicePrefs.instance.resetAfterDataWipe();
+    AvatarService.instance.resetAfterDataWipe();
     await _attempt(failures, 'startup microphone shutdown',
         NeuraLocalSpeechInput.instance.shutdownForDataWipe);
     await _attempt(
@@ -290,7 +291,6 @@ class NeuraDataWipeService {
     GoodwillController.instance.resetAfterDataWipe();
     SpaceMemoryEngine.instance.resetAfterDataWipe();
     VaultSession.lock();
-    AvatarService.instance.resetAfterDataWipe();
     NeuraToneRuntime.instance.resetAfterDataWipe();
     CoachStore.instance.resetAfterDataWipe();
     ModuleHealthMonitor.instance.resetAfterDataWipe();
@@ -337,6 +337,7 @@ class NeuraDataWipeService {
 
     await _attempt(failures, 'preferences deletion', () async {
       await NeuraStartupVoicePrefs.instance.drainForDataWipe();
+      await AvatarService.instance.drainForDataWipe();
       if (!proactiveWritesDrained) {
         // A submitted platform preference write cannot be cancelled. Keep
         // this store and its producers suspended until a retry can drain it;

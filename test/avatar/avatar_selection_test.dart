@@ -21,14 +21,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 class _ControlledPreferences extends SharedPreferencesStorePlatform {
-  _ControlledPreferences(this.original, {this.pending});
+  _ControlledPreferences(this.original,
+      {this.pending, this.failReload = false});
   final SharedPreferencesStorePlatform original;
   final Completer<bool>? pending;
+  final bool failReload;
   @override
   Future<bool> setValue(String valueType, String key, Object value) =>
       pending?.future ?? Future.value(false);
   @override
-  Future<Map<String, Object>> getAll() => original.getAll();
+  Future<Map<String, Object>> getAll() {
+    if (failReload) throw StateError('Synthetic reload failure');
+    return original.getAll();
+  }
+
   @override
   Future<bool> clear() => original.clear();
   @override
@@ -55,7 +61,7 @@ void main() {
     ShellPrefsController.instance.prefs.value = ShellPrefs.defaults;
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await NeuraPrefsCache.prefs.clear();
-    service.resetAfterDataWipe();
+    service.resetForTesting();
   });
   tearDown(() {
     SharedPreferencesStorePlatform.instance = original;
@@ -70,7 +76,7 @@ void main() {
   test('selection survives a fresh service load; unknown IDs stay on Neura',
       () async {
     expect(await service.selectAvatar(face), isTrue);
-    final restarted = AvatarService();
+    final restarted = AvatarService.forTesting();
     expect((await restarted.getSelectedAvatar()).id, face);
     expect(restarted.selectedAvatarId.value, face);
     expect(await service.selectAvatar('missing'), isFalse);
@@ -85,6 +91,27 @@ void main() {
     expect(await service.selectAvatar(face), isFalse);
     expect(service.selectedAvatarId.value, 'neura');
     expect((await service.getSelectedAvatar()).id, 'neura');
+  });
+
+  test('failed reload cannot publish the optimistic cache on reopening',
+      () async {
+    SharedPreferencesStorePlatform.instance =
+        _ControlledPreferences(original, failReload: true);
+    expect(await service.selectAvatar(face), isFalse);
+    expect(NeuraPrefsCache.prefs.getString('avatar_selected_id'), face);
+    expect((await service.getSelectedAvatar()).id, 'neura');
+    await service.init();
+    expect(service.selectedAvatarId.value, 'neura');
+  });
+
+  test('startup restoration cannot republish after synchronous wipe reset',
+      () async {
+    await NeuraPrefsCache.prefs.setString('avatar_selected_id', face);
+    final startup = service.init();
+    service.resetAfterDataWipe();
+    await startup;
+    expect(service.selectedAvatarId.value, 'neura');
+    expect(identical(AvatarService(), service), isTrue);
   });
 
   test('pending selection stays unconfirmed and cannot revive after reset',
@@ -134,7 +161,7 @@ void main() {
     expect(tester.widget<ListTile>(find.byKey(const ValueKey(face))).selected,
         isTrue);
     await tester.pumpWidget(const SizedBox());
-    service.resetAfterDataWipe();
+    service.resetForTesting();
     await service.init();
     await tester.pumpWidget(MaterialApp(home: room()));
     await tester.pumpAndSettle();
