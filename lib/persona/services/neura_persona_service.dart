@@ -1,11 +1,14 @@
-﻿import 'dart:convert';
+import 'dart:convert';
+import '../../profiles/local_profile_service.dart';
 import 'package:flutter/foundation.dart';
 import '../models/persona_profile.dart';
 import '../../shared/services/self_heal_service.dart';
 import '../../startup/neura_prefs_cache.dart';
 
 class NeuraPersonaService extends ChangeNotifier {
-  NeuraPersonaService._internal();
+  NeuraPersonaService._internal() {
+    LocalProfileService.instance.addListener(notifyListeners);
+  }
   static final NeuraPersonaService instance = NeuraPersonaService._internal();
 
   static const _keyPersona = 'neura_persona_profile_v1';
@@ -14,9 +17,12 @@ class NeuraPersonaService extends ChangeNotifier {
 
   PersonaProfile _current = PersonaProfile.neutral();
   int _generation = 0;
-  PersonaProfile get current => _current;
+  PersonaProfile get current => LocalProfileService.instance.enabled
+      ? LocalProfileService.instance.active?.persona ?? PersonaProfile.neutral()
+      : _current;
 
   Future<void> load() async {
+    if (LocalProfileService.instance.enabled) return;
     try {
       final prefs = NeuraPrefsCache.prefs;
       final raw = prefs.getString(_keyPersona);
@@ -33,7 +39,16 @@ class NeuraPersonaService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> update(PersonaProfile profile) async {
+  Future<bool> update(PersonaProfile profile,
+      {String? expectedProfileId, int? expectedProfileEpoch}) async {
+    final profiles = LocalProfileService.instance;
+    if (profiles.enabled) {
+      if (expectedProfileId == null || expectedProfileEpoch == null) {
+        return false;
+      }
+      return profiles.update(profile,
+          expectedId: expectedProfileId, expectedEpoch: expectedProfileEpoch);
+    }
     final generation = _generation;
     final normalized = PersonaProfile.fromMap(profile.toMap());
     try {

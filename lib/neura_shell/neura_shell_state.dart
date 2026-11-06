@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../profiles/local_profile_service.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -40,6 +41,7 @@ class NeuraShellState extends ChangeNotifier {
 
   NeuraShellState() {
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
+    LocalProfileService.instance.addListener(_onSafeModeChanged);
     NeuraStartupCoordinator.instance.ready.addListener(_onStartupReady);
   }
 
@@ -61,6 +63,9 @@ class NeuraShellState extends ChangeNotifier {
   bool _mascotBridgeStarted = false;
   Future<void>? _loadInFlight;
   Future<void>? _optionalActivationInFlight;
+
+  bool get _suppressed =>
+      SafeBoot.instance.safeMode.value || LocalProfileService.instance.enabled;
 
   bool get isLoaded => _loaded;
   NeuraRoom get room => _room;
@@ -86,6 +91,10 @@ class NeuraShellState extends ChangeNotifier {
   Future<void> _load() async {
     await NeuraPrefsCache.init();
     if (_disposed) return;
+    if (LocalProfileService.instance.enabled) {
+      _loaded = true;
+      return;
+    }
     final prefs = NeuraPrefsCache.prefs;
     _room = NeuraRoom.fromId(prefs.getString(_kRoomId));
     _showAvatar = prefs.getBool(_kShowAvatar) ?? true;
@@ -138,14 +147,18 @@ class NeuraShellState extends ChangeNotifier {
       ready.addListener(listener);
       await completer.future;
     }
-    if (_disposed || SafeBoot.instance.safeMode.value) return;
+    if (_disposed || _suppressed) {
+      return;
+    }
 
     try {
       final audio = _audio ??= NeuraAmbientAudioService();
       await audio.setVolume(_ambientVolume);
-      if (_disposed || SafeBoot.instance.safeMode.value) return;
+      if (_disposed || _suppressed) {
+        return;
+      }
       await audio.setEnabled(_ambientEnabled);
-      if (_disposed || SafeBoot.instance.safeMode.value) {
+      if (_disposed || _suppressed) {
         await audio.setEnabled(false);
         return;
       }
@@ -158,7 +171,7 @@ class NeuraShellState extends ChangeNotifier {
       _optionalShellServicesActive = false;
     }
 
-    if (_disposed || SafeBoot.instance.safeMode.value) {
+    if (_disposed || _suppressed) {
       await _suspendOptionalShellServices();
       return;
     }
@@ -174,7 +187,7 @@ class NeuraShellState extends ChangeNotifier {
         visible: _showAvatar && !_avatarDockedInApp,
       );
       _mascotStarted = true;
-      if (_disposed || SafeBoot.instance.safeMode.value) {
+      if (_disposed || _suppressed) {
         await MascotWindowService.I.setVisible(false);
         return;
       }
@@ -187,7 +200,7 @@ class NeuraShellState extends ChangeNotifier {
 
   void _onSafeModeChanged() {
     if (_disposed || !_loaded) return;
-    if (SafeBoot.instance.safeMode.value) {
+    if (_suppressed) {
       unawaited(_suspendOptionalShellServices());
     } else if (NeuraStartupCoordinator.instance.ready.value) {
       unawaited(_activateOptionalShellServicesWhenReady());
@@ -223,7 +236,7 @@ class NeuraShellState extends ChangeNotifier {
     final asset = room.ambientSoundAsset;
     if (_ambientEnabled &&
         _optionalShellServicesActive &&
-        !SafeBoot.instance.safeMode.value &&
+        !_suppressed &&
         asset != null) {
       await _audio?.playLoop(asset);
     }
@@ -265,10 +278,10 @@ class NeuraShellState extends ChangeNotifier {
     await prefs.setBool(_kShowAvatar, value);
     if (_mascotStarted) {
       await MascotWindowService.I.setVisible(
-        value && !_avatarDockedInApp && !SafeBoot.instance.safeMode.value,
+        value && !_avatarDockedInApp && !_suppressed,
       );
     } else if (value &&
-        !SafeBoot.instance.safeMode.value &&
+        !_suppressed &&
         NeuraStartupCoordinator.instance.ready.value) {
       await _activateOptionalShellServicesWhenReady();
     }
@@ -284,7 +297,9 @@ class NeuraShellState extends ChangeNotifier {
     _avatarDockedInApp = value;
     notifyListeners();
 
-    if (SafeBoot.instance.safeMode.value) return;
+    if (_suppressed) {
+      return;
+    }
     if (_mascotStarted) {
       try {
         await MascotWindowService.I.setVisible(_showAvatar && !value);
@@ -303,8 +318,7 @@ class NeuraShellState extends ChangeNotifier {
     final prefs = NeuraPrefsCache.prefs;
     await prefs.setBool(_kAmbientEnabled, enabled);
 
-    if (SafeBoot.instance.safeMode.value ||
-        !NeuraStartupCoordinator.instance.ready.value) {
+    if (_suppressed || !NeuraStartupCoordinator.instance.ready.value) {
       if (_optionalShellServicesActive) await _audio?.setEnabled(false);
       _optionalShellServicesActive = false;
       return;
@@ -312,7 +326,7 @@ class NeuraShellState extends ChangeNotifier {
 
     final audio = _audio ??= NeuraAmbientAudioService();
     await audio.setEnabled(enabled);
-    if (_disposed || SafeBoot.instance.safeMode.value) {
+    if (_disposed || _suppressed) {
       await audio.setEnabled(false);
       _optionalShellServicesActive = false;
       return;
@@ -331,7 +345,7 @@ class NeuraShellState extends ChangeNotifier {
     final prefs = NeuraPrefsCache.prefs;
     await prefs.setDouble(_kAmbientVolume, _ambientVolume);
 
-    if (!SafeBoot.instance.safeMode.value && _optionalShellServicesActive) {
+    if (!_suppressed && _optionalShellServicesActive) {
       await _audio?.setVolume(_ambientVolume);
     }
   }
@@ -347,6 +361,7 @@ class NeuraShellState extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
+    LocalProfileService.instance.removeListener(_onSafeModeChanged);
     NeuraStartupCoordinator.instance.ready.removeListener(_onStartupReady);
     if (_mascotBridgeStarted) MascotEventBridge.instance.stop();
     final audio = _audio;

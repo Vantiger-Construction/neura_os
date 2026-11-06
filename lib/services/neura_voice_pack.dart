@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../profiles/local_profile_service.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -68,7 +69,10 @@ class NeuraVoicePack {
   bool _micEnabled = false;
 
   bool get isPlaying => _playing;
-  bool get audioAllowed => !_disposed && !SafeBoot.instance.safeMode.value;
+  bool get audioAllowed =>
+      !_disposed &&
+      !SafeBoot.instance.safeMode.value &&
+      !LocalProfileService.instance.enabled;
 
   Future<void> init({bool enableMic = true}) async {
     if (_initialized || !audioAllowed) return;

@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../profiles/local_profile_service.dart';
 import 'dart:ui';
 
 import 'package:uuid/uuid.dart';
@@ -155,6 +156,20 @@ class NeuraAiService {
     NeuraReferenceGrant? offlineReference,
   }) async* {
     _throwIfCloudBlocked();
+    final profiles = LocalProfileService.instance;
+    final profileEpoch = profiles.epoch;
+    final profileSession = profiles.enabled;
+    if (profileSession &&
+        (!profiles.canUseSession ||
+            selectedContext != null ||
+            includePermittedMemory ||
+            memoryPermission != null ||
+            historyIncludesPrivateContext ||
+            offlineReference != null ||
+            history.any((t) => t.imageBase64 != null))) {
+      throw StateError(
+          'Profile chat accepts only this session’s visible text.');
+    }
     if (!localOllama && !isConfigured) {
       throw StateError('Configure the AI provider key in Settings.');
     }
@@ -186,7 +201,20 @@ class NeuraAiService {
     final thinking = NeuraCompanionPresence.instance.acquireThinking();
     unawaited(cancel.whenCancelled.then((_) => thinking?.release()));
 
-    final policy = NeuraChatPolicy.forRoom(roomId);
+    void checkProfile() {
+      if (profiles.enabled != profileSession ||
+          profiles.epoch != profileEpoch ||
+          (profileSession && !profiles.canUseSession)) {
+        cancel.cancel();
+      }
+    }
+
+    profiles.addListener(checkProfile);
+    checkProfile();
+    final policy = profileSession
+        ? NeuraChatRoomPolicy(
+            roomId: roomId, persistMemory: false, allowedTools: const {})
+        : NeuraChatPolicy.forRoom(roomId);
     final advertisedTools = NeuraChatPolicy.advertisedTools(policy);
     final useMemory = policy.persistMemory && includePermittedMemory;
     void checkReference() {
@@ -227,7 +255,9 @@ class NeuraAiService {
         yield blocked;
         return;
       }
-      final audience = NeuraAudienceService.instance.currentAudience;
+      final audience = profileSession
+          ? profiles.active!.audience
+          : NeuraAudienceService.instance.currentAudience;
 
       final systemPrompt = await NeuraPromptBuilder.instance.buildSystemMessage(
         agentId: agentId,
@@ -235,7 +265,7 @@ class NeuraAiService {
         module: roomId,
         includePersistentMemory: useMemory,
         memoryPermission: memoryPermission,
-        includeCurrentMood: !localOllama,
+        includeCurrentMood: !localOllama && !profileSession,
         conversationMode: conversationMode,
       );
       cancel.throwIfCancelled();
@@ -394,6 +424,7 @@ class NeuraAiService {
         offlineReference.shelf.removeListener(checkReference);
         offlineReference.revoke();
       }
+      profiles.removeListener(checkProfile);
       if (useMemory && memoryPermission != null) {
         memoryPermission.service.removeListener(checkMemory);
         memoryPermission.revoke();
@@ -523,6 +554,9 @@ class NeuraAiService {
     NeuraCloudApprovalHandler? requestCloudApproval,
   }) async {
     _throwIfCloudBlocked();
+    if (LocalProfileService.instance.enabled) {
+      throw StateError('Private summaries are unavailable in profile mode.');
+    }
     final history = [NeuraChatTurn(isUser: true, text: userPrompt)];
     final blocked = await _checkGuardrails(history);
     if (blocked != null) throw NeuraGuardrailBlocked(blocked);
@@ -577,7 +611,32 @@ class NeuraAiService {
     final lastMessage = history.last.text;
     final scan = CrisisTextScan.of(lastMessage);
 
+    if (LocalProfileService.instance.enabled) {
+      // Only the current message and selected age group. No installation-wide
+      // mood, focus, audience or storm-event read/write enters this path.
+      if (!LocalProfileService.instance.canUseSession) {
+        throw StateError('Profile session expired.');
+      }
+      final decision = Guardrails().evaluate(
+          context: NeuraContextSnapshot(
+              now: DateTime.now(),
+              userInFocusMode: false,
+              isMinor: LocalProfileService.instance.active!.audience !=
+                  NeuraAudience.adult,
+              distressScore: scan.crisis ? 0.95 : 0.1),
+          proposal: NeuraProposal(
+              type: ProposalType.prompt,
+              id: 'profile_chat_message',
+              message: lastMessage,
+              options: const ['send', 'no_thanks']));
+      if (decision.allow) return null;
+      return '${decision.safeAlternative?.message ?? decision.reason}'
+          '${scan.crisis ? '\n\n${SupportResources.forLocale(PlatformDispatcher.instance.locale.toLanguageTag())}' : ''}';
+    }
     final moodEntries = await MoodStore.instance.getAll();
+    if (LocalProfileService.instance.enabled) {
+      throw StateError('Profile boundary changed.');
+    }
     final recentEntries = moodEntries.length > 10
         ? moodEntries.sublist(moodEntries.length - 10)
         : moodEntries;
@@ -616,7 +675,7 @@ class NeuraAiService {
     if (decision.allow) return null;
 
     final supportMode = scan.crisis || signal.active;
-    if (supportMode) {
+    if (supportMode && !LocalProfileService.instance.enabled) {
       try {
         await WeeklySnapshotBridge.instance.logStormEvent(
           StormEvent(

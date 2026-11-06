@@ -1,4 +1,5 @@
 import '../../encrypted_memory/companion_memory_service.dart';
+import '../../profiles/local_profile_service.dart';
 import '../../mood/services/mood_state_service.dart';
 import '../agents/agent_persona_catalog.dart';
 import '../models/neura_audience.dart';
@@ -24,6 +25,12 @@ class NeuraPromptBuilder {
     NeuraAudience? audience,
     bool includeCurrentMood = true,
   }) async {
+    if (LocalProfileService.instance.enabled) {
+      if (!LocalProfileService.instance.canUseSession) {
+        throw StateError('Select a local profile first.');
+      }
+      includeCurrentMood = false;
+    }
     await _personaService.load();
     if (includeCurrentMood) await _moodState.load();
 
@@ -55,6 +62,12 @@ class NeuraPromptBuilder {
     bool includeCurrentMood = true,
     NeuraConversationMode conversationMode = NeuraConversationMode.balanced,
   }) async {
+    if (LocalProfileService.instance.enabled && includePersistentMemory) {
+      throw StateError('Persistent memory is unavailable for local profiles.');
+    }
+    audience = LocalProfileService.instance.enabled
+        ? LocalProfileService.instance.active?.audience
+        : audience;
     final style = await resolveStyle(
       agentId: agentId,
       audience: audience,

@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../profiles/local_profile_service.dart';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
@@ -38,7 +39,9 @@ class AmbientListeningService {
 
   static final AmbientListeningService instance = AmbientListeningService._();
 
-  bool get captureAllowed => !SafeBoot.instance.safeMode.value;
+  bool get captureAllowed =>
+      !SafeBoot.instance.safeMode.value &&
+      !LocalProfileService.instance.enabled;
 
   bool get _captureRequested =>
       captureAllowed && AmbientListeningPrefsController.instance.enabled.value;
