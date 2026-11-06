@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/neura_persona_service.dart';
 import '../models/persona_profile.dart';
+import '../models/neura_persona_preset.dart';
 
 class PersonaTuningScreen extends StatefulWidget {
   const PersonaTuningScreen({super.key});
@@ -35,13 +36,17 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
     setState(() {
       _saving = true;
     });
-    await _service.update(_profile);
+    final saved = await _service.update(_profile);
     if (!mounted) return;
     setState(() {
       _saving = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Neura's persona updated.")),
+      SnackBar(
+        content: Text(saved
+            ? "Neura's persona updated."
+            : 'Could not save your changes. Please try again.'),
+      ),
     );
   }
 
@@ -57,7 +62,7 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Neura Persona Tuning'),
+        title: const Text('Your Neura'),
       ),
       body: SafeArea(
         child: ListView(
@@ -71,6 +76,47 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
               ),
             ),
             const SizedBox(height: 12),
+            const Text(
+              'Choose a starting style, then make it your own. Saved choices '
+              'shape her replies and in-app body language on this device. '
+              'You can change them anytime.',
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final preset in NeuraPersonaPreset.values)
+                  ChoiceChip(
+                    label: Text(preset.label),
+                    tooltip: preset.description,
+                    selected: preset.matches(_profile),
+                    onSelected: _saving
+                        ? null
+                        : (_) => setState(() => _profile = preset.profile),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Style preview',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    Text(personaStylePreview(_profile)),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Sample wording. Your changes apply after saving. '
+                      'Memory and voice permissions stay under your control.',
+                    ),
+                  ],
+                ),
+              ),
+            ),
             _buildSlider(
               label: 'Warmth',
               description: 'Cool and factual vs warm and emotionally present.',
@@ -97,7 +143,7 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
             ),
             _buildSlider(
               label: 'Energy',
-              description: 'Calm and slow vs hyped and energetic.',
+              description: 'Calm words and movement vs lively expression.',
               value: _profile.energy,
               onChanged: (v) => setState(
                 () => _profile = _profile.copyWith(energy: v),
@@ -135,6 +181,12 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            TextButton(
+              onPressed: _saving
+                  ? null
+                  : () => setState(() => _profile = PersonaProfile.neutral()),
+              child: const Text('Reset draft to balanced'),
+            ),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -176,11 +228,14 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
             const SizedBox(height: 4),
             Text(
               description,
-              style: const TextStyle(fontSize: 12, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             Slider(
               value: value.clamp(0.0, 1.0),
-              onChanged: onChanged,
+              onChanged: _saving ? null : onChanged,
             ),
           ],
         ),

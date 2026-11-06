@@ -186,6 +186,17 @@ class _MascotHomeState extends State<_MascotHome>
           if (open is num) _body.setMouthOpen(open.toDouble());
           break;
         case 'body':
+          double knob(String key, double fallback) {
+            final value = args[key];
+            return value is num && value.isFinite
+                ? value.toDouble().clamp(0.0, 1.0)
+                : fallback;
+          }
+          _body.setPersonality(
+            energy: knob('personaEnergy', 0.5),
+            warmth: knob('personaWarmth', 0.6),
+            playfulness: knob('personaPlayfulness', 0.5),
+          );
           _bodyActive = args['active'] == true && args['safe'] == false;
           _body.setFrozen(!_bodyActive);
           _body.setMotionLevel(switch (args['motion']) {
