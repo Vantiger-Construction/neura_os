@@ -8,6 +8,7 @@ import '../core/neura_events.dart';
 import '../core/neura_events_extra.dart';
 import 'mascot_window_service.dart';
 import '../reliability/safe_boot.dart';
+import '../persona/services/neura_persona_service.dart';
 
 /// Forwards a small subset of [NeuraEventBus] events from the main engine to
 /// the floating mascot window's separate engine, so the mascot can react
@@ -92,11 +93,16 @@ class MascotEventBridge with WidgetsBindingObserver {
     final snapshot = NeuraAvatarRuntimeBridge.instance.snapshot;
     snapshot.addListener(_sendBody);
     _unsubscribers.add(() => snapshot.removeListener(_sendBody));
+    NeuraPersonaService.instance.addListener(_sendBody);
+    _unsubscribers.add(
+      () => NeuraPersonaService.instance.removeListener(_sendBody),
+    );
     _sendBody();
   }
 
   void _sendBody() {
     final s = NeuraAvatarRuntimeBridge.instance.snapshot.value;
+    final persona = NeuraPersonaService.instance.current;
     _send('body', {
       'motion': s?.motion.name ?? 'still',
       'stance': s?.stance.name ?? 'welcoming',
@@ -104,6 +110,9 @@ class MascotEventBridge with WidgetsBindingObserver {
           SafeBoot.instance.safeMode.value ||
           SafeBoot.instance.restartRequired.value,
       'active': _started && _foreground,
+      'personaEnergy': persona.energy,
+      'personaWarmth': persona.warmth,
+      'personaPlayfulness': persona.humor,
     });
   }
 

@@ -50,8 +50,17 @@ class NeuraBehaviorAdapter {
 
     final useDirectLanguage = persona.directness >= 0.65;
 
-    final systemPromptSnippet =
-        _buildPromptSnippet(persona, mood, difficulty, toneLabel, agent);
+    final systemPromptSnippet = _buildPromptSnippet(
+      persona.copyWith(
+        humor: jokeFrequency,
+        depth: depthLevel,
+        energy: energyLevel,
+      ),
+      mood,
+      difficulty,
+      toneLabel,
+      agent,
+    );
 
     return NeuraResponseStyle(
       toneLabel: toneLabel,

@@ -53,7 +53,7 @@ class PersonaProfile {
   factory PersonaProfile.fromMap(Map<String, dynamic> map) {
     double d(String key, double fallback) {
       final v = map[key];
-      if (v is num) return v.toDouble();
+      if (v is num && v.isFinite) return v.toDouble().clamp(0.0, 1.0);
       return fallback;
     }
 
