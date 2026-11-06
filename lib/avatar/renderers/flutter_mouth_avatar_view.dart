@@ -3,30 +3,36 @@ import 'package:flutter/material.dart';
 import '../avatar_controller.dart';
 import 'neura_mouth_layer.dart';
 
-/// Synthetic, mouth-free vector art. This is a visible speech prototype,
-/// not a replacement rig for Neura's painted full-body PNG.
+/// Built-in, mouth-free vector portrait with event-driven speech articulation.
+/// It is independently selectable; it does not deform the painted body PNG.
 class FlutterMouthAvatarView extends StatelessWidget {
-  const FlutterMouthAvatarView(
-      {super.key, required this.controller, this.size = 128});
+  const FlutterMouthAvatarView({
+    super.key,
+    required this.controller,
+    this.size = 128,
+    this.enabled = true,
+  });
   final AvatarController controller;
   final double size;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) => Semantics(
         image: true,
-        label: 'Neura speech prototype',
+        label: 'Neura expressive face',
         child: SizedBox.square(
             dimension: size,
             child: NeuraMouthLayer(
               controller: controller,
+              enabled: enabled,
               mouthBounds: const Rect.fromLTWH(0.37, 0.56, 0.26, 0.14),
-              child: const CustomPaint(painter: _PrototypeFacePainter()),
+              child: const CustomPaint(painter: _ExpressiveFacePainter()),
             )),
       );
 }
 
-class _PrototypeFacePainter extends CustomPainter {
-  const _PrototypeFacePainter();
+class _ExpressiveFacePainter extends CustomPainter {
+  const _ExpressiveFacePainter();
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -87,5 +93,5 @@ class _PrototypeFacePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_PrototypeFacePainter oldDelegate) => false;
+  bool shouldRepaint(_ExpressiveFacePainter oldDelegate) => false;
 }

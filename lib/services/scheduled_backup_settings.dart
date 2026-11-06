@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -52,18 +54,62 @@ class ScheduledBackupSettings {
 
   final NeuraCredentialStorage _storage;
 
+  static bool _suspendedForWipe = false;
+  static Future<void> _mutationTail = Future<void>.value();
+  static int _pendingMutations = 0;
+
+  static void suspendForDataWipe() => _suspendedForWipe = true;
+
+  static Future<void> drainForDataWipe() =>
+      _mutationTail.timeout(const Duration(seconds: 30));
+
+  @visibleForTesting
+  static void resetWipeGateForTesting() {
+    if (_pendingMutations != 0) {
+      throw StateError('Backup settings are still being written.');
+    }
+    _suspendedForWipe = false;
+  }
+
+  static void _checkMutation() {
+    if (_suspendedForWipe) {
+      throw StateError('Backup settings are unavailable during data wipe.');
+    }
+  }
+
+  Future<void> _mutate(Future<void> Function() operation) {
+    if (_suspendedForWipe) {
+      return Future.error(StateError('Data wipe started.'));
+    }
+    _pendingMutations++;
+    final result = _mutationTail.then((_) async {
+      _checkMutation();
+      await operation();
+    });
+    _mutationTail = result
+        .then<void>((_) {}, onError: (Object _, StackTrace __) {})
+        .whenComplete(() => _pendingMutations--);
+    return result;
+  }
+
   bool get enabled =>
       NeuraPrefsCache.prefsOrNull?.getBool(_keyEnabled) ?? false;
 
-  Future<void> enable(String passphrase) async {
-    await _storage.write(key: _keyPassphrase, value: passphrase);
-    await NeuraPrefsCache.prefs.setBool(_keyEnabled, true);
-  }
+  Future<void> enable(String passphrase) => _mutate(() async {
+        await _storage.write(key: _keyPassphrase, value: passphrase);
+        _checkMutation();
+        if (!await NeuraPrefsCache.prefs.setBool(_keyEnabled, true)) {
+          throw StateError('Backup settings could not be saved.');
+        }
+      });
 
-  Future<void> disable() async {
-    await NeuraPrefsCache.prefs.setBool(_keyEnabled, false);
-    await _storage.delete(key: _keyPassphrase);
-  }
+  Future<void> disable() => _mutate(() async {
+        if (!await NeuraPrefsCache.prefs.setBool(_keyEnabled, false)) {
+          throw StateError('Backup settings could not be saved.');
+        }
+        _checkMutation();
+        await _storage.delete(key: _keyPassphrase);
+      });
 
   Future<String?> passphrase() => _storage.read(key: _keyPassphrase);
 
@@ -91,25 +137,42 @@ class ScheduledBackupSettings {
     required DateTime at,
     required ScheduledBackupOutcome outcome,
     String? error,
-  }) async {
-    final prefs = NeuraPrefsCache.prefs;
-    await prefs.setString(_keyLastRunAt, at.toUtc().toIso8601String());
-    await prefs.setString(_keyLastOutcome, outcome.name);
-    if (error == null) {
-      await prefs.remove(_keyLastError);
-    } else {
-      await prefs.setString(_keyLastError, error);
-    }
-  }
+  }) =>
+      _mutate(() async {
+        final prefs = NeuraPrefsCache.prefs;
+        await prefs.setString(_keyLastRunAt, at.toUtc().toIso8601String());
+        _checkMutation();
+        await prefs.setString(_keyLastOutcome, outcome.name);
+        _checkMutation();
+        if (error == null) {
+          await prefs.remove(_keyLastError);
+        } else {
+          await prefs.setString(_keyLastError, error);
+        }
+      });
 
   Future<void> clearForDataWipe() async {
-    await NeuraPrefsCache.prefs.setBool(_keyEnabled, false);
-    await NeuraPrefsCache.prefs.remove(_keyLastRunAt);
-    await NeuraPrefsCache.prefs.remove(_keyLastOutcome);
-    await NeuraPrefsCache.prefs.remove(_keyLastError);
+    suspendForDataWipe();
+    await drainForDataWipe();
+    final prefs = NeuraPrefsCache.prefs;
+    var removed = true;
+    for (final key in [
+      _keyEnabled,
+      _keyLastRunAt,
+      _keyLastOutcome,
+      _keyLastError
+    ]) {
+      if (!await prefs.remove(key)) removed = false;
+    }
     await _storage.delete(key: _keyPassphrase);
     if ((await _storage.read(key: _keyPassphrase) ?? '').isNotEmpty) {
       throw StateError('The scheduled backup passphrase could not be deleted.');
+    }
+    await prefs.reload();
+    if (!removed ||
+        [_keyEnabled, _keyLastRunAt, _keyLastOutcome, _keyLastError]
+            .any(prefs.containsKey)) {
+      throw StateError('Scheduled backup settings deletion was not verified.');
     }
   }
 }

@@ -105,7 +105,7 @@ A follow-up must remain unmerged until review and its applicable current-head
 checks are complete. CI preview artifacts are not public-release acceptance.
 
 
-Local follow-up validation with Flutter 3.47.9 / Dart 3.13.7: all 1,313 Flutter
+Initial follow-up validation with Flutter 3.47.9 / Dart 3.13.7: all 1,313 Flutter
 tests passed; committed-policy strict analysis and formatting passed; 17 source
 composition and 11 security regressions passed; Actionlint 1.7.12 passed.
 OSV-Scanner 2.7.0 reported no known findings across the exact 225 Pub, 228 Cargo,
@@ -146,3 +146,25 @@ Before release, add failed PIN setup/change/rollback, process restart during a
 PIN change, durable deletion failure, same-clock additions, and wipe during a
 scheduled backup to the disposable-vault device checks. Independent review and
 current-head CI remain required; implementing review comments is not approval.
+
+The next independent review also covered manual exports, scheduled-backup
+settings and overlapping runs. All backup file writes, including an admitted
+native save dialog, now join the wipe drain. Settings mutations close admission
+at wipe start and drain before passphrase deletion and durable preference
+verification. If either drain times out, full-data wipe stops before deleting
+their destinations, reports incomplete removal, and keeps admission closed.
+Finish/cancel the native dialog or wait for storage, then retry the wipe. A
+timeout never permits a late writer to race deletion. Previously exported
+user-owned copies still require separate deletion by their owner.
+
+Scheduled runs share a queue across service instances, including their due
+check and file replacement. Add/delete validate the PIN even for an empty
+vault. Existing duplicate IDs from the older timestamp generator receive stable,
+non-conflicting IDs in memory without losing entries; the next explicit mutation
+persists those IDs. Required-field corruption still fails closed.
+
+PIN setup is creation-only: an existing verifier, legacy PIN, or encrypted
+data prevents it from replacing the PIN. This also rejects a second overlapping
+setup request and a missing-verifier state beside preserved ciphertext. Existing
+vaults must use unlock or the recoverable PIN-change path. Current validation
+counts and native/review results are recorded against the latest PR head.

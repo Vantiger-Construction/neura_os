@@ -43,12 +43,10 @@ List<VaultItem> decodeVaultItems(String raw, {bool strict = false}) {
   if (strict) {
     final decoded = jsonDecode(raw);
     if (decoded is! List) throw const FormatException('Invalid vault records.');
-    final ids = <String>{};
     for (final item in decoded) {
       if (item is! Map ||
           item['id'] is! String ||
           (item['id'] as String).trim().isEmpty ||
-          !ids.add(item['id'] as String) ||
           item['title'] is! String ||
           item['body'] is! String ||
           item['createdAt'] is! String ||
@@ -59,6 +57,27 @@ List<VaultItem> decodeVaultItems(String raw, {bool strict = false}) {
         throw const FormatException('Invalid vault record.');
       }
     }
+    // Older millisecond IDs could collide. Preserve every entry and assign
+    // deterministic, non-conflicting IDs in memory; the next explicit mutation
+    // persists them. Reserve all original IDs so repair cannot steal one.
+    final reserved =
+        decoded.map((item) => (item as Map)['id'] as String).toSet();
+    final seen = <String>{};
+    final repaired = <VaultItem>[];
+    for (final rawItem in decoded) {
+      final item = (rawItem as Map).cast<String, dynamic>();
+      final original = item['id'] as String;
+      var id = original;
+      if (!seen.add(original)) {
+        var suffix = 0;
+        do {
+          id = '${original}_recovered_${++suffix}';
+        } while (!reserved.add(id));
+      }
+      repaired.add(VaultItem.fromJson({...item, 'id': id}));
+    }
+    repaired.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return repaired;
   }
   if (raw.trim().isEmpty) return <VaultItem>[];
   try {

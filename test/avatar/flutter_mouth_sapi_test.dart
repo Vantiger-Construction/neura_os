@@ -9,6 +9,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/avatar/avatar_controller.dart';
 import 'package:neuro_companion/avatar/avatar_orchestrator.dart';
 import 'package:neuro_companion/avatar/avatar_orchestrator_viseme_ext.dart';
+import 'package:neuro_companion/avatar/avatar_registry.dart';
+import 'package:neuro_companion/avatar/avatar_view.dart';
+import 'package:neuro_companion/avatar/motion/neura_motion.dart';
 import 'package:neuro_companion/avatar/renderers/flutter_mouth_avatar_view.dart';
 import 'package:neuro_companion/avatar/renderers/neura_mouth_layer.dart';
 import 'package:neuro_companion/avatar/viseme/sapi_viseme_map.dart';
@@ -267,6 +270,42 @@ void main() {
     await poll(tester, 0);
     await speaking;
     expect(pose(tester), NeuraMouthPose.rest);
+  });
+
+  speechTest('normal selected avatar receives native-channel speech and stop',
+      (tester) async {
+    NeuraMotion.instance.start();
+    try {
+      await tester.pumpWidget(MaterialApp(
+        home: Center(
+          child: AvatarView(
+            spec: AvatarRegistry.byId(AvatarRegistry.expressiveFaceId),
+            controller: controller,
+            size: 200,
+          ),
+        ),
+      ));
+      await tester.pump();
+      expect(id, 0, reason: 'Selecting a face must not start speech');
+      final speaking = speech.speak('Synthetic normal conversation reply.');
+      await tester.pump();
+      await poll(tester, 2);
+      expect(pose(tester).viseme, NeuraViseme.AI);
+      expect(pose(tester).open, 0.6);
+      await poll(tester, 21);
+      expect(pose(tester).viseme, NeuraViseme.MBP);
+      expect(pose(tester).open, 0);
+      await poll(tester, 7);
+      expect(pose(tester).viseme, NeuraViseme.WQ);
+      final stopping = speech.stop();
+      await tester.pump();
+      await stopping;
+      await speaking;
+      await tester.pump();
+      expect(pose(tester), NeuraMouthPose.rest);
+    } finally {
+      NeuraMotion.instance.stop();
+    }
   });
 
   speechTest('non-Windows production preview never starts a platform voice',

@@ -353,7 +353,15 @@ class MemoryVaultStore implements VaultItemSource {
     return verifier != null && verifier.trim().isNotEmpty;
   }
 
-  Future<void> configurePin(String pin) => _operate(() => _configurePin(pin));
+  Future<void> configurePin(String pin) => _operate(() async {
+        final prefs = NeuraPrefsCache.prefs;
+        if ([_keyPinVerifier, _keyPinLegacy, _keyData, _keyDataLegacy]
+            .any(prefs.containsKey)) {
+          throw StateError(
+              'Existing vault state requires unlock or PIN recovery.');
+        }
+        await _configurePin(pin);
+      });
 
   Future<void> _configurePin(String pin) async {
     final enc = await _encryptJson(_verifierPlain, pin: pin.trim());
@@ -468,6 +476,9 @@ class MemoryVaultStore implements VaultItemSource {
     List<String> tags = const [],
   }) =>
       _operate(() async {
+        if (!await _validatePin(pin)) {
+          throw StateError('Unlock the current vault before adding an entry.');
+        }
         final items = await _readItems(pin: pin);
         final now = _now();
         final baseId = 'v_${now.microsecondsSinceEpoch}';
@@ -491,6 +502,10 @@ class MemoryVaultStore implements VaultItemSource {
 
   Future<void> delete({required String pin, required String id}) =>
       _operate(() async {
+        if (!await _validatePin(pin)) {
+          throw StateError(
+              'Unlock the current vault before deleting an entry.');
+        }
         final items = await _readItems(pin: pin);
         items.removeWhere((e) => e.id == id);
         await _save(items, pin: pin);
