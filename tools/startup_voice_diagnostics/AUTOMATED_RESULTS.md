@@ -92,19 +92,24 @@ remain BLOCKED. No product dependency or encryption behavior was changed here.
 | Existing Windows evidence helper fixtures | PASS | 44 synthetic assertions under PowerShell 7.5.4 on Linux; no Windows audio |
 | Existing portable TTS ownership/escaping harness | PASS | 21 assertions compiled with g++ C++17; does not compile Windows SAPI |
 | New PowerShell collector syntax | PASS | PowerShell 7.5.4 parser on Linux; no SAPI invocation |
-| Workflow YAML / read-only permission / full Action pins | PASS | Locally parsed; new hosted Windows/Linux jobs require their own CI results |
+| Workflow YAML / read-only permission / full Action pins | PASS | Locally parsed; hosted workflow-configuration check also passed |
+| Hosted diagnostic helpers, Windows and Linux | PASS | Run 42213023111 at initial kit head `3af9676817fd2abacee949ae9445730e631d670c`; 19 synthetic tests on each OS |
+| Windows PowerShell 5.1 collector parsing | PASS | Windows hosted job's explicit parser step succeeded; no SAPI invocation |
 | Existing Windows plugin-filter tests | BLOCKED | Three tests could not start because this environment lacks CMake; not a demonstrated code failure |
 | Full Flutter/native Windows/Android build rerun | BLOCKED | Matching Flutter/platform build tools absent from this Linux environment |
-| New Windows collector SAPI execution / PowerShell 5.1 | NOT RUN | Requires Windows; hosted parser validation was added but is not yet a result |
+| New Windows collector SAPI execution | NOT RUN | Catalog enumeration and device prerequisites remain a Windows execution check |
 | Empty AVD installation and UI | NOT RUN | No Android device/emulator was attached |
 | Physical Windows laptop acceptance | NOT RUN | No supervised hardware/audio/mic observations |
 | Physical Samsung SM-S366V / Android 16 acceptance | NOT RUN | No verified newer installation or physical observations |
 | Installing over existing valuable Android data | BLOCKED | Unvalidated key migration and disposable-signing concerns |
 | Connected cancellation/no-cloud-dispatch observations | NOT RUN | Requires supervised exact-request UI and independently scoped dispatch evidence |
 
-The kit's workflow tests helpers on Ubuntu/Windows and parses the collector with
-Windows PowerShell 5.1. No device is attached and no voice/mic is opened in that
-workflow. A successful workflow would still not be hardware acceptance.
+The kit's workflow passed its helper tests on Ubuntu/Windows and parsed the
+collector with Windows PowerShell 5.1. These results apply to the initial kit
+head recorded above; the follow-up updates evidence only. Helper code hashes and
+the job links are in `automated/kit-ci-3af9676.json`. No device was attached and
+no voice/mic was opened. This remains separate from hardware acceptance and
+the repository's broader application/security checks.
 
 ## Source references
 
