@@ -1,0 +1,142 @@
+{
+  "schema": 1,
+  "inspected_on": "2026-11-06",
+  "default_branch_snapshot": "6523cbe50490613dbb68b2a4d35cfa704efc2fd2",
+  "secure_storage_migration": "BLOCKED_FOR_EXISTING_VALUABLE_DATA",
+  "builds": {
+    "161-android": {
+      "pr": 161,
+      "platform": "android",
+      "release_tag": "neura-ci-pr-161-d6edfbc90bc6-e8d99229321a",
+      "head_commit": "d6edfbc90bc619da7c8d2df8a6bfeeb2292949ab",
+      "source_commit": "e8d99229321a025d2c3f3a2ab173e489b1343195",
+      "source_tree": "c4c234dbe15711d28e0d6c21933d31cea14e969d",
+      "run_id": "41944653809",
+      "run_attempt": "1",
+      "application_id": "com.neurocompanion.app",
+      "assets": [
+        {
+          "name": "NeuraCompanion-Android-d6edfbc90bc6-41944653809-1-build-manifest.json",
+          "bytes": 541,
+          "sha256": "bdc976ba4eab27caff6690b731e94dc2f62966be90d7fda62ed0cb8349e92bed",
+          "url": "https://github.com/Vantiger-Construction/neura_os/releases/download/neura-ci-pr-161-d6edfbc90bc6-e8d99229321a/NeuraCompanion-Android-d6edfbc90bc6-41944653809-1-build-manifest.json"
+        },
+        {
+          "name": "NeuraCompanion-Android-d6edfbc90bc6-41944653809-1-SHA256SUMS.txt",
+          "bytes": 256,
+          "sha256": "1c88a2f2adad90a929902e48048bced1903756af95706bfd52c7a0df7dd7dcf8",
+          "url": "https://github.com/Vantiger-Construction/neura_os/releases/download/neura-ci-pr-161-d6edfbc90bc6-e8d99229321a/NeuraCompanion-Android-d6edfbc90bc6-41944653809-1-SHA256SUMS.txt"
+        },
+        {
+          "name": "NeuraCompanion-Android-d6edfbc90bc6-41944653809-1.apk",
+          "bytes": 259884409,
+          "sha256": "dbf1a2ea2d0cfed0e768cbd77650bd51493585fa88f384324fc7c1a3e40644b8",
+          "url": "https://github.com/Vantiger-Construction/neura_os/releases/download/neura-ci-pr-161-d6edfbc90bc6-e8d99229321a/NeuraCompanion-Android-d6edfbc90bc6-41944653809-1.apk"
+        }
+      ],
+      "signer_certificate_sha256": "4827f8ec9f68b78abd93c1c65b38d8561788f676f09d5f9347fc9c79256e58e8",
+      "version_code": "596",
+      "version_name": "1.5.1",
+      "flutter_secure_storage": "10.3.1"
+    },
+    "161-windows": {
+      "pr": 161,
+      "platform": "windows",
+      "release_tag": "neura-ci-pr-161-d6edfbc90bc6-e8d99229321a",
+      "head_commit": "d6edfbc90bc619da7c8d2df8a6bfeeb2292949ab",
+      "source_commit": "e8d99229321a025d2c3f3a2ab173e489b1343195",
+      "source_tree": "c4c234dbe15711d28e0d6c21933d31cea14e969d",
+      "run_id": "41944653817",
+      "run_attempt": "1",
+      "application_id": null,
+      "assets": [
+        {
+          "name": "NeuraCompanion-Windows-d6edfbc90bc6-41944653817-1-build-manifest.json",
+          "bytes": 594,
+          "sha256": "a7b880a39743fac71d731dffc2c59e0345e791ffb799aa1621cc9f5c895011b5",
+          "url": "https://github.com/Vantiger-Construction/neura_os/releases/download/neura-ci-pr-161-d6edfbc90bc6-e8d99229321a/NeuraCompanion-Windows-d6edfbc90bc6-41944653817-1-build-manifest.json"
+        },
+        {
+          "name": "NeuraCompanion-Windows-d6edfbc90bc6-41944653817-1-SHA256SUMS.txt",
+          "bytes": 258,
+          "sha256": "cced383d6b45541b921eb5e51ae05044ba3c97a75fa45776c5e42fdf92f98356",
+          "url": "https://github.com/Vantiger-Construction/neura_os/releases/download/neura-ci-pr-161-d6edfbc90bc6-e8d99229321a/NeuraCompanion-Windows-d6edfbc90bc6-41944653817-1-SHA256SUMS.txt"
+        },
+        {
+          "name": "NeuraCompanion-Windows-d6edfbc90bc6-41944653817-1.zip",
+          "bytes": 82208363,
+          "sha256": "3f15b979db4bf64933a0641c41266a03b1277ce3e0a13663e508de532b2eaf2d",
+          "url": "https://github.com/Vantiger-Construction/neura_os/releases/download/neura-ci-pr-161-d6edfbc90bc6-e8d99229321a/NeuraCompanion-Windows-d6edfbc90bc6-41944653817-1.zip"
+        }
+      ],
+      "flutter_secure_storage": "10.3.1"
+    },
+    "177-android": {
+      "pr": 177,
+      "platform": "android",
+      "release_tag": "neura-ci-pr-177-9fd4011c47cb-a4796a3a637a",
+      "head_commit": "9fd4011c47cbd1c5e624205ff0060589ba275924",
+      "source_commit": "a4796a3a637a254a71f8dcf0b6eae96f521f0c70",
+      "source_tree": "e265bb295afa3480bdc9e97501a5d6ba1655366f",
+      "run_id": "42163332861",
+      "run_attempt": "1",
+      "application_id": "com.neurocompanion.app",
+      "assets": [
+        {
+          "name": "NeuraCompanion-Android-9fd4011c47cb-42163332861-1-build-manifest.json",
+          "bytes": 541,
+          "sha256": "902f35fae3cc82ddab2ed460b5db1a164ed3e6024a44567cbc4e2991b114d165",
+          "url": "https://github.com/Vantiger-Construction/neura_os/releases/download/neura-ci-pr-177-9fd4011c47cb-a4796a3a637a/NeuraCompanion-Android-9fd4011c47cb-42163332861-1-build-manifest.json"
+        },
+        {
+          "name": "NeuraCompanion-Android-9fd4011c47cb-42163332861-1-SHA256SUMS.txt",
+          "bytes": 256,
+          "sha256": "a143af25a9cef839ffa8a855113d7c4f740a61f425675fa1b93ec995d01805f4",
+          "url": "https://github.com/Vantiger-Construction/neura_os/releases/download/neura-ci-pr-177-9fd4011c47cb-a4796a3a637a/NeuraCompanion-Android-9fd4011c47cb-42163332861-1-SHA256SUMS.txt"
+        },
+        {
+          "name": "NeuraCompanion-Android-9fd4011c47cb-42163332861-1.apk",
+          "bytes": 259954097,
+          "sha256": "1ea4596be763db404314d92311838cb1373dca9d15e11e370bc430a2362d0e0a",
+          "url": "https://github.com/Vantiger-Construction/neura_os/releases/download/neura-ci-pr-177-9fd4011c47cb-a4796a3a637a/NeuraCompanion-Android-9fd4011c47cb-42163332861-1.apk"
+        }
+      ],
+      "signer_certificate_sha256": "9c2411521831f716212528aa8060c3ecd32a105398f4990ac2d02669488593fb",
+      "version_code": "607",
+      "version_name": "1.5.1",
+      "flutter_secure_storage": "11.2.0"
+    },
+    "177-windows": {
+      "pr": 177,
+      "platform": "windows",
+      "release_tag": "neura-ci-pr-177-9fd4011c47cb-a4796a3a637a",
+      "head_commit": "9fd4011c47cbd1c5e624205ff0060589ba275924",
+      "source_commit": "a4796a3a637a254a71f8dcf0b6eae96f521f0c70",
+      "source_tree": "e265bb295afa3480bdc9e97501a5d6ba1655366f",
+      "run_id": "42163332979",
+      "run_attempt": "1",
+      "application_id": null,
+      "assets": [
+        {
+          "name": "NeuraCompanion-Windows-9fd4011c47cb-42163332979-1-build-manifest.json",
+          "bytes": 594,
+          "sha256": "f387ffd59c744ddff4713a4094c05e774c5feca99b03b45e315a9e378dc01faa",
+          "url": "https://github.com/Vantiger-Construction/neura_os/releases/download/neura-ci-pr-177-9fd4011c47cb-a4796a3a637a/NeuraCompanion-Windows-9fd4011c47cb-42163332979-1-build-manifest.json"
+        },
+        {
+          "name": "NeuraCompanion-Windows-9fd4011c47cb-42163332979-1-SHA256SUMS.txt",
+          "bytes": 258,
+          "sha256": "e22afc300cd7b948e0166874e735bca97e398858d7916abf2829d3b83e1c9049",
+          "url": "https://github.com/Vantiger-Construction/neura_os/releases/download/neura-ci-pr-177-9fd4011c47cb-a4796a3a637a/NeuraCompanion-Windows-9fd4011c47cb-42163332979-1-SHA256SUMS.txt"
+        },
+        {
+          "name": "NeuraCompanion-Windows-9fd4011c47cb-42163332979-1.zip",
+          "bytes": 82263807,
+          "sha256": "5c913fe232b32792df597fe11c9cef701afb9d2de1805099bf3e3029ca16e62e",
+          "url": "https://github.com/Vantiger-Construction/neura_os/releases/download/neura-ci-pr-177-9fd4011c47cb-a4796a3a637a/NeuraCompanion-Windows-9fd4011c47cb-42163332979-1.zip"
+        }
+      ],
+      "flutter_secure_storage": "11.2.0"
+    }
+  }
+}

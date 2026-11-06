@@ -1,0 +1,39 @@
+{
+  "status": "PASS",
+  "scope": "PINNED_RELEASE_BYTE_IDENTITY_ONLY",
+  "source_commit": "e8d99229321a025d2c3f3a2ab173e489b1343195",
+  "source_tree": "c4c234dbe15711d28e0d6c21933d31cea14e969d",
+  "head_commit": "d6edfbc90bc619da7c8d2df8a6bfeeb2292949ab",
+  "platform": "android",
+  "run_id": "41944653809",
+  "release_tag": "neura-ci-pr-161-d6edfbc90bc6-e8d99229321a",
+  "configured_backend": true,
+  "device_qa_in_manifest": "pending",
+  "assets": [
+    {
+      "name": "NeuraCompanion-Android-d6edfbc90bc6-41944653809-1-build-manifest.json",
+      "bytes": 541,
+      "sha256": "bdc976ba4eab27caff6690b731e94dc2f62966be90d7fda62ed0cb8349e92bed"
+    },
+    {
+      "name": "NeuraCompanion-Android-d6edfbc90bc6-41944653809-1-SHA256SUMS.txt",
+      "bytes": 256,
+      "sha256": "1c88a2f2adad90a929902e48048bced1903756af95706bfd52c7a0df7dd7dcf8"
+    },
+    {
+      "name": "NeuraCompanion-Android-d6edfbc90bc6-41944653809-1.apk",
+      "bytes": 259884409,
+      "sha256": "dbf1a2ea2d0cfed0e768cbd77650bd51493585fa88f384324fc7c1a3e40644b8"
+    }
+  ],
+  "archive": {
+    "status": "PASS",
+    "scope": "STATIC_BYTES_ONLY",
+    "members": 2177,
+    "uncompressed_bytes": 361838582,
+    "all_member_hashes_computed": 2177,
+    "per_member_list": "Regenerate with verify-package; the pinned APK SHA-256 binds the entire file"
+  },
+  "hardware_acceptance": "NOT RUN",
+  "safe_to_upgrade_existing_data": "BLOCKED"
+}
