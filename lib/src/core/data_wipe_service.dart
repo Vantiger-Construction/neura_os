@@ -1,4 +1,5 @@
 import 'dart:io';
+import '../../profiles/local_profile_service.dart';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -124,6 +125,7 @@ class NeuraDataWipeService {
     // Keep the live gate closed for the rest of this process; the next launch
     // starts clean after the persisted Safe Boot marker is deleted.
     SafeBoot.instance.safeMode.value = true;
+    final profileDrain = LocalProfileService.suspendAllForDataWipe();
     MemoryVaultStore.instance.suspendForDataWipe();
     PortableVaultBackupService.suspendForDataWipe();
     ScheduledBackupSettings.suspendForDataWipe();
@@ -134,6 +136,8 @@ class NeuraDataWipeService {
     WakeWordPrefsController.instance.resetAfterDataWipe();
     NeuraStartupVoicePrefs.instance.resetAfterDataWipe();
     AvatarService.instance.resetAfterDataWipe();
+    await _attempt(
+        failures, 'local profile writer shutdown', () => profileDrain);
     await _attempt(failures, 'startup microphone shutdown',
         NeuraLocalSpeechInput.instance.shutdownForDataWipe);
     await _attempt(

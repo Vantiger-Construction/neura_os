@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../profiles/local_profile_gate.dart';
+import '../profiles/local_profile_service.dart';
 
 import '../avatar/avatar_route_observer.dart';
 import '../core/neura_event_bus.dart';
@@ -57,9 +59,12 @@ class NeuroCompanionApp extends StatelessWidget {
             return NeuraShellRoot(
               child: MediaQuery(
                 data: mediaQuery,
-                child: NeuraAmbientShell(
-                  child: child ?? const SizedBox.shrink(),
-                ),
+                child: ListenableBuilder(
+                    listenable: LocalProfileService.instance,
+                    builder: (_, __) => LocalProfileGate(
+                            child: NeuraAmbientShell(
+                          child: child ?? const SizedBox.shrink(),
+                        ))),
               ),
             );
           },

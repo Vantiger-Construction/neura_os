@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../profiles/local_profile_service.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -57,7 +58,9 @@ class NeuraNotificationsService {
   FlutterLocalNotificationsPlugin? _plugin;
   bool _initialized = false;
   bool _available = false;
-  bool get deliveryAllowed => !SafeBoot.instance.safeMode.value;
+  bool get deliveryAllowed =>
+      !SafeBoot.instance.safeMode.value &&
+      !LocalProfileService.instance.enabled;
 
   Future<void> init() => _initialize();
 

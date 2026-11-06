@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../profiles/local_profile_service.dart';
 
 import 'package:flutter/services.dart';
 
@@ -48,6 +49,7 @@ class NeuraSpeechToTextService implements NeuraSpeechInput {
   bool _listening = false;
   Completer<String>? _stopCompleter;
   Future<String>? _stopInFlight;
+  Future<bool>? _startInFlight;
   DateTime? _lastFinalAtUtc;
 
   @override
@@ -59,7 +61,9 @@ class NeuraSpeechToTextService implements NeuraSpeechInput {
   Stream<NeuraSpeechSegment> get segmentStream => _segmentStream.stream;
   @override
   bool get isListening => _listening;
-  bool get listeningAllowed => !SafeBoot.instance.safeMode.value;
+  bool get listeningAllowed =>
+      !SafeBoot.instance.safeMode.value &&
+      !LocalProfileService.instance.enabled;
 
   NeuraSpeechToTextService._() {
     _channel.setMethodCallHandler(_handleNativeCall);
@@ -160,7 +164,18 @@ class NeuraSpeechToTextService implements NeuraSpeechInput {
   }
 
   @override
-  Future<bool> startRecording() async {
+  Future<bool> startRecording() {
+    final existing = _startInFlight;
+    if (existing != null) return existing;
+    late final Future<bool> operation;
+    operation = _startRecording().whenComplete(() {
+      if (identical(_startInFlight, operation)) _startInFlight = null;
+    });
+    _startInFlight = operation;
+    return operation;
+  }
+
+  Future<bool> _startRecording() async {
     if (!listeningAllowed) return false;
     final stopping = _stopInFlight;
     if (stopping != null) await stopping;
@@ -224,6 +239,23 @@ class NeuraSpeechToTextService implements NeuraSpeechInput {
     } finally {
       if (identical(_stopCompleter, completer)) _stopCompleter = null;
     }
+  }
+
+  /// A profile boundary must drain a pending start and get a final native
+  /// stop acknowledgement, including an earlier best-effort stop failure.
+  Future<void> shutdownForProfiles() async {
+    final owned = _listening || _startInFlight != null || _stopInFlight != null;
+    await _startInFlight;
+    await _stopInFlight;
+    if (owned) {
+      await _channel
+          .invokeMethod<void>('stop')
+          .timeout(const Duration(seconds: 3));
+    }
+    _listening = false;
+    _finalText = '';
+    _lastFinalAtUtc = null;
+    _completePendingStop();
   }
 
   void _onSafeModeChanged() {

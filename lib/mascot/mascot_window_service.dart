@@ -45,6 +45,17 @@ class MascotWindowService {
     }
   }
 
+  /// Hide any existing secondary engine and forbid recreating it. Profile
+  /// preferences are scoped to the primary engine in this first version.
+  Future<void> suspendForProfiles() async {
+    final created = _creationStarted;
+    disableForProcess();
+    if (created) {
+      final controller = await _creationCompleter.future;
+      await controller?.hide();
+    }
+  }
+
   bool get disabledForProcess => _disabledForProcess;
 
   Future<WindowManagerPlus?> _ensureCreated() {

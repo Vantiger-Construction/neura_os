@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../profiles/local_profile_service.dart';
 import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
@@ -80,7 +81,8 @@ final class CompanionMemoryService extends ChangeNotifier
   /// Called only by explicit memory controls, never at app startup or by the
   /// prompt builder. The identifier is random, non-secret local scope metadata.
   static Future<CompanionMemoryService> local() {
-    if (SafeBoot.instance.safeMode.value ||
+    if (LocalProfileService.instance.enabled ||
+        SafeBoot.instance.safeMode.value ||
         SafeBoot.instance.restartRequired.value) {
       throw const EncryptedMemoryPolicyViolation('memory_unavailable');
     }
@@ -128,6 +130,12 @@ final class CompanionMemoryService extends ChangeNotifier
       safetyPolicy: NeuraLivingSafetyPolicy(),
       crypto: MemoryCryptoDurableAdapter(crypto),
     );
+  }
+
+  static void revokeAllForProfileBoundary() {
+    for (final owner in _owners.toList()) {
+      owner.revokePermissions();
+    }
   }
 
   static void suspendAllForDataWipe() {
@@ -403,7 +411,8 @@ final class CompanionMemoryService extends ChangeNotifier
   }
 
   void _requireAvailable() {
-    if (_disposed ||
+    if (LocalProfileService.instance.enabled ||
+        _disposed ||
         _wiped ||
         !_foreground ||
         safetyPolicy.safeModeActive ||

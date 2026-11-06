@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../profiles/local_profile_service.dart';
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
@@ -23,7 +24,11 @@ class SleepListenerService {
   bool get isRecording => _recording;
 
   Future<void> startRecording() {
-    if (_suspendedForDataWipe || _recording) return Future<void>.value();
+    if (LocalProfileService.instance.enabled ||
+        _suspendedForDataWipe ||
+        _recording) {
+      return Future<void>.value();
+    }
     final existing = _startInFlight;
     if (existing != null) return existing;
 
@@ -90,7 +95,9 @@ class SleepListenerService {
   }
 
   bool _mayCapture(int generation) =>
-      !_suspendedForDataWipe && generation == _dataGeneration;
+      !LocalProfileService.instance.enabled &&
+      !_suspendedForDataWipe &&
+      generation == _dataGeneration;
 
   Future<String> stopRecording() async {
     if (!_recording) return '';
@@ -108,6 +115,21 @@ class SleepListenerService {
       final file = File(path);
       if (await file.exists()) await file.delete();
       _currentPath = null;
+    }
+  }
+
+  /// Stop live recorders before profile activation, preserving prior files.
+  static Future<void> stopAllForProfiles() async {
+    for (final service in _liveInstances.toList()) {
+      service._dataGeneration++;
+      await service._startInFlight;
+      if (service._recording || service._shutdownUnverified) {
+        service._recording = false;
+        service._shutdownUnverified = true;
+        await service._recorder.stop().timeout(const Duration(seconds: 3));
+        service._shutdownUnverified = false;
+      }
+      service._currentPath = null;
     }
   }
 

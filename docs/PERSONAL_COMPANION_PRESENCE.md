@@ -26,8 +26,12 @@ thinking or speaking. Default values preserve balanced motion. Still, reduced
 motion, background, recovery and Safe Mode retain their existing precedence.
 
 Preferences describe the companion's delivery, not a psychological profile of
-the person. This implementation has one profile per local app installation; it
-does not provide separate accounts on a shared device or synchronize profiles.
+the person. The normal installation retains its existing single style. An
+explicitly enabled [local profile workspace](LOCAL_PERSONALITY_PROFILES.md)
+now keeps several chosen styles separately in an encrypted registry and opens
+fresh text chats after selection. It excludes installation-wide private stores
+and voice permissions. Review its opt-in and exit limits before enabling it;
+it does not authenticate people or synchronize profiles.
 It adds no training, automatic preference inference, model downloads, network
 requests, journal access, microphone access or background conversations.
 The Unity prototype's relay is unchanged.
