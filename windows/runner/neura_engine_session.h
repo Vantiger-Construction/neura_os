@@ -26,6 +26,7 @@ class NeuraEngineSession {
   using OllamaPoll = int (*)(int64_t, unsigned char*, size_t);
   using OllamaCancel = void (*)(int64_t);
   using OllamaTiming = int (*)(int64_t, uint64_t*, size_t);
+  using OllamaReadinessBegin = int64_t (*)();
   bool Load();
   HWND window_;
   HMODULE library_ = nullptr;
@@ -42,6 +43,8 @@ class NeuraEngineSession {
   OllamaPoll ollama_poll_ = nullptr;
   OllamaCancel ollama_cancel_ = nullptr;
   OllamaTiming ollama_timing_ = nullptr;
+  OllamaReadinessBegin ollama_readiness_begin_ = nullptr;
+  OllamaTiming ollama_readiness_poll_ = nullptr;
   StopFunction ollama_clear_timing_ = nullptr;
   ForegroundFunction ollama_foreground_ = nullptr;
   StopFunction ollama_block_ = nullptr;

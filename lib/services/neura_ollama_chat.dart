@@ -8,6 +8,79 @@ import 'package:flutter/widgets.dart';
 import '../reliability/safe_boot.dart';
 import '../startup/neura_error_pipeline.dart';
 import 'neura_generation_cancel.dart';
+import 'neura_offline_budget.dart';
+
+enum NeuraOllamaModelReadiness {
+  unchecked,
+  verified,
+  notInstalled,
+  remote,
+  mismatch,
+  malformed,
+  unreachable,
+}
+
+/// Point-in-time prerequisites, never an inference or audio acceptance result.
+class NeuraOllamaReadiness {
+  const NeuraOllamaReadiness._(
+    this.daemonAvailable,
+    this.versionSupported,
+    this.model,
+    this.memory,
+  );
+
+  final bool daemonAvailable;
+  final bool? versionSupported;
+  final NeuraOllamaModelReadiness model;
+  final NeuraOfflineMemory? memory;
+
+  bool get ready =>
+      daemonAvailable &&
+      versionSupported == true &&
+      model == NeuraOllamaModelReadiness.verified &&
+      memory?.admitted == true;
+
+  static NeuraOllamaReadiness? fromNative(Map<String, dynamic> values) {
+    const keys = {
+      'version',
+      'daemon',
+      'daemonVersion',
+      'model',
+      'memory',
+      'totalMiB',
+      'availableMiB',
+    };
+    if (values.length != keys.length ||
+        !values.keys.every(keys.contains) ||
+        values.values.any((v) => v is! int || v < 0) ||
+        values['version'] != 1) {
+      return null;
+    }
+    final daemon = values['daemon'] as int;
+    final version = values['daemonVersion'] as int;
+    final model = values['model'] as int;
+    final admission = values['memory'] as int;
+    final total = values['totalMiB'] as int;
+    final available = values['availableMiB'] as int;
+    if (!((daemon == 2 && version == 0 && model == 0) ||
+            (daemon == 1 && version == 2 && model == 0) ||
+            (daemon == 1 && version == 1 && model >= 1 && model <= 6)) ||
+        admission > 2 ||
+        available > total ||
+        (admission == 0 && (total != 0 || available != 0)) ||
+        (admission != 0 && total == 0)) {
+      return null;
+    }
+    final memory = admission == 0 ? null : NeuraOfflineMemory(total, available);
+    if (memory != null && memory.admitted != (admission == 1)) return null;
+    return NeuraOllamaReadiness._(
+      daemon == 1,
+      version == 0 ? null : version == 1,
+      NeuraOllamaModelReadiness.values[model],
+      memory,
+    );
+  }
+}
 
 enum NeuraOllamaLatencyOutcome { running, delivered, failed, cancelled }
 
@@ -87,12 +160,14 @@ class NeuraOllamaChat with WidgetsBindingObserver {
       'neura/engine_synthetic_session',
     ),
     ValueListenable<bool>? safeMode,
+    ValueListenable<bool>? restartRequired,
     ValueListenable<NeuraFatalError?>? recovery,
     bool? supported,
     Duration Function()? monotonicNow,
   })  : _channel = channel,
         _monotonicNow = monotonicNow,
         _safeMode = safeMode ?? SafeBoot.instance.safeMode,
+        _restartRequired = restartRequired ?? SafeBoot.instance.restartRequired,
         _recovery = recovery ?? NeuraErrorPipeline.instance.fatalError,
         _supported = supported ??
             (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
@@ -100,12 +175,14 @@ class NeuraOllamaChat with WidgetsBindingObserver {
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     _safeMode.addListener(_onSafetyChanged);
+    _restartRequired.addListener(_onSafetyChanged);
     _recovery.addListener(_onSafetyChanged);
     _onSafetyChanged();
   }
 
   final MethodChannel _channel;
   final ValueListenable<bool> _safeMode;
+  final ValueListenable<bool> _restartRequired;
   final ValueListenable<NeuraFatalError?> _recovery;
   final bool _supported;
   final Duration Function()? _monotonicNow;
@@ -118,6 +195,80 @@ class NeuraOllamaChat with WidgetsBindingObserver {
   NeuraGenerationCancel? _active;
 
   bool get _allowed => _supported && !_blocked && !_disposed && _foreground;
+
+  /// User-triggered metadata only. Reuses the Rust model verifier and worker;
+  /// never sends conversation text, loads weights or starts a voice session.
+  Future<NeuraOllamaReadiness> checkReadiness({
+    required NeuraGenerationCancel cancel,
+  }) async {
+    if (!_supported) {
+      throw StateError(
+        'Offline Ollama readiness is available on Windows only.',
+      );
+    }
+    if (!_allowed) {
+      throw StateError(
+        'Readiness check is blocked. Keep Neura in the foreground; '
+        'Safe Mode and recovery require an app restart.',
+      );
+    }
+    if (_active != null) {
+      throw StateError(
+        'Stop the current offline request before checking readiness.',
+      );
+    }
+    cancel.throwIfCancelled();
+    _active = cancel;
+    int? nativeId;
+    var finished = false;
+    try {
+      // Await even if cancelled: receive and revoke any late native id.
+      nativeId = await _channel.invokeMethod<int>('beginOllamaReadiness');
+      if (nativeId == null || nativeId <= 0) {
+        throw StateError('Check not started.');
+      }
+      final id = nativeId;
+      unawaited(
+        cancel.whenCancelled.then((_) async {
+          if (!finished) await _cancelNative(id);
+        }),
+      );
+      cancel.throwIfCancelled();
+      final clock = Stopwatch()..start();
+      while (clock.elapsed < const Duration(seconds: 12)) {
+        if (!_allowed) cancel.cancel();
+        cancel.throwIfCancelled();
+        final values = await _channel.invokeMapMethod<String, dynamic>(
+          'pollOllamaReadiness',
+          id,
+        );
+        cancel.throwIfCancelled();
+        if (!_allowed) throw NeuraGenerationCancelled(cancel.generationId);
+        if (values != null) {
+          final report = NeuraOllamaReadiness.fromNative(values);
+          if (report == null) throw StateError('Invalid readiness snapshot.');
+          return report;
+        }
+        await cancel.delay(const Duration(milliseconds: 100));
+      }
+      throw StateError('Check timed out.');
+    } on NeuraGenerationCancelled {
+      rethrow;
+    } catch (_) {
+      cancel.throwIfCancelled();
+      throw StateError(
+        'Readiness check unavailable or timed out. Stop any offline '
+        'reply, keep Neura in the foreground and use an updated Windows build. '
+        'No model was loaded or downloaded.',
+      );
+    } finally {
+      finished = true;
+      if (nativeId != null) await _cancelNative(nativeId);
+      if (identical(_active, cancel)) _active = null;
+      cancel.throwIfCancelled();
+      if (!_allowed) throw NeuraGenerationCancelled(cancel.generationId);
+    }
+  }
 
   /// Explicit read only. Does not poll, start inference, log or save a sample.
   /// Missing phases remain null, including an unfinished cancellation cleanup.
@@ -275,7 +426,11 @@ class NeuraOllamaChat with WidgetsBindingObserver {
   }
 
   void _onSafetyChanged() {
-    if (!_safeMode.value && _recovery.value == null) return;
+    if (!_safeMode.value &&
+        !_restartRequired.value &&
+        _recovery.value == null) {
+      return;
+    }
     _blocked = true;
     clearLatency();
     _active?.cancel();
@@ -300,6 +455,7 @@ class NeuraOllamaChat with WidgetsBindingObserver {
     _active?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _safeMode.removeListener(_onSafetyChanged);
+    _restartRequired.removeListener(_onSafetyChanged);
     _recovery.removeListener(_onSafetyChanged);
   }
 }
