@@ -1,7 +1,9 @@
 # Expressive face in the app
 
 **Settings → Choose Avatar → Neura expressive face** now selects a built-in
-portrait in the normal Neura Stage and room presence panel. The choice is saved
+portrait in the normal Neura Stage, room presence panel and beside the chat
+activity indicator. Chat opens over the stage, so it renders the selected face
+on its own route as well. The choice is saved
 on this device and restored during startup. The default remains the original
 full-body artwork. Selecting an avatar never starts speech, capture or a model.
 
@@ -41,7 +43,7 @@ separate profiles for people sharing one installation are not added here.
 3. Keep companion motion at **Subtle** or **Expressive**. In **Your Neura**, save
    Calm companion or Playful spark to compare the existing personal body motion.
 4. Use **Choose Avatar → Try local speech** for the fixed Windows speech sample.
-   To check the main stage, return to ordinary chat and use an already configured
+   To check the conversation view, open ordinary chat and use an already configured
    speech-enabled reply. Local generated replies still require the selected
    Ollama provider, running local server and installed model. The speech sample
    is fixed text and does not demonstrate model intelligence.
@@ -57,7 +59,9 @@ saves, reset invalidation, live room selection and Still/recovery boundaries.
 `flutter_mouth_sapi_test.dart` drives the real Dart speech adapter, event bridge,
 controller and normal `AvatarView` with synthetic native-channel responses. Its
 existing pixel/golden, cancellation and lifecycle tests still apply to the reused
-mouth layer. These are implementation tests, not recordings of Windows audio.
+mouth layer. The conversation integration test also exercises a synthetic Ollama
+reply through the real chat route, speech adapter and global avatar controller
+to the visible face. These are implementation tests, not recordings of Windows audio.
 
 Full Flutter and platform CI must be read on the exact published head. An
 installer and successful build alone do not establish audible synchronization,
