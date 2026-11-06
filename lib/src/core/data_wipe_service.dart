@@ -178,6 +178,14 @@ class NeuraDataWipeService {
       // Admission stays closed; retry after the pending operation finishes.
       throw NeuraDataWipeException(List<String>.unmodifiable(failures));
     }
+    var vaultWritesDrained = false;
+    await _attempt(failures, 'vault writer drain', () async {
+      await MemoryVaultStore.instance.drainForDataWipe();
+      vaultWritesDrained = true;
+    });
+    if (!vaultWritesDrained) {
+      throw NeuraDataWipeException(List<String>.unmodifiable(failures));
+    }
     await _attempt(
       failures,
       'scheduled notification removal',

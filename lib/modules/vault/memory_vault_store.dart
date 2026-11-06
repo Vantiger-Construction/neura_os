@@ -15,16 +15,21 @@ import '../../startup/neura_prefs_cache.dart';
 class MemoryVaultStore implements VaultItemSource {
   MemoryVaultStore._()
       : _now = DateTime.now,
-        _wipeTimeout = const Duration(seconds: 30);
+        _wipeTimeout = const Duration(seconds: 30),
+        _operationTimeout = const Duration(seconds: 30);
   @visibleForTesting
   MemoryVaultStore.forTesting(
       {DateTime Function()? now,
-      Duration wipeTimeout = const Duration(seconds: 30)})
+      Duration wipeTimeout = const Duration(seconds: 30),
+      Duration operationTimeout = const Duration(seconds: 30)})
       : _now = now ?? DateTime.now,
-        _wipeTimeout = wipeTimeout;
+        _wipeTimeout = wipeTimeout,
+        _operationTimeout = operationTimeout;
   static final MemoryVaultStore instance = MemoryVaultStore._();
   final DateTime Function() _now;
   final Duration _wipeTimeout;
+  final Duration _operationTimeout;
+  final _unconfirmedAdds = <String, VaultItem>{};
 
   // NOTE: We no longer store the PIN. We only store a verifier blob.
   // A PIN is requested once per app session and cached in memory.
@@ -78,9 +83,11 @@ class MemoryVaultStore implements VaultItemSource {
   Future<T> _operate<T>(Future<T> Function() operation,
       {bool Function()? mayWrite}) {
     final generation = _generation;
+    var expired = false;
     final admitted = !_suspendedForWipe && _wipeInFlight == null;
     void check() {
       if (!admitted ||
+          expired ||
           _suspendedForWipe ||
           generation != _generation ||
           (mayWrite != null && !mayWrite())) {
@@ -88,7 +95,7 @@ class MemoryVaultStore implements VaultItemSource {
       }
     }
 
-    return _enqueue(() async {
+    final pending = _enqueue(() async {
       check();
       _checkAccess = check;
       try {
@@ -100,7 +107,17 @@ class MemoryVaultStore implements VaultItemSource {
         _checkAccess = () {};
       }
     });
+    return pending.timeout(_operationTimeout, onTimeout: () {
+      expired = true;
+      throw StateError('Vault storage has not responded. Keep the app open and '
+          'retry after storage recovers; the pending write remains tracked.');
+    });
   }
+
+  @visibleForTesting
+  static Duration fullWipeDrainTimeout = const Duration(seconds: 30);
+
+  Future<void> drainForDataWipe() => _vaultTail.timeout(fullWipeDrainTimeout);
 
   /// Revoke admission before any asynchronous full-data-wipe shutdown work.
   /// This process must restart before it can create a new vault.
@@ -108,6 +125,7 @@ class MemoryVaultStore implements VaultItemSource {
     _suspendedForWipe = true;
     _generation++;
     _clearKeyCache();
+    _unconfirmedAdds.clear();
   }
 
   // Cache derived key per app session to avoid repeated PBKDF2 cost.
@@ -372,11 +390,15 @@ class MemoryVaultStore implements VaultItemSource {
   Future<void> _writeString(String key, String? value) async {
     _checkAccess();
     final sp = NeuraPrefsCache.prefs;
-    final ok =
-        value == null ? await sp.remove(key) : await sp.setString(key, value);
+    try {
+      value == null ? await sp.remove(key) : await sp.setString(key, value);
+    } catch (_) {
+      // A platform exception can arrive after a durable write. Read back the
+      // exact value before deciding whether this operation needs a retry.
+    }
     // Platform failures can still mutate SharedPreferences' in-memory cache.
     await sp.reload();
-    if (!ok || sp.getString(key) != value) {
+    if (sp.getString(key) != value) {
       throw StateError('The vault write could not be confirmed.');
     }
   }
@@ -480,24 +502,34 @@ class MemoryVaultStore implements VaultItemSource {
           throw StateError('Unlock the current vault before adding an entry.');
         }
         final items = await _readItems(pin: pin);
+        final request = jsonEncode([title, body, tags]);
+        final unconfirmed = _unconfirmedAdds[request];
+        if (unconfirmed != null &&
+            items.any((item) =>
+                item.id == unconfirmed.id && _sameItem(item, unconfirmed))) {
+          _unconfirmedAdds.remove(request);
+          return;
+        }
         final now = _now();
-        final baseId = 'v_${now.microsecondsSinceEpoch}';
+        final baseId = unconfirmed?.id ?? 'v_${now.microsecondsSinceEpoch}';
         var id = baseId;
         var suffix = 0;
         final ids = items.map((item) => item.id).toSet();
         while (ids.contains(id)) {
           id = '${baseId}_${++suffix}';
         }
-        items.add(
-          VaultItem(
-            id: id,
-            createdAt: now,
-            title: title,
-            body: body,
-            tags: tags,
-          ),
+        final added = VaultItem(
+          id: id,
+          createdAt: unconfirmed?.createdAt ?? now,
+          title: title,
+          body: body,
+          tags: tags,
         );
+        _unconfirmedAdds[request] = added;
+        items.add(added);
         await _save(items, pin: pin);
+        _checkAccess();
+        _unconfirmedAdds.remove(request);
       });
 
   Future<void> delete({required String pin, required String id}) =>
@@ -566,7 +598,7 @@ class MemoryVaultStore implements VaultItemSource {
   Future<int> importItems({
     required String pin,
     required List<VaultItem> imported,
-    bool Function()? mayWrite,
+    required bool Function() mayWrite,
   }) =>
       _operate(() async {
         if (!await _validatePin(pin)) {
@@ -627,6 +659,7 @@ class MemoryVaultStore implements VaultItemSource {
   }
 
   Future<void> wipe() {
+    _unconfirmedAdds.clear();
     final pending = _wipeInFlight;
     if (pending != null) return _waitForWipe(pending);
     _generation++;

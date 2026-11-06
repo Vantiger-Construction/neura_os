@@ -16,6 +16,7 @@ import 'package:neuro_companion/services/portable_vault_backup_service.dart';
 import 'package:neuro_companion/services/scheduled_backup_settings.dart';
 import 'package:neuro_companion/services/vault_item_source.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
+import '../helpers/data_wipe_fixture.dart';
 
 class _FakeSecureStorage implements NeuraCredentialStorage {
   final Map<String, String> values = {};
@@ -51,7 +52,7 @@ class _FakeVaultItemSource implements VaultItemSource {
   Future<int> importItems({
     required String pin,
     required List<VaultItem> imported,
-    bool Function()? mayWrite,
+    required bool Function() mayWrite,
   }) async {
     imports++;
     items = imported;
@@ -68,6 +69,7 @@ VaultItem _item(String id) => VaultItem(
     );
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     await NeuraPrefsCache.init();
@@ -105,6 +107,25 @@ void main() {
   tearDown(() {
     FilePickerPlatform.instance = originalPicker;
     if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+  });
+
+  test('a rejected last-run write cannot report a successful scheduled backup',
+      () async {
+    final fixture = await DataWipeFixture.create();
+    await settings.enable('a very good passphrase');
+    fixture.preferences.refusedWrites
+        .add('flutter.neura.scheduled_backup.last_run_at');
+    final result = await service.runScheduledBackupIfDue(pin: '1234');
+    expect(result.status, ScheduledBackupStatus.failed);
+    expect(settings.lastRunAt, isNull);
+    final envelope = await (await service.scheduledBackupFile()).readAsString();
+    expect(
+        (await service.verifyBackupIntegrity(envelope,
+                passphrase: 'a very good passphrase'))
+            .isValid,
+        isTrue,
+        reason:
+            'The valid file remains available even when status storage fails.');
   });
 
   test('overlapping scheduled requests serialize the due check and replacement',

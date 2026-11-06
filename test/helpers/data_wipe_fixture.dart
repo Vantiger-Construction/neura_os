@@ -8,6 +8,7 @@ import 'package:neuro_companion/startup/neura_bootstrap_log.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 import 'package:neuro_companion/services/portable_vault_backup_service.dart';
 import 'package:neuro_companion/services/scheduled_backup_settings.dart';
+import 'package:neuro_companion/modules/vault/memory_vault_store.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
@@ -58,6 +59,7 @@ class DataWipeFixture {
   static Future<DataWipeFixture> create() async {
     PortableVaultBackupService.resetWipeGateForTesting();
     ScheduledBackupSettings.resetWipeGateForTesting();
+    MemoryVaultStore.fullWipeDrainTimeout = const Duration(seconds: 30);
     final root = await Directory.systemTemp.createTemp('neura-full-wipe-test-');
     final fixture = DataWipeFixture._(root, NeuraBootstrapLog.location);
     for (final directory in [
@@ -215,6 +217,7 @@ class WipePreferencesStore extends SharedPreferencesStorePlatform {
   bool throwOnClear = false;
   bool ignoreClear = false;
   final refusedWrites = <String>{};
+  final misreportedWrites = <String>{};
   final refusedRemovals = <String>{};
   final ignoredRemovals = <String>{};
   Future<void> Function(String key)? beforeSet;
@@ -255,7 +258,7 @@ class WipePreferencesStore extends SharedPreferencesStorePlatform {
     await beforeSetValue?.call(key);
     if (refusedWrites.contains(key)) return false;
     data[key] = value;
-    return true;
+    return !misreportedWrites.contains(key);
   }
 }
 

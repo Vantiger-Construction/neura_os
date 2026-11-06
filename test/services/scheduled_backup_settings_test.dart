@@ -11,6 +11,7 @@ import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 class _FakeSecureStorage implements NeuraCredentialStorage {
   final Map<String, String> values = {};
   Future<void> Function()? beforeWrite;
+  bool ignoreDelete = false;
 
   @override
   Future<String?> read({required String key}) async => values[key];
@@ -23,7 +24,7 @@ class _FakeSecureStorage implements NeuraCredentialStorage {
 
   @override
   Future<void> delete({required String key}) async {
-    values.remove(key);
+    if (!ignoreDelete) values.remove(key);
   }
 }
 
@@ -91,6 +92,22 @@ void main() {
 
     expect(settings.enabled, isFalse);
     expect(await settings.passphrase(), isNull);
+  });
+
+  test('failed passphrase deletion stays disabled and recoverable after reopen',
+      () async {
+    await settings.enable('synthetic passphrase');
+    storage.ignoreDelete = true;
+    await expectLater(settings.disable(), throwsStateError);
+    final reopened = ScheduledBackupSettings.forTesting(storage: storage);
+    expect(reopened.enabled, isFalse);
+    expect(reopened.passphraseRemovalPending, isTrue);
+    expect(await reopened.passphrase(), 'synthetic passphrase');
+    storage.ignoreDelete = false;
+    await reopened.disable();
+    expect(reopened.enabled, isFalse);
+    expect(reopened.passphraseRemovalPending, isFalse);
+    expect(await reopened.passphrase(), isNull);
   });
 
   test('recordOutcome tracks success without an error', () async {

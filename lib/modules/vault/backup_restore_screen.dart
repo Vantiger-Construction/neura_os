@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../reliability/safe_boot.dart';
 import '../../services/portable_vault_backup_service.dart';
+import 'vault_restore_route_observer.dart';
 
 /// Local verification and an explicit, revocable selection before vault writes.
 class BackupRestoreScreen extends StatefulWidget {
@@ -33,6 +34,8 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen>
   bool _writing = false;
   bool _confirming = false;
   int _epoch = 0;
+  ModalRoute<dynamic>? _route;
+  DialogRoute<bool>? _confirmationRoute;
 
   bool get _safe =>
       !SafeBoot.instance.safeMode.value &&
@@ -41,7 +44,11 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen>
       WidgetsBinding.instance.lifecycleState == null ||
       WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
   bool get _allowed =>
-      mounted && _safe && _foreground && widget.sessionPin() != null;
+      mounted &&
+      _safe &&
+      _foreground &&
+      widget.sessionPin() != null &&
+      identical(vaultRestoreRouteObserver.navigator, Navigator.of(context));
   bool get _busy => _operation != null || _writing;
   bool _current(int epoch, Object operation) =>
       _allowed && epoch == _epoch && identical(_operation, operation);
@@ -52,6 +59,21 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen>
     WidgetsBinding.instance.addObserver(this);
     SafeBoot.instance.safeMode.addListener(_onSafety);
     SafeBoot.instance.restartRequired.addListener(_onSafety);
+    vaultRestoreRouteObserver.addListener(_onTopRouteChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
+  }
+
+  void _onTopRouteChanged(Route<dynamic> top) {
+    if (_route != null &&
+        !identical(top, _route) &&
+        !identical(top, _confirmationRoute)) {
+      _clear();
+    }
   }
 
   void _onSafety() {
@@ -203,7 +225,7 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen>
       _confirming = true;
     });
     try {
-      final confirm = await showDialog<bool>(
+      final confirmationRoute = DialogRoute<bool>(
           context: context,
           builder: (context) => AlertDialog(
                 title: Text('Restore ${selection.length} selected entries?'),
@@ -218,6 +240,9 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen>
                       child: const Text('Restore selected')),
                 ],
               ));
+      _confirmationRoute = confirmationRoute;
+      final confirm = await Navigator.of(context).push(confirmationRoute);
+      _confirmationRoute = null;
       _confirming = false;
       if (confirm != true ||
           !_current(epoch, operation) ||
@@ -257,6 +282,7 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen>
         });
       }
     } finally {
+      _confirmationRoute = null;
       _writing = false;
       _confirming = false;
       if (mounted) {
@@ -269,6 +295,7 @@ class _BackupRestoreScreenState extends State<BackupRestoreScreen>
 
   @override
   void dispose() {
+    vaultRestoreRouteObserver.removeListener(_onTopRouteChanged);
     _epoch++;
     _operation = null;
     _invalidatePicker();
