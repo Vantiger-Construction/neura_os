@@ -27,7 +27,7 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   # v10 must migrate existing v9 stores before a later v11 rollout.
-  flutter_secure_storage: 11.2.0
+  flutter_secure_storage: 10.3.4
   flutter_tts: ^4.2.5
   flutter_riverpod: ^3.4.3
   record: ^7.1.2

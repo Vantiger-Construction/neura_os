@@ -28,7 +28,7 @@ import 'package:neuro_companion/modules/core/app_log.dart';
 import 'package:neuro_companion/neura_shell/neura_shell_state.dart';
 import 'package:neuro_companion/neura_link/local_conversation_session.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
-import 'package:neuro_companion/services/neura_speech_to_text_service.dart';
+import 'package:neuro_companion/services/neura_local_speech_input.dart';
 import 'package:neuro_companion/services/neura_tts_service.dart';
 import 'package:neuro_companion/services/wake_word_prefs.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
@@ -40,12 +40,11 @@ const _nativeVisemes = bool.fromEnvironment('NEURA_VALIDATE_NATIVE_VISEMES');
 
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
-  const asr = MethodChannel('neura/speech_recognition');
+  const asr = MethodChannel('neura/local_speech_input');
   const sapi = MethodChannel('neura/speech_synthesis');
   const engine = MethodChannel('neura/engine_synthetic_session');
   const rust = MethodChannel('neura/local_conversation');
   var rustSnapshot = <String, Object>{'state': 'idle'};
-  const codec = StandardMethodCodec();
   final events = <Object>[];
   final payloads = <Map<String, dynamic>>[];
   final nativeCalls = <String>[];
@@ -53,6 +52,10 @@ void main() {
   Completer<void>? speechStop;
   Completer<Object?>? oldSpeechPoll;
   String? modelReply;
+  bool failModel = false;
+  bool asrListening = false;
+  int asrSession = 0;
+  Map<String, Object>? asrPacket;
   var speechState = 'speaking';
   var viseme = 21;
   var speechId = 0;
@@ -91,12 +94,15 @@ void main() {
       )
       .toList();
 
-  Future<void> native(String method, [String? text]) async {
-    await binding.defaultBinaryMessenger.handlePlatformMessage(
-      asr.name,
-      codec.encodeMethodCall(MethodCall(method, text)),
-      (_) {},
-    );
+  Future<void> native(WidgetTester tester, String method,
+      [String? text]) async {
+    asrPacket = {
+      'session': asrSession,
+      'listening': method != 'onError',
+      if (text != null) 'text': text,
+      'final': method == 'onFinal',
+    };
+    await tester.pump(const Duration(milliseconds: 100));
   }
 
   setUpAll(() async {
@@ -127,6 +133,9 @@ void main() {
     payloads.clear();
     nativeCalls.clear();
     modelReply = null;
+    failModel = false;
+    asrListening = false;
+    asrPacket = null;
     asrStop = speechStop = null;
     oldSpeechPoll = null;
     speechState = 'speaking';
@@ -139,9 +148,21 @@ void main() {
       ..start();
     binding.defaultBinaryMessenger.setMockMethodCallHandler(asr, (call) async {
       nativeCalls.add('asr:${call.method}');
+      if (call.method == 'isAvailable') return true;
+      if (call.method == 'start') {
+        asrSession = (call.arguments as Map)['session'] as int;
+        asrListening = true;
+        asrPacket = null;
+        return true;
+      }
       if (call.method == 'stop') {
         if (asrStop != null) await asrStop!.future;
-        await native('onStopped');
+        asrListening = false;
+      }
+      if (call.method == 'poll') {
+        final packet = asrPacket;
+        asrPacket = null;
+        return packet ?? {'session': asrSession, 'listening': asrListening};
       }
       return null;
     });
@@ -169,7 +190,10 @@ void main() {
         );
         return ++modelId;
       }
-      if (call.method == 'pollOllama') return modelReply;
+      if (call.method == 'pollOllama') {
+        if (failModel) throw PlatformException(code: 'synthetic-model-failure');
+        return modelReply;
+      }
       return null;
     });
     binding.defaultBinaryMessenger.setMockMethodCallHandler(rust, (call) async {
@@ -199,7 +223,7 @@ void main() {
       oldSpeechPoll!.complete({'id': speechId, 'state': 'cancelled'});
     }
     oldSpeechPoll = null;
-    await NeuraSpeechToTextService.instance.stopRecording();
+    await NeuraLocalSpeechInput.instance.stopRecording();
     await tts.stop();
     NeuraEventBus.I.offAny(record);
     SafeBoot.instance.safeMode.value = false;
@@ -360,10 +384,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(phases(), ['listen:true']);
       expect(avatar.signals.isListening, isTrue);
-      await native('onPartial', 'Synthetic private transcript');
+      await native(tester, 'onPartial', 'Synthetic private transcript');
       await tester.pump();
       expect(phases(), ['listen:true']);
-      await native('onFinal', 'Synthetic private question');
+      await native(tester, 'onFinal', 'Synthetic private question');
       await drain(tester);
       expect(phases().take(3), ['listen:true', 'listen:false', 'think:true']);
       await answer(tester);
@@ -429,6 +453,56 @@ void main() {
       await close(tester);
     },
   );
+
+  conversationTest('recognizer failure ends hands-free mode until a fresh tap',
+      (tester) async {
+    await chat(tester);
+    await tester.tap(find.byTooltip('Talk freely (hands-free)'));
+    await drain(tester);
+    expect(asrListening, isTrue);
+    await native(tester, 'onPartial', 'Synthetic unfinished phrase');
+    await native(tester, 'onError');
+    await drain(tester);
+    expect(find.byTooltip('End hands-free conversation'), findsNothing);
+    expect(find.text('Synthetic unfinished phrase'), findsNothing);
+    expect(find.text('Local listening stopped. Tap the microphone to resume.'),
+        findsOneWidget);
+    expect(payloads, isEmpty);
+    expect(asrListening, isFalse);
+    expect(nativeCalls.where((c) => c == 'asr:start'), hasLength(1));
+    await tester.tap(find.byTooltip('Talk freely (hands-free)'));
+    await drain(tester);
+    expect(nativeCalls.where((c) => c == 'asr:start'), hasLength(2));
+  });
+
+  for (final cancelled in [false, true]) {
+    conversationTest(
+        'Ollama ${cancelled ? 'cancellation' : 'failure'} ends hands-free mode without restarting capture',
+        (tester) async {
+      await chat(tester);
+      await tester.tap(find.byTooltip('Talk freely (hands-free)'));
+      await drain(tester);
+      await native(tester, 'onFinal', 'Synthetic private question');
+      await drain(tester);
+      expect(payloads, hasLength(1));
+      if (cancelled) {
+        ai.cancelActiveGeneration();
+      } else {
+        failModel = true;
+      }
+      await drain(tester);
+      expect(find.byTooltip('End hands-free conversation'), findsNothing);
+      expect(asrListening, isFalse);
+      expect(nativeCalls.where((c) => c == 'asr:start'), hasLength(1));
+      expect(nativeCalls, isNot(contains('sapi:speak')));
+      expect(avatar.signals.isThinking, isFalse);
+      expect(avatar.signals.isListening, isFalse);
+      if (!cancelled) {
+        expect(
+            find.textContaining('Offline reply unavailable.'), findsOneWidget);
+      }
+    });
+  }
 
   conversationTest(
     'background clears thinking before native speech stop acknowledges',
@@ -546,7 +620,7 @@ void main() {
     asrStop = Completer<void>();
     binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     expect(events.whereType<NeuraListeningEvent>().last.isListening, isFalse);
-    await native('onFinal', 'Synthetic stale transcript');
+    await native(tester, 'onFinal', 'Synthetic stale transcript');
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
     expect(payloads, isEmpty);

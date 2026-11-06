@@ -9,7 +9,7 @@ import '../reliability/safe_boot.dart';
 import 'neura_companion_presence.dart';
 import 'neura_speech_input.dart';
 
-/// Startup voice uses an explicitly local native recognizer. This channel has
+/// Chat voice uses an explicitly local native recognizer. This channel has
 /// no WinRT dictation, platform default recognizer, model download or fallback.
 class NeuraLocalSpeechInput implements NeuraSpeechInput {
   NeuraLocalSpeechInput({

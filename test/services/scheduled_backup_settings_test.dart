@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -8,12 +10,14 @@ import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 
 class _FakeSecureStorage implements NeuraCredentialStorage {
   final Map<String, String> values = {};
+  Future<void> Function()? beforeWrite;
 
   @override
   Future<String?> read({required String key}) async => values[key];
 
   @override
   Future<void> write({required String key, required String value}) async {
+    await beforeWrite?.call();
     values[key] = value;
   }
 
@@ -33,6 +37,7 @@ void main() {
   late ScheduledBackupSettings settings;
 
   setUp(() {
+    ScheduledBackupSettings.resetWipeGateForTesting();
     storage = _FakeSecureStorage();
     settings = ScheduledBackupSettings.forTesting(storage: storage);
   });
@@ -41,6 +46,34 @@ void main() {
     expect(settings.enabled, isFalse);
     expect(await settings.passphrase(), isNull);
     expect(settings.lastRunAt, isNull);
+    expect(settings.lastOutcome, isNull);
+  });
+
+  test('wipe drains an admitted secret write and rejects later mutations',
+      () async {
+    final entered = Completer<void>();
+    final release = Completer<void>();
+    storage.beforeWrite = () async {
+      entered.complete();
+      await release.future;
+    };
+    final enabling = settings.enable('synthetic secret');
+    await entered.future;
+    final rejectedEnable = expectLater(enabling, throwsStateError);
+    var cleared = false;
+    final clearing = settings.clearForDataWipe().then((_) => cleared = true);
+    await Future<void>.delayed(Duration.zero);
+    expect(cleared, isFalse);
+    await expectLater(settings.enable('later secret'), throwsStateError);
+    await expectLater(
+        settings.recordOutcome(
+            at: DateTime.utc(2026), outcome: ScheduledBackupOutcome.success),
+        throwsStateError);
+    release.complete();
+    await rejectedEnable;
+    await clearing;
+    expect(storage.values, isEmpty);
+    expect(settings.enabled, isFalse);
     expect(settings.lastOutcome, isNull);
   });
 

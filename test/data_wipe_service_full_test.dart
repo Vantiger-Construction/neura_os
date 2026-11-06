@@ -7,6 +7,10 @@ import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/services/ambient_listening_prefs.dart';
 import 'package:neuro_companion/services/ambient_listening_service.dart';
 import 'package:neuro_companion/services/neura_provider_credentials.dart';
+import 'package:neuro_companion/services/portable_vault_backup_service.dart';
+import 'package:neuro_companion/services/scheduled_backup_settings.dart';
+import 'package:neuro_companion/services/vault_item_source.dart';
+import 'package:neuro_companion/modules/vault/memory_vault_models.dart';
 import 'package:neuro_companion/services/wake_word_listener_service.dart';
 import 'package:neuro_companion/services/wake_word_prefs.dart';
 import 'package:neuro_companion/src/core/data_wipe_service.dart';
@@ -14,8 +18,60 @@ import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 
 import 'helpers/data_wipe_fixture.dart';
 
+class _EmptyVaultSource implements VaultItemSource {
+  @override
+  Future<List<VaultItem>> getItems({required String pin}) async => [];
+
+  @override
+  Future<int> importItems(
+          {required String pin,
+          required List<VaultItem> imported,
+          bool Function()? mayWrite}) =>
+      throw UnsupportedError('No restore in this fixture.');
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test(
+      'backup drain timeout stops deletion until late work settles and wipe is retried',
+      () async {
+    final f = await DataWipeFixture.create();
+    await f.run(() async {
+      final existing =
+          await f.seed('${f.support.path}/neura/backups/existing.enc');
+      await ScheduledBackupSettings.instance
+          .enable('synthetic backup passphrase');
+      final entered = Completer<void>();
+      final release = Completer<void>();
+      final backup = PortableVaultBackupService(
+          store: _EmptyVaultSource(),
+          backupDirectory: () async {
+            entered.complete();
+            await release.future;
+            return existing.parent;
+          });
+      final running = backup.runScheduledBackupIfDue(pin: '1234');
+      await entered.future;
+      PortableVaultBackupService.wipeDrainTimeout =
+          const Duration(milliseconds: 20);
+      await expectLater(
+          NeuraDataWipeService.wipeAllLocalData(),
+          throwsA(isA<NeuraDataWipeException>().having(
+              (error) => error.failedSteps,
+              'failed steps',
+              contains('backup writer drain'))));
+      expect(await existing.exists(), isTrue,
+          reason:
+              'Deletion cannot race an operation that still owns its destination.');
+      expect(f.secrets.containsKey(DataWipeFixture.backupKey), isTrue);
+      release.complete();
+      expect((await running).status, ScheduledBackupStatus.failed);
+      await NeuraDataWipeService.wipeAllLocalData();
+      expect(await existing.exists(), isFalse);
+      expect(f.secrets.containsKey(DataWipeFixture.backupKey), isFalse);
+    });
+  });
 
   Future<void> assertMicrophonesRemainOff() async {
     expect(SafeBoot.instance.safeMode.value, isTrue);

@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/startup/neura_bootstrap_log.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
+import 'package:neuro_companion/services/portable_vault_backup_service.dart';
+import 'package:neuro_companion/services/scheduled_backup_settings.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
@@ -54,6 +56,8 @@ class DataWipeFixture {
   String get bootstrapPath => '${root.path}/bootstrap/bootstrap_crash.ndjson';
 
   static Future<DataWipeFixture> create() async {
+    PortableVaultBackupService.resetWipeGateForTesting();
+    ScheduledBackupSettings.resetWipeGateForTesting();
     final root = await Directory.systemTemp.createTemp('neura-full-wipe-test-');
     final fixture = DataWipeFixture._(root, NeuraBootstrapLog.location);
     for (final directory in [
@@ -210,6 +214,9 @@ class WipePreferencesStore extends SharedPreferencesStorePlatform {
   bool refuseClear = false;
   bool throwOnClear = false;
   bool ignoreClear = false;
+  final refusedWrites = <String>{};
+  final refusedRemovals = <String>{};
+  final ignoredRemovals = <String>{};
   Future<void> Function(String key)? beforeSet;
   Future<void> Function(String key)? beforeRemove;
   Future<void> Function()? beforeGetAll;
@@ -237,7 +244,8 @@ class WipePreferencesStore extends SharedPreferencesStorePlatform {
   @override
   Future<bool> remove(String key) async {
     await beforeRemove?.call(key);
-    data.remove(key);
+    if (refusedRemovals.contains(key)) return false;
+    if (!ignoredRemovals.contains(key)) data.remove(key);
     return true;
   }
 
@@ -245,6 +253,7 @@ class WipePreferencesStore extends SharedPreferencesStorePlatform {
   Future<bool> setValue(String valueType, String key, Object value) async {
     await beforeSet?.call(key);
     await beforeSetValue?.call(key);
+    if (refusedWrites.contains(key)) return false;
     data[key] = value;
     return true;
   }
