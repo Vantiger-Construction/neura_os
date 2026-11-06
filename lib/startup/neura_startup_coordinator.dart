@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../profiles/local_profile_service.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -239,6 +240,16 @@ class NeuraStartupCoordinator {
       if (appLogReady) {
         await ErrorHandler.flushBootstrapToAppLog();
       }
+    }
+
+    if (LocalProfileService.instance.enabled) {
+      // No installation-wide controllers, notifications, native speech,
+      // private room runtime, cloud auth or saved voice opt-in in profile mode.
+      await LocalProfileService.instance.load();
+      _startAvatarRuntime();
+      await SafeBoot.instance.completeBoot();
+      ready.value = true;
+      return;
     }
 
     // 4 – OS-level shell state. These nine controllers each only read their

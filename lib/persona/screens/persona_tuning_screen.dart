@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../profiles/local_profile_service.dart';
 import '../services/neura_persona_service.dart';
 import '../models/persona_profile.dart';
 import '../models/neura_persona_preset.dart';
@@ -14,6 +15,8 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
   final _service = NeuraPersonaService.instance;
 
   late PersonaProfile _profile;
+  String? _profileId;
+  int? _profileEpoch;
   bool _loaded = false;
   bool _saving = false;
 
@@ -28,6 +31,8 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
     if (!mounted) return;
     setState(() {
       _profile = _service.current;
+      _profileId = LocalProfileService.instance.active?.id;
+      _profileEpoch = LocalProfileService.instance.epoch;
       _loaded = true;
     });
   }
@@ -36,7 +41,8 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
     setState(() {
       _saving = true;
     });
-    final saved = await _service.update(_profile);
+    final saved = await _service.update(_profile,
+        expectedProfileId: _profileId, expectedProfileEpoch: _profileEpoch);
     if (!mounted) return;
     setState(() {
       _saving = false;
@@ -48,6 +54,39 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
             : 'Could not save your changes. Please try again.'),
       ),
     );
+  }
+
+  Future<void> _enableProfiles() async {
+    final approved = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+                title: const Text('Enable local profile workspace?'),
+                content: const Text(
+                    'This first version keeps saved styles separate and opens fresh text chats. '
+                    'It hides installation-wide journals, memories, tools, sync and voice controls. '
+                    'Existing data is retained but cannot be opened here. Profiles are not password-protected accounts. '
+                    'Returning to the full installation currently requires erasing all local Neura data. '
+                    'No existing personality or permissions are copied automatically.'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Cancel')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Enable local profiles'))
+                ]));
+    if (approved != true || !mounted) return;
+    setState(() => _saving = true);
+    final saved =
+        await LocalProfileService.instance.enable(directUserGesture: true);
+    if (mounted) {
+      setState(() => _saving = false);
+      if (!saved) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'Profiles could not be enabled. Check secure storage and retry.')));
+      }
+    }
   }
 
   @override
@@ -82,6 +121,10 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
               'You can change them anytime.',
             ),
             const SizedBox(height: 12),
+            if (!LocalProfileService.instance.enabled)
+              OutlinedButton(
+                  onPressed: _saving ? null : _enableProfiles,
+                  child: const Text('Set up separate local profiles')),
             Wrap(
               spacing: 8,
               runSpacing: 8,

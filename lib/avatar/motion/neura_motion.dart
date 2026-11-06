@@ -17,6 +17,7 @@
 // fed the same signals through MascotEventBridge.
 
 import 'dart:async';
+import '../../profiles/local_profile_service.dart';
 
 import 'package:flutter/widgets.dart';
 
@@ -107,7 +108,11 @@ class NeuraMotion with WidgetsBindingObserver {
           });
         }),
       )
-      ..add(bus.on<NeuraMoodEvent>((e) => engine.setMood(e.mood, e.energy)))
+      ..add(bus.on<NeuraMoodEvent>((e) {
+        if (!LocalProfileService.instance.enabled) {
+          engine.setMood(e.mood, e.energy);
+        }
+      }))
       ..add(bus.on<NeuraMouthOpenEvent>((e) => engine.setMouthOpen(e.open)))
       ..add(
         bus.on<NeuraPulseEvent>((e) {
