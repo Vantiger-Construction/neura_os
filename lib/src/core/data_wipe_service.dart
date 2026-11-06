@@ -14,6 +14,7 @@ import '../../care/services/care_mode_bridge.dart';
 import '../../care/services/contact_share_service.dart';
 import '../../constitution/neura_constitution_service.dart';
 import '../../services/scheduled_backup_settings.dart';
+import '../../services/portable_vault_backup_service.dart';
 import '../../services/sync_conflict_log.dart';
 import '../../care/services/trusted_contacts_service.dart';
 import '../../dashboard/proactive_banner_service.dart';
@@ -123,12 +124,15 @@ class NeuraDataWipeService {
     // starts clean after the persisted Safe Boot marker is deleted.
     SafeBoot.instance.safeMode.value = true;
     MemoryVaultStore.instance.suspendForDataWipe();
+    PortableVaultBackupService.suspendForDataWipe();
     CompanionMemoryService.suspendAllForDataWipe();
     EncryptedMemoryDurableScopedAdapter.suspendAllForDataWipe();
     NeuraAiService.instance.cancelActiveGeneration();
     AmbientListeningPrefsController.instance.resetAfterDataWipe();
     WakeWordPrefsController.instance.resetAfterDataWipe();
     NeuraStartupVoicePrefs.instance.resetAfterDataWipe();
+    await _attempt(failures, 'scheduled backup writer drain',
+        PortableVaultBackupService.drainForDataWipe);
     await _attempt(failures, 'startup microphone shutdown',
         NeuraLocalSpeechInput.instance.shutdownForDataWipe);
     await _attempt(

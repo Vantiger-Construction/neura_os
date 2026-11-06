@@ -53,8 +53,9 @@ List<VaultItem> decodeVaultItems(String raw, {bool strict = false}) {
           item['body'] is! String ||
           item['createdAt'] is! String ||
           DateTime.tryParse(item['createdAt'] as String) == null ||
-          item['tags'] is! List ||
-          !(item['tags'] as List).every((tag) => tag is String)) {
+          (item.containsKey('tags') &&
+              (item['tags'] is! List ||
+                  !(item['tags'] as List).every((tag) => tag is String)))) {
         throw const FormatException('Invalid vault record.');
       }
     }

@@ -210,6 +210,9 @@ class WipePreferencesStore extends SharedPreferencesStorePlatform {
   bool refuseClear = false;
   bool throwOnClear = false;
   bool ignoreClear = false;
+  final refusedWrites = <String>{};
+  final refusedRemovals = <String>{};
+  final ignoredRemovals = <String>{};
   Future<void> Function(String key)? beforeSet;
   Future<void> Function(String key)? beforeRemove;
   Future<void> Function()? beforeGetAll;
@@ -237,7 +240,8 @@ class WipePreferencesStore extends SharedPreferencesStorePlatform {
   @override
   Future<bool> remove(String key) async {
     await beforeRemove?.call(key);
-    data.remove(key);
+    if (refusedRemovals.contains(key)) return false;
+    if (!ignoredRemovals.contains(key)) data.remove(key);
     return true;
   }
 
@@ -245,6 +249,7 @@ class WipePreferencesStore extends SharedPreferencesStorePlatform {
   Future<bool> setValue(String valueType, String key, Object value) async {
     await beforeSet?.call(key);
     await beforeSetValue?.call(key);
+    if (refusedWrites.contains(key)) return false;
     data[key] = value;
     return true;
   }
