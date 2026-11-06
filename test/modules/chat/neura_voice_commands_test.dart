@@ -61,6 +61,19 @@ void main() {
     await NeuraPrefsCache.prefs.clear();
     await NeuraTtsService.instance.setReplySpeechMode(NeuraReplySpeechMode.off);
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('flutter_tts'), (call) async {
+      if (call.method == 'getVoices') {
+        return [
+          {
+            'name': 'Synthetic offline',
+            'locale': 'en-US',
+            'network_required': '0'
+          }
+        ];
+      }
+      return 1;
+    });
     binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,
         (call) async {
       calls.add(call.method);
@@ -79,6 +92,8 @@ void main() {
     SafeBoot.instance.safeMode.value = false;
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null);
+    binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('flutter_tts'), null);
   });
 
   Future<void> pumpChat(WidgetTester tester,
@@ -88,7 +103,12 @@ void main() {
     if (room != null) await shell.setRoom(room);
     await tester.pumpWidget(NeuraShellScope(
       notifier: shell,
-      child: MaterialApp(home: NeuraChatScreen(memoryService: memory)),
+      // Keep command routing covered for the legacy adapter as well. The
+      // default local recognizer is exercised by conversation integration.
+      child: MaterialApp(
+          home: NeuraChatScreen(
+              memoryService: memory,
+              speechInput: NeuraSpeechToTextService.instance)),
     ));
     await tester.pumpAndSettle();
   }
@@ -472,6 +492,13 @@ void main() {
     late CompanionMemoryFixture memory;
     await tester
         .runAsync(() async => memory = await CompanionMemoryFixture.create());
+    // A prior voice-command case initialized local output. The memory fixture
+    // still forbids capture/speech; allow only acknowledged output shutdown.
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('flutter_tts'), (call) async {
+      expect(call.method, 'stop');
+      return 1;
+    });
     await pumpChat(tester, memory: memory.memory);
     await tester.tap(find.byTooltip('Select text for the next reply'));
     await tester.pumpAndSettle();

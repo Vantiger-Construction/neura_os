@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../avatar/avatar_route_observer.dart';
 import '../core/neura_event_bus.dart';
 import '../modules/core/error_handler.dart';
+import '../modules/vault/vault_restore_route_observer.dart';
 import '../modules/human/human_prefs.dart';
 import '../modules/human/human_prefs_controller.dart';
 import '../modules/human/human_media_query.dart';
@@ -39,7 +40,10 @@ class NeuroCompanionApp extends StatelessWidget {
       builder: (context, prefs, _) {
         return MaterialApp(
           navigatorKey: navigatorKey,
-          navigatorObservers: [AvatarRouteObserver(NeuraEventBus.I)],
+          navigatorObservers: [
+            AvatarRouteObserver(NeuraEventBus.I),
+            vaultRestoreRouteObserver
+          ],
           title: 'Neura OS',
           themeMode: _themeModeFor(prefs.theme),
           theme: AppTheme.light(highContrast: prefs.highContrast),

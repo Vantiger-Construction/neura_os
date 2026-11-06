@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path_provider/path_provider.dart';
 
 import '../modules/vault/memory_vault_models.dart';
@@ -84,7 +86,41 @@ class PortableVaultBackupService {
   static const _payloadVersion = 1;
   static const _maxBackupBytes = 25 * 1024 * 1024;
   static const scheduledBackupFileName = 'neura-scheduled.neurabackup';
+  static bool _suspendedForWipe = false;
+  static final _activeWrites = <Future<void>>{};
+  static Future<void> _scheduledTail = Future<void>.value();
 
+  @visibleForTesting
+  static Duration wipeDrainTimeout = const Duration(seconds: 30);
+
+  static void suspendForDataWipe() => _suspendedForWipe = true;
+
+  static Future<void> drainForDataWipe() async {
+    await Future.wait(_activeWrites.toList()).timeout(wipeDrainTimeout);
+  }
+
+  @visibleForTesting
+  static void resetWipeGateForTesting() {
+    if (_activeWrites.isNotEmpty) {
+      throw StateError('Backups are still active.');
+    }
+    _suspendedForWipe = false;
+    wipeDrainTimeout = const Duration(seconds: 30);
+  }
+
+  static Future<T> _trackWrite<T>(Future<T> operation) {
+    final drained =
+        operation.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    _activeWrites.add(drained);
+    unawaited(drained.whenComplete(() => _activeWrites.remove(drained)));
+    return operation;
+  }
+
+  static void _checkBackupWrite() {
+    if (_suspendedForWipe) throw StateError('Backup cancelled by data wipe.');
+  }
+
+  bool _restoring = false;
   final PortableBackupCodec _codec;
   final VaultItemSource _store;
   final ScheduledBackupSettings _scheduledSettings;
@@ -103,8 +139,16 @@ class PortableVaultBackupService {
   Future<String?> exportToFile({
     required String pin,
     required String passphrase,
+  }) =>
+      _trackWrite(_exportToFile(pin: pin, passphrase: passphrase));
+
+  Future<String?> _exportToFile({
+    required String pin,
+    required String passphrase,
   }) async {
+    _checkBackupWrite();
     final items = await _store.getItems(pin: pin);
+    _checkBackupWrite();
     final envelope = await _codec.encrypt(
       passphrase: passphrase,
       payload: {
@@ -115,37 +159,17 @@ class PortableVaultBackupService {
       },
     );
 
+    _checkBackupWrite();
+    // Native saveFile owns the bytes once submitted. Wipe must drain that
+    // future (including the picker), never delete while it can still write.
     final uri = await FilePicker.saveFile(
       dialogTitle: 'Export encrypted Neura backup',
       fileName: 'neura-vault-${_dateStamp()}.neurabackup',
       bytes: Uint8List.fromList(utf8.encode(envelope)),
     );
+    _checkBackupWrite();
     if (uri == null) return null;
     return uri.scheme == 'file' ? uri.toFilePath() : uri.toString();
-  }
-
-  Future<int?> importFromFile({
-    required String pin,
-    required String passphrase,
-  }) async {
-    final file = await FilePicker.pickFile(
-      dialogTitle: 'Import encrypted Neura backup',
-      type: FileType.custom,
-      allowedExtensions: const ['neurabackup'],
-    );
-    if (file == null) return null;
-
-    final envelope = await readBackupFile(file);
-    final preview = await previewRestore(envelope, passphrase: passphrase);
-    try {
-      if (preview.items.isEmpty) return 0;
-      return await restorePreview(
-          pin: pin,
-          preview: preview,
-          selected: {for (var i = 0; i < preview.items.length; i++) i});
-    } finally {
-      preview.revoke();
-    }
   }
 
   /// Reads ciphertext only; the caller owns native picker and foreground checks.
@@ -196,7 +220,11 @@ class PortableVaultBackupService {
   Future<int> restorePreview(
       {required String pin,
       required PortableBackupPreview preview,
-      required Set<int> selected}) async {
+      required Set<int> selected,
+      required bool Function() mayRestore}) async {
+    if (_restoring || !mayRestore()) {
+      throw StateError('Restore is unavailable. Review again.');
+    }
     if (!identical(preview._owner, this) || !preview.isCurrent) {
       throw StateError('Verify this backup again before restoring.');
     }
@@ -211,7 +239,13 @@ class PortableVaultBackupService {
     // Consume synchronously before the first write await. Double taps and
     // retries cannot re-use the prior review, even when a write fails.
     preview.revoke();
-    return _store.importItems(pin: pin, imported: items);
+    _restoring = true;
+    try {
+      return await _store.importItems(
+          pin: pin, imported: items, mayWrite: mayRestore);
+    } finally {
+      _restoring = false;
+    }
   }
 
   /// Decrypts and checksums [envelope] -- parsing every entry -- without
@@ -280,6 +314,27 @@ class PortableVaultBackupService {
     required String pin,
     Duration interval = const Duration(hours: 24),
     DateTime? now,
+  }) {
+    if (_suspendedForWipe) {
+      return Future.value(
+          ScheduledBackupRunResult.skipped('data wipe in progress'));
+    }
+    // The due check and replacement share one queue across all instances.
+    final operation = _scheduledTail.then<ScheduledBackupRunResult>((_) async {
+      if (_suspendedForWipe) {
+        return ScheduledBackupRunResult.skipped('data wipe in progress');
+      }
+      return _runScheduledBackupIfDue(pin: pin, interval: interval, now: now);
+    });
+    _scheduledTail =
+        operation.then<void>((_) {}, onError: (Object _, StackTrace __) {});
+    return _trackWrite(operation);
+  }
+
+  Future<ScheduledBackupRunResult> _runScheduledBackupIfDue({
+    required String pin,
+    required Duration interval,
+    DateTime? now,
   }) async {
     if (!_scheduledSettings.enabled) {
       return ScheduledBackupRunResult.skipped('disabled');
@@ -296,6 +351,7 @@ class PortableVaultBackupService {
     }
 
     try {
+      _checkBackupWrite();
       final items = await _store.getItems(pin: pin);
       final envelope = await _codec.encrypt(
         passphrase: passphrase,
@@ -309,6 +365,7 @@ class PortableVaultBackupService {
 
       final verification =
           await verifyBackupIntegrity(envelope, passphrase: passphrase);
+      _checkBackupWrite();
       if (!verification.isValid) {
         final error = verification.error ?? 'verification failed';
         await _scheduledSettings.recordOutcome(
@@ -320,22 +377,35 @@ class PortableVaultBackupService {
       }
 
       final file = await scheduledBackupFile();
+      _checkBackupWrite();
       final tmp = File('${file.path}.tmp');
       await tmp.writeAsString(envelope, flush: true);
+      _checkBackupWrite();
       if (await file.exists()) await file.delete();
+      _checkBackupWrite();
       await tmp.rename(file.path);
 
+      _checkBackupWrite();
       await _scheduledSettings.recordOutcome(
         at: effectiveNow,
         outcome: ScheduledBackupOutcome.success,
       );
       return ScheduledBackupRunResult.succeeded(itemCount: items.length);
     } catch (error) {
-      await _scheduledSettings.recordOutcome(
-        at: effectiveNow,
-        outcome: ScheduledBackupOutcome.failed,
-        error: error.toString(),
-      );
+      if (_suspendedForWipe) {
+        return ScheduledBackupRunResult.failed(
+            'Backup cancelled by data wipe.');
+      }
+      try {
+        await _scheduledSettings.recordOutcome(
+          at: effectiveNow,
+          outcome: ScheduledBackupOutcome.failed,
+          error: error.toString(),
+        );
+      } catch (_) {
+        return ScheduledBackupRunResult.failed(
+            'Backup status could not be saved. Check the local backup before retrying.');
+      }
       return ScheduledBackupRunResult.failed(error.toString());
     }
   }
