@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/modules/vault/backup_restore_screen.dart';
 import 'package:neuro_companion/modules/vault/memory_vault_models.dart';
+import 'package:neuro_companion/modules/vault/vault_restore_route_observer.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/services/portable_backup_codec.dart';
 import 'package:neuro_companion/services/portable_vault_backup_service.dart';
@@ -42,15 +43,21 @@ class _Codec extends PortableBackupCodec {
 
 class _Store implements VaultItemSource {
   final writes = <List<VaultItem>>[];
+  final commits = <List<VaultItem>>[];
   Completer<int>? pending;
   @override
   Future<List<VaultItem>> getItems({required String pin}) async =>
       throw StateError('Verification must not read the vault.');
   @override
   Future<int> importItems(
-      {required String pin, required List<VaultItem> imported}) async {
+      {required String pin,
+      required List<VaultItem> imported,
+      required bool Function() mayWrite}) async {
     writes.add(imported);
-    return pending == null ? imported.length : await pending!.future;
+    final count = pending == null ? imported.length : await pending!.future;
+    if (!mayWrite()) throw StateError('Restore revoked.');
+    commits.add(imported);
+    return count;
   }
 }
 
@@ -105,6 +112,7 @@ void main() {
   Future<void> mount(WidgetTester tester) async {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpWidget(MaterialApp(
+        navigatorObservers: [vaultRestoreRouteObserver],
         home: BackupRestoreScreen(
             service: PortableVaultBackupService(codec: codec, store: store),
             sessionPin: () => '1234')));
@@ -252,5 +260,64 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(CheckboxListTile), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  for (final reason in [
+    'background',
+    'safe mode',
+    'clear',
+    'disposal',
+    'covered then reopened'
+  ]) {
+    testWidgets('pending restore cannot commit after $reason', (tester) async {
+      await mount(tester);
+      await verify(tester);
+      await tap(tester, 'Synthetic entry a');
+      await tap(tester, 'Review selected restore');
+      await tester.pumpAndSettle();
+      store.pending = Completer<int>();
+      await tester.tap(find.text('Restore selected'));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(store.writes, hasLength(1));
+      if (reason == 'background') {
+        tester.binding
+            .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+        tester.binding
+            .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      } else if (reason == 'safe mode') {
+        SafeBoot.instance.safeMode.value = true;
+        SafeBoot.instance.safeMode.value = false;
+      } else if (reason == 'clear') {
+        await tap(tester, 'Clear backup review');
+      } else if (reason == 'covered then reopened') {
+        final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+        unawaited(nav.push(MaterialPageRoute<void>(
+            builder: (_) => const Scaffold(body: Text('Other route')))));
+        nav.pop();
+      } else {
+        await tester.pumpWidget(const SizedBox());
+      }
+      store.pending!.complete(1);
+      await tester.pumpAndSettle();
+      expect(store.commits, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('covering the confirmation also revokes its restore review',
+      (tester) async {
+    await mount(tester);
+    await verify(tester);
+    await tap(tester, 'Synthetic entry a');
+    await tap(tester, 'Review selected restore');
+    await tester.pumpAndSettle();
+    final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
+    unawaited(nav.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Text('Other route')))));
+    nav.pop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Restore selected'));
+    await tester.pumpAndSettle();
+    expect(store.writes, isEmpty);
   });
 }
