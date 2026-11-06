@@ -140,19 +140,26 @@ class _NoteCard extends StatelessWidget {
                     icon: const Icon(Icons.lock_outline),
                     label: const Text('Save to vault'),
                     onPressed: () async {
-                      final ok = await VaultSession.ensureUnlocked(context);
-                      if (!ok) return;
-                      final pin = VaultSession.sessionPin;
-                      if (pin == null) return;
-                      await MemoryVaultStore.instance.add(
-                        pin: pin,
-                        title: note.title,
-                        body: note.body,
-                        tags: [...note.tags, note.source.name, 'coach'],
-                      );
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Saved in vault.')));
+                      try {
+                        final ok = await VaultSession.ensureUnlocked(context);
+                        if (!ok) return;
+                        final pin = VaultSession.sessionPin;
+                        if (pin == null) return;
+                        await MemoryVaultStore.instance.add(
+                          pin: pin,
+                          title: note.title,
+                          body: note.body,
+                          tags: [...note.tags, note.source.name, 'coach'],
+                        );
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Saved in vault.')));
+                      } catch (_) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text(
+                                'Could not save to the vault. Existing entries were preserved.')));
+                      }
                     },
                   ),
                   OutlinedButton.icon(

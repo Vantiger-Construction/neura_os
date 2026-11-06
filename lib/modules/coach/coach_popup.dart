@@ -35,21 +35,28 @@ class CoachPopup {
             ),
             TextButton(
               onPressed: () async {
-                // Save to Vault.
-                final ok = await VaultSession.ensureUnlocked(ctx);
-                if (!ok) return;
-                final pin = VaultSession.sessionPin;
-                if (pin == null) return;
-                await MemoryVaultStore.instance.add(
-                  pin: pin,
-                  title: note.title.isEmpty ? 'Coach Note' : note.title,
-                  body: note.body,
-                  tags: ['coach', note.source.name, ...note.tags],
-                );
-                if (ctx.mounted) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(content: Text('Saved to Vault.')),
+                try {
+                  // Save to Vault.
+                  final ok = await VaultSession.ensureUnlocked(ctx);
+                  if (!ok) return;
+                  final pin = VaultSession.sessionPin;
+                  if (pin == null) return;
+                  await MemoryVaultStore.instance.add(
+                    pin: pin,
+                    title: note.title.isEmpty ? 'Coach Note' : note.title,
+                    body: note.body,
+                    tags: ['coach', note.source.name, ...note.tags],
                   );
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(content: Text('Saved to Vault.')),
+                    );
+                  }
+                } catch (_) {
+                  if (!ctx.mounted) return;
+                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                      content: Text(
+                          'Could not save to the vault. Existing entries were preserved.')));
                 }
               },
               child: const Text('Save to Vault'),
