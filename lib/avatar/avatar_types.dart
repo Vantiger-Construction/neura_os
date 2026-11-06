@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 
 /// Supported avatar rendering backends.
 enum AvatarFormat {
+  /// Built-in mouth-compatible portrait; no external asset is required.
+  flutterFace,
   rive,
   lottie,
   sprite,

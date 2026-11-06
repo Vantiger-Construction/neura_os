@@ -32,6 +32,10 @@ It adds no training, automatic preference inference, model downloads, network
 requests, journal access, microphone access or background conversations.
 The Unity prototype's relay is unchanged.
 
+For a visible mouth during ordinary speech, select the optional
+[expressive face](EXPRESSIVE_AVATAR.md). It combines the existing personal body
+motion with event-driven articulation in the main app's stage and room panel.
+
 ## Next milestones toward individuality
 
 1. **User-approved continuity.** Use scoped encrypted companion memory to retain

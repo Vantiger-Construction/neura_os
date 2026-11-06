@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../avatar/avatar_registry.dart';
 import '../models/ai_avatar.dart';
 import '../startup/neura_prefs_cache.dart';
 
@@ -8,6 +9,8 @@ class AvatarService {
   static final AvatarService instance = AvatarService();
 
   static const _kSelectedKey = 'avatar_selected_id';
+  bool _saving = false;
+  int _generation = 0;
 
   final ValueNotifier<String> selectedAvatarId = ValueNotifier<String>('neura');
 
@@ -18,34 +21,54 @@ class AvatarService {
 
   /// Returns available AI Avatars.
   List<AIAvatar> getAvailableAvatars() {
-    return const [
-      AIAvatar(
-          id: 'neura', name: 'Neura', assetPath: 'assets/images/ai_avatar.png'),
-      AIAvatar(
-          id: 'neuro', name: 'Neuro', assetPath: 'assets/images/ai_avatar.png'),
-    ];
+    return AvatarRegistry.all()
+        .map((a) => AIAvatar(id: a.id, name: a.name, assetPath: a.assetPath))
+        .toList(growable: false);
   }
 
   /// Persists selected avatar ID to shared preferences.
-  Future<void> selectAvatar(String id) async {
-    selectedAvatarId.value = id;
-    final prefs = NeuraPrefsCache.prefs;
-    await prefs.setString(_kSelectedKey, id);
+  Future<bool> selectAvatar(String id) async {
+    if (_saving || !getAvailableAvatars().any((a) => a.id == id)) return false;
+    _saving = true;
+    final generation = _generation;
+    try {
+      if (!await NeuraPrefsCache.prefs.setString(_kSelectedKey, id)) {
+        throw StateError('Avatar selection could not be saved.');
+      }
+      if (generation != _generation) return false;
+      selectedAvatarId.value = id;
+      return true;
+    } catch (_) {
+      // SharedPreferences updates its cache before storage acknowledges a write.
+      try {
+        await NeuraPrefsCache.prefs.reload();
+      } catch (_) {
+        // Retain the last confirmed visible selection.
+      }
+      return false;
+    } finally {
+      _saving = false;
+    }
   }
 
   /// Loads selected avatar from shared preferences, defaulting to Neura.
   Future<AIAvatar> getSelectedAvatar() async {
     final prefs = NeuraPrefsCache.prefs;
-    final id = prefs.getString(_kSelectedKey) ?? 'neura';
-    selectedAvatarId.value = id;
+    final id = _saving
+        ? selectedAvatarId.value
+        : prefs.getString(_kSelectedKey) ?? AvatarRegistry.defaultAvatarId;
     final all = getAvailableAvatars();
-    return all.firstWhere(
+    final avatar = all.firstWhere(
       (a) => a.id == id,
-      orElse: () => all.first,
+      orElse: () =>
+          all.firstWhere((a) => a.id == AvatarRegistry.defaultAvatarId),
     );
+    selectedAvatarId.value = avatar.id;
+    return avatar;
   }
 
   void resetAfterDataWipe() {
-    selectedAvatarId.value = 'neura';
+    _generation++;
+    selectedAvatarId.value = AvatarRegistry.defaultAvatarId;
   }
 }
