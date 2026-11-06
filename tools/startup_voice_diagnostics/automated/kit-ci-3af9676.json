@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "kit_head": "3af9676817fd2abacee949ae9445730e631d670c",
+  "workflow_run": "https://github.com/Vantiger-Construction/neura_os/actions/runs/42213023111",
+  "helper_code_sha256": {
+    "diagnose.py": "232d68dd532e8f897bfeab9c1e6e22495a43d5f8c0a7d146dee10389dfce9959",
+    "Test-WindowsPrerequisites.ps1": "e66e9bb5c826d28be3693cd885b56207f62a72293fe04c3acfe4c96f3ae29aa6",
+    "test_diagnose.py": "b02f09db00547a04e512770a97c20db1de5f2731a3d2fc46fdd1acb60619637d"
+  },
+  "checks": [
+    {
+      "name": "Synthetic diagnostic helpers (windows-latest)",
+      "status": "PASS",
+      "tests": 19,
+      "windows_powershell_51_parser": "PASS",
+      "job": "https://github.com/Vantiger-Construction/neura_os/actions/runs/42213023111/job/127876068753"
+    },
+    {
+      "name": "Synthetic diagnostic helpers (ubuntu-latest)",
+      "status": "PASS",
+      "tests": 19,
+      "job": "https://github.com/Vantiger-Construction/neura_os/actions/runs/42213023111/job/127876068472"
+    }
+  ],
+  "hardware_acceptance": "NOT RUN",
+  "sapi_collector_execution": "NOT RUN",
+  "existing_data_upgrade": "BLOCKED"
+}

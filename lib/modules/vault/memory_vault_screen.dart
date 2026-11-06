@@ -19,6 +19,7 @@ class MemoryVaultScreen extends StatefulWidget {
 
 class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
   bool _loading = true;
+  bool _readFailed = false;
   List<VaultItem> _items = const [];
   final _backup = PortableVaultBackupService();
 
@@ -29,20 +30,34 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() => _loading = true);
-    final ok = await VaultSession.ensureUnlocked(context);
-    if (!mounted) return;
-    if (!ok) {
-      setState(() => _loading = false);
-      return;
+    try {
+      final ok = await VaultSession.ensureUnlocked(context);
+      if (!mounted || !ok) return;
+      final pin = VaultSession.sessionPin!;
+      final items = await MemoryVaultStore.instance.getItems(pin: pin);
+      if (!mounted) return;
+      setState(() {
+        _items = items;
+        _readFailed = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _items = const [];
+        _readFailed = true;
+      });
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
-    final pin = VaultSession.sessionPin!;
-    final items = await MemoryVaultStore.instance.getItems(pin: pin);
+  }
+
+  void _writeFailed() {
     if (!mounted) return;
-    setState(() {
-      _items = items;
-      _loading = false;
-    });
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+            'The vault change could not be confirmed. Unlock and check your vault before trying again.')));
   }
 
   Future<void> _addItem() async {
@@ -110,17 +125,22 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
     }
 
     if (ok != true) return;
-    await MemoryVaultStore.instance.add(
-      pin: pin,
-      title: titleValue.isEmpty ? 'Untitled' : titleValue,
-      body: bodyValue,
-      tags: tagsValue
-          .split(',')
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toSet()
-          .toList(),
-    );
+    try {
+      await MemoryVaultStore.instance.add(
+        pin: pin,
+        title: titleValue.isEmpty ? 'Untitled' : titleValue,
+        body: bodyValue,
+        tags: tagsValue
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toSet()
+            .toList(),
+      );
+    } catch (_) {
+      _writeFailed();
+      return;
+    }
 
     if (!mounted) return;
     await _load();
@@ -132,7 +152,12 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
       await _load();
       return;
     }
-    await MemoryVaultStore.instance.delete(pin: pin, id: id);
+    try {
+      await MemoryVaultStore.instance.delete(pin: pin, id: id);
+    } catch (_) {
+      _writeFailed();
+      return;
+    }
     if (!mounted) return;
     await _load();
   }
@@ -247,17 +272,24 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
           Future<void> toggle(bool value) async {
-            if (value) {
-              final passphrase = await _requestBackupPassphrase(
-                title: 'Set an automatic-backup passphrase',
-                confirm: true,
-              );
-              if (passphrase == null) return;
-              await settings.enable(passphrase);
-            } else {
-              await settings.disable();
+            try {
+              if (value) {
+                final passphrase = await _requestBackupPassphrase(
+                  title: 'Set an automatic-backup passphrase',
+                  confirm: true,
+                );
+                if (passphrase == null || !dialogContext.mounted) return;
+                await settings.enable(passphrase);
+              } else {
+                await settings.disable();
+              }
+              if (dialogContext.mounted) setDialogState(() {});
+            } catch (_) {
+              if (dialogContext.mounted) setDialogState(() {});
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Backup settings could not be confirmed.')));
             }
-            setDialogState(() {});
           }
 
           Future<void> backUpNow() async {
@@ -267,7 +299,7 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
               pin: pin,
               interval: Duration.zero,
             );
-            setDialogState(() {});
+            if (dialogContext.mounted) setDialogState(() {});
             if (!mounted) return;
             final message = switch (result.status) {
               ScheduledBackupStatus.succeeded =>
@@ -302,6 +334,13 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
                   onChanged: (value) => unawaited(toggle(value)),
                   title: const Text('Enabled'),
                 ),
+                if (settings.passphraseRemovalPending) ...[
+                  const Text(
+                      'Backups are off. Removing the stored backup passphrase needs retry.'),
+                  OutlinedButton(
+                      onPressed: () => unawaited(toggle(false)),
+                      child: const Text('Retry passphrase removal')),
+                ],
                 if (settings.enabled) ...[
                   const SizedBox(height: 4),
                   Text(
@@ -351,7 +390,12 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
     );
     if (ok != true) return;
 
-    await MemoryVaultStore.instance.wipe();
+    try {
+      await MemoryVaultStore.instance.wipe();
+    } catch (_) {
+      _writeFailed();
+      return;
+    }
     VaultSession.lock();
     if (!mounted) return;
     setState(() {
@@ -409,55 +453,60 @@ class _MemoryVaultScreenState extends State<MemoryVaultScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _addItem,
+        onPressed: _readFailed ? null : _addItem,
         child: const Icon(Icons.add),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _items.isEmpty
-              ? const Center(child: Text('No vault entries yet.'))
-              : ListView.builder(
-                  itemCount: _items.length,
-                  itemBuilder: (context, i) {
-                    final it = _items[i];
-                    return Card(
-                      margin: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      child: ListTile(
-                        title: Text(it.title),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 6),
-                            Text(it.body),
-                            if (it.tags.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 6,
-                                children: it.tags
-                                    .map((t) => Chip(
-                                        label: Text(t),
-                                        visualDensity: VisualDensity.compact))
-                                    .toList(),
-                              ),
-                            ],
-                            const SizedBox(height: 6),
-                            Text(
-                              '${it.createdAt.toLocal()}'.split('.').first,
-                              style: Theme.of(context).textTheme.bodySmall,
+          : _readFailed
+              ? const Center(
+                  child: Text(
+                      'Vault could not be read. Existing data was preserved. Unlock and retry; do not reset your keys.'))
+              : _items.isEmpty
+                  ? const Center(child: Text('No vault entries yet.'))
+                  : ListView.builder(
+                      itemCount: _items.length,
+                      itemBuilder: (context, i) {
+                        final it = _items[i];
+                        return Card(
+                          margin: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          child: ListTile(
+                            title: Text(it.title),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 6),
+                                Text(it.body),
+                                if (it.tags.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 6,
+                                    children: it.tags
+                                        .map((t) => Chip(
+                                            label: Text(t),
+                                            visualDensity:
+                                                VisualDensity.compact))
+                                        .toList(),
+                                  ),
+                                ],
+                                const SizedBox(height: 6),
+                                Text(
+                                  '${it.createdAt.toLocal()}'.split('.').first,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () => _delete(it.id),
-                        ),
-                        isThreeLine: true,
-                      ),
-                    );
-                  },
-                ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () => _delete(it.id),
+                            ),
+                            isThreeLine: true,
+                          ),
+                        );
+                      },
+                    ),
     );
   }
 }

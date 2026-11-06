@@ -18,7 +18,7 @@ import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
   const local = MethodChannel('neura/local_conversation');
-  const speech = MethodChannel('neura/speech_recognition');
+  const speech = MethodChannel('neura/local_speech_input');
   late List<MethodCall> calls;
   late List<String> speechCalls;
   late Map<String, Object> snapshot;
