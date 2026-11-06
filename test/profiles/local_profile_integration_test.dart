@@ -233,6 +233,10 @@ void main() {
     expect(find.text('Use local Ollama'), findsOneWidget);
     expect(find.text('Neura · Blair'), findsOneWidget);
     expect(find.byTooltip('Microphone'), findsNothing);
+    expect(find.byTooltip('Talk freely (hands-free)'), findsNothing);
+    expect(find.text('Offline readiness and controls'), findsNothing);
+    expect(find.text('Check offline readiness'), findsNothing);
+    expect(await NeuraLocalSpeechInput.instance.startRecording(), isFalse);
     // An approval dialog cannot survive an external session boundary.
     await tester.tap(find.byType(SwitchListTile));
     await tester.enterText(find.byType(TextField), 'Cloud preview for Blair');

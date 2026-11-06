@@ -1881,7 +1881,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
               if (_localOllama)
                 const PopupMenuItem(
                   value: 'offline_controls',
-                  child: Text('Offline conversation controls'),
+                  child: Text('Offline readiness and controls'),
                 ),
               if (_localSession.supported)
                 PopupMenuItem(

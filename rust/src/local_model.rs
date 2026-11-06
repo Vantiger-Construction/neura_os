@@ -66,21 +66,31 @@ impl ModelUnavailable {
     }
 }
 
-/// Windows admission budget: at least 7 GiB installed and 3.5 GiB available.
+/// Content-free physical memory in MiB, shared by admission and readiness.
 #[cfg(windows)]
-pub fn memory_admitted() -> bool {
+pub fn memory_snapshot() -> Option<(u64, u64)> {
     use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
     // SAFETY: MEMORYSTATUSEX is a plain output structure initialized with its size.
     let mut memory: MEMORYSTATUSEX = unsafe { std::mem::zeroed() };
     memory.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
-    (unsafe { GlobalMemoryStatusEx(&mut memory) != 0 })
-        && memory.ullTotalPhys >= 7 * 1024 * 1024 * 1024
-        && memory.ullAvailPhys >= 3584 * 1024 * 1024
+    (unsafe { GlobalMemoryStatusEx(&mut memory) != 0 }).then_some((
+        memory.ullTotalPhys / (1024 * 1024),
+        memory.ullAvailPhys / (1024 * 1024),
+    ))
 }
 /// Only Windows is admitted; physical-device acceptance remains outstanding.
 #[cfg(not(windows))]
+pub fn memory_snapshot() -> Option<(u64, u64)> {
+    None
+}
+
+/// Windows admission budget: at least 7 GiB installed and 3.5 GiB available.
+pub fn memory_values_admitted(total_mib: u64, available_mib: u64) -> bool {
+    total_mib >= 7168 && available_mib >= 3584 && available_mib <= total_mib
+}
+
 pub fn memory_admitted() -> bool {
-    false
+    memory_snapshot().is_some_and(|(total, available)| memory_values_admitted(total, available))
 }
 
 /// HTTP client bound to one numeric loopback Ollama endpoint: no proxy, no
@@ -183,17 +193,55 @@ fn supported_version(version: &str) -> bool {
 /// Confirm a compatible daemon reports the reviewed manifest installed locally.
 /// Sends only the model name; never any conversation or fixture text.
 pub async fn verify_pinned_model(client: &LoopbackClient) -> Result<(), ModelUnavailable> {
-    let response = client
-        .get("/api/version")
-        .send()
-        .await
-        .map_err(|_| ModelUnavailable::Unreachable)?;
+    verify_model(client, &mut ModelReadiness::default()).await
+}
+
+/// Fixed numeric stages for metadata-only inspection. No daemon text escapes.
+/// Daemon: 0 unchecked, 1 answered, 2 unreachable. Version: 0 unchecked,
+/// 1 supported, 2 unsupported/invalid. Model: 0 unchecked, 1 verified,
+/// 2 missing, 3 remote, 4 mismatched, 5 malformed, 6 lookup unreachable.
+#[derive(Default, Debug, PartialEq, Eq)]
+pub struct ModelReadiness {
+    pub daemon: u64,
+    pub version: u64,
+    pub model: u64,
+}
+
+/// Uses exactly the same verifier as inference and the evidence sidecar.
+/// `/api/show` reads metadata; no chat/generate/pull or warm-up is submitted.
+pub async fn inspect_pinned_model(client: &LoopbackClient) -> ModelReadiness {
+    let mut report = ModelReadiness::default();
+    let result = verify_model(client, &mut report).await;
+    if report.version == 1 {
+        report.model = match result {
+            Ok(()) => 1,
+            Err(ModelUnavailable::NotInstalled) => 2,
+            Err(ModelUnavailable::Remote) => 3,
+            Err(ModelUnavailable::Mismatch) => 4,
+            Err(ModelUnavailable::Unreachable) => 6,
+            Err(_) => 5,
+        };
+    }
+    report
+}
+
+async fn verify_model(
+    client: &LoopbackClient,
+    report: &mut ModelReadiness,
+) -> Result<(), ModelUnavailable> {
+    let response = client.get("/api/version").send().await.map_err(|_| {
+        report.daemon = 2;
+        ModelUnavailable::Unreachable
+    })?;
+    report.daemon = 1;
+    report.version = 2;
     let version = bounded_json(response, MAX_VERSION_RESPONSE)
         .await
         .map_err(|_| ModelUnavailable::UnsupportedVersion)?;
     if !version["version"].as_str().is_some_and(supported_version) {
         return Err(ModelUnavailable::UnsupportedVersion);
     }
+    report.version = 1;
 
     let response = client
         .get("/api/tags")
@@ -598,6 +646,66 @@ pub(crate) mod tests {
             Err(ModelUnavailable::Malformed)
         );
         task.abort();
+    }
+
+    #[tokio::test]
+    async fn readiness_reports_the_same_identity_failures_without_inference() {
+        async fn forbidden_route() -> StatusCode {
+            panic!("readiness must use metadata only")
+        }
+        for (version, tags, info, expected) in [
+            ("0.18.0", pinned_tags(), pinned_info(), [1, 1, 1]),
+            ("0.17.9", pinned_tags(), pinned_info(), [1, 2, 0]),
+            ("0.18.0-rc1", pinned_tags(), pinned_info(), [1, 2, 0]),
+            ("0.18.0", json!({"models":[]}), pinned_info(), [1, 1, 2]),
+            (
+                "0.18.0",
+                pinned_tags(),
+                json!({"remote_model":"remote"}),
+                [1, 1, 3],
+            ),
+            (
+                "0.18.0",
+                json!({"models":[{"name":MODEL,"digest":"wrong"}]}),
+                pinned_info(),
+                [1, 1, 4],
+            ),
+            (
+                "0.18.0",
+                pinned_tags(),
+                json!({"details":{"family":"other"}}),
+                [1, 1, 4],
+            ),
+            (
+                "0.18.0",
+                json!({"bad":"synthetic metadata"}),
+                pinned_info(),
+                [1, 1, 5],
+            ),
+        ] {
+            let router = Router::new()
+                .route(
+                    "/api/version",
+                    get(move || async move { Json(json!({"version":version})) }),
+                )
+                .route("/api/tags", get(move || async move { Json(tags) }))
+                .route(
+                    "/api/show",
+                    post(move |Json(request): Json<Value>| async move {
+                        assert_eq!(request, json!({"model":"qwen3:4b-instruct:local"}));
+                        Json(info)
+                    }),
+                )
+                // Any chat, generate, pull, process launch or warm-up would fail
+                // the successful case. Only these metadata endpoints exist.
+                .fallback(forbidden_route);
+            let (endpoint, task) = serve(router).await;
+            let report = inspect_pinned_model(&http(&endpoint)).await;
+            assert_eq!([report.daemon, report.version, report.model], expected);
+            task.abort();
+        }
+        let report = inspect_pinned_model(&http("http://127.0.0.1:1")).await;
+        assert_eq!([report.daemon, report.version, report.model], [2, 0, 0]);
     }
 
     fn line(content: &str, done: bool) -> String {
