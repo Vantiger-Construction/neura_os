@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:neuro_companion/modules/chat/neura_chat_screen.dart';
 import 'package:neuro_companion/neura_shell/neura_shell_state.dart';
@@ -45,6 +46,23 @@ class _LocalInput implements NeuraSpeechInput {
     await transcripts.close();
     await finals.close();
     await statuses.close();
+  }
+}
+
+class _BorrowedTts extends FlutterTts {
+  final spoken = <String>[];
+  int stops = 0;
+
+  @override
+  Future<dynamic> speak(String text, {bool focus = false}) async {
+    spoken.add(text);
+    return 1;
+  }
+
+  @override
+  Future<dynamic> stop() async {
+    stops++;
+    return 1;
   }
 }
 
@@ -108,15 +126,18 @@ void main() {
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   });
 
-  Future<void> pumpChat(WidgetTester tester, {bool startup = true}) async {
+  Future<void> pumpChat(WidgetTester tester,
+      {bool startup = true, NeuraTtsService? ttsService}) async {
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     input = _LocalInput();
     shell = NeuraShellState();
     await tester.pumpWidget(NeuraShellScope(
         notifier: shell,
         child: MaterialApp(
-            home:
-                NeuraChatScreen(startWithVoice: startup, speechInput: input))));
+            home: NeuraChatScreen(
+                startWithVoice: startup,
+                speechInput: input,
+                ttsService: ttsService))));
     await tester.pumpAndSettle();
     await tester.runAsync(() async {});
     await tester.pump();
@@ -195,6 +216,32 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   }
+
+  startupTest('startup uses borrowed TTS and stops without disposing its owner',
+      (tester) async {
+    final native = _BorrowedTts();
+    final borrowed = NeuraTtsService.forTesting(native);
+    try {
+      await pumpChat(tester, ttsService: borrowed);
+      expect(native.spoken, hasLength(1));
+      expect(spoken, isEmpty,
+          reason: 'The process TTS service is not this turn owner.');
+      expect(input.starts, 0);
+      await native.platformCallHandler(const MethodCall('speak.onComplete'));
+      await tester.pump();
+      expect(input.starts, 1);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      expect(input.isListening, isFalse);
+      expect(native.stops, greaterThan(0));
+      expect(borrowed.playbackAllowed, isTrue,
+          reason: 'The caller retains ownership of the injected service.');
+    } finally {
+      final disposing = borrowed.dispose();
+      await tester.pump();
+      await disposing;
+    }
+  });
 
   startupTest('ordinary chat stays silent even with startup opt-in',
       (tester) async {
