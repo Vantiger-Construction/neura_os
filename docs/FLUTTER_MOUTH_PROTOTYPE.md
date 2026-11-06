@@ -1,5 +1,11 @@
 # Visible local-speech prototype
 
+The portrait is now also selectable in the main app; see
+[Expressive face in the app](EXPRESSIVE_AVATAR.md) for current selection,
+startup restoration and device checks. The original preview route remains
+available as **Settings → Choose Avatar → Try local speech**. The historical
+integration details below describe the initial prototype, not the current head.
+
 This opt-in Flutter renderer draws an independently moving mouth using the
 existing Windows SAPI visemes from PR #158. It adds no package, native plugin,
 asset download, model, cloud request or microphone activation. It is a synthetic
@@ -12,7 +18,7 @@ their existing behavior. This work must receive independent review before merge.
 1. Build this feature together with the pinned conversation/motion sources below,
    or use a reviewed build containing all four features. Record the commit/tree,
    build identity, Windows version, installed SAPI voice and audio output device.
-2. Open **Settings → Select Avatar → Neura speech prototype**. This opens a
+2. Open **Settings → Choose Avatar → Try local speech**. This opens a
    dedicated preview with synthetic artwork; opening it starts no speech or
    microphone. The selected main avatar and floating mascot retain their art.
 3. Press **Play local sample** to hear a fixed local sample through the existing

@@ -8,7 +8,7 @@ class AvatarSpec {
   final String name;
   final AvatarFormat format;
 
-  /// Primary asset path (e.g. assets/rive/neura.riv, assets/animations/neura_idle.json)
+  /// Primary asset path; empty for the built-in [AvatarFormat.flutterFace].
   final String assetPath;
 
   /// Optional fallback asset path. If missing or fails to load, we fall back to a built-in placeholder.

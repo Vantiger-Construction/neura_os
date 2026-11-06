@@ -8,6 +8,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../../avatar/conversation_presence_signal.dart';
+import '../../avatar/avatar_globals.dart';
+import '../../avatar/avatar_registry.dart';
+import '../../avatar/avatar_view.dart';
 import '../../encrypted_memory/companion_memory_service.dart';
 import '../../modules/memory/memory_screen.dart';
 import '../../reference/neura_reference_shelf_screen.dart';
@@ -1918,7 +1921,31 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       ),
       body: Column(
         children: [
-          NeuraActivityBadge(offline: _localOllama || _localSelected),
+          ValueListenableBuilder<String>(
+            valueListenable: AvatarGlobals.service.selectedAvatarId,
+            child: NeuraActivityBadge(offline: _localOllama || _localSelected),
+            builder: (_, id, badge) {
+              if (id != AvatarRegistry.expressiveFaceId) return badge!;
+              // Chat covers the navigation stage. Keep the selected face
+              // visible beside its existing activity label on this route.
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AvatarView(
+                      spec: AvatarRegistry.byId(id),
+                      controller: AvatarGlobals.controller,
+                      size: 96,
+                      showAura: false,
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(child: badge!),
+                  ],
+                ),
+              );
+            },
+          ),
           if (_localOllama && _thread.enabled)
             InputChip(
                 label: const Text('Temporary conversation thread on'),

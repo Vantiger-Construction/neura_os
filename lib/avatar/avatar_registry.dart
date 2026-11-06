@@ -6,8 +6,15 @@ import 'avatar_types.dart';
 /// Swap assets freely without changing code elsewhere.
 class AvatarRegistry {
   static const String defaultAvatarId = 'neura';
+  static const String expressiveFaceId = 'neura_expressive';
 
   static final List<AvatarSpec> _avatars = [
+    const AvatarSpec(
+      id: expressiveFaceId,
+      name: 'Neura expressive face',
+      format: AvatarFormat.flutterFace,
+      assetPath: '', // This renderer paints its own mouth-free portrait.
+    ),
     AvatarSpec(
       id: 'neura',
       name: 'Neura',

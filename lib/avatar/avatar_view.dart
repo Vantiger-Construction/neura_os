@@ -5,6 +5,8 @@ import 'avatar_asset.dart';
 import 'avatar_controller.dart';
 import 'avatar_types.dart';
 import 'motion/neura_animated_body.dart';
+import 'motion/neura_motion.dart';
+import 'renderers/flutter_mouth_avatar_view.dart';
 import 'renderers/lottie_avatar_view.dart';
 import 'renderers/rive_avatar_view.dart';
 import 'renderers/sprite_avatar_view.dart';
@@ -95,6 +97,9 @@ class _AvatarViewState extends State<AvatarView> {
     // Capture the spec for this attempt. A later selection has its own future;
     // an old in-flight asset probe must not resolve using the new widget's spec.
     final spec = widget.spec;
+    if (spec.format == AvatarFormat.flutterFace) {
+      return const _Resolved(AvatarFormat.flutterFace, '');
+    }
     // Primary
     if (await AssetGuard.exists(spec.assetPath)) {
       return _Resolved(spec.format, spec.assetPath);
@@ -169,6 +174,15 @@ class _AvatarViewState extends State<AvatarView> {
     Widget fallback,
   ) {
     switch (format) {
+      case AvatarFormat.flutterFace:
+        return ValueListenableBuilder<bool>(
+          valueListenable: NeuraMotion.instance.live,
+          builder: (_, live, __) => FlutterMouthAvatarView(
+            controller: controller,
+            size: size,
+            enabled: live,
+          ),
+        );
       case AvatarFormat.rive:
         final adjusted = (path == spec.assetPath)
             ? spec
