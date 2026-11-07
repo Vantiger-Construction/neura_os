@@ -117,6 +117,7 @@ class _LocalProfileWorkspaceState extends State<LocalProfileWorkspace> {
   }
 
   Future<void> _wipe() async {
+    final epoch = _service.epoch;
     final approved = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -132,7 +133,7 @@ class _LocalProfileWorkspaceState extends State<LocalProfileWorkspace> {
                       onPressed: () => Navigator.pop(context, true),
                       child: const Text('Erase all local data'))
                 ]));
-    if (approved != true || !mounted) return;
+    if (approved != true || !mounted || epoch != _service.epoch) return;
     try {
       await NeuraDataWipeService.wipeAllLocalData();
       if (mounted) {
@@ -171,6 +172,14 @@ class _LocalProfileWorkspaceState extends State<LocalProfileWorkspace> {
                     'Selection is not a password or proof of identity. '
                     'Chats are temporary. Memories, journals, tools, sync and voice permissions '
                     'are unavailable in this first profile workspace.'),
+                const Card(
+                    child: Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Text(
+                            'Your existing journals, memories and other installation data are retained on this device. '
+                            'They remain unavailable in this workspace. Removing every profile or restarting keeps '
+                            'this workspace active. A safe return to the full app is still pending. '
+                            'Keep your saved data; erasing all local data deletes it permanently.'))),
                 if (_service.busy) const LinearProgressIndicator(),
                 if (_service.error != null) ...[
                   Text(_service.error!),
@@ -195,9 +204,16 @@ class _LocalProfileWorkspaceState extends State<LocalProfileWorkspace> {
                     onPressed:
                         _service.busy || !_service.loaded ? null : _create,
                     child: const Text('Add local profile')),
-                TextButton(
-                    onPressed: _service.busy ? null : _wipe,
-                    child: const Text('Erase all local Neura data')),
+                ExpansionTile(title: const Text('Data deletion'), children: [
+                  const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text(
+                          'This permanently deletes profiles and all retained installation data. '
+                          'It does not recover your ordinary Neura app with its saved data.')),
+                  TextButton(
+                      onPressed: _service.busy ? null : _wipe,
+                      child: const Text('Erase all local Neura data')),
+                ]),
               ]),
             ));
       });

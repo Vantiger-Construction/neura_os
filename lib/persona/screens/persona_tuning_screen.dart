@@ -56,37 +56,23 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
     );
   }
 
-  Future<void> _enableProfiles() async {
-    final approved = await showDialog<bool>(
+  Future<void> _showProfilesInfo() async {
+    await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(
-                title: const Text('Enable local profile workspace?'),
-                content: const Text(
-                    'This first version keeps saved styles separate and opens fresh text chats. '
-                    'It hides installation-wide journals, memories, tools, sync and voice controls. '
-                    'Existing data is retained but cannot be opened here. Profiles are not password-protected accounts. '
-                    'Returning to the full installation currently requires erasing all local Neura data. '
-                    'No existing personality or permissions are copied automatically.'),
+                title: const Text('Separate profile setup is paused'),
+                content: const SingleChildScrollView(
+                    child: Text(
+                        'The profile workspace keeps saved styles separate, but has no safe return to your full Neura app. '
+                        'Journals, memories, planning, room navigation and voice become unavailable there. '
+                        'Removing every profile or restarting still leaves that workspace active. '
+                        'New setup is paused to keep your current app and saved data accessible. '
+                        'You can continue personalizing Neura with the style controls here.')),
                 actions: [
                   TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Cancel')),
-                  FilledButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Enable local profiles'))
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Keep using my Neura'))
                 ]));
-    if (approved != true || !mounted) return;
-    setState(() => _saving = true);
-    final saved =
-        await LocalProfileService.instance.enable(directUserGesture: true);
-    if (mounted) {
-      setState(() => _saving = false);
-      if (!saved) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text(
-                'Profiles could not be enabled. Check secure storage and retry.')));
-      }
-    }
   }
 
   @override
@@ -122,9 +108,18 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
             ),
             const SizedBox(height: 12),
             if (!LocalProfileService.instance.enabled)
-              OutlinedButton(
-                  onPressed: _saving ? null : _enableProfiles,
-                  child: const Text('Set up separate local profiles')),
+              Card(
+                  child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(LocalProfileService.setupPausedMessage),
+                            TextButton(
+                                onPressed: _saving ? null : _showProfilesInfo,
+                                child:
+                                    const Text('About separate local profiles'))
+                          ]))),
             Wrap(
               spacing: 8,
               runSpacing: 8,
