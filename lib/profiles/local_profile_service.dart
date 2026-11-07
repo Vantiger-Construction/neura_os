@@ -79,6 +79,8 @@ class LocalProfileService extends ChangeNotifier with WidgetsBindingObserver {
       Future.wait(_owners.toList().map((owner) => owner.suspendForDataWipe()));
   static const modeKey = 'neura.local_profiles.enabled.v1';
   static const storageKey = 'neura.local_profiles.encrypted.v1';
+  static const setupPausedMessage =
+      'New profile setup is paused to keep your current Neura data accessible.';
   final Future<void> Function() _stopSession;
   final Set<VoidCallback> _sessionRevokers = {};
   List<LocalNeuraProfile> _profiles = const [];
@@ -231,29 +233,19 @@ class LocalProfileService extends ChangeNotifier with WidgetsBindingObserver {
     _loaded = true;
   }
 
-  /// Enabling is explicit and irreversible within this process. Existing
-  /// installation data is retained but its surfaces stay outside the workspace.
-  Future<bool> enable({required bool directUserGesture}) =>
-      _run((generation) async {
-        _requireGesture(directUserGesture);
-        final prefs = NeuraPrefsCache.prefs;
-        if (prefs.containsKey(modeKey) || prefs.containsKey(storageKey)) {
-          await _read();
-          return;
-        }
-        // Verify encryption first; do not silently fall back to plaintext.
-        await _crypto();
-        _enabled = true;
-        await lock();
-        // The encrypted empty registry is the first durable commit point.
-        // Rejected first writes can be retried without an orphaned mode flag.
-        await _write(const [], generation);
-        final saved = await prefs.setBool(modeKey, true);
-        await prefs.reload();
-        if (!saved || prefs.getBool(modeKey) != true) {
-          throw StateError('Profile mode could not be saved.');
-        }
-      });
+  /// New activation is held until an independently reviewed, owner-authorized
+  /// return can preserve installation data. A gesture cannot establish who owns
+  /// the retained records. Keep this guard at the service boundary as well as
+  /// in setup UI; no preference, build flag or testing override lifts the hold.
+  ///
+  /// Deliberately bypasses [_run]: even its failure cleanup would stop ordinary
+  /// sessions. Refusal must not acquire a key, write markers, revoke existing
+  /// permissions, or change an already-enabled workspace's session ownership.
+  Future<bool> enable({required bool directUserGesture}) {
+    error = setupPausedMessage;
+    notifyListeners();
+    return Future.value(false);
+  }
 
   Future<bool> create(
           {required String label,

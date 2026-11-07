@@ -4,31 +4,50 @@ This is an opt-in, restricted **text-chat workspace**, built on the existing
 persona prompt and Flutter motion implementation. It is not a set of accounts
 or a claim that Neura can authenticate different people sharing an OS login.
 
-## Try it
+## Current availability
 
-1. Open Settings → Neura's Personas → shared tone controls → Your Neura.
-2. Choose **Set up separate local profiles** and review the workspace limits.
-3. Enable the workspace, add up to eight uniquely labelled profiles, and choose
-   a starting style and age group for each. No existing installation style or
-   permission is copied. Select a profile explicitly before chatting.
-4. Use **Your Neura** to edit that profile's warmth, directness, humor, energy
+**New setup is paused.** The merged first version could make a valued
+installation's data inaccessible without offering a safe return. Your Neura
+now explains this restriction instead of offering activation. Its ordinary
+personality controls remain usable. `LocalProfileService.enable` also refuses
+activation without reading/writing storage, loading a key or stopping an
+existing session. There is no setting or build flag to lift this hold.
+
+This correction preserves existing profile installations. It does **not**
+provide a return to the ordinary application. Profile selection cannot prove
+ownership of the retained installation data. A safe implementation needs
+independently protected owner authorization and storage boundaries; see the
+[security review and transition requirements](LOCAL_PERSONALITY_PROFILES_SAFETY_REVIEW.md).
+
+## For installations already in profile mode
+
+1. Keep the installation, operating-system credential store and existing
+   backups intact if you need the retained data. Manual removal of profile
+   markers or downgrading to bypass the gate can expose private data; removing
+   the encryption key makes encrypted records unreadable.
+2. Select a profile explicitly before chatting. Existing workspaces support up
+   to eight uniquely labelled profiles, with a chosen starting style and age
+   group. No installation style or permission is copied.
+3. Use **Your Neura** to edit that profile's warmth, directness, humor, energy
    and depth. A draft applies only after a verified save. You can select another
    preset or edit the controls again to reverse a change.
-5. **End chat and switch profile** clears the session. Choose the next profile.
+4. **End chat and switch profile** clears the session. Choose the next profile.
    Backgrounding, Safe Mode, recovery and restart also require fresh selection.
-6. Remove a profile from the selector to delete its saved delivery preferences.
+5. Remove a profile from the selector to delete its saved delivery preferences.
    Recreating the same label creates a new random identifier.
 
-**Enabling is a significant, explicit choice.** The normal installation's
+The normal installation's
 journals, mood/history, vault, reference shelf, plans, tools, room navigation,
 voice controls, startup greeting and companion-memory surfaces are excluded.
 Existing installation data is retained, not imported or deleted. There is no
 return-to-installation control: independently protected identity boundaries
-have not been established. Returning to the normal installation currently
-requires an explicitly confirmed full local-data wipe and a restart. Do not
-enable this workspace on a valued installation until that tradeoff is acceptable.
+have not been established. **Keep valuable data rather than erasing it to try
+to return.** Full local-data wipe is permanent deletion, not recovery or switching.
+Its existing explicit confirmation remains under **Data deletion**; cancellation
+or a changed session epoch prevents that dialog from authorizing a wipe.
 Removing the last profile leaves an empty selector; it never restores access
-to installation-wide private data.
+to installation-wide private data, including after a restart. The selector
+explains these limits without opening any retained private records.
 
 Local Ollama is selected by default and uses the existing explicitly configured,
 bounded Windows adapter. No model is downloaded or started by selection. On a
@@ -60,7 +79,11 @@ microphone or speech-output controls and inherits no voice opt-in.
 The encrypted registry uses `neura.local_profiles.encrypted.v1`, with a
 `neura.local_profiles.enabled.v1` sentinel. Either key keeps the workspace
 gate closed to installation navigation. The verified empty ciphertext is
-written before the sentinel so a rejected first write can be retried safely.
+written before the sentinel by the earlier activation flow. Such existing
+ciphertext-only installations remain gated and loadable. A false sentinel,
+missing registry or corrupt ciphertext never authorizes an installation return.
+New activation writes neither key; existing creation/edit/removal writes retain
+their serialization and readback verification.
 A stalled storage operation must drain before wipe can finish; a hung write is
 not a successful wipe. A shared registry with one installation key is **not**
 independent cryptographic separation among people. No shared persistent memory
@@ -93,6 +116,15 @@ are used. They verify:
 - Fresh cloud approval for each request; declined approval sends nothing.
 - The central full-local-data-wipe path removes registry ciphertext and the
   mocked OS-backed key, and rejects use through old profile handles.
+- New setup refusal preserves encrypted records, their existing key, ordinary
+  style controls and existing permission ownership. Refusal performs no storage
+  operations even when reads/writes fail, while backgrounded or in Safe Mode.
+- Empty-registry restart, a false sentinel, and ciphertext without a sentinel
+  retain the privacy gate. Cancelled or stale deletion dialogs leave all data
+  intact; deletion is never used to demonstrate return to the ordinary app.
+
+Existing-profile fixtures write synthetic encrypted registries to disposable
+storage to model the merged release. They use no production activation bypass.
 
 Run with the repository's pinned Flutter version:
 
