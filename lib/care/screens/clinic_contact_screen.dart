@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -8,16 +9,46 @@ import '../../intent_compiler/neura_action_graph.dart';
 import '../../reliability/safe_boot.dart';
 import '../models/clinic_contact_draft.dart';
 
-/// Local preparation and explicitly approved OS handoff only. No clinic API,
-/// phone audio, model, private-store read, persistence or automatic send.
-class ClinicContactScreen extends StatefulWidget {
-  const ClinicContactScreen({super.key});
+/// Clinic contact remains on hold pending an explicit maintainer decision.
+/// Normal construction never mounts the retained preparation workflow.
+class ClinicContactScreen extends StatelessWidget {
+  const ClinicContactScreen({super.key}) : _previewForTesting = false;
+
+  /// Keeps synthetic regression coverage of the deferred implementation.
+  /// This constructor cannot enable the workflow in profile or release builds.
+  @visibleForTesting
+  const ClinicContactScreen.previewForTesting({super.key})
+      : _previewForTesting = true;
+
+  final bool _previewForTesting;
 
   @override
-  State<ClinicContactScreen> createState() => _ClinicContactScreenState();
+  Widget build(BuildContext context) {
+    if (kDebugMode && _previewForTesting) {
+      return const _ClinicContactPreview();
+    }
+    return Scaffold(
+      appBar: AppBar(title: const Text('Doctor & clinic')),
+      body: const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('Clinic contact is on hold. '
+            'Preparing clinic drafts and opening clinic portals or phone apps '
+            'from this workflow are unavailable.'),
+      ),
+    );
+  }
 }
 
-class _ClinicContactScreenState extends State<ClinicContactScreen>
+/// Local preparation and explicitly approved OS handoff only. No clinic API,
+/// phone audio, model, private-store read, persistence or automatic send.
+class _ClinicContactPreview extends StatefulWidget {
+  const _ClinicContactPreview();
+
+  @override
+  State<_ClinicContactPreview> createState() => _ClinicContactPreviewState();
+}
+
+class _ClinicContactPreviewState extends State<_ClinicContactPreview>
     with WidgetsBindingObserver {
   final _form = GlobalKey<FormState>();
   final _person = TextEditingController();
@@ -71,12 +102,26 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
     });
   }
 
-  void _dismissReview() {
+  void _dismissReview({bool afterUnmount = false}) {
     _reviewTimer?.cancel();
     _reviewTimer = null;
     final route = _reviewRoute;
     _reviewRoute = null;
-    if (route != null && route.isActive) route.navigator?.removeRoute(route);
+    if (route == null) return;
+    void removeReview() {
+      final navigator = route.navigator;
+      if (navigator != null && navigator.mounted && route.isActive) {
+        navigator.removeRoute(route);
+      }
+    }
+
+    if (afterUnmount) {
+      // Disposal may run while the navigator/overlay is locked. Remove only
+      // this screen's review after unmount, before the next rendered frame.
+      scheduleMicrotask(removeReview);
+    } else {
+      removeReview();
+    }
   }
 
   void _safeModeChanged() {
@@ -100,7 +145,7 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
   @override
   void dispose() {
     _epoch++;
-    _reviewTimer?.cancel();
+    _dismissReview(afterUnmount: true);
     WidgetsBinding.instance.removeObserver(this);
     SafeBoot.instance.safeMode.removeListener(_safeModeChanged);
     for (final controller in [_person, _clinic, _destination, _notes]) {

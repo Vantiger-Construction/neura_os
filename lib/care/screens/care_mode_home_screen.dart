@@ -5,7 +5,6 @@ import '../services/crisis_playbook_service.dart';
 import '../models/crisis_playbook.dart';
 import 'trusted_contacts_screen.dart';
 import 'crisis_playbook_detail_screen.dart';
-import 'clinic_contact_screen.dart';
 
 class CareModeHomeScreen extends StatefulWidget {
   const CareModeHomeScreen({super.key});
@@ -87,16 +86,6 @@ class _CareModeHomeScreenState extends State<CareModeHomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  ListTile(
-                    leading: const Icon(Icons.local_hospital_outlined),
-                    title: const Text('Doctor & clinic'),
-                    subtitle: const Text(
-                        'Prepare a message or call brief for your care team.'),
-                    onTap: () => Navigator.of(context).push<void>(
-                      MaterialPageRoute<void>(
-                          builder: (_) => const ClinicContactScreen()),
-                    ),
-                  ),
                   ListTile(
                     leading: const Icon(Icons.contacts),
                     title: const Text('Trusted Contacts'),
