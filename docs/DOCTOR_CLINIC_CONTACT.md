@@ -1,15 +1,37 @@
 # Doctor and clinic contact
 
+## Status: on hold; preparation and handoff unavailable
+
+[PR #187](https://github.com/Vantiger-Construction/neura_os/pull/187) merged
+on November 6, 2026 at 15:01:43 UTC even though its description retained the
+maintainer's instruction to leave it open as a draft for later. The merge is
+not evidence that the hold was lifted. The
+[hold and privacy audit](DOCTOR_CLINIC_CONTACT_AUDIT.md) records the discrepancy
+and the corrective access restriction.
+
+The Doctor & clinic entry points have been removed from Care Loop and Care
+Mode. Normal construction of `ClinicContactScreen` shows an on-hold notice
+without mounting the form, reading policy, accepting health details or opening
+an external application. Enabling the existing external-message permission
+does not lift this hold. No new preference, runtime switch or build define
+enables the feature. The retained implementation is reachable only through
+an explicitly named, debug-only test constructor, annotated `visibleForTesting`;
+that constructor also shows the hold notice in profile/release builds.
+Restoring application access requires a separately reviewed source change and
+an explicit maintainer decision. Existing sharing settings are not changed.
+
 The requested destination is both secure written communication and live calls
 in which Neura can speak with a person's own doctor or health clinic. These
-channels require real integrations. This change implements **local preparation
-and a reviewed handoff to the person's browser or phone app**. It does not
+channels require real integrations. The retained, deferred implementation
+provides **local preparation and a reviewed handoff to the person's browser
+or phone app**. It does not
 implement direct sending, clinic replies, patient authentication or an AI phone
 agent. No provider has been selected, subscribed to or contacted.
 
-## Available in this change
+## Deferred workflow (synthetic regression tests only)
 
-Open **Care Loop → Doctor & clinic**, or **Care Mode → Doctor & clinic**.
+The following describes the preserved workflow exercised by tests; these are
+not currently available application instructions.
 
 1. Enter your name, doctor/clinic name, purpose and the details you want to
    discuss. Choose **Portal message** or **Phone call brief**.
@@ -32,7 +54,10 @@ Open **Care Loop → Doctor & clinic**, or **Care Mode → Doctor & clinic**.
 
 The portal link contains no automatically attached patient name, message, notes,
 headers or authentication. The browser makes a normal visit to the address you
-entered. The phone link contains only the normalized number. The phone app may
+entered, including its path. A manually entered path can itself contain sensitive
+information; syntax validation does not prove clinic ownership or control DNS,
+redirects, browser cookies or the browser's network disclosures.
+The phone link contains only the normalized number. The phone app may
 place a call immediately; a `tel:` link is not an audio connection for Neura.
 An OS link handler may be unavailable on Windows or Android. The UI reports
 handoff failure without claiming delivery, a clinic response or an appointment.
@@ -52,16 +77,24 @@ the app clears the details and removes an open review. Transient inactivity
 invalidates and dismisses a review. Resuming cannot restore its approval. The
 screen owns its temporary controllers; closing it disposes them. There is no
 new file, preferences key, backup, log entry or companion-memory record.
+Removing the preparation route also dismisses its owned review dialog; it
+must not leave the person's details visible over another screen.
 This is application-state cleanup, not a guarantee of RAM zeroization or OS
 screenshot/clipboard deletion. Data a person copies or enters in another app
 is controlled by that app. The clinic draft is deliberately not restored after
 the browser opens and Neura backgrounds.
 
+Cancellation, background transitions and Safe Mode revoke approval before a
+handoff is dispatched and suppress stale application callbacks. After a reviewed
+link has already been passed to the OS, Neura cannot retract the browser visit,
+close that application, stop a phone call or erase its data. These protections
+must not be presented as cancellation of an external operation already started.
+
 This feature does not diagnose, prescribe, recommend medication changes or
 monitor emergencies. It passes along the person's own words and questions.
 Urgent care must not depend on a portal message or on Neura noticing a problem.
 
-## Next implementation: direct secure messages
+## Future requirements on hold: direct secure messages
 
 Select the first supported clinic/portal before implementing a transport.
 Verify its supported **patient-to-care-team messaging** interface and obtain
@@ -88,7 +121,7 @@ scope. Store any retained content encrypted under an authenticated owner's
 key, with revoke, wipe, retention and export behavior. Named personality
 preferences do not establish patient identity or record-access authority.
 
-## Next implementation: Neura speaking on live calls
+## Future requirements on hold: Neura speaking on live calls
 
 Select a telephone provider and approved deployment before adding call audio.
 The current local SAPI/Android speech paths do not bridge Neura into a phone
@@ -118,8 +151,16 @@ call and lifecycle acceptance; mocked link launches do not establish this.
 domains and mocked OS links. It covers local preparation, no preference writes,
 destination restrictions, exact URL/number handoff without patient payload,
 cancel, edited contact, policy changes, Safe Mode, background, inactivity,
-expiry, failure, late completion and the Care Loop entry point. It cannot
+expiry, failure, late completion and route disposal. It cannot
 establish real delivery, clinician acceptance, physical audio or installation.
+
+Hold regressions check the absence of entry points in both care screens, a
+blocked directly constructed screen even with external-message permission,
+and no automatic activation across background/resume or Safe Mode changes.
+The deferred tests use `ClinicContactScreen.previewForTesting()` in debug test
+execution. They retain all preparation and handoff safeguards, including late
+platform completions after background, Safe Mode, clearing or disposal. They
+do not enable a production route or authorize real patient communications.
 
 ## Primary technical references
 
