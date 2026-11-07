@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/core/memory/memory_crypto.dart';
+import 'package:neuro_companion/encrypted_memory/companion_memory_service.dart';
 import 'package:neuro_companion/persona/models/neura_audience.dart';
 import 'package:neuro_companion/persona/models/neura_persona_preset.dart';
 import 'package:neuro_companion/profiles/local_profile_service.dart';
@@ -10,13 +11,15 @@ import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 
 import '../helpers/companion_memory_fixture.dart';
+import '../helpers/local_profile_fixture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late CompanionMemoryFixture fixture;
   late LocalProfileService service;
   Future<void> seed() async {
-    expect(await service.enable(directUserGesture: true), isTrue);
+    await seedExistingLocalProfileRegistry();
+    expect(await service.load(), isTrue);
     for (final entry in [
       ('Alex', NeuraPersonaPreset.calm),
       ('Blair', NeuraPersonaPreset.playful)
@@ -37,22 +40,119 @@ void main() {
     addTearDown(service.dispose);
   });
 
-  test(
-      'a rejected first registry save can be retried without replacing other data',
+  test('new setup cannot strand existing encrypted records or change authority',
       () async {
+    await fixture.seed('Synthetic installation memory to preserve');
+    final permission = fixture.grant(CompanionMemoryUse.prompt);
+    final crypto = await MemoryCrypto.demo();
+    final encrypted =
+        await crypto.encryptJson({'text': 'Synthetic installation journal'});
+    final journal = await fixture.disk.seed(
+        '${fixture.disk.documents.path}/neura_memory/synthetic-journal',
+        encrypted);
+    await NeuraPrefsCache.prefs
+        .setString('neura_persona_profile_v1', 'Synthetic original style');
+    final preferences = Map.of(fixture.disk.preferences.data);
+    final secrets = Map.of(fixture.disk.secrets);
+    var stops = 0;
+    final blocked = LocalProfileService.forTesting(stopSession: () async {
+      stops++;
+    });
+    addTearDown(blocked.dispose);
+
+    expect(await blocked.enable(directUserGesture: true), isFalse);
+    expect(blocked.enabled, isFalse);
+    expect(blocked.active, isNull);
+    expect(stops, 0);
+    expect(fixture.disk.preferences.data, preferences);
+    expect(fixture.disk.secrets, secrets);
+    permission.requireCurrent();
+    expect(await journal.readAsString(), encrypted);
+    expect(await crypto.decryptJson(encrypted),
+        {'text': 'Synthetic installation journal'});
+    fixture.disk.expectIsolation();
+  });
+
+  test('a previously committed registry stays gated without its sentinel',
+      () async {
+    await seedExistingLocalProfileRegistry(withSentinel: false);
     await NeuraPrefsCache.prefs
         .setString('neura_persona_profile_v1', 'synthetic legacy preferences');
-    fixture.disk.preferences.refusedWrites
-        .add('flutter.${LocalProfileService.storageKey}');
+    final preferences = Map.of(fixture.disk.preferences.data);
     expect(await service.enable(directUserGesture: true), isFalse);
     expect(service.active, isNull);
+    expect(service.enabled, isTrue);
+    expect(fixture.disk.preferences.data, preferences);
     expect(NeuraPrefsCache.prefs.containsKey(LocalProfileService.modeKey),
         isFalse);
-    fixture.disk.preferences.refusedWrites.clear();
-    expect(await service.enable(directUserGesture: true), isTrue);
+    expect(await service.load(), isTrue);
     expect(service.profiles, isEmpty);
     expect(NeuraPrefsCache.prefs.getString('neura_persona_profile_v1'),
         'synthetic legacy preferences');
+  });
+
+  test('setup refusal never calls unavailable storage or stops ordinary owners',
+      () async {
+    final preferences = Map.of(fixture.disk.preferences.data);
+    final secrets = Map.of(fixture.disk.secrets);
+    var storageCalls = 0;
+    fixture.disk.preferences.beforeGetAll = () async {
+      storageCalls++;
+      throw StateError('Synthetic read failure');
+    };
+    fixture.disk.preferences.beforeSetValue = (_) async {
+      storageCalls++;
+      throw StateError('Synthetic write failure');
+    };
+    fixture.disk.preferences.beforeRemove = (_) async {
+      storageCalls++;
+      throw StateError('Synthetic removal failure');
+    };
+    addTearDown(() {
+      fixture.disk.preferences.beforeGetAll = null;
+      fixture.disk.preferences.beforeSetValue = null;
+      fixture.disk.preferences.beforeRemove = null;
+    });
+    var stops = 0;
+    final blocked = LocalProfileService.forTesting(stopSession: () async {
+      stops++;
+    });
+    addTearDown(blocked.dispose);
+    final epoch = blocked.epoch;
+    for (final gesture in [false, true]) {
+      expect(await blocked.enable(directUserGesture: gesture), isFalse);
+    }
+    blocked.didChangeAppLifecycleState(AppLifecycleState.paused);
+    expect(await blocked.enable(directUserGesture: true), isFalse);
+    blocked.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    SafeBoot.instance.safeMode.value = true;
+    expect(await blocked.enable(directUserGesture: true), isFalse);
+    SafeBoot.instance.safeMode.value = false;
+    SafeBoot.instance.restartRequired.value = true;
+    expect(await blocked.enable(directUserGesture: true), isFalse);
+    SafeBoot.instance.restartRequired.value = false;
+    expect(blocked.enabled, isFalse);
+    expect(blocked.epoch, epoch);
+    expect(blocked.error, LocalProfileService.setupPausedMessage);
+    expect(stops, 0);
+    expect(storageCalls, 0);
+    expect(fixture.disk.preferences.data, preferences);
+    expect(fixture.disk.secrets, secrets);
+  });
+
+  test('setup hold preserves an already-selected workspace session', () async {
+    await seed();
+    await service.select(service.profiles.first.id, directUserGesture: true);
+    final active = service.active;
+    final epoch = service.epoch;
+    final preferences = Map.of(fixture.disk.preferences.data);
+    final secrets = Map.of(fixture.disk.secrets);
+    expect(await service.enable(directUserGesture: true), isFalse);
+    expect(service.active, same(active));
+    expect(service.epoch, epoch);
+    expect(service.canUseSession, isTrue);
+    expect(fixture.disk.preferences.data, preferences);
+    expect(fixture.disk.secrets, secrets);
   });
 
   test(
@@ -196,6 +296,49 @@ void main() {
     expect(service.profiles.last.id, isNot(alex.id));
     await service.load();
     expect(service.profiles.first.persona.toMap(), blair.persona.toMap());
+  });
+
+  test('removing the final profile preserves the gate and existing ciphertext',
+      () async {
+    await fixture.seed('Synthetic retained installation memory');
+    final preferences = Map.of(fixture.disk.preferences.data);
+    final secrets = Map.of(fixture.disk.secrets);
+    await seed();
+    final removedIds = service.profiles.map((p) => p.id).toList();
+    for (final id in removedIds) {
+      expect(await service.remove(id, directUserGesture: true), isTrue);
+    }
+    expect(service.enabled, isTrue);
+    expect(service.profiles, isEmpty);
+    for (final entry in preferences.entries) {
+      expect(fixture.disk.preferences.data[entry.key], entry.value);
+    }
+    expect(fixture.disk.secrets, secrets);
+    final restarted = LocalProfileService.forTesting(stopSession: () async {});
+    addTearDown(restarted.dispose);
+    expect(await restarted.load(), isTrue);
+    expect(restarted.enabled, isTrue);
+    expect(restarted.profiles, isEmpty);
+    expect(restarted.active, isNull);
+    for (final id in removedIds) {
+      expect(await restarted.select(id, directUserGesture: true), isFalse);
+    }
+    expect(await restarted.enable(directUserGesture: true), isFalse);
+    expect(restarted.enabled, isTrue);
+  });
+
+  test('a false sentinel with missing ciphertext remains locked after restart',
+      () async {
+    await NeuraPrefsCache.prefs.setBool(LocalProfileService.modeKey, false);
+    expect(await service.load(), isFalse);
+    expect(service.enabled, isTrue);
+    expect(service.active, isNull);
+    expect(await service.enable(directUserGesture: true), isFalse);
+    expect(await service.load(), isFalse);
+    expect(service.enabled, isTrue);
+    expect(NeuraPrefsCache.prefs.getBool(LocalProfileService.modeKey), isFalse);
+    expect(NeuraPrefsCache.prefs.containsKey(LocalProfileService.storageKey),
+        isFalse);
   });
 
   test(
