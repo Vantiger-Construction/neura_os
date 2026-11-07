@@ -31,6 +31,7 @@ import 'package:neuro_companion/src/core/data_wipe_service.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 
 import '../helpers/companion_memory_fixture.dart';
+import '../helpers/local_profile_fixture.dart';
 
 class _Credentials implements NeuraModelCredentialStorage {
   final _values = <String, String>{};
@@ -80,8 +81,11 @@ void main() {
       (tester) async {
     final fixture = await tester.runAsync(CompanionMemoryFixture.create);
     final disk = fixture!.disk;
-    final service = LocalProfileService.instance;
+    late final LocalProfileService service;
     await tester.runAsync(() async {
+      // Construct asynchronous owners in the real-I/O zone; their queues must
+      // also drain inside runAsync during restoration and central wipe.
+      service = LocalProfileService.instance;
       await fixture.seed('Synthetic installation-owner secret');
       await NeuraPrefsCache.prefs.setString('neura_current_mood_v1', 'tired');
     });
@@ -120,7 +124,10 @@ void main() {
             child: Text('Synthetic legacy installation data'))));
     expect(find.text('Synthetic legacy installation data'), findsOneWidget);
     await tester.runAsync(() async {
-      expect(await service.enable(directUserGesture: true), isTrue);
+      // Simulate an existing registry from the merged release. New activation
+      // is held in production; restoration still removes the ordinary routes.
+      await seedExistingLocalProfileRegistry();
+      expect(await service.load(), isTrue);
       for (final entry in [
         ('Alex', NeuraPersonaPreset.calm),
         ('Blair', NeuraPersonaPreset.playful)
