@@ -136,6 +136,10 @@ void main() {
       }
       owned.add(await f.seed('${f.documents.path}/sleep_123.m4a'));
       owned.add(await f.seed('${f.support.path}/neura/memory/private.enc'));
+      for (final suffix in ['', '.tmp', '.previous']) {
+        owned.add(await f.seed(
+            '${f.support.path}/neura/backups/vault-scheduled.neurabackup$suffix'));
+      }
       owned.add(await f.seed(f.bootstrapPath));
       owned.add(await f.seed('${f.bootstrapPath}.old'));
       const tempNames = [
