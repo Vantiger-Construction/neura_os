@@ -6,6 +6,7 @@ on:
     paths:
       - 'tools/startup_voice_diagnostics/**'
       - 'docs/STARTUP_VOICE_DIAGNOSTICS.md'
+      - 'docs/WINDOWS_FIRST_ACCEPTANCE.md'
       - '.github/workflows/neura-startup-voice-diagnostics.yml'
   push:
     branches: [Neura]
@@ -30,6 +31,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
@@ -41,7 +43,48 @@ jobs:
         run: |
           $tokens = $null
           $errors = $null
-          $path = Join-Path $env:GITHUB_WORKSPACE 'tools\startup_voice_diagnostics\Test-WindowsPrerequisites.ps1'
-          [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) > $null
-          if ($errors.Count -ne 0) { throw 'Windows PowerShell parsing failed.' }
+          Get-ChildItem tools/startup_voice_diagnostics -Filter *.ps1 | ForEach-Object {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) > $null
+            if ($errors.Count -ne 0) { throw 'Windows PowerShell parsing failed.' }
+          }
           Write-Host 'Syntax only. No SAPI voice, recognizer, microphone or application was opened.'
+
+      - name: Assemble the identified diagnostic kit
+        if: runner.os == 'Linux'
+        env:
+          CANDIDATE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python - <<'PYKIT'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import zipfile
+          head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          if head != os.environ['CANDIDATE_HEAD']:
+              raise SystemExit('Diagnostic checkout differs from the requested candidate')
+          root = Path('tools/startup_voice_diagnostics')
+          files = [p for p in root.rglob('*') if p.is_file() and '__pycache__' not in p.parts]
+          files += [Path('docs/WINDOWS_FIRST_ACCEPTANCE.md')]
+          receipt = {
+              'schema': 1, 'candidate_head': head,
+              'candidate_tree': subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip(),
+              'application_baseline': 'bd109787b6654f3a4371d6c7413f826fb3717be8',
+              'hardware_acceptance': 'NOT RUN', 'release_approval': 'NOT GRANTED',
+              'files': [{'path': str(p), 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(files)],
+          }
+          with zipfile.ZipFile('Neura-Conversation-Acceptance.zip', 'w', zipfile.ZIP_DEFLATED) as bundle:
+              for path in sorted(files):
+                  bundle.write(path, str(path))
+              bundle.writestr('CANDIDATE.json', json.dumps(receipt, indent=2))
+          PYKIT
+      - name: Preserve the prepared kit without device observations
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: neura-conversation-acceptance-${{ github.event.pull_request.head.sha || github.sha }}
+          path: Neura-Conversation-Acceptance.zip
+          if-no-files-found: error
+          retention-days: 14
