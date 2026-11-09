@@ -194,3 +194,48 @@ Disabling backups persists a pending passphrase-removal marker before deleting
 the secret. If deletion fails, backups remain disabled and the settings dialog
 offers an explicit retry, including after restart. Deletion must be verified
 before that marker clears; full-data wipe removes and verifies the marker too.
+
+### Migration and interrupted-backup recovery follow-up
+
+The follow-up correction preserves both copies when legacy and secure vault
+seeds disagree, including an interrupted migration with no marker. It refuses
+to generate a replacement key beside existing v2 ciphertext, including the
+internal legacy-PIN migration path. Existing records must authenticate before
+that path creates a verifier. The secure-storage version, Android migration
+options, namespaces, encryption parameters and key names are unchanged.
+
+After successful authentication, the secure-seed marker is read back from
+durable preferences. Legacy seed, plaintext PIN and v1 ciphertext removals are
+also read back and retried after reopening. The v1 ciphertext is removed only
+after its records are represented in authenticated v2 storage; divergent copies
+are preserved for explicit recovery. An unconfirmed cleanup is an error, not a
+successful migration. This does not resolve a genuinely missing OS key.
+
+Scheduled backups verify the bytes read from the temporary file before moving
+the current file to `.previous`, then verify the promoted file before removing
+that recovery copy. Valid interrupted promotions resume on a later due run.
+Invalid or differently encrypted remnants remain untouched and report failure;
+do not delete them to force an automatic retry. All three files stay in the
+app-owned backup directory and participate in the existing writer drain and
+full-data wipe. This is a recoverable multi-step replacement, not a guarantee
+of filesystem atomicity or survival of arbitrary power loss.
+
+Retrying a conflicting restore recognizes an identical `_recovered_N` copy,
+including after reopening or an admitted write whose result was uncertain.
+Distinct versions and entries under unrelated IDs remain separate. The existing
+revocable restore permission and serialized vault queue still apply.
+
+Synthetic regression coverage is in `vault_migration_recovery_test.dart` and
+`scheduled_backup_recovery_test.dart`, alongside the existing restore, PIN,
+permission, cancellation and full-wipe tests. Injected failures cover marker
+writes, refused/ignored removals, missing or conflicting keys, interrupted
+backup writes/reads/renames/cleanup, recovery after reopening, and wipe during
+promotion. They do not establish native secure-storage migration acceptance.
+
+Keep the follow-up in draft pending independent review and applicable checks.
+Physical acceptance remains unfinished on disposable installations on Windows
+and the Samsung SM-S366V: v9-to-v10, skipped application versions, previously
+migrated v10/v11 previews, credential-store interruptions, PIN changes,
+interrupted backup replacement and repeated full wipe. Use synthetic records
+and independently verified disposable backups only. Never use existing personal
+encrypted records for migration experiments or infer release approval from CI.

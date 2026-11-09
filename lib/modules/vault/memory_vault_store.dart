@@ -150,6 +150,13 @@ class MemoryVaultStore implements VaultItemSource {
       }
 
       _checkAccess();
+      final legacySeed = sp.getString(_keySeed)?.trim();
+      if (_isValidSeed(legacySeed) &&
+          _isValidSeed(secureSeed) &&
+          legacySeed != secureSeed) {
+        throw StateError('Conflicting vault keys require recovery. '
+            'Both keys and existing records were preserved.');
+      }
       if (expectsSecureSeed) {
         if (!_isValidSeed(secureSeed)) {
           throw StateError(
@@ -160,18 +167,24 @@ class MemoryVaultStore implements VaultItemSource {
         return secureSeed!;
       }
 
-      final legacySeed = sp.getString(_keySeed)?.trim();
+      if (legacySeed != null && !_isValidSeed(legacySeed)) {
+        throw StateError('The legacy vault key requires recovery.');
+      }
+      if (secureSeed != null && !_isValidSeed(secureSeed)) {
+        throw StateError('The secure vault key requires recovery.');
+      }
       if (_isValidSeed(legacySeed)) {
         try {
-          await _secureStorage.write(key: _keySeedSecure, value: legacySeed!);
+          if (secureSeed == null) {
+            await _secureStorage.write(key: _keySeedSecure, value: legacySeed!);
+          }
           final verified =
               (await _secureStorage.read(key: _keySeedSecure))?.trim();
           if (verified != legacySeed) {
             throw StateError('The secure vault key could not be verified.');
           }
           _checkAccess();
-          await sp.setBool(_keySeedSecureMarker, true);
-          await sp.remove(_keySeed);
+          // Authentication must succeed before deleting the legacy copy.
           return verified!;
         } catch (e, st) {
           await AppLog.instance
@@ -186,8 +199,6 @@ class MemoryVaultStore implements VaultItemSource {
       // A secure write may have completed immediately before its marker.
       if (_isValidSeed(secureSeed)) {
         _checkAccess();
-        await sp.setBool(_keySeedSecureMarker, true);
-        await sp.remove(_keySeed);
         return secureSeed!;
       }
 
@@ -208,8 +219,6 @@ class MemoryVaultStore implements VaultItemSource {
           throw StateError('The secure vault key could not be verified.');
         }
         _checkAccess();
-        await sp.setBool(_keySeedSecureMarker, true);
-        await sp.remove(_keySeed);
         return verified!;
       } catch (e, st) {
         try {
@@ -224,6 +233,30 @@ class MemoryVaultStore implements VaultItemSource {
         );
       }
     });
+  }
+
+  // Called only after ciphertext has authenticated with this exact seed.
+  // A failed cleanup stays visible and is retried on the next successful read.
+  Future<void> _confirmSeedMigration(String seed) async {
+    _checkAccess();
+    final sp = NeuraPrefsCache.prefs;
+    final legacy = sp.getString(_keySeed);
+    if (legacy != null && legacy.trim() != seed) {
+      throw StateError('The legacy vault key requires recovery.');
+    }
+    if (sp.getBool(_keySeedSecureMarker) != true) {
+      try {
+        await sp.setBool(_keySeedSecureMarker, true);
+      } catch (_) {
+        // Readback distinguishes rejected writes from misreported success.
+      }
+      await sp.reload();
+      _checkAccess();
+      if (sp.getBool(_keySeedSecureMarker) != true) {
+        throw StateError('Vault key migration could not be confirmed.');
+      }
+    }
+    if (legacy != null) await _writeString(_keySeed, null);
   }
 
   static bool _isValidSeed(String? value) {
@@ -318,6 +351,7 @@ class MemoryVaultStore implements VaultItemSource {
         );
 
         final clear = await alg.decrypt(box, secretKey: key);
+        await _confirmSeedMigration(seed);
         return utf8.decode(clear);
       } catch (e, st) {
         await AppLog.instance.caught('vault_v2_decrypt_failed', e, st);
@@ -354,8 +388,21 @@ class MemoryVaultStore implements VaultItemSource {
 
     final legacyPin = sp.getString(_keyPinLegacy);
     if (legacyPin != null && legacyPin.trim().isNotEmpty) {
-      await _configurePin(legacyPin.trim());
-      await sp.remove(_keyPinLegacy);
+      final pin = legacyPin.trim();
+      // This internal path intentionally supports old installations, but must
+      // not manufacture a replacement key beside orphaned v2 ciphertext.
+      for (final key in [_keyData, _keyDataLegacy]) {
+        final blob = sp.getString(key);
+        if (blob == null) continue;
+        final clear = await _decryptJson(blob, pin: pin);
+        if (clear == null) {
+          throw StateError('Existing vault records require recovery.');
+        }
+        decodeVaultItems(clear, strict: true);
+      }
+      await _configurePin(pin);
+      // Migrate/verify records before removing the last legacy PIN copy.
+      await _readItems(pin: pin);
       await AppLog.instance.info('vault_event', {
         'msg': 'Vault PIN migrated to verifier (no PIN stored).',
       });
@@ -385,6 +432,9 @@ class MemoryVaultStore implements VaultItemSource {
     final enc = await _encryptJson(_verifierPlain, pin: pin.trim());
     _checkAccess();
     await _writeString(_keyPinVerifier, enc);
+    if (await _decryptJson(enc, pin: pin.trim()) != _verifierPlain) {
+      throw StateError('Vault PIN migration could not be confirmed.');
+    }
   }
 
   Future<void> _writeString(String key, String? value) async {
@@ -446,10 +496,15 @@ class MemoryVaultStore implements VaultItemSource {
     if (verifier == null || verifier.trim().isEmpty) return false;
     final clear = await _decryptJson(verifier, pin: pin.trim());
     if (clear == null) return false;
-    return _constantTimeEquals(
+    final valid = _constantTimeEquals(
       Uint8List.fromList(utf8.encode(clear)),
       Uint8List.fromList(utf8.encode(_verifierPlain)),
     );
+    if (valid &&
+        (sp.containsKey(_keyPinLegacy) || sp.containsKey(_keyDataLegacy))) {
+      await _readItems(pin: pin);
+    }
+    return valid;
   }
 
   @override
@@ -468,7 +523,23 @@ class MemoryVaultStore implements VaultItemSource {
         throw StateError(
             'The vault could not be decrypted. Existing data was preserved.');
       }
-      return decodeVaultItems(clear, strict: true);
+      final items = decodeVaultItems(clear, strict: true);
+      final legacy = sp.getString(_keyDataLegacy);
+      if (legacy != null) {
+        final oldClear = await _decryptJson(legacy, pin: pin);
+        if (oldClear == null) {
+          throw StateError('Legacy vault cleanup requires recovery.');
+        }
+        final oldItems = decodeVaultItems(oldClear, strict: true);
+        if (oldItems.any((old) =>
+            !items.any((item) => item.id == old.id && _sameItem(item, old)))) {
+          throw StateError('Conflicting vault records require recovery. '
+              'Both copies were preserved.');
+        }
+        await _writeString(_keyDataLegacy, null);
+      }
+      await _cleanupLegacyPin(pin);
+      return items;
     }
     final legacy = sp.getString(_keyDataLegacy);
     if (legacy != null) {
@@ -478,10 +549,28 @@ class MemoryVaultStore implements VaultItemSource {
       final items = decodeVaultItems(clear, strict: true);
       await _save(items, pin: pin);
       _checkAccess();
-      await sp.remove(_keyDataLegacy);
+      // Authenticate the durable replacement before removing the old blob.
+      final saved = await _decryptJson(sp.getString(_keyData)!, pin: pin);
+      if (saved != encodeVaultItems(items)) {
+        throw StateError('Legacy vault migration could not be confirmed.');
+      }
+      await _writeString(_keyDataLegacy, null);
+      await _cleanupLegacyPin(pin);
       return items;
     }
+    await _cleanupLegacyPin(pin);
     return <VaultItem>[];
+  }
+
+  Future<void> _cleanupLegacyPin(String pin) async {
+    final sp = NeuraPrefsCache.prefs;
+    if (!sp.containsKey(_keyPinLegacy)) return;
+    final verifier = sp.getString(_keyPinVerifier);
+    if (verifier == null ||
+        await _decryptJson(verifier, pin: pin.trim()) != _verifierPlain) {
+      throw StateError('Vault PIN cleanup requires recovery.');
+    }
+    await _writeString(_keyPinLegacy, null);
   }
 
   Future<void> _save(List<VaultItem> items, {required String pin}) async {
@@ -609,7 +698,6 @@ class MemoryVaultStore implements VaultItemSource {
           for (final item in current) item.id: item,
         };
         var importedCount = 0;
-        var collisionIndex = 0;
 
         for (final item in imported) {
           if (item.id.trim().isEmpty) {
@@ -623,10 +711,23 @@ class MemoryVaultStore implements VaultItemSource {
           }
           if (_sameItem(existing, item)) continue;
 
+          final prefix = '${item.id}_recovered_';
+          // Search all prior conflict copies, including gaps left by deletion.
+          // Do not deduplicate unrelated IDs or deliberately repeated content.
+          final alreadyRecovered = byId.values.any((candidate) {
+            if (!candidate.id.startsWith(prefix)) return false;
+            final suffix = candidate.id.substring(prefix.length);
+            final number = int.tryParse(suffix);
+            return number != null &&
+                number > 0 &&
+                number.toString() == suffix &&
+                _sameItem(candidate, item);
+          });
+          if (alreadyRecovered) continue;
+          var collisionIndex = 0;
           String recoveredId;
           do {
-            collisionIndex++;
-            recoveredId = '${item.id}_recovered_$collisionIndex';
+            recoveredId = '$prefix${++collisionIndex}';
           } while (byId.containsKey(recoveredId));
           byId[recoveredId] = VaultItem(
             id: recoveredId,
