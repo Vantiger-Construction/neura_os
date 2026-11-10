@@ -431,3 +431,10 @@ package source. They reproduce the stale pin before the correction and pass
 after it. The native security job runs them before extraction. These are source
 composition checks; a fresh hosted Windows build, SDK tests and complete CodeQL
 extraction remain required. They do not establish physical-device acceptance.
+
+The first hosted follow-up, [run 42788098564](https://github.com/Vantiger-Construction/neura_os/actions/runs/42788098564),
+accepted the new source pin and rejected both unreviewed inputs, but exposed a
+test portability error: CMake `file(WRITE)` emits CRLF on Windows. The test now
+normalizes generated text before exact comparison and hashing, matching the
+existing receipt's normalized in-memory source hashes. Production patching and
+source-drift rejection are unchanged by that test correction.

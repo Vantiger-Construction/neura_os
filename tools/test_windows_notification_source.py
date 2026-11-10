@@ -55,7 +55,10 @@ class NotificationSourceTests(unittest.TestCase):
     def assert_corrected(self, contents):
         result, output = self.run_correction(contents)
         self.assertEqual(result.returncode, 0, result.stderr)
-        compiled = (output / 'plugin.cpp').read_bytes()
+        # CMake file(WRITE) uses text mode: Windows emits CRLF. The CMake
+        # receipt hashes the normalized in-memory string, so compare the
+        # complete source and its receipt in that same representation.
+        compiled = (output / 'plugin.cpp').read_bytes().replace(b'\r\n', b'\n')
         # Removing only the two complete COM identity specializations must
         # recover the entire reviewed source, including the new conversions.
         stripped = compiled
