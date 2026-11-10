@@ -6,6 +6,8 @@ on:
     paths:
       - 'android/**'
       - 'lib/**'
+      - 'tools/startup_voice_diagnostics/**'
+      - 'docs/WINDOWS_FIRST_ACCEPTANCE.md'
       - 'test/**'
       - 'tools/New-NeuraClientBuildConfig.ps1'
       - 'tools/Publish-NeuraReleaseAssets.ps1'
@@ -1425,4 +1427,5 @@ jobs:
           if (-not [string]::IsNullOrWhiteSpace($env:NEURA_DART_DEFINE_FILE)) {
             Remove-Item -LiteralPath $env:NEURA_DART_DEFINE_FILE -Force -ErrorAction SilentlyContinue
           }
+
 
