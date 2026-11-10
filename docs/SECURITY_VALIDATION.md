@@ -402,3 +402,32 @@ compiled-source receipt. Local checks reversed every insertion/conversion to
 recover the original files exactly, verified all other media files unchanged,
 and confirmed that changed upstream headers fail configuration. These configure
 checks and the isolated extractor probe do not replace the fresh Windows run.
+
+### Notification package 4.0.0 source review (2026-11-10)
+
+[PR #194](https://github.com/Vantiger-Construction/neura_os/pull/194) updates
+`flutter_local_notifications` to 23.0.0 and its Windows package to 4.0.0.
+[Run 42595646090](https://github.com/Vantiger-Construction/neura_os/actions/runs/42595646090)
+failed CMake configuration because the notification correction still required
+the 3.1.1 source hash. The other six security jobs passed on that run; C/C++
+analysis did not execute after the build failure.
+
+The published 4.0.0 archive matches the lockfile SHA-256
+`c2d6efe9ba585d5f560d8b329131f00fe745834848e6221b22d1f62e0f0b16e2`.
+Its complete `src/plugin.cpp` differs from 3.1.1 only in two `CW2A` conversions:
+the `key` and `value` strings now use direct initialization. The COM classes
+and both specialization insertion points are unchanged. The reviewed normalized
+source hash is `27018fe2350f2064e0cab9d6b3795393f6994c39f1edafc3ddae4dde4ef514cd`.
+The correction retains both specializations, the upstream C++20 requirement,
+and the source-drift rejection; its receipt now identifies 4.0.0.
+
+`python tools/test_windows_notification_source.py` runs against the actual
+package resolved by `.dart_tool/package_config.json` after `flutter pub get`.
+For an independently verified extracted package, pass `--source <src/plugin.cpp>`.
+The four checks exercise the real CMake function: exact complete-source
+preservation apart from the two COM insertions, receipt hashes/version, CRLF
+normalization, rejection of changed source, and rejection of the previous
+package source. They reproduce the stale pin before the correction and pass
+after it. The native security job runs them before extraction. These are source
+composition checks; a fresh hosted Windows build, SDK tests and complete CodeQL
+extraction remain required. They do not establish physical-device acceptance.
