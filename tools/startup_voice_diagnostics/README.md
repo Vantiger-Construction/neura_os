@@ -1,5 +1,10 @@
 # Startup voice diagnostic kit
 
+For the current Windows-first conversation trial, RAM sampler and fixed-build
+evidence rules, start with [Windows-first acceptance](../../docs/WINDOWS_FIRST_ACCEPTANCE.md).
+The #161/#177 catalog below is historical startup evidence; it does not select
+the current hands-free conversation candidate or establish device acceptance.
+
 Start with an empty Android emulator and a separate Windows test account.
 Use synthetic data only. The helpers inspect files and collect filtered metadata;
 they never install, launch Neura, activate speech/microphones, change permission,
@@ -376,3 +381,4 @@ flutter test --no-pub --concurrency 2 --timeout 2m test/startup/neura_startup_vo
 These synthetic tests do not open real microphones or prove hardware acceptance.
 They were not rerun in the Linux kit-building environment without Flutter. See
 `AUTOMATED_RESULTS.md` for the checks actually performed and their scope.
+

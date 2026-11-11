@@ -184,6 +184,21 @@ void main() {
       call,
     ) async {
       nativeCalls.add('engine:${call.method}');
+      if (call.method == 'beginOllamaReadiness') {
+        expect(call.arguments, isNull);
+        return ++modelId;
+      }
+      if (call.method == 'pollOllamaReadiness') {
+        return {
+          'version': 1,
+          'daemon': 1,
+          'daemonVersion': 1,
+          'model': 1,
+          'memory': 1,
+          'totalMiB': 8192,
+          'availableMiB': 4096
+        };
+      }
       if (call.method == 'beginOllama') {
         payloads.add(
           jsonDecode(call.arguments as String) as Map<String, dynamic>,
@@ -327,6 +342,34 @@ void main() {
       }
     });
   }
+
+  conversationTest(
+      'ordinary chat readiness stays silent and requires a separate hands-free gesture',
+      (tester) async {
+    await chat(tester);
+    expect(nativeCalls, isNot(contains('engine:beginOllamaReadiness')));
+    await tester.tap(find.byTooltip('Chat options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Offline readiness and controls'));
+    await tester.pumpAndSettle();
+    expect(nativeCalls, isNot(contains('engine:beginOllamaReadiness')));
+    await tester.ensureVisible(find.text('Check offline readiness'));
+    await tester.tap(find.text('Check offline readiness'));
+    await tester.pumpAndSettle();
+    expect(
+        find.text('Offline prerequisites met at this moment.'), findsOneWidget);
+    expect(nativeCalls, contains('engine:beginOllamaReadiness'));
+    expect(nativeCalls, isNot(contains('asr:start')));
+    expect(nativeCalls, isNot(contains('sapi:speak')));
+    expect(payloads, isEmpty);
+    await tester.tap(find.text('Apply'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('End hands-free conversation'), findsNothing);
+    await tester.tap(find.byTooltip('Talk freely (hands-free)'));
+    await tester.runAsync(() async {});
+    await tester.pumpAndSettle();
+    expect(nativeCalls.where((c) => c == 'asr:start'), hasLength(1));
+  });
 
   conversationTest(
       'selected face articulates an ordinary chat reply on its route',

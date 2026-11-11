@@ -71,17 +71,38 @@ class ScheduledBackupRunResult {
   final int? itemCount;
 }
 
+/// Small file boundary used to inject interrupted writes in synthetic tests.
+class ScheduledBackupFileOperations {
+  const ScheduledBackupFileOperations();
+
+  Future<bool> exists(File file) => file.exists();
+  Future<String> read(File file) => file.readAsString();
+  Future<void> write(File file, String contents) async {
+    await file.writeAsString(contents, flush: true);
+  }
+
+  Future<void> rename(File file, String destination) async {
+    await file.rename(destination);
+  }
+
+  Future<void> delete(File file) async {
+    await file.delete();
+  }
+}
+
 class PortableVaultBackupService {
   PortableVaultBackupService({
     PortableBackupCodec? codec,
     VaultItemSource? store,
     ScheduledBackupSettings? scheduledSettings,
     Future<Directory> Function()? backupDirectory,
+    ScheduledBackupFileOperations? fileOperations,
   })  : _codec = codec ?? PortableBackupCodec(),
         _store = store ?? MemoryVaultStore.instance,
         _scheduledSettings =
             scheduledSettings ?? ScheduledBackupSettings.instance,
-        _backupDirectory = backupDirectory ?? _defaultBackupDirectory;
+        _backupDirectory = backupDirectory ?? _defaultBackupDirectory,
+        _files = fileOperations ?? const ScheduledBackupFileOperations();
 
   static const _payloadVersion = 1;
   static const _maxBackupBytes = 25 * 1024 * 1024;
@@ -125,6 +146,7 @@ class PortableVaultBackupService {
   final VaultItemSource _store;
   final ScheduledBackupSettings _scheduledSettings;
   final Future<Directory> Function() _backupDirectory;
+  final ScheduledBackupFileOperations _files;
 
   static Future<Directory> _defaultBackupDirectory() async {
     final support = await getApplicationSupportDirectory();
@@ -307,9 +329,9 @@ class PortableVaultBackupService {
   /// existing unlock (e.g. [VaultSession.sessionPin]); this method never
   /// prompts for one itself.
   ///
-  /// Every write is self-verified (decrypt + parse every entry) before it
-  /// replaces the previous scheduled backup file, so a corrupted write can
-  /// never silently become the only copy on disk.
+  /// Written bytes are verified before promotion. The previous copy remains
+  /// recoverable until the promoted file verifies; restart resumes interrupted
+  /// promotion without assuming rename-over-existing works on every platform.
   Future<ScheduledBackupRunResult> runScheduledBackupIfDue({
     required String pin,
     Duration interval = const Duration(hours: 24),
@@ -378,12 +400,11 @@ class PortableVaultBackupService {
 
       final file = await scheduledBackupFile();
       _checkBackupWrite();
+      await _recoverScheduledBackup(file, passphrase);
+      _checkBackupWrite();
       final tmp = File('${file.path}.tmp');
-      await tmp.writeAsString(envelope, flush: true);
-      _checkBackupWrite();
-      if (await file.exists()) await file.delete();
-      _checkBackupWrite();
-      await tmp.rename(file.path);
+      await _files.write(tmp, envelope);
+      await _promoteScheduledBackup(file, passphrase);
 
       _checkBackupWrite();
       await _scheduledSettings.recordOutcome(
@@ -407,6 +428,78 @@ class PortableVaultBackupService {
             'Backup status could not be saved. Check the local backup before retrying.');
       }
       return ScheduledBackupRunResult.failed(error.toString());
+    }
+  }
+
+  Future<void> _verifyScheduledFile(File file, String passphrase) async {
+    final saved = await _files.read(file);
+    final verification = await verifyBackupIntegrity(
+      saved,
+      passphrase: passphrase,
+    );
+    _checkBackupWrite();
+    if (!verification.isValid) {
+      throw StateError(
+        'Backup recovery could not verify a saved copy. '
+        'Existing files were preserved.',
+      );
+    }
+  }
+
+  Future<void> _deleteScheduledFile(File file) async {
+    _checkBackupWrite();
+    await _files.delete(file);
+    if (await _files.exists(file)) {
+      throw StateError('Backup file cleanup could not be confirmed.');
+    }
+  }
+
+  Future<void> _renameScheduledFile(File file, File destination) async {
+    // Never overwrite a recovery copy, including on platforms whose rename
+    // would silently replace the destination. The scheduled queue owns these
+    // paths; all transitions also remain part of the full-wipe drain.
+    if (await _files.exists(destination)) {
+      throw StateError('Backup recovery destination is already occupied.');
+    }
+    _checkBackupWrite();
+    await _files.rename(file, destination.path);
+    if (await _files.exists(file) || !await _files.exists(destination)) {
+      throw StateError('Backup file promotion could not be confirmed.');
+    }
+  }
+
+  Future<void> _promoteScheduledBackup(File file, String passphrase) async {
+    final tmp = File('${file.path}.tmp');
+    final previous = File('${file.path}.previous');
+    await _verifyScheduledFile(tmp, passphrase);
+    if (await _files.exists(file)) {
+      if (await _files.exists(previous)) {
+        // A prior promotion reached its final path but cleanup was interrupted.
+        await _verifyScheduledFile(file, passphrase);
+        await _deleteScheduledFile(previous);
+      }
+      await _renameScheduledFile(file, previous);
+    }
+    await _renameScheduledFile(tmp, file);
+    await _verifyScheduledFile(file, passphrase);
+    if (await _files.exists(previous)) await _deleteScheduledFile(previous);
+  }
+
+  Future<void> _recoverScheduledBackup(File file, String passphrase) async {
+    final tmp = File('${file.path}.tmp');
+    final previous = File('${file.path}.previous');
+    if (await _files.exists(tmp)) {
+      // Finish a complete staged write. Invalid or differently encrypted
+      // remnants require explicit recovery; never overwrite them on retry.
+      await _promoteScheduledBackup(file, passphrase);
+    } else if (await _files.exists(previous)) {
+      if (await _files.exists(file)) {
+        await _verifyScheduledFile(file, passphrase);
+        await _deleteScheduledFile(previous);
+      } else {
+        await _verifyScheduledFile(previous, passphrase);
+        await _renameScheduledFile(previous, file);
+      }
     }
   }
 

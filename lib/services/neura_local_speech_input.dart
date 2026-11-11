@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../profiles/local_profile_service.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -43,6 +44,7 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
   String _text = '';
 
   bool get _allowed =>
+      !LocalProfileService.instance.enabled &&
       !_disposed &&
       !_quarantined &&
       !SafeBoot.instance.safeMode.value &&

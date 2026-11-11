@@ -15,6 +15,7 @@ use crate::local_model::{bounded_json, memory_admitted, ENDPOINT, LOCAL_MODEL};
 const MAX_REQUEST: usize = 16_384;
 const MAX_RESPONSE: usize = 32_768;
 const MAX_REPLY: usize = 8_192;
+const READINESS_FIELDS: usize = 7;
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -129,6 +130,50 @@ async fn cancellable_inference(
     }
 }
 
+fn readiness_snapshot(
+    model: crate::local_model::ModelReadiness,
+    memory: Option<(u64, u64)>,
+) -> [u64; READINESS_FIELDS] {
+    let (total, available) = memory.unwrap_or_default();
+    let admission = match memory {
+        None => 0,
+        Some((total, available))
+            if crate::local_model::memory_values_admitted(total, available) =>
+        {
+            1
+        }
+        Some(_) => 2,
+    };
+    [
+        1,
+        model.daemon,
+        model.version,
+        model.model,
+        admission,
+        total,
+        available,
+    ]
+}
+
+async fn cancellable_readiness(
+    endpoint: &str,
+    receiver: &mut watch::Receiver<bool>,
+) -> Result<[u64; READINESS_FIELDS], ()> {
+    tokio::select! { biased;
+        _ = receiver.changed() => Err(()),
+        result = tokio::time::timeout(Duration::from_secs(10), async {
+            let client = crate::local_model::LoopbackClient::new(endpoint, Duration::from_secs(3))?;
+            let model = crate::local_model::inspect_pinned_model(&client).await;
+            Ok(readiness_snapshot(model, crate::local_model::memory_snapshot()))
+        }) => result.map_err(|_| ())?,
+    }
+}
+
+enum Completion {
+    Reply(String),
+    Readiness([u64; READINESS_FIELDS]),
+}
+
 #[derive(Default)]
 struct State {
     generation: i64,
@@ -136,6 +181,7 @@ struct State {
     blocked: bool,
     status: i32,
     reply: Option<Zeroizing<Vec<u8>>>,
+    readiness: Option<[u64; READINESS_FIELDS]>,
     timing: Option<(i64, Arc<Mutex<RequestTiming>>)>,
 }
 struct Active {
@@ -155,6 +201,7 @@ impl Session {
         }
         state.generation += 1;
         state.reply = None;
+        state.readiness = None;
         state.status = -2;
         if let Some(active) = &self.active {
             active.cancel.send_replace(true);
@@ -164,6 +211,13 @@ impl Session {
         self.begin_checked(payload, memory_admitted)
     }
     fn begin_checked(&mut self, payload: Value, admit_memory: impl FnOnce() -> bool) -> i64 {
+        self.begin_work(Some(payload), admit_memory)
+    }
+    fn begin_readiness(&mut self) -> i64 {
+        // Metadata inspection never loads weights, even when memory is low.
+        self.begin_work(None, || true)
+    }
+    fn begin_work(&mut self, payload: Option<Value>, admit_memory: impl FnOnce() -> bool) -> i64 {
         {
             let state = self.state.lock().unwrap_or_else(|p| p.into_inner());
             if state.blocked || !state.foreground {
@@ -184,11 +238,15 @@ impl Session {
             let _ = active.worker.join();
         }
         self.cancel();
-        let timing = Arc::new(Mutex::new(RequestTiming::default()));
+        let timing = payload
+            .as_ref()
+            .map(|_| Arc::new(Mutex::new(RequestTiming::default())));
         let generation = {
             let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
             state.status = 0;
-            state.timing = Some((state.generation, timing.clone()));
+            state.timing = timing
+                .as_ref()
+                .map(|value| (state.generation, value.clone()));
             state.generation
         };
         let (cancel, mut receiver) = watch::channel(false);
@@ -204,26 +262,41 @@ impl Session {
                     tracing::subscriber::with_default(
                         tracing::subscriber::NoSubscriber::default(),
                         || {
-                            runtime.block_on(cancellable_inference(
-                                ENDPOINT,
-                                payload,
-                                &timing,
-                                &mut receiver,
-                            ))
+                            runtime.block_on(async {
+                                match payload {
+                                    Some(payload) => cancellable_inference(
+                                        ENDPOINT,
+                                        payload,
+                                        timing.as_ref().ok_or(())?,
+                                        &mut receiver,
+                                    )
+                                    .await
+                                    .map(Completion::Reply),
+                                    None => cancellable_readiness(ENDPOINT, &mut receiver)
+                                        .await
+                                        .map(Completion::Readiness),
+                                }
+                            })
                         },
                     )
                 }));
                 let mut state = state.lock().unwrap_or_else(|p| p.into_inner());
-                timing
-                    .lock()
-                    .unwrap_or_else(|p| p.into_inner())
-                    .worker_done(matches!(&result, Ok(Ok(_))));
+                if let Some(timing) = timing {
+                    timing
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .worker_done(matches!(&result, Ok(Ok(_))));
+                }
                 if generation != state.generation || state.blocked || !state.foreground {
                     return;
                 }
                 match result {
-                    Ok(Ok(text)) => {
+                    Ok(Ok(Completion::Reply(text))) => {
                         state.reply = Some(Zeroizing::new(text.into_bytes()));
+                        state.status = 1;
+                    }
+                    Ok(Ok(Completion::Readiness(snapshot))) => {
+                        state.readiness = Some(snapshot);
                         state.status = 1;
                     }
                     _ => state.status = -1,
@@ -269,6 +342,46 @@ pub unsafe extern "C" fn neura_ollama_begin(data: *const u8, len: usize) -> i64 
         .lock()
         .unwrap_or_else(|p| p.into_inner())
         .begin(payload)
+}
+
+/// Explicit, argument-free metadata inspection. Shares the cancellable worker,
+/// foreground ownership, busy rejection and latched safety block with chat.
+#[no_mangle]
+pub extern "C" fn neura_ollama_readiness_begin() -> i64 {
+    session()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .begin_readiness()
+}
+
+/// # Safety
+/// `buffer` must point to `capacity` aligned, writable u64 elements.
+#[no_mangle]
+pub unsafe extern "C" fn neura_ollama_readiness_poll(
+    id: i64,
+    buffer: *mut u64,
+    capacity: usize,
+) -> i32 {
+    if buffer.is_null() || capacity < READINESS_FIELDS {
+        return -1;
+    }
+    let session = session().lock().unwrap_or_else(|p| p.into_inner());
+    let mut state = session.state.lock().unwrap_or_else(|p| p.into_inner());
+    if id != state.generation || state.blocked || !state.foreground {
+        return -2;
+    }
+    if state.status != 1 {
+        return state.status;
+    }
+    let Some(snapshot) = state.readiness.take() else {
+        return -1;
+    };
+    // SAFETY: the caller supplies a separate aligned output buffer of sufficient size.
+    unsafe {
+        std::ptr::copy_nonoverlapping(snapshot.as_ptr(), buffer, READINESS_FIELDS);
+    }
+    state.status = -2;
+    READINESS_FIELDS as i32
 }
 /// # Safety
 /// `buffer` must point to `capacity` writable bytes for this synchronous call.
@@ -440,15 +553,92 @@ mod tests {
     fn background_and_block_prevent_admission_and_clear_reply() {
         let mut s = Session::default();
         assert_eq!(s.begin(json!({})), -2);
+        assert_eq!(s.begin_readiness(), -2);
         {
             let mut state = s.state.lock().unwrap();
             state.foreground = true;
             state.blocked = true;
             state.reply = Some(Zeroizing::new(b"private".to_vec()));
+            state.readiness = Some([1, 1, 1, 1, 1, 8192, 4096]);
         }
         s.cancel();
         assert!(s.state.lock().unwrap().reply.is_none());
+        assert!(s.state.lock().unwrap().readiness.is_none());
         assert_eq!(s.begin(json!({})), -2);
+        assert_eq!(s.begin_readiness(), -2);
+        assert!(s.active.is_none());
+    }
+
+    #[test]
+    fn readiness_preserves_memory_thresholds_and_unknown_is_not_admitted() {
+        for (memory, expected) in [
+            (None, [0, 0, 0]),
+            (Some((7168, 3584)), [1, 7168, 3584]),
+            (Some((7167, 4096)), [2, 7167, 4096]),
+            (Some((8192, 3583)), [2, 8192, 3583]),
+        ] {
+            let model = crate::local_model::ModelReadiness {
+                daemon: 1,
+                version: 1,
+                model: 1,
+            };
+            let report = readiness_snapshot(model, memory);
+            assert_eq!(&report[..4], &[1, 1, 1, 1]);
+            assert_eq!(&report[4..], &expected);
+        }
+    }
+
+    #[test]
+    fn readiness_cannot_replace_an_active_worker() {
+        let mut s = Session::default();
+        s.state.lock().unwrap().foreground = true;
+        let (cancel, _) = watch::channel(false);
+        let (release, gate) = std::sync::mpsc::channel();
+        s.active = Some(Active {
+            cancel,
+            worker: std::thread::spawn(move || {
+                let _ = gate.recv();
+            }),
+        });
+        assert_eq!(s.begin_readiness(), -3);
+        release.send(()).unwrap();
+        s.active.take().unwrap().worker.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn readiness_cancel_drops_a_pending_metadata_request() {
+        use axum::{routing::post, Json};
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let seen = entered.clone();
+        let router = crate::local_model::tests::metadata_router().route(
+            "/api/show",
+            post(move || {
+                let seen = seen.clone();
+                async move {
+                    seen.notify_one();
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+                    Json(crate::local_model::tests::pinned_info())
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let (cancel, mut receiver) = watch::channel(false);
+        let worker =
+            tokio::spawn(async move { cancellable_readiness(&endpoint, &mut receiver).await });
+        tokio::time::timeout(Duration::from_secs(2), entered.notified())
+            .await
+            .unwrap();
+        cancel.send_replace(true);
+        assert!(tokio::time::timeout(Duration::from_millis(200), worker)
+            .await
+            .unwrap()
+            .unwrap()
+            .is_err());
+        server.abort();
     }
 
     #[test]
@@ -545,6 +735,24 @@ mod tests {
             .unwrap()
             .timing
             .is_none());
+        assert_eq!(neura_ollama_readiness_begin(), -2);
+        let mut readiness = [0u64; READINESS_FIELDS];
+        // SAFETY: each call below advertises this live aligned output array.
+        unsafe {
+            assert_eq!(
+                neura_ollama_readiness_poll(100, std::ptr::null_mut(), readiness.len()),
+                -1
+            );
+            assert_eq!(
+                neura_ollama_readiness_poll(100, readiness.as_mut_ptr(), 1),
+                -1
+            );
+            assert_eq!(
+                neura_ollama_readiness_poll(100, readiness.as_mut_ptr(), readiness.len()),
+                -2
+            );
+        }
+        assert_eq!(readiness, [0; READINESS_FIELDS]);
         // Reset the test fixture without reopening a real blocked session.
         *session().lock().unwrap() = Session::default();
     }

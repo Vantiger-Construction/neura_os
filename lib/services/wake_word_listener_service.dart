@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../profiles/local_profile_service.dart';
 
 import '../core/neura_event_bus.dart';
 import '../core/neura_events.dart';
@@ -38,7 +39,9 @@ class WakeWordListenerService {
   bool _weStartedSession = false;
   int _dataGeneration = 0;
   Future<void>? _activeTurn;
-  bool get listeningAllowed => !SafeBoot.instance.safeMode.value;
+  bool get listeningAllowed =>
+      !SafeBoot.instance.safeMode.value &&
+      !LocalProfileService.instance.enabled;
 
   /// Begins listening if the feature is enabled. Safe to call more than
   /// once (no-ops if already subscribed).

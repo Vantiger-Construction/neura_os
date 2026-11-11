@@ -44,6 +44,7 @@ void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
   const channel = MethodChannel('neura/engine_synthetic_session');
   late ValueNotifier<bool> safe;
+  late ValueNotifier<bool> restart;
   late ValueNotifier<NeuraFatalError?> recovery;
   late List<MethodCall> calls;
   late NeuraOllamaChat chat;
@@ -60,6 +61,7 @@ void main() {
   setUp(() {
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     safe = ValueNotifier(false);
+    restart = ValueNotifier(false);
     recovery = ValueNotifier(null);
     calls = [];
     elapsed = Duration.zero;
@@ -75,6 +77,7 @@ void main() {
     });
     chat = NeuraOllamaChat(
       safeMode: safe,
+      restartRequired: restart,
       recovery: recovery,
       supported: true,
       monotonicNow: () => elapsed,
@@ -84,6 +87,7 @@ void main() {
     chat.dispose();
     binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null);
     safe.dispose();
+    restart.dispose();
     recovery.dispose();
   });
 
@@ -388,4 +392,247 @@ void main() {
       expect(calls.map((c) => c.method), ['beginOllama']);
     },
   );
+
+  Map<String, int> readiness({
+    int daemon = 1,
+    int version = 1,
+    int model = 1,
+    int memory = 1,
+    int total = 8192,
+    int available = 4096,
+  }) =>
+      {
+        'version': 1,
+        'daemon': daemon,
+        'daemonVersion': version,
+        'model': model,
+        'memory': memory,
+        'totalMiB': total,
+        'availableMiB': available,
+      };
+
+  testWidgets('readiness is explicit metadata only with no prompt or audio', (
+    tester,
+  ) async {
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      calls.add(call);
+      if (call.method == 'beginOllamaReadiness') {
+        expect(call.arguments, isNull);
+        return 20;
+      }
+      if (call.method == 'pollOllamaReadiness') return readiness();
+      return null;
+    });
+    expect(calls, isEmpty);
+    final report = await chat.checkReadiness(
+      cancel: NeuraGenerationCancel('check'),
+    );
+    expect(report.ready, isTrue);
+    expect(report.memory!.availableMiB, 4096);
+    expect(report.model, NeuraOllamaModelReadiness.verified);
+    expect(calls.map((c) => c.method), [
+      'beginOllamaReadiness',
+      'pollOllamaReadiness',
+      'cancelOllama',
+    ]);
+  });
+
+  test(
+      'readiness reports independent failures and rejects inconsistent native data',
+      () {
+    for (final values in [
+      readiness(daemon: 2, version: 0, model: 0),
+      readiness(version: 2, model: 0),
+      for (var model = 2; model <= 6; model++) readiness(model: model),
+      readiness(memory: 2, available: 3583),
+      readiness(memory: 2, total: 7167),
+      readiness(memory: 0, total: 0, available: 0),
+    ]) {
+      expect(NeuraOllamaReadiness.fromNative(values)!.ready, isFalse);
+    }
+    for (final values in <Map<String, dynamic>>[
+      {...readiness(), 'daemonText': 'synthetic untrusted metadata'},
+      readiness()..remove('model'),
+      {...readiness(), 'model': '1'},
+      {...readiness(), 'model': 7},
+      readiness(daemon: 2),
+      readiness(version: 0),
+      readiness(model: 0),
+      readiness(memory: 1, available: 3583),
+      readiness(memory: 2),
+      readiness(memory: 0),
+      readiness(available: 9000),
+    ]) {
+      expect(NeuraOllamaReadiness.fromNative(values), isNull);
+    }
+  });
+
+  testWidgets(
+    'readiness failure stays content-free and never starts inference',
+    (tester) async {
+      binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        call,
+      ) async {
+        calls.add(call);
+        if (call.method == 'beginOllamaReadiness') return 21;
+        if (call.method == 'pollOllamaReadiness') {
+          throw PlatformException(
+            code: 'timeout',
+            message: 'synthetic private daemon text',
+          );
+        }
+        return null;
+      });
+      await expectLater(
+        chat.checkReadiness(cancel: NeuraGenerationCancel('failure')),
+        throwsA(
+          predicate(
+            (e) =>
+                e is StateError &&
+                e.message.toString().contains('timed out') &&
+                !e.message.toString().contains('synthetic private'),
+          ),
+        ),
+      );
+      expect(calls.map((c) => c.method), [
+        'beginOllamaReadiness',
+        'pollOllamaReadiness',
+        'cancelOllama',
+      ]);
+    },
+  );
+
+  for (final reason in [
+    'cancel',
+    'background',
+    'safe',
+    'recovery',
+    'restart',
+    'dispose',
+  ]) {
+    testWidgets(
+      '$reason revokes a late readiness start without polling or restarting',
+      (tester) async {
+        final pending = Completer<int>();
+        binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+          call,
+        ) async {
+          calls.add(call);
+          if (call.method == 'beginOllamaReadiness') return pending.future;
+          return null;
+        });
+        final cancel = NeuraGenerationCancel('readiness-$reason');
+        final expected = expectLater(
+          chat.checkReadiness(cancel: cancel),
+          throwsA(isA<NeuraGenerationCancelled>()),
+        );
+        await tester.pump();
+        switch (reason) {
+          case 'cancel':
+            cancel.cancel();
+            break;
+          case 'background':
+            binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+            break;
+          case 'safe':
+            safe.value = true;
+            break;
+          case 'recovery':
+            recovery.value = const NeuraFatalError(
+              source: 'synthetic',
+              phase: 'runtime',
+            );
+            break;
+          case 'restart':
+            restart.value = true;
+            break;
+          case 'dispose':
+            chat.dispose();
+            break;
+        }
+        pending.complete(22);
+        await tester.pump();
+        await expected;
+        expect(calls.where((c) => c.method == 'pollOllamaReadiness'), isEmpty);
+        expect(
+          calls.where((c) => c.method == 'cancelOllama' && c.arguments == 22),
+          isNotEmpty,
+        );
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pump();
+        expect(
+          calls.where((c) => c.method == 'beginOllamaReadiness'),
+          hasLength(1),
+        );
+      },
+    );
+  }
+
+  testWidgets('Safe Mode readiness block is latched until restart', (
+    tester,
+  ) async {
+    safe.value = true;
+    safe.value = false;
+    await expectLater(
+      chat.checkReadiness(cancel: NeuraGenerationCancel('blocked')),
+      throwsStateError,
+    );
+    expect(calls.where((c) => c.method == 'beginOllamaReadiness'), isEmpty);
+  });
+
+  testWidgets('readiness rejects unsupported platforms without native calls', (
+    tester,
+  ) async {
+    final unsupported = NeuraOllamaChat(
+      supported: false,
+      safeMode: safe,
+      recovery: recovery,
+    );
+    await expectLater(
+      unsupported.checkReadiness(cancel: NeuraGenerationCancel('platform')),
+      throwsStateError,
+    );
+    expect(calls, isEmpty);
+    unsupported.dispose();
+  });
+
+  for (final duringCleanup in [false, true]) {
+    testWidgets(
+      'cancel suppresses readiness during ${duringCleanup ? 'cleanup' : 'poll'}',
+      (tester) async {
+        final poll = Completer<Map<String, int>>();
+        final cleanup = Completer<void>();
+        binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+          call,
+        ) async {
+          calls.add(call);
+          if (call.method == 'beginOllamaReadiness') return 23;
+          if (call.method == 'pollOllamaReadiness') return poll.future;
+          if (call.method == 'cancelOllama' && duringCleanup) {
+            await cleanup.future;
+          }
+          return null;
+        });
+        final cancel = NeuraGenerationCancel('delivery');
+        final expected = expectLater(
+          chat.checkReadiness(cancel: cancel),
+          throwsA(isA<NeuraGenerationCancelled>()),
+        );
+        await tester.pump();
+        if (duringCleanup) {
+          poll.complete(readiness());
+          await tester.pump();
+          expect(calls.last.method, 'cancelOllama');
+        }
+        cancel.cancel();
+        if (!duringCleanup) poll.complete(readiness());
+        cleanup.complete();
+        await tester.pump();
+        await expected;
+        expect(calls.where((c) => c.method == 'beginOllama'), isEmpty);
+      },
+    );
+  }
 }

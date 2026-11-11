@@ -67,6 +67,22 @@ NeuraEngineSession::NeuraEngineSession(flutter::BinaryMessenger* messenger,
       result->Success(flutter::EncodableValue(snapshot));
       return;
     }
+    if (method == "beginOllamaReadiness") {
+      const bool visible = IsWindowVisible(window_) && !IsIconic(window_) &&
+                           GetForegroundWindow() == window_;
+      if ((call.arguments() &&
+           !std::holds_alternative<std::monostate>(*call.arguments())) ||
+          blocked_ || !visible || !Load() || !ollama_readiness_begin_ ||
+          !ollama_readiness_poll_) {
+        result->Error("local_unavailable", "Offline readiness check is unavailable in this build or state.");
+        return;
+      }
+      ollama_foreground_(1);
+      const auto id = ollama_readiness_begin_();
+      if (id <= 0) result->Error("local_unavailable", "Offline worker is unavailable or busy.");
+      else result->Success(flutter::EncodableValue(id));
+      return;
+    }
     if (method == "beginOllama") {
       const auto* input = call.arguments() == nullptr ? nullptr :
           std::get_if<std::string>(call.arguments());
@@ -94,7 +110,7 @@ NeuraEngineSession::NeuraEngineSession(flutter::BinaryMessenger* messenger,
       return;
     }
     if (method == "pollOllama" || method == "cancelOllama" ||
-        method == "readOllamaTiming") {
+        method == "readOllamaTiming" || method == "pollOllamaReadiness") {
       const auto* id = call.arguments() == nullptr ? nullptr :
           std::get_if<int64_t>(call.arguments());
       // StandardMethodCodec encodes small Dart ints as int32_t.
@@ -105,6 +121,35 @@ NeuraEngineSession::NeuraEngineSession(flutter::BinaryMessenger* messenger,
         return;
       }
       const int64_t generation = id ? *id : *small_id;
+      if (method == "pollOllamaReadiness") {
+        const bool visible = IsWindowVisible(window_) && !IsIconic(window_) &&
+                             GetForegroundWindow() == window_;
+        if (!visible) Background();
+        if (blocked_ || !visible || !ollama_readiness_poll_) {
+          result->Error("local_unavailable", "Offline readiness check stopped.");
+          return;
+        }
+        uint64_t values[7] = {};
+        const int count = ollama_readiness_poll_(generation, values, 7);
+        if (count == 0) {
+          result->Success();
+        } else if (count == 7 && values[0] == 1 && values[1] <= 2 &&
+                   values[2] <= 2 && values[3] <= 6 && values[4] <= 2 &&
+                   values[5] <= static_cast<uint64_t>(INT64_MAX) &&
+                   values[6] <= values[5]) {
+          const char* keys[] = {"version", "daemon", "daemonVersion", "model",
+                                "memory", "totalMiB", "availableMiB"};
+          flutter::EncodableMap snapshot;
+          for (size_t index = 0; index < 7; ++index) {
+            snapshot[flutter::EncodableValue(keys[index])] =
+                flutter::EncodableValue(static_cast<int64_t>(values[index]));
+          }
+          result->Success(flutter::EncodableValue(snapshot));
+        } else {
+          result->Error("local_unavailable", "Offline readiness check stopped or timed out.");
+        }
+        return;
+      }
       if (method == "readOllamaTiming") {
         const bool visible = IsWindowVisible(window_) && !IsIconic(window_) &&
                              GetForegroundWindow() == window_;
@@ -214,6 +259,8 @@ bool NeuraEngineSession::Load() {
   ollama_cancel_ = Lookup<OllamaCancel>(library_, "neura_ollama_cancel");
   // Optional for compatibility with an older packaged Rust DLL.
   ollama_timing_ = Lookup<OllamaTiming>(library_, "neura_ollama_timing");
+  ollama_readiness_begin_ = Lookup<OllamaReadinessBegin>(library_, "neura_ollama_readiness_begin");
+  ollama_readiness_poll_ = Lookup<OllamaTiming>(library_, "neura_ollama_readiness_poll");
   ollama_clear_timing_ = Lookup<StopFunction>(library_, "neura_ollama_clear_timing");
   ollama_foreground_ = Lookup<ForegroundFunction>(library_, "neura_ollama_foreground");
   ollama_block_ = Lookup<StopFunction>(library_, "neura_ollama_block");
@@ -234,6 +281,8 @@ bool NeuraEngineSession::Load() {
   ollama_poll_ = nullptr;
   ollama_cancel_ = nullptr;
   ollama_timing_ = nullptr;
+  ollama_readiness_begin_ = nullptr;
+  ollama_readiness_poll_ = nullptr;
   ollama_clear_timing_ = nullptr;
   ollama_foreground_ = nullptr;
   ollama_block_ = nullptr;

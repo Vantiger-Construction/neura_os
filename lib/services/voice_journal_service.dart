@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../profiles/local_profile_service.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -18,7 +19,27 @@ import 'neura_speech_to_text_service.dart';
 /// stays on the local transcript stream and is never copied into presence.
 class VoiceJournalService {
   VoiceJournalService() {
+    _owners.add(this);
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
+  }
+
+  static final Set<VoiceJournalService> _owners = {};
+  Future<bool>? _startInFlight;
+  static Future<void> shutdownAllForProfiles() async {
+    for (final owner in _owners.toList()) {
+      final owned = owner.isListening || owner._startInFlight != null;
+      owner._startGeneration++;
+      await owner._startInFlight;
+      if (owner._usesNativeWindows) {
+        await owner._native.shutdownForProfiles();
+      } else if (owned) {
+        await owner._stt.cancel().timeout(const Duration(seconds: 3));
+      }
+      owner._pluginListening = false;
+      owner._current = '';
+      owner._lastPluginFinalAtUtc = null;
+      owner._markRecordingStopped();
+    }
   }
 
   final stt.SpeechToText _stt = stt.SpeechToText();
@@ -58,7 +79,9 @@ class VoiceJournalService {
   bool get isListening =>
       _usesNativeWindows ? _native.isListening : _pluginListening;
 
-  bool get listeningAllowed => !SafeBoot.instance.safeMode.value;
+  bool get listeningAllowed =>
+      !SafeBoot.instance.safeMode.value &&
+      !LocalProfileService.instance.enabled;
 
   StreamController<String> _nativeStatusController() {
     final existing = _nativeStatusStream;
@@ -88,7 +111,18 @@ class VoiceJournalService {
     return controller;
   }
 
-  Future<bool> startRecording() async {
+  Future<bool> startRecording() {
+    final existing = _startInFlight;
+    if (existing != null) return existing;
+    late final Future<bool> operation;
+    operation = _startRecording().whenComplete(() {
+      if (identical(_startInFlight, operation)) _startInFlight = null;
+    });
+    _startInFlight = operation;
+    return operation;
+  }
+
+  Future<bool> _startRecording() async {
     if (_disposed || !listeningAllowed) return false;
     final generation = ++_startGeneration;
 
@@ -272,5 +306,6 @@ class VoiceJournalService {
     await _pluginStatusStream.close();
     await _pluginSegmentStream.close();
     await _nativeStatusStream?.close();
+    _owners.remove(this);
   }
 }

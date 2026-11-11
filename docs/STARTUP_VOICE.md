@@ -52,6 +52,18 @@ and **Companion** for the conversational style. The existing memory budget and
 per-request cloud approval rules still apply; selecting a voice session does
 not choose or authorize a model. Basic local replies remain limited responses.
 
+Before speaking with Offline Ollama, open **Chat options → Offline readiness
+and controls → Check offline readiness**. This user-triggered Windows check
+reports local Ollama availability, supported version, the required pinned model
+and current memory admission. It only reads metadata and RAM: it never starts
+Ollama, installs/loads a model, selects cloud or opens the microphone. Resolve
+missing prerequisites manually, then start **Talk freely** yourself. Each
+reply still checks again; success does not establish audio, inference speed or
+conversation-quality acceptance. Cancel, closure, background, Safe Mode and
+recovery discard pending results without restarting voice. See
+[the offline chat guide](NEURA_OLLAMA_CHAT.md#check-readiness-before-speaking).
+Local-profile mode remains restricted to text chat.
+
 After a final phrase, chat stops capture, submits one message, waits for the
 reply and configured speech, then listens again. Recognition errors, Ollama
 failures and cancelled model turns end hands-free mode and clear the waiting

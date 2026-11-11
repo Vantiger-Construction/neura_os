@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../profiles/local_profile_service.dart';
 
 import 'package:flutter/material.dart';
 
@@ -38,7 +39,11 @@ class _NeuraShellRootState extends State<NeuraShellRoot> {
   Widget build(BuildContext context) {
     return NeuraShellScope(
       notifier: _state,
-      child: NeuraShellOverlay(child: widget.child),
+      child: ListenableBuilder(
+          listenable: LocalProfileService.instance,
+          builder: (_, __) => LocalProfileService.instance.enabled
+              ? widget.child
+              : NeuraShellOverlay(child: widget.child)),
     );
   }
 }

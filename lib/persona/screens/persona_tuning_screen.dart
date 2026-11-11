@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../profiles/local_profile_service.dart';
 import '../services/neura_persona_service.dart';
 import '../models/persona_profile.dart';
 import '../models/neura_persona_preset.dart';
@@ -14,6 +15,8 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
   final _service = NeuraPersonaService.instance;
 
   late PersonaProfile _profile;
+  String? _profileId;
+  int? _profileEpoch;
   bool _loaded = false;
   bool _saving = false;
 
@@ -28,6 +31,8 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
     if (!mounted) return;
     setState(() {
       _profile = _service.current;
+      _profileId = LocalProfileService.instance.active?.id;
+      _profileEpoch = LocalProfileService.instance.epoch;
       _loaded = true;
     });
   }
@@ -36,7 +41,8 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
     setState(() {
       _saving = true;
     });
-    final saved = await _service.update(_profile);
+    final saved = await _service.update(_profile,
+        expectedProfileId: _profileId, expectedProfileEpoch: _profileEpoch);
     if (!mounted) return;
     setState(() {
       _saving = false;
@@ -48,6 +54,25 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
             : 'Could not save your changes. Please try again.'),
       ),
     );
+  }
+
+  Future<void> _showProfilesInfo() async {
+    await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+                title: const Text('Separate profile setup is paused'),
+                content: const SingleChildScrollView(
+                    child: Text(
+                        'The profile workspace keeps saved styles separate, but has no safe return to your full Neura app. '
+                        'Journals, memories, planning, room navigation and voice become unavailable there. '
+                        'Removing every profile or restarting still leaves that workspace active. '
+                        'New setup is paused to keep your current app and saved data accessible. '
+                        'You can continue personalizing Neura with the style controls here.')),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Keep using my Neura'))
+                ]));
   }
 
   @override
@@ -82,6 +107,19 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
               'You can change them anytime.',
             ),
             const SizedBox(height: 12),
+            if (!LocalProfileService.instance.enabled)
+              Card(
+                  child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(LocalProfileService.setupPausedMessage),
+                            TextButton(
+                                onPressed: _saving ? null : _showProfilesInfo,
+                                child:
+                                    const Text('About separate local profiles'))
+                          ]))),
             Wrap(
               spacing: 8,
               runSpacing: 8,
