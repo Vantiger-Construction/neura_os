@@ -230,10 +230,11 @@ void main() {
       await native.platformCallHandler(const MethodCall('speak.onComplete'));
       await tester.pump();
       expect(input.starts, 1);
+      final stopsBeforeClose = native.stops;
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
       expect(input.isListening, isFalse);
-      expect(native.stops, greaterThan(0));
+      expect(native.stops, greaterThan(stopsBeforeClose));
       expect(borrowed.playbackAllowed, isTrue,
           reason: 'The caller retains ownership of the injected service.');
     } finally {
