@@ -99,8 +99,11 @@ class SyncMFCallback : public MFCallbackBase {]=] helpers "${helpers}")
 endfunction()
 
 function(neura_prepare_notification_source source output_dir)
+  # 4.0.0 replaces two implicit CW2A string conversions with direct
+  # initialization. The classic COM implementations still need the same
+  # runtime-name specializations; retain the fail-closed source check.
   neura_read_pinned_com_source("${source}"
-    "e56a6c1939fad6656f136cc7e31803b8544637af78002e275921888ca46ecb65" original)
+    "27018fe2350f2064e0cab9d6b3795393f6994c39f1edafc3ddae4dde4ef514cd" original)
   string(REPLACE [=[/// A class factory that creates an instance of NotificationActivationCallback.]=]
     [=[namespace winrt {
 template <>
@@ -124,7 +127,7 @@ inline hstring implements<NotificationActivationCallbackFactory, IClassFactory>:
   string(SHA256 upstream_sha "${original}")
   string(SHA256 compiled_sha "${patched}")
   file(WRITE "${output_dir}/notification_source_receipt.txt"
-    "flutter_local_notifications_windows 3.1.1\nupstream_sha256=${upstream_sha}\nbuild_sha256=${compiled_sha}\n")
+    "flutter_local_notifications_windows 4.0.0\nupstream_sha256=${upstream_sha}\nbuild_sha256=${compiled_sha}\n")
 endfunction()
 
 function(neura_configure_winrt_plugins output_dir identity_headers)
