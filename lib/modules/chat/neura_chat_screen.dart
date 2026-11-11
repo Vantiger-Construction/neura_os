@@ -254,10 +254,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
           .stop()
           .timeout(const Duration(seconds: 3));
       if (!_voiceSessionActive(session)) return;
-      await NeuraTtsService.instance.prepareLocalStartupVoice();
+      await _tts.prepareLocalStartupVoice();
       if (!_voiceSessionActive(session)) return;
       // Completion is awaited: Neura must not hear and submit her own greeting.
-      await NeuraTtsService.instance
+      await _tts
           .speak(
             "Hi, I'm Neura. I'm here and ready to listen.",
             requireCompletion: true,
