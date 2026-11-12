@@ -7,6 +7,7 @@
 pub mod agents;
 pub mod anthropic_client;
 pub mod api;
+pub mod attunement;
 mod engine_session;
 mod frb_generated;
 pub mod http_client;
