@@ -184,37 +184,70 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  for (final reason in [
-    'opt-out',
-    'safe-mode',
-    'restart-required',
-    'background',
-    'dispose',
-    'stop'
-  ]) {
-    startupTest('$reason during the greeting prevents a late microphone start',
-        (tester) async {
-      await pumpChat(tester);
-      expect(spoken, hasLength(1));
-      switch (reason) {
-        case 'opt-out':
-          NeuraStartupVoicePrefs.instance.enabled.value = false;
-        case 'safe-mode':
-          SafeBoot.instance.safeMode.value = true;
-        case 'restart-required':
-          SafeBoot.instance.restartRequired.value = true;
-        case 'background':
-          binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-        case 'dispose':
+  for (final useBorrowed in [false, true]) {
+    for (final reason in [
+      'opt-out',
+      'safe-mode',
+      'restart-required',
+      'background',
+      'dispose',
+      'stop'
+    ]) {
+      startupTest(
+          '${useBorrowed ? 'borrowed TTS: ' : ''}$reason during the greeting prevents a late microphone start',
+          (tester) async {
+        final native = useBorrowed ? _BorrowedTts() : null;
+        final borrowed =
+            native == null ? null : NeuraTtsService.forTesting(native);
+        try {
+          await pumpChat(tester, ttsService: borrowed);
+          expect(native?.spoken ?? spoken, hasLength(1));
+          expect(input.starts, 0);
+          if (native != null) expect(spoken, isEmpty);
+          final stopsBeforeRevocation = native?.stops;
+          switch (reason) {
+            case 'opt-out':
+              NeuraStartupVoicePrefs.instance.enabled.value = false;
+            case 'safe-mode':
+              SafeBoot.instance.safeMode.value = true;
+            case 'restart-required':
+              SafeBoot.instance.restartRequired.value = true;
+            case 'background':
+              binding
+                  .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+            case 'dispose':
+              await tester.pumpWidget(const SizedBox());
+            case 'stop':
+              await tester.tap(find.byTooltip('Talk freely (hands-free)'));
+          }
+          await tester.pump();
+          if (native == null) {
+            await completeGreeting();
+          } else {
+            expect(native.stops, greaterThan(stopsBeforeRevocation!));
+            // A native completion can arrive after the owner revoked the turn.
+            await native
+                .platformCallHandler(const MethodCall('speak.onComplete'));
+          }
+          await tester.pump();
+          expect(input.starts, 0);
+          expect(input.isListening, isFalse);
+          if (reason == 'background') {
+            binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+            await tester.pump();
+            expect(input.starts, 0,
+                reason: 'Returning cannot revive a revoked greeting.');
+          }
           await tester.pumpWidget(const SizedBox());
-        case 'stop':
-          await tester.tap(find.byTooltip('Talk freely (hands-free)'));
-      }
-      await completeGreeting();
-      await tester.pump();
-      expect(input.starts, 0);
-      await tester.pumpWidget(const SizedBox());
-    });
+        } finally {
+          if (borrowed != null) {
+            final disposing = borrowed.dispose();
+            await tester.pump();
+            await disposing;
+          }
+        }
+      });
+    }
   }
 
   startupTest('startup uses borrowed TTS and stops without disposing its owner',
