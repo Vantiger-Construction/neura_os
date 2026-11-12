@@ -8,6 +8,8 @@ import 'package:neuro_companion/services/neura_chat_policy.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     await NeuraPrefsCache.init();

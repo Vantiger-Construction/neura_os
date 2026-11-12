@@ -1,3 +1,4 @@
+import '../../teaching/teach_neura_screen.dart';
 import 'package:flutter/material.dart';
 import '../../profiles/local_profile_service.dart';
 import '../services/neura_persona_service.dart';
@@ -120,6 +121,20 @@ class _PersonaTuningScreenState extends State<PersonaTuningScreen> {
                                 child:
                                     const Text('About separate local profiles'))
                           ]))),
+            if (!LocalProfileService.instance.enabled)
+              ListTile(
+                leading: const Icon(Icons.school_outlined),
+                title: const Text('Teach Neura'),
+                subtitle:
+                    const Text('Choose answer detail and starter plan size.'),
+                onTap: _saving
+                    ? null
+                    : () async {
+                        await Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                                builder: (_) => const NeuraTeachScreen()));
+                      },
+              ),
             Wrap(
               spacing: 8,
               runSpacing: 8,

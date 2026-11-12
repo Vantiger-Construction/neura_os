@@ -1,3 +1,4 @@
+import '../../teaching/teach_neura_screen.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -1850,6 +1851,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                 unawaited(_openOfflineControls());
               } else if (option == 'thread') {
                 unawaited(_editThread());
+              } else if (option == 'teach_preferences') {
+                unawaited(_openCompanionTool(const NeuraTeachScreen()));
               } else if (option == 'teach') {
                 unawaited(_openCompanionTool(const MemoryScreen()));
               } else if (option == 'references') {
@@ -1871,8 +1874,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                 child: Text('Plan my day'),
               ),
               const PopupMenuItem(
+                  value: 'teach_preferences',
+                  child: Text('Teach Neura — preferences')),
+              const PopupMenuItem(
                   value: 'teach',
-                  child: Text('Teach Neura — review and correct notes')),
+                  child: Text('Companion notes — review and correct')),
               const PopupMenuItem(
                   value: 'references', child: Text('Offline reference shelf')),
               if (_localOllama)

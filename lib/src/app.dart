@@ -1,3 +1,4 @@
+import '../teaching/teach_neura_screen.dart';
 import 'package:flutter/material.dart';
 import '../profiles/local_profile_gate.dart';
 import '../profiles/local_profile_service.dart';
@@ -44,7 +45,8 @@ class NeuroCompanionApp extends StatelessWidget {
           navigatorKey: navigatorKey,
           navigatorObservers: [
             AvatarRouteObserver(NeuraEventBus.I),
-            vaultRestoreRouteObserver
+            vaultRestoreRouteObserver,
+            teachNeuraRouteObserver,
           ],
           title: 'Neura OS',
           themeMode: _themeModeFor(prefs.theme),
