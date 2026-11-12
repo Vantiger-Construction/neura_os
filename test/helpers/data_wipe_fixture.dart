@@ -1,3 +1,4 @@
+import 'package:neuro_companion/teaching/neura_teaching_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -57,6 +58,7 @@ class DataWipeFixture {
   String get bootstrapPath => '${root.path}/bootstrap/bootstrap_crash.ndjson';
 
   static Future<DataWipeFixture> create() async {
+    NeuraTeachingService.resetWipeGateForTesting();
     PortableVaultBackupService.resetWipeGateForTesting();
     ScheduledBackupSettings.resetWipeGateForTesting();
     MemoryVaultStore.fullWipeDrainTimeout = const Duration(seconds: 30);
