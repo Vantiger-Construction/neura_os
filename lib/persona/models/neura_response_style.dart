@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../../teaching/neura_teaching_preferences.dart';
 
 @immutable
 class NeuraResponseStyle {
@@ -9,6 +10,8 @@ class NeuraResponseStyle {
   final bool useDirectLanguage; // true = blunt / no sugarcoat
   final String difficulty; // "gentle" | "normal" | "challenge"
   final String systemPromptSnippet;
+  // Runtime-only snapshot. Never serialized as personal memory or diagnostics.
+  final NeuraAnswerDetail? explicitAnswerDetail;
 
   const NeuraResponseStyle({
     required this.toneLabel,
@@ -18,6 +21,7 @@ class NeuraResponseStyle {
     required this.useDirectLanguage,
     required this.difficulty,
     required this.systemPromptSnippet,
+    this.explicitAnswerDetail,
   });
 
   Map<String, dynamic> toMap() => {
