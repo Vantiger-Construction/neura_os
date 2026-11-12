@@ -59,6 +59,9 @@ class _NeuraTeachScreenState extends State<NeuraTeachScreen>
   Future<void> _load() async {
     try {
       await _service.load();
+      if (mounted && _service.loaded && _service.error == null) {
+        setState(() => _notice = null);
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _notice = 'Preferences could not be confirmed. '

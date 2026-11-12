@@ -28,6 +28,8 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
   final _steps = TextEditingController();
   String? _error;
   int _epoch = 0;
+  int _suggestionRevision = 0;
+  Route<dynamic>? _route;
   Object? _transferRequest;
   TextEditingController? _adjustment;
   bool _focusNext = false;
@@ -44,6 +46,8 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
   @override
   void initState() {
     super.initState();
+    _plan.addListener(_invalidateSuggestions);
+    teachNeuraRouteObserver.addListener(_onRouteChanged);
     _teaching = widget.teachingService ?? NeuraTeachingService.instance;
     _teaching.addListener(_onTeaching);
     unawaited(_loadTeaching());
@@ -66,14 +70,33 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
     if (mounted) setState(() {});
   }
 
+  // A newer approval, progress change or navigation supersedes a suggestion,
+  // even when the editor text has not changed.
+  void _invalidateSuggestions() => _suggestionRevision++;
+
+  void _onRouteChanged(Route<dynamic> topRoute) {
+    if (_route != null && !identical(_route, topRoute)) {
+      _invalidateSuggestions();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
+    if (_route?.isCurrent == false) _invalidateSuggestions();
+  }
+
   Future<void> _suggestStarterSteps() async {
     if (!_allowed) return;
     final epoch = _epoch;
+    final suggestionRevision = _suggestionRevision;
     final goal = _goal.text;
     final steps = _steps.text;
     await _loadTeaching();
     if (!_allowed ||
         epoch != _epoch ||
+        suggestionRevision != _suggestionRevision ||
         goal != _goal.text ||
         steps != _steps.text) {
       return;
@@ -120,6 +143,8 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
     WidgetsBinding.instance.removeObserver(this);
     SafeBoot.instance.safeMode.removeListener(_onSafety);
     SafeBoot.instance.restartRequired.removeListener(_onSafety);
+    _plan.removeListener(_invalidateSuggestions);
+    teachNeuraRouteObserver.removeListener(_onRouteChanged);
     _plan.dispose();
     _goal.dispose();
     _steps.dispose();

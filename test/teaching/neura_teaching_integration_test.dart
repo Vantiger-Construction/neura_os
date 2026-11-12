@@ -9,6 +9,7 @@ import 'package:neuro_companion/persona/models/neura_persona_preset.dart';
 import 'package:neuro_companion/persona/services/neura_conversation_mode.dart';
 import 'package:neuro_companion/persona/services/neura_persona_service.dart';
 import 'package:neuro_companion/persona/services/neura_prompt_builder.dart';
+import 'package:neuro_companion/planning/neura_daily_plan.dart';
 import 'package:neuro_companion/planning/neura_daily_plan_screen.dart';
 import 'package:neuro_companion/planning/neura_starter_steps.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
@@ -17,6 +18,7 @@ import 'package:neuro_companion/src/core/data_wipe_service.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 import 'package:neuro_companion/teaching/neura_teaching_preferences.dart';
 import 'package:neuro_companion/teaching/neura_teaching_service.dart';
+import 'package:neuro_companion/teaching/teach_neura_screen.dart';
 
 import '../helpers/companion_memory_fixture.dart';
 
@@ -38,6 +40,20 @@ class _Store implements NeuraTeachingStore {
     if (!stillAllowed()) throw StateError('Cancelled');
     this.value = value;
   }
+}
+
+Future<void> _tapPlanner(WidgetTester tester, Finder finder) async {
+  tester
+      .state<ScrollableState>(find.byType(Scrollable).first)
+      .position
+      .jumpTo(0);
+  await tester.pump();
+  await tester.scrollUntilVisible(finder, 150,
+      scrollable: find.byType(Scrollable).first);
+  await Scrollable.ensureVisible(tester.element(finder), alignment: 0.5);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -281,6 +297,94 @@ void main() {
     store.readGate!.complete();
     await tester.pumpAndSettle();
     expect(find.text('Keep this newer draft'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  for (final action in ['preview', 'approve', 'complete', 'pause']) {
+    testWidgets('late settings load preserves a newer plan $action',
+        (tester) async {
+      SafeBoot.instance.safeMode.value = false;
+      SafeBoot.instance.restartRequired.value = false;
+      NeuraTeachingService.resetWipeGateForTesting();
+      final store = _Store()..readGate = Completer<void>();
+      final teaching = NeuraTeachingService.forTesting(store: store);
+      addTearDown(teaching.dispose);
+      await tester.pumpWidget(MaterialApp(
+          navigatorObservers: [teachNeuraRouteObserver],
+          home: NeuraDailyPlanScreen(teachingService: teaching)));
+      await tester.enterText(find.byType(TextField).first, 'Synthetic goal');
+      await tester.enterText(
+          find.byType(TextField).last, 'My first step\nMy second step');
+      final steps =
+          tester.widget<TextField>(find.byType(TextField).last).controller!;
+      final plan = tester
+          .widget<AnimatedBuilder>(find.byWidgetPredicate((widget) =>
+              widget is AnimatedBuilder && widget.animation is NeuraDailyPlan))
+          .animation as NeuraDailyPlan;
+      if (action != 'preview') {
+        await _tapPlanner(tester, find.text('Preview my plan'));
+      }
+      if (action == 'complete' || action == 'pause') {
+        await _tapPlanner(tester, find.text('Use this plan'));
+      }
+      await _tapPlanner(tester, find.text('Suggest starter steps'));
+      switch (action) {
+        case 'preview':
+          await _tapPlanner(tester, find.text('Preview my plan'));
+        case 'approve':
+          await _tapPlanner(tester, find.text('Use this plan'));
+        case 'complete':
+          await _tapPlanner(
+              tester, find.widgetWithText(CheckboxListTile, 'My first step'));
+        case 'pause':
+          await _tapPlanner(tester, find.text('Pause plan'));
+      }
+      expect(teaching.loaded, isFalse);
+      expect(plan.steps, ['My first step', 'My second step']);
+      expect(plan.approved, action != 'preview');
+      expect(plan.completedCount, action == 'complete' ? 1 : 0);
+      expect(plan.paused, action == 'pause');
+
+      store.readGate!.complete();
+      await tester.pumpAndSettle();
+      expect(teaching.loaded, isTrue);
+      expect(steps.text, 'My first step\nMy second step');
+      expect(plan.goal, 'Synthetic goal');
+      expect(plan.steps, ['My first step', 'My second step']);
+      expect(plan.approved, action != 'preview');
+      expect(plan.completedCount, action == 'complete' ? 1 : 0);
+      expect(plan.paused, action == 'pause');
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  testWidgets('covering and uncovering planner revokes a pending suggestion',
+      (tester) async {
+    SafeBoot.instance.safeMode.value = false;
+    SafeBoot.instance.restartRequired.value = false;
+    NeuraTeachingService.resetWipeGateForTesting();
+    final store = _Store()..readGate = Completer<void>();
+    final teaching = NeuraTeachingService.forTesting(store: store);
+    addTearDown(teaching.dispose);
+    final navigatorKey = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(MaterialApp(
+        navigatorKey: navigatorKey,
+        navigatorObservers: [teachNeuraRouteObserver],
+        home: NeuraDailyPlanScreen(teachingService: teaching)));
+    await tester.enterText(find.byType(TextField).first, 'Synthetic goal');
+    await tester.enterText(
+        find.byType(TextField).last, 'Keep this reviewed draft');
+    final steps =
+        tester.widget<TextField>(find.byType(TextField).last).controller!;
+    await _tapPlanner(tester, find.text('Suggest starter steps'));
+    // Revoke synchronously even when the covered state never gets a frame.
+    unawaited(navigatorKey.currentState!.push(MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Text('Covered')))));
+    navigatorKey.currentState!.pop();
+    store.readGate!.complete();
+    await tester.pumpAndSettle();
+    expect(teaching.loaded, isTrue);
+    expect(steps.text, 'Keep this reviewed draft');
     await tester.pumpWidget(const SizedBox());
   });
 }

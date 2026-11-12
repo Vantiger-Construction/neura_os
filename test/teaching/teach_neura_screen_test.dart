@@ -167,6 +167,13 @@ void main() {
     store.fail = false;
     await _tap(tester, find.text('Review preferences'));
     await tester.pumpAndSettle();
+    expect(service.loaded, isTrue);
+    expect(find.textContaining('outcome of this change is unconfirmed'),
+        findsNothing);
+    expect(find.textContaining('Preferences could not be confirmed'),
+        findsNothing);
+    expect(find.text('Preference saved.'), findsNothing);
+    expect(store.value.answerDetail, isNull);
     await _tap(tester, find.byKey(const ValueKey('answer-brief')));
     await _tap(tester, find.text('Save preference'));
     await tester.pumpAndSettle();
