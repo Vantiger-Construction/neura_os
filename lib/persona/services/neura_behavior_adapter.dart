@@ -1,3 +1,4 @@
+import '../../teaching/neura_teaching_preferences.dart';
 import '../models/agent_persona.dart';
 import '../models/persona_profile.dart';
 import '../models/neura_response_style.dart';
@@ -10,6 +11,7 @@ class NeuraBehaviorAdapter {
     required PersonaProfile persona,
     required String mood,
     required AgentPersona agent,
+    NeuraAnswerDetail? answerDetail,
   }) {
     final moodTheme = MoodThemeService.instance.themeFor(mood);
     final difficulty = moodTheme.difficulty;
@@ -35,7 +37,7 @@ class NeuraBehaviorAdapter {
     }
 
     // Depth: persona depth, but if user is exhausted, tilt a bit toward simpler.
-    double depthLevel = persona.depth;
+    double depthLevel = answerDetail?.depth ?? persona.depth;
     if (lowerMood == 'tired' || lowerMood == 'overwhelmed') {
       depthLevel = (depthLevel * 0.7).clamp(0.0, 1.0);
     }
@@ -60,6 +62,7 @@ class NeuraBehaviorAdapter {
       difficulty,
       toneLabel,
       agent,
+      answerDetail,
     );
 
     return NeuraResponseStyle(
@@ -70,6 +73,7 @@ class NeuraBehaviorAdapter {
       useDirectLanguage: useDirectLanguage,
       difficulty: difficulty,
       systemPromptSnippet: systemPromptSnippet,
+      explicitAnswerDetail: answerDetail,
     );
   }
 
@@ -79,6 +83,7 @@ class NeuraBehaviorAdapter {
     String difficulty,
     String toneLabel,
     AgentPersona agent,
+    NeuraAnswerDetail? answerDetail,
   ) {
     final moodStr = mood.isEmpty ? 'neutral' : mood.toLowerCase();
 
@@ -100,11 +105,23 @@ class NeuraBehaviorAdapter {
             ? 'Avoid jokes and keep a serious tone.'
             : 'Use light, occasional humor only when it feels safe.');
 
-    final depthText = persona.depth >= 0.7
+    final defaultDepthText = persona.depth >= 0.7
         ? 'Offer deeper reflections about patterns and values, not just surface tips.'
         : (persona.depth <= 0.3
             ? 'Keep your answers short, practical, and focused on immediate next steps.'
             : 'Balance practical suggestions with some reflective insight.');
+
+    // This bounded setting changes delivery, not identity, safety or authority.
+    // The current request always overrides this user-selected default.
+    final depthText = switch (answerDetail) {
+      NeuraAnswerDetail.brief =>
+        'Default to brief answers and one useful next step. Follow the user\'s requested detail for this reply.',
+      NeuraAnswerDetail.balanced =>
+        'Default to a concise answer with enough explanation to be useful. Follow the user\'s requested detail for this reply.',
+      NeuraAnswerDetail.detailed =>
+        'Default to a fuller explanation with useful examples. Follow the user\'s requested detail for this reply.',
+      null => defaultDepthText,
+    };
 
     final energyText = persona.energy >= 0.7
         ? 'Bring high energy and motivational language.'

@@ -1,3 +1,4 @@
+import '../../teaching/neura_teaching_service.dart';
 import '../../encrypted_memory/companion_memory_service.dart';
 import '../../profiles/local_profile_service.dart';
 import '../../mood/services/mood_state_service.dart';
@@ -25,6 +26,9 @@ class NeuraPromptBuilder {
     NeuraAudience? audience,
     bool includeCurrentMood = true,
   }) async {
+    final profiles = LocalProfileService.instance;
+    final profileEpoch = profiles.epoch;
+    final profileMode = profiles.enabled;
     if (LocalProfileService.instance.enabled) {
       if (!LocalProfileService.instance.canUseSession) {
         throw StateError('Select a local profile first.');
@@ -34,11 +38,32 @@ class NeuraPromptBuilder {
     await _personaService.load();
     if (includeCurrentMood) await _moodState.load();
 
+    final teaching = NeuraTeachingService.instance;
+    // Saved enum-only delivery settings are separate from companion notes.
+    // Profiles cannot load or inherit the ordinary installation's preferences.
+    if (!LocalProfileService.instance.enabled && teaching.available) {
+      try {
+        await teaching.load();
+      } catch (_) {
+        // Storage errors never block a reply or authorize a replacement save.
+        // Teach Neura exposes the unconfirmed state for explicit review.
+      }
+    }
+    if (profiles.epoch != profileEpoch || profiles.enabled != profileMode) {
+      throw StateError('Profile changed while preparing the reply.');
+    }
     final persona = _personaService.current;
     final mood = includeCurrentMood ? _moodState.currentMood : 'neutral';
     final agent = AgentPersonaCatalog.byId(agentId);
 
-    return _adapter.computeStyle(persona: persona, mood: mood, agent: agent);
+    return _adapter.computeStyle(
+      persona: persona,
+      mood: mood,
+      agent: agent,
+      answerDetail: LocalProfileService.instance.enabled
+          ? null
+          : teaching.current.answerDetail,
+    );
   }
 
   /// Build a suggested system message string for your LLM client.
@@ -62,6 +87,9 @@ class NeuraPromptBuilder {
     bool includeCurrentMood = true,
     NeuraConversationMode conversationMode = NeuraConversationMode.balanced,
   }) async {
+    final profiles = LocalProfileService.instance;
+    final profileEpoch = profiles.epoch;
+    final profileMode = profiles.enabled;
     if (LocalProfileService.instance.enabled && includePersistentMemory) {
       throw StateError('Persistent memory is unavailable for local profiles.');
     }
@@ -77,6 +105,15 @@ class NeuraPromptBuilder {
         ? await _buildMemorySnippet(memoryPermission)
         : '';
 
+    if (profiles.epoch != profileEpoch || profiles.enabled != profileMode) {
+      throw StateError('Profile changed while preparing the reply.');
+    }
+    final currentDetail = profiles.enabled
+        ? null
+        : NeuraTeachingService.instance.current.answerDetail;
+    if (style.explicitAnswerDetail != currentDetail) {
+      throw StateError('Answer preferences changed while preparing the reply.');
+    }
     final parts = [
       NeuraCharacterCharter.systemPrompt,
       style.systemPromptSnippet,

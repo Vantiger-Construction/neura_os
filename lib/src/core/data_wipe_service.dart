@@ -1,3 +1,4 @@
+import '../../teaching/neura_teaching_service.dart';
 import 'dart:io';
 import '../../profiles/local_profile_service.dart';
 
@@ -126,6 +127,7 @@ class NeuraDataWipeService {
     // starts clean after the persisted Safe Boot marker is deleted.
     SafeBoot.instance.safeMode.value = true;
     final profileDrain = LocalProfileService.suspendAllForDataWipe();
+    NeuraTeachingService.suspendAllForDataWipe();
     MemoryVaultStore.instance.suspendForDataWipe();
     PortableVaultBackupService.suspendForDataWipe();
     ScheduledBackupSettings.suspendForDataWipe();
@@ -170,6 +172,16 @@ class NeuraDataWipeService {
       'sleep recording shutdown',
       SleepListenerService.resetAllAfterDataWipe,
     );
+    var teachingDrained = false;
+    await _attempt(failures, 'teaching preference storage drain', () async {
+      await NeuraTeachingService.drainAllForDataWipe();
+      teachingDrained = true;
+    });
+    if (!teachingDrained) {
+      // An admitted native write (or key load) must finish before deleting
+      // preferences/keys. Timeout is incomplete deletion, never success.
+      throw NeuraDataWipeException(List<String>.unmodifiable(failures));
+    }
     var backupWritersDrained = false;
     await _attempt(failures, 'backup writer drain', () async {
       await PortableVaultBackupService.drainForDataWipe();

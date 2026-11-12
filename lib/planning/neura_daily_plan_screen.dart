@@ -3,13 +3,19 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../reliability/safe_boot.dart';
+import '../teaching/neura_teaching_preferences.dart';
+import '../teaching/neura_teaching_service.dart';
+import '../teaching/teach_neura_screen.dart';
 import 'neura_daily_plan.dart';
 import 'neura_plan_templates.dart';
+import 'neura_starter_steps.dart';
 import 'neura_task_transfer.dart';
 import 'neura_task_transfer_screen.dart';
 
 class NeuraDailyPlanScreen extends StatefulWidget {
-  const NeuraDailyPlanScreen({super.key});
+  const NeuraDailyPlanScreen({super.key, this.teachingService});
+
+  final NeuraTeachingService? teachingService;
 
   @override
   State<NeuraDailyPlanScreen> createState() => _NeuraDailyPlanScreenState();
@@ -22,12 +28,16 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
   final _steps = TextEditingController();
   String? _error;
   int _epoch = 0;
+  int _suggestionRevision = 0;
+  Route<dynamic>? _route;
   Object? _transferRequest;
   TextEditingController? _adjustment;
   bool _focusNext = false;
+  late final NeuraTeachingService _teaching;
 
   bool get _allowed =>
       mounted &&
+      ModalRoute.of(context)?.isCurrent != false &&
       !SafeBoot.instance.safeMode.value &&
       !SafeBoot.instance.restartRequired.value &&
       (WidgetsBinding.instance.lifecycleState == null ||
@@ -36,9 +46,63 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
   @override
   void initState() {
     super.initState();
+    _plan.addListener(_invalidateSuggestions);
+    teachNeuraRouteObserver.addListener(_onRouteChanged);
+    _teaching = widget.teachingService ?? NeuraTeachingService.instance;
+    _teaching.addListener(_onTeaching);
+    unawaited(_loadTeaching());
     WidgetsBinding.instance.addObserver(this);
     SafeBoot.instance.safeMode.addListener(_onSafety);
     SafeBoot.instance.restartRequired.addListener(_onSafety);
+  }
+
+  Future<void> _loadTeaching() async {
+    if (!_teaching.available) return;
+    try {
+      await _teaching.load();
+    } catch (_) {
+      // Use the original three-step starter; show unconfirmed settings below.
+      // Never overwrite unreadable settings or an existing plan.
+    }
+  }
+
+  void _onTeaching() {
+    if (mounted) setState(() {});
+  }
+
+  // A newer approval, progress change or navigation supersedes a suggestion,
+  // even when the editor text has not changed.
+  void _invalidateSuggestions() => _suggestionRevision++;
+
+  void _onRouteChanged(Route<dynamic> topRoute) {
+    if (_route != null && !identical(_route, topRoute)) {
+      _invalidateSuggestions();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
+    if (_route?.isCurrent == false) _invalidateSuggestions();
+  }
+
+  Future<void> _suggestStarterSteps() async {
+    if (!_allowed) return;
+    final epoch = _epoch;
+    final suggestionRevision = _suggestionRevision;
+    final goal = _goal.text;
+    final steps = _steps.text;
+    await _loadTeaching();
+    if (!_allowed ||
+        epoch != _epoch ||
+        suggestionRevision != _suggestionRevision ||
+        goal != _goal.text ||
+        steps != _steps.text) {
+      return;
+    }
+    _steps.text = neuraStarterSteps(_teaching.current.planSize).join('\n');
+    _plan.clear();
   }
 
   void _clear({bool preserveTransfer = false}) {
@@ -74,10 +138,13 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
 
   @override
   void dispose() {
+    _teaching.removeListener(_onTeaching);
     _transferRequest = null;
     WidgetsBinding.instance.removeObserver(this);
     SafeBoot.instance.safeMode.removeListener(_onSafety);
     SafeBoot.instance.restartRequired.removeListener(_onSafety);
+    _plan.removeListener(_invalidateSuggestions);
+    teachNeuraRouteObserver.removeListener(_onRouteChanged);
     _plan.dispose();
     _goal.dispose();
     _steps.dispose();
@@ -245,6 +312,14 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('Plan my day'), actions: [
+          if (_teaching.available)
+            IconButton(
+                tooltip: 'Teach Neura',
+                onPressed: () async {
+                  await Navigator.of(context).push(MaterialPageRoute<void>(
+                      builder: (_) => NeuraTeachScreen(service: _teaching)));
+                },
+                icon: const Icon(Icons.school_outlined)),
           IconButton(
               tooltip: 'Continue on another device',
               onPressed: _transfer,
@@ -283,16 +358,17 @@ class _NeuraDailyPlanScreenState extends State<NeuraDailyPlanScreen>
                 },
               ),
               TextButton.icon(
-                onPressed: () {
-                  _steps.text =
-                      'Choose the smallest part of this goal to start with\n'
-                      'Spend five minutes on that first step\n'
-                      'Pause and decide whether to continue or adjust';
-                  _plan.clear();
-                },
+                onPressed: () => unawaited(_suggestStarterSteps()),
                 icon: const Icon(Icons.lightbulb_outline),
                 label: const Text('Suggest starter steps'),
               ),
+              if (_teaching.current.planSize != null)
+                Text('Starter preference: ${_teaching.current.planSize!.label} '
+                    '(${_teaching.planIsTemporary ? 'just today' : 'saved'}). '
+                    'Your existing plan is unchanged.'),
+              if (_teaching.error != null)
+                const Text('Saved preferences are not confirmed. '
+                    'Starter suggestions use the three-step default.'),
               TextField(
                 controller: _steps,
                 minLines: 3,
