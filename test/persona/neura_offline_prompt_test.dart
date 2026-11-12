@@ -8,6 +8,8 @@ import 'package:neuro_companion/persona/services/neura_conversation_mode.dart';
 import 'package:neuro_companion/persona/models/neura_audience.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('offline prompt excludes stored mood while retaining Neura identity',
       () async {
     SharedPreferences.setMockInitialValues({});

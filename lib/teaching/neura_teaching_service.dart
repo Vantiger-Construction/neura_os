@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../profiles/local_profile_service.dart';
@@ -76,8 +75,9 @@ class NeuraTeachingService extends ChangeNotifier with WidgetsBindingObserver {
 
   @visibleForTesting
   static void resetWipeGateForTesting() {
-    if (_active.isNotEmpty)
+    if (_active.isNotEmpty) {
       throw StateError('Teaching storage is still active.');
+    }
     _wipeSuspended = false;
     wipeDrainTimeout = const Duration(seconds: 30);
     for (final owner in _owners.toList()) {
@@ -237,6 +237,7 @@ class NeuraTeachingService extends ChangeNotifier with WidgetsBindingObserver {
       _expiry = Timer(midnight.difference(now), () {
         _today = const NeuraTeachingPreferences();
         _todayDate = null;
+        _expiry = null;
         _revision++;
         if (!_disposed) notifyListeners();
       });
@@ -255,6 +256,7 @@ class NeuraTeachingService extends ChangeNotifier with WidgetsBindingObserver {
         _saved = next;
         _today =
             answer ? _today.withAnswerDetail(null) : _today.withPlanSize(null);
+        _stopUnusedExpiry();
         _revision++;
         _error = null;
       } catch (_) {
@@ -263,6 +265,7 @@ class NeuraTeachingService extends ChangeNotifier with WidgetsBindingObserver {
         _loaded = false;
         _saved = const NeuraTeachingPreferences();
         _today = const NeuraTeachingPreferences();
+        _stopUnusedExpiry();
         _error =
             'The change could not be confirmed. Review saved preferences before retrying.';
         _revision++;
@@ -274,6 +277,13 @@ class NeuraTeachingService extends ChangeNotifier with WidgetsBindingObserver {
     });
   }
 
+  void _stopUnusedExpiry() {
+    if (!_today.isEmpty) return;
+    _todayDate = null;
+    _expiry?.cancel();
+    _expiry = null;
+  }
+
   void _invalidate() {
     _epoch++;
     _revision++;
@@ -282,6 +292,7 @@ class NeuraTeachingService extends ChangeNotifier with WidgetsBindingObserver {
     _today = const NeuraTeachingPreferences();
     _todayDate = null;
     _expiry?.cancel();
+    _expiry = null;
     if (!_disposed) notifyListeners();
   }
 

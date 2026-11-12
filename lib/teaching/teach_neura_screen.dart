@@ -157,7 +157,9 @@ class _NeuraTeachScreenState extends State<NeuraTeachScreen>
     }
     if (permit == null ||
         !_enabled ||
-        ModalRoute.of(context)?.isCurrent == false) return;
+        ModalRoute.of(context)?.isCurrent == false) {
+      return;
+    }
     final answer = _answer;
     final plan = _plan;
     final remove = _remove;

@@ -56,7 +56,9 @@ void main() {
     permission.revoke();
 
     // Pausing separate profiles must leave the ordinary personality editable.
-    await tester.ensureVisible(find.text('Playful spark'));
+    // The teaching entry can put the preset chips outside ListView's cache
+    // on this narrow viewport. Scroll to build them before selecting one.
+    await tester.scrollUntilVisible(find.text('Playful spark'), 200);
     await tester.tap(find.text('Playful spark'));
     final save = find.widgetWithText(ElevatedButton, 'Save persona');
     await tester.scrollUntilVisible(save, 400);
