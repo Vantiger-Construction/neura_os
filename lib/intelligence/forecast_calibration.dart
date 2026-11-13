@@ -269,8 +269,7 @@ class NeuraForecastLedger {
 /// An application-owned source registry number, not a permission or identity
 /// proof. See `NeuraCalibrationSources` for the suggestion registry.
 class NeuraForecastSource {
-  const NeuraForecastSource(this.value)
-      : assert(value >= 0 && value <= 0xFFFF);
+  const NeuraForecastSource(this.value) : assert(value >= 0 && value <= 0xFFFF);
 
   final int value;
 
