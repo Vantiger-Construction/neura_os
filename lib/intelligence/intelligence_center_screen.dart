@@ -353,7 +353,15 @@ class _NeuraIntelligenceCenterScreenState
                     const Divider(height: 1),
                     _RoomAttentionTile(
                       preferences: preferences,
-                      onChanged: _save,
+                      // Apply each edit to the latest saved preferences, not
+                      // the snapshot this frame rendered, so quick edits to
+                      // different rooms can't overwrite each other.
+                      onChanged: (roomId, attention) => _save(
+                        _controller.preferences.withRoomAttention(
+                          roomId,
+                          attention,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -628,7 +636,7 @@ class _RoomAttentionTile extends StatelessWidget {
   });
 
   final NeuraIntelligencePreferences preferences;
-  final ValueChanged<NeuraIntelligencePreferences> onChanged;
+  final void Function(String roomId, NeuraRoomAttention attention) onChanged;
 
   static String _label(NeuraRoomAttention attention) => switch (attention) {
         NeuraRoomAttention.open => 'Open',
@@ -647,7 +655,8 @@ class _RoomAttentionTile extends StatelessWidget {
           const SizedBox(height: 6),
           const Text(
             'Calm rooms only allow gentle cards. Private rooms keep '
-            'suggestions silent. Urgent care can still reach you in either.',
+            'suggestions silent. Urgent wellbeing cards can still reach you '
+            'in either.',
           ),
           const SizedBox(height: 6),
           ...NeuraRoom.all.map((room) {
@@ -684,10 +693,7 @@ class _RoomAttentionTile extends StatelessWidget {
                   onChanged: choices.length < 2
                       ? null
                       : (value) {
-                          if (value == null) return;
-                          onChanged(
-                            preferences.withRoomAttention(room.id, value),
-                          );
+                          if (value != null) onChanged(room.id, value);
                         },
                 ),
               ],

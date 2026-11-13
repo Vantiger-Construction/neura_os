@@ -191,6 +191,23 @@ void main() {
       expect(entryFor(_arrival)!.summary.scored, 1);
     });
 
+    test('a rolled-back gesture keeps the card open for a later one', () {
+      final receipt = _receipt();
+      offerAndShow(receipt);
+      calibration.resolved(
+        receiptId: receipt.id,
+        acted: true,
+        now: shownAt.subtract(const Duration(seconds: 30)),
+      );
+      expect(entryFor(_arrival), isNull);
+      calibration.resolved(
+        receiptId: receipt.id,
+        acted: true,
+        now: shownAt.add(const Duration(seconds: 30)),
+      );
+      expect(entryFor(_arrival)!.summary.scored, 1);
+    });
+
     test('clear revokes pending cards', () {
       final receipt = _receipt();
       offerAndShow(receipt);
@@ -323,6 +340,25 @@ void main() {
           proactivityLevel: NeuraProactivityLevel.balanced,
         ),
       );
+      expect(controller.suggestionCalibration(now: now), isEmpty);
+    });
+
+    test('a gate that closes and reopens unobserved still clears', () async {
+      final controller = NeuraIntelligenceController.instance;
+      var now = DateTime.utc(2026, 11, 13, 9);
+
+      await showAndResolve(now, 'safe-flip', acted: true);
+      expect(controller.suggestionCalibration(now: now), isNotEmpty);
+      SafeBoot.instance.safeMode.value = true;
+      SafeBoot.instance.safeMode.value = false;
+      expect(controller.suggestionCalibration(now: now), isEmpty);
+
+      now = now.add(const Duration(hours: 2));
+      await showAndResolve(now, 'learning-flip', acted: true);
+      expect(controller.suggestionCalibration(now: now), isNotEmpty);
+      HumanPrefsController.instance.prefs.value =
+          HumanPrefs.defaults.copyWith(allowLearning: false);
+      HumanPrefsController.instance.prefs.value = HumanPrefs.defaults;
       expect(controller.suggestionCalibration(now: now), isEmpty);
     });
 

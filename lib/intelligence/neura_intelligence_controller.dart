@@ -24,7 +24,12 @@ import 'suggestion_calibration.dart';
 /// privacy, Safe Mode, consent, and the existing app guardrails. Any mutation
 /// or external effect must still pass through the approval broker.
 class NeuraIntelligenceController extends ChangeNotifier {
-  NeuraIntelligenceController._();
+  NeuraIntelligenceController._() {
+    // Clear calibration the moment a gate closes, so measurements taken
+    // before an opt-out can never reappear after opting back in.
+    HumanPrefsController.instance.prefs.addListener(_calibrationGateChanged);
+    SafeBoot.instance.safeMode.addListener(_calibrationGateChanged);
+  }
 
   static final NeuraIntelligenceController instance =
       NeuraIntelligenceController._();
@@ -72,6 +77,10 @@ class NeuraIntelligenceController extends ChangeNotifier {
       !SafeBoot.instance.safeMode.value &&
       HumanPrefsController.instance.prefs.value.allowLearning &&
       _preferences.allowsProactiveSuggestions;
+
+  void _calibrationGateChanged() {
+    if (!calibrationAllowed) _calibration.clear();
+  }
 
   /// Display-only, in-memory comparison of suggestion scores with what the
   /// user accepted, per registered source. Never consulted by the kernel.

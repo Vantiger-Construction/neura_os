@@ -130,8 +130,13 @@ class NeuraSuggestionCalibration {
     if (id == null) return;
     try {
       _ledger.resolve(id: id, outcome: acted, now: _seconds(now));
-    } on NeuraForecastException {
-      // Late, unknown or clock-rollback resolutions stay unscored.
+    } on NeuraForecastException catch (error) {
+      // A rolled-back clock changed nothing in the ledger, so keep the handle
+      // and let a later gesture or expiry settle it. Late or unknown
+      // resolutions stay unscored.
+      if (error.error == NeuraForecastError.clockWentBackwards) {
+        _open[receiptId] = id;
+      }
     }
   }
 
@@ -180,6 +185,9 @@ class NeuraSuggestionCalibration {
     return false;
   }
 
+  /// Whole seconds, matching the ledger contract. Truncating both the
+  /// gesture and the deadline can only drop a gesture made in the final
+  /// partial second (as late); it can never score a late gesture as on time.
   static int _seconds(DateTime value) =>
       value.toUtc().millisecondsSinceEpoch ~/ 1000;
 }

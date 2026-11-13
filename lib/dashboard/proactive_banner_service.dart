@@ -721,6 +721,8 @@ class ProactiveBannerService {
     required bool acted,
   }) async {
     if (!canDisplay(banner)) return;
+    // The gesture happened now, not when the queued write gets its turn.
+    final gestureAt = _clock();
     await _enqueueWrite((generation) async {
       final state = await _loadState();
       if (!canDisplay(banner)) return;
@@ -734,7 +736,7 @@ class ProactiveBannerService {
       await NeuraIntelligenceController.instance.recordOutcome(
         receiptId: banner.receipt.id,
         acted: acted,
-        now: _clock(),
+        now: gestureAt,
       );
 
       if (!_isCurrent(generation) ||

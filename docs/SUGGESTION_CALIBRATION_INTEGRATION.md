@@ -33,9 +33,17 @@ cloud consent, so the ledger contract is ported to Dart instead:
   what this measures.
 - **Deadline:** the candidate's own `expiresAt`, at most seven days ahead
   (otherwise it's not recorded).
-- **Outcome:** `true` when the user taps the card's primary action
-  (`recordOutcome(acted: true)`) strictly before the deadline; `false` when they
-  dismiss it before the deadline.
+- **Outcome:** `true` when the user accepts the card strictly before the
+  deadline; `false` when they dismiss it before the deadline. Accepting means
+  tapping the primary action. For a card that needs approval (an
+  approval-gated quest), it means approving in the review screen, and
+  declining there counts as not accepted. Either way, the outcome is whatever
+  the card records through `recordOutcome`, the same signal specialist
+  reputation already uses.
+- **Time resolution:** whole seconds, per the ledger contract, taken when the
+  gesture happens, not when its queued write runs. Truncating both the gesture
+  and the deadline can only drop a gesture made in the card's final partial
+  second as late. It can never score a late gesture as on time.
 - **No outcome:** a card that expires without a gesture, or whose gesture
   arrives at or after expiry, is dropped unscored. It is never counted as a
   rejection.
@@ -46,8 +54,9 @@ Outcomes come only from the dashboard banner's own gesture handlers through
 `ProactiveBannerService.recordOutcome`. Model output, retrieved documents,
 other specialists and timestamps supplied by anything other than the app's own
 clock cannot resolve a forecast. A forecast resolves at most once; repeated
-gestures or a second "shown" don't add measurements. A clock rollback leaves the
-card unmeasured, as the ledger contract requires.
+gestures or a second "shown" don't add measurements. A clock rollback changes
+nothing. A card shown during a rollback isn't measured. A gesture made during a
+rollback leaves the card open for a later gesture or for expiry.
 
 ## Sources
 
@@ -70,8 +79,11 @@ routine initiative:
 - Safe Mode is off,
 - the controller is not suspended for a data wipe.
 
-When any gate closes, the next calibration call clears every measurement, open
-forecast and pending offer. Re-enabling starts empty; nothing resumes.
+The controller listens to the learning and Safe Mode settings and clears every
+measurement, open forecast and pending offer the moment either gate closes.
+Turning proactive suggestions off clears it in `updatePreferences`. Every
+calibration call also re-checks the gates. Re-enabling starts empty; nothing
+resumes.
 
 ## Effect: display-only
 
