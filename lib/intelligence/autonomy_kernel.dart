@@ -27,6 +27,7 @@ class NeuraAutonomyPolicy {
     this.bandwidthStrain = 0,
     this.outcomeLoopSuppression = false,
     this.roomId,
+    this.roomAttentionChoices = const {},
   });
 
   final bool enabled;
@@ -58,6 +59,11 @@ class NeuraAutonomyPolicy {
   /// Checked through [NeuraRoomAttentionPolicy], which can only suppress a
   /// non-urgent candidate, never allow one the other checks rejected.
   final String? roomId;
+
+  /// The user's own per-room attention settings. Merged with the built-in
+  /// room table by [NeuraRoomAttentionPolicy.effectiveFor], so they can only
+  /// make a room stricter.
+  final Map<String, NeuraRoomAttention> roomAttentionChoices;
 
   /// Consulted as an additional, tightening-only check for capabilities that
   /// map to a constitution-governed category (see
@@ -139,6 +145,7 @@ class NeuraAutonomyKernel {
       roomId: policy.roomId,
       urgency: candidate.urgency,
       disruption: candidate.disruption,
+      userChoices: policy.roomAttentionChoices,
     );
     if (reputation > 1.0) {
       reasons.add(

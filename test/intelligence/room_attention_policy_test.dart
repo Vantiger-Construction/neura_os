@@ -101,4 +101,105 @@ void main() {
       );
     });
   });
+
+  group('user room attention choices', () {
+    test('stricter follows the declared protection order', () {
+      const open = NeuraRoomAttention.open;
+      const calm = NeuraRoomAttention.calm;
+      const private = NeuraRoomAttention.private;
+      expect(NeuraRoomAttentionPolicy.stricter(open, calm), calm);
+      expect(NeuraRoomAttentionPolicy.stricter(calm, open), calm);
+      expect(NeuraRoomAttentionPolicy.stricter(calm, private), private);
+      expect(NeuraRoomAttentionPolicy.stricter(private, open), private);
+      expect(NeuraRoomAttentionPolicy.stricter(open, open), open);
+    });
+
+    test('a choice can tighten an open room', () {
+      expect(
+        NeuraRoomAttentionPolicy.effectiveFor(
+          NeuraRoom.joyLounge.id,
+          userChoices: const {'joy_lounge': NeuraRoomAttention.calm},
+        ),
+        NeuraRoomAttention.calm,
+      );
+      expect(
+        NeuraRoomAttentionPolicy.effectiveFor(
+          NeuraRoom.moodDen.id,
+          userChoices: const {'mood_den': NeuraRoomAttention.private},
+        ),
+        NeuraRoomAttention.private,
+      );
+    });
+
+    test('a choice can never loosen a built-in room', () {
+      expect(
+        NeuraRoomAttentionPolicy.effectiveFor(
+          NeuraRoom.reflectionBay.id,
+          userChoices: const {'reflection_bay': NeuraRoomAttention.open},
+        ),
+        NeuraRoomAttention.private,
+      );
+      expect(
+        NeuraRoomAttentionPolicy.effectiveFor(
+          NeuraRoom.moodDen.id,
+          userChoices: const {'mood_den': NeuraRoomAttention.open},
+        ),
+        NeuraRoomAttention.calm,
+      );
+    });
+
+    test('blank or missing rooms ignore user choices', () {
+      for (final roomId in <String?>[null, '', '  ']) {
+        expect(
+          NeuraRoomAttentionPolicy.effectiveFor(
+            roomId,
+            userChoices: const {'': NeuraRoomAttention.private},
+          ),
+          NeuraRoomAttention.open,
+        );
+      }
+    });
+
+    test('suppression names a room the user marked', () {
+      expect(
+        NeuraRoomAttentionPolicy.suppressionReason(
+          roomId: NeuraRoom.dreamAtrium.id,
+          urgency: 0.5,
+          disruption: 0.1,
+          userChoices: const {'dream_atrium': NeuraRoomAttention.private},
+        ),
+        contains('room you marked private'),
+      );
+      expect(
+        NeuraRoomAttentionPolicy.suppressionReason(
+          roomId: NeuraRoom.dreamAtrium.id,
+          urgency: 0.5,
+          disruption: 0.6,
+          userChoices: const {'dream_atrium': NeuraRoomAttention.calm},
+        ),
+        contains('room you marked calm'),
+      );
+      expect(
+        NeuraRoomAttentionPolicy.suppressionReason(
+          roomId: NeuraRoom.dreamAtrium.id,
+          urgency: 0.5,
+          disruption: NeuraRoomAttentionPolicy.calmMaxDisruption,
+          userChoices: const {'dream_atrium': NeuraRoomAttention.calm},
+        ),
+        isNull,
+      );
+    });
+
+    test('urgent care still reaches a room the user marked private', () {
+      expect(
+        NeuraRoomAttentionPolicy.suppressionReason(
+          roomId: NeuraRoom.penthouse.id,
+          urgency: NeuraRoomAttentionPolicy.urgentOverride,
+          disruption: 0.9,
+          userChoices: const {'penthouse': NeuraRoomAttention.private},
+        ),
+        isNull,
+      );
+    });
+  });
 }
