@@ -2,11 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../neura_shell/models/neura_room.dart';
 import '../reliability/safe_boot.dart';
 import 'capability_registry.dart';
 import 'intelligence_preferences.dart';
 import 'models.dart';
 import 'neura_intelligence_controller.dart';
+import 'room_attention_policy.dart';
+import 'suggestion_calibration.dart';
 
 const String _kAllSpecialists = 'All';
 const String _kAllOutcomes = 'All';
@@ -347,8 +350,23 @@ class _NeuraIntelligenceCenterScreenState
                           ],
                         ),
                       ),
+                    const Divider(height: 1),
+                    _RoomAttentionTile(
+                      preferences: preferences,
+                      onChanged: _save,
+                    ),
                   ],
                 ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'How suggestions land',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 6),
+              _CalibrationCard(
+                allowed: _controller.calibrationAllowed,
+                entries: _controller.suggestionCalibration(now: now),
               ),
               const SizedBox(height: 16),
               Row(
@@ -597,6 +615,161 @@ class _ReceiptTile extends StatelessWidget {
     final hour = local.hour.toString().padLeft(2, '0');
     final minute = local.minute.toString().padLeft(2, '0');
     return '${local.month}/${local.day} $hour:$minute';
+  }
+}
+
+/// Per-room attention controls. Each room offers only levels at least as
+/// protective as its built-in attention, so the user can tighten a room but
+/// never open up a built-in calm or private one.
+class _RoomAttentionTile extends StatelessWidget {
+  const _RoomAttentionTile({
+    required this.preferences,
+    required this.onChanged,
+  });
+
+  final NeuraIntelligencePreferences preferences;
+  final ValueChanged<NeuraIntelligencePreferences> onChanged;
+
+  static String _label(NeuraRoomAttention attention) => switch (attention) {
+        NeuraRoomAttention.open => 'Open',
+        NeuraRoomAttention.calm => 'Calm',
+        NeuraRoomAttention.private => 'Private',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.meeting_room_outlined),
+      title: const Text('Room attention'),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 6),
+          const Text(
+            'Calm rooms only allow gentle cards. Private rooms keep '
+            'suggestions silent. Urgent care can still reach you in either.',
+          ),
+          const SizedBox(height: 6),
+          ...NeuraRoom.all.map((room) {
+            final builtIn = NeuraRoomAttentionPolicy.forRoom(room.id);
+            final current = NeuraRoomAttentionPolicy.effectiveFor(
+              room.id,
+              userChoices: preferences.roomAttention,
+            );
+            final choices = NeuraRoomAttention.values
+                .where((attention) => attention.index >= builtIn.index)
+                .toList(growable: false);
+            return Row(
+              children: [
+                Icon(room.icon, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    builtIn == NeuraRoomAttention.open
+                        ? room.title
+                        : '${room.title} (built in: '
+                            '${_label(builtIn).toLowerCase()})',
+                  ),
+                ),
+                DropdownButton<NeuraRoomAttention>(
+                  value: current,
+                  items: choices
+                      .map(
+                        (attention) => DropdownMenuItem(
+                          value: attention,
+                          child: Text(_label(attention)),
+                        ),
+                      )
+                      .toList(growable: false),
+                  onChanged: choices.length < 2
+                      ? null
+                      : (value) {
+                          if (value == null) return;
+                          onChanged(
+                            preferences.withRoomAttention(room.id, value),
+                          );
+                        },
+                ),
+              ],
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+/// Display-only view of [NeuraSuggestionCalibrationEntry] statistics. It
+/// reports counts with every figure and makes no claim about accuracy or
+/// confidence; nothing shown here changes what Neura suggests.
+class _CalibrationCard extends StatelessWidget {
+  const _CalibrationCard({required this.allowed, required this.entries});
+
+  final bool allowed;
+  final List<NeuraSuggestionCalibrationEntry> entries;
+
+  static String _percent(double value) => '${(value * 100).round()}%';
+
+  @override
+  Widget build(BuildContext context) {
+    final intro = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Text(
+        "Compares Neura's score for each card you saw with whether you "
+        'accepted it before it expired. Kept on this device for this '
+        "session only, and it doesn't change what Neura suggests. Care "
+        'cards are never measured.',
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+    );
+    if (!allowed) {
+      return Card(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            intro,
+            const ListTile(
+              leading: Icon(Icons.pause_circle_outline),
+              title: Text('Not measuring'),
+              subtitle: Text(
+                'Needs proactive suggestions and local learning on, and '
+                'Safe Mode off. Turning any of these off clears it.',
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          intro,
+          if (entries.isEmpty)
+            const ListTile(
+              leading: Icon(Icons.insights_outlined),
+              title: Text('Nothing answered yet'),
+              subtitle: Text(
+                'Appears after you accept or dismiss a suggestion card.',
+              ),
+            )
+          else
+            ...entries.map((entry) {
+              final summary = entry.summary;
+              final cards = summary.scored == 1 ? 'card' : 'cards';
+              return ListTile(
+                leading: const Icon(Icons.insights_outlined),
+                title: Text(entry.label),
+                subtitle: Text(
+                  'Scored ${_percent(summary.meanProbability)} on average · '
+                  'you accepted ${_percent(summary.observedFrequency)} · '
+                  '${summary.scored} answered $cards',
+                ),
+              );
+            }),
+        ],
+      ),
+    );
   }
 }
 

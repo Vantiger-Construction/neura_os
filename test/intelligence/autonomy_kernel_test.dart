@@ -3,6 +3,7 @@ import 'package:neuro_companion/constitution/neura_personal_constitution.dart';
 import 'package:neuro_companion/intelligence/autonomy_kernel.dart';
 import 'package:neuro_companion/intelligence/capability_registry.dart';
 import 'package:neuro_companion/intelligence/models.dart';
+import 'package:neuro_companion/intelligence/room_attention_policy.dart';
 
 void main() {
   final now = DateTime.utc(2026, 8, 14, 18);
@@ -445,6 +446,53 @@ void main() {
       expect(receipt.outcome, NeuraDecisionOutcome.suppressed);
       expect(_hasReason(receipt, 'Safe Mode'), isTrue);
     });
+
+    test('a room the user marked private keeps suggestions silent', () {
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now, urgency: 0.7),
+        policy: _policy(
+          roomId: 'joy_lounge',
+          roomAttentionChoices: const {
+            'joy_lounge': NeuraRoomAttention.private,
+          },
+        ),
+        now: now,
+      );
+
+      expect(receipt.outcome, NeuraDecisionOutcome.suppressed);
+      expect(_hasReason(receipt, 'room you marked private'), isTrue);
+    });
+
+    test('a user choice cannot loosen a built-in private room', () {
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now, urgency: 0.7),
+        policy: _policy(
+          roomId: 'reflection_bay',
+          roomAttentionChoices: const {
+            'reflection_bay': NeuraRoomAttention.open,
+          },
+        ),
+        now: now,
+      );
+
+      expect(receipt.outcome, NeuraDecisionOutcome.suppressed);
+      expect(_hasReason(receipt, 'private room'), isTrue);
+    });
+
+    test('a choice for another room changes nothing here', () {
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: _candidate(now: now, urgency: 0.7),
+        policy: _policy(
+          roomId: 'penthouse',
+          roomAttentionChoices: const {
+            'joy_lounge': NeuraRoomAttention.private,
+          },
+        ),
+        now: now,
+      );
+
+      expect(receipt.outcome, NeuraDecisionOutcome.allow);
+    });
   });
 }
 
@@ -463,6 +511,7 @@ NeuraAutonomyPolicy _policy({
   double bandwidthStrain = 0,
   bool outcomeLoopSuppression = false,
   String? roomId,
+  Map<String, NeuraRoomAttention> roomAttentionChoices = const {},
 }) =>
     NeuraAutonomyPolicy(
       enabled: enabled,
@@ -479,6 +528,7 @@ NeuraAutonomyPolicy _policy({
       bandwidthStrain: bandwidthStrain,
       outcomeLoopSuppression: outcomeLoopSuppression,
       roomId: roomId,
+      roomAttentionChoices: roomAttentionChoices,
     );
 
 NeuraIntelligenceCandidate _candidate({

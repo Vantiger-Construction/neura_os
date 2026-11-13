@@ -7,6 +7,7 @@ import '../core/neura_event_bus.dart';
 import '../core/neura_events.dart';
 import '../guardrails/guardrails.dart';
 import '../guardrails/guardrails_types.dart';
+import '../modules/human/human_prefs_controller.dart';
 import '../reliability/safe_boot.dart';
 import '../reliability/timeline_vault.dart';
 import '../src/modules/focus/focus_controller.dart';
@@ -14,6 +15,7 @@ import '../startup/neura_prefs_cache.dart';
 import 'autonomy_kernel.dart';
 import 'intelligence_preferences.dart';
 import 'models.dart';
+import 'suggestion_calibration.dart';
 
 /// Local-first coordinator for Neura's proactive intelligence.
 ///
@@ -38,6 +40,8 @@ class NeuraIntelligenceController extends ChangeNotifier {
 
   final NeuraAutonomyKernel _kernel = NeuraAutonomyKernel();
   final Guardrails _guardrails = Guardrails();
+  late final NeuraSuggestionCalibration _calibration =
+      NeuraSuggestionCalibration(allowed: () => calibrationAllowed);
 
   NeuraIntelligencePreferences _preferences =
       const NeuraIntelligencePreferences();
@@ -59,6 +63,22 @@ class NeuraIntelligenceController extends ChangeNotifier {
   /// from suggestion text. Defaults to 1.0 (neutral) when there is no history.
   double specialistReputation(String specialistId) =>
       _specialistReputation[specialistId] ?? 1.0;
+
+  /// Suggestion calibration is measured only while proactive suggestions and
+  /// local learning are on and Safe Mode is off, the same gates as routine
+  /// initiative. Turning any of them off clears the in-memory measurements.
+  bool get calibrationAllowed =>
+      !_writesSuspended &&
+      !SafeBoot.instance.safeMode.value &&
+      HumanPrefsController.instance.prefs.value.allowLearning &&
+      _preferences.allowsProactiveSuggestions;
+
+  /// Display-only, in-memory comparison of suggestion scores with what the
+  /// user accepted, per registered source. Never consulted by the kernel.
+  List<NeuraSuggestionCalibrationEntry> suggestionCalibration({
+    DateTime? now,
+  }) =>
+      _calibration.entries(now: now ?? DateTime.now());
 
   Future<void> initialize() async {
     if (_initialized || _writesSuspended) return;
@@ -159,6 +179,7 @@ class NeuraIntelligenceController extends ChangeNotifier {
       bandwidthStrain: bandwidthStrain.clamp(0.0, 1.0).toDouble(),
       outcomeLoopSuppression: outcomeLoopSuppression,
       roomId: roomId,
+      roomAttentionChoices: _preferences.roomAttention,
     );
 
     final decisions = <NeuraCouncilDecision>[];
@@ -201,6 +222,12 @@ class NeuraIntelligenceController extends ChangeNotifier {
       decisions.add(
         NeuraCouncilDecision(candidate: candidate, receipt: receipt),
       );
+      if (receipt.isVisible) {
+        _calibration.offered(
+          receiptId: receipt.id,
+          expiresAt: candidate.expiresAt,
+        );
+      }
       _records.add(
         NeuraIntelligenceRecord(
           title: candidate.title,
@@ -230,13 +257,18 @@ class NeuraIntelligenceController extends ChangeNotifier {
     return _isCurrent(generation) ? _lastCouncil : const NeuraCouncilResult([]);
   }
 
-  Future<void> markShown(String receiptId) =>
-      _updateOutcome(receiptId, NeuraSuggestionOutcome.shown);
+  Future<void> markShown(String receiptId, {DateTime? now}) =>
+      _updateOutcome(receiptId, NeuraSuggestionOutcome.shown, now: now);
 
-  Future<void> recordOutcome({required String receiptId, required bool acted}) {
+  Future<void> recordOutcome({
+    required String receiptId,
+    required bool acted,
+    DateTime? now,
+  }) {
     return _updateOutcome(
       receiptId,
       acted ? NeuraSuggestionOutcome.acted : NeuraSuggestionOutcome.dismissed,
+      now: now,
     );
   }
 
@@ -247,6 +279,7 @@ class NeuraIntelligenceController extends ChangeNotifier {
     await initialize();
     if (_writesSuspended) return;
     _preferences = preferences;
+    if (!calibrationAllowed) _calibration.clear();
     notifyListeners();
     await _persist();
   }
@@ -267,14 +300,17 @@ class NeuraIntelligenceController extends ChangeNotifier {
     if (_writesSuspended) return;
     _records = [];
     _lastCouncil = const NeuraCouncilResult([]);
+    _calibration.clear();
     notifyListeners();
     await _persist();
   }
 
   Future<void> _updateOutcome(
     String receiptId,
-    NeuraSuggestionOutcome outcome,
-  ) async {
+    NeuraSuggestionOutcome outcome, {
+    DateTime? now,
+  }) async {
+    final observedAt = now ?? DateTime.now();
     if (_writesSuspended) return;
     final generation = _dataGeneration;
     await initialize();
@@ -291,9 +327,17 @@ class NeuraIntelligenceController extends ChangeNotifier {
     _records[index] = current.copyWith(
       receipt: current.receipt.copyWith(userOutcome: outcome),
     );
+    if (outcome == NeuraSuggestionOutcome.shown) {
+      _calibration.shown(receipt: current.receipt, now: observedAt);
+    }
     if (outcome == NeuraSuggestionOutcome.acted ||
         outcome == NeuraSuggestionOutcome.dismissed) {
       _nudgeSpecialistReputation(current.receipt.specialistId, outcome);
+      _calibration.resolved(
+        receiptId: receiptId,
+        acted: outcome == NeuraSuggestionOutcome.acted,
+        now: observedAt,
+      );
     }
     notifyListeners();
     await _persist();
@@ -418,6 +462,7 @@ class NeuraIntelligenceController extends ChangeNotifier {
     _records = [];
     _specialistReputation = {};
     _lastCouncil = const NeuraCouncilResult([]);
+    _calibration.clear();
     _writeQueue = Future<void>.value();
     _initialized = false;
   }

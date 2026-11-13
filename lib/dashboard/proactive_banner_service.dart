@@ -405,7 +405,10 @@ class ProactiveBannerService {
         return;
       }
       final now = _clock();
-      await NeuraIntelligenceController.instance.markShown(banner.receipt.id);
+      await NeuraIntelligenceController.instance.markShown(
+        banner.receipt.id,
+        now: now,
+      );
       if (!_isCurrent(generation)) return;
       await _saveState({
         ...state,
@@ -731,6 +734,7 @@ class ProactiveBannerService {
       await NeuraIntelligenceController.instance.recordOutcome(
         receiptId: banner.receipt.id,
         acted: acted,
+        now: _clock(),
       );
 
       if (!_isCurrent(generation) ||
