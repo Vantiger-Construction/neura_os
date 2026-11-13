@@ -45,7 +45,9 @@ class NeuraIntelligenceController extends ChangeNotifier {
 
   final NeuraAutonomyKernel _kernel = NeuraAutonomyKernel();
   final Guardrails _guardrails = Guardrails();
-  late final NeuraSuggestionCalibration _calibration =
+  late NeuraSuggestionCalibration _calibration = _newCalibration();
+
+  NeuraSuggestionCalibration _newCalibration() =>
       NeuraSuggestionCalibration(allowed: () => calibrationAllowed);
 
   NeuraIntelligencePreferences _preferences =
@@ -444,6 +446,9 @@ class NeuraIntelligenceController extends ChangeNotifier {
     _writesSuspended = false;
     _dataGeneration = 0;
     _resetInMemory();
+    // Production clears keep the ledger's clock and identifier watermarks
+    // against replay. Independent tests each start a fresh clock instead.
+    _calibration = _newCalibration();
   }
 
   /// Drains queued preference writes, then forgets all decision receipts and
