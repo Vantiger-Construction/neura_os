@@ -2,6 +2,7 @@ import 'dart:async';
 import '../profiles/local_profile_service.dart';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import '../mascot/mascot_event_bridge.dart';
@@ -48,6 +49,7 @@ class NeuraShellState extends ChangeNotifier {
   NeuraRoom _room = NeuraRoom.penthouse;
   bool _showAvatar = true;
   bool _avatarDockedInApp = false;
+  bool _avatarDockNotificationScheduled = false;
   bool _ambientEnabled = false;
   double _ambientVolume = 0.35;
   bool _autoRoomSync = true;
@@ -295,7 +297,20 @@ class NeuraShellState extends ChangeNotifier {
   Future<void> setAvatarDockedInApp(bool value) async {
     if (_disposed || _avatarDockedInApp == value) return;
     _avatarDockedInApp = value;
-    notifyListeners();
+    // Navigation acquires/releases the dock while mounting or unmounting.
+    // Update ownership immediately, but notify ancestor widgets after build.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      if (!_avatarDockNotificationScheduled) {
+        _avatarDockNotificationScheduled = true;
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          _avatarDockNotificationScheduled = false;
+          if (!_disposed) notifyListeners();
+        });
+      }
+    } else {
+      notifyListeners();
+    }
 
     if (_suppressed) {
       return;
