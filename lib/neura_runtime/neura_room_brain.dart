@@ -74,6 +74,14 @@ class NeuraRoomBrain {
       defaultVoice: NeuraVoiceMode.serious,
       vibe: 'Respectful',
     ),
+    NeuraRoomKey.herSuite: NeuraRoomProfile(
+      joy: 0.25,
+      concern: 0.10,
+      gesture: 0.10,
+      headTilt: 0.08,
+      defaultVoice: NeuraVoiceMode.calm,
+      vibe: 'At home + unhurried',
+    ),
     NeuraRoomKey.settings: NeuraRoomProfile(
       joy: 0.10,
       concern: 0.05,

@@ -3,10 +3,19 @@
 The presence bridge lets the Unity presence prototype
 (`prototypes/unity-presence`) follow Neura's live avatar state: room, phase
 (idle, listening, thinking, speaking, Safe Mode), stance, motion and scale. It
-carries only the existing content-free v1 snapshot
+carries only the content-free presentation snapshot
 (`NeuraAvatarRuntimeSnapshot.toJson()`, schema in
-`prototypes/unity-presence/Contract/avatar-presence-v1.schema.json`). No
+`prototypes/unity-presence/Contract/avatar-presence-v2.schema.json`). No
 conversation, memory, journal or credential data crosses it.
+
+The app publishes **v2**, which adds Neura's own room (`her_suite`) and three
+display-only stage fields: `lighting` (`standard`, `gold`, `aurora`, `dusk`),
+`camera` (`follow`, `wide`, `face`) and `activity` (`present`, `resting`). The
+relay and the Unity receiver still accept **v1** (the original seven fields,
+which can't name `her_suite`), so an older app build keeps working. Each
+version must carry exactly its own fields. Safe Mode forces Still motion and,
+in v2, the present pose. An older Unity build that only knows v1 rejects v2
+and stays in safe Still, so update Unity and the app together.
 
 It is **off by default**. Nothing connects unless Neura is started through
 the trusted launcher.
@@ -24,6 +33,22 @@ Neura app ──presence_publish──▶ neura_api presence relay ──avatar_
 | Relay | `rust/src/presence_relay.rs`, wired in `rust/src/bin/neura_api.rs` | One publisher slot, any number of subscribers (within the existing 4-client limit). Validates every snapshot strictly and keeps only the latest. |
 | Publisher | `lib/avatar/presence_relay/` | Started from the navigation shell only when the launcher variables are present. Publishes on every change and every 2 s. |
 | Subscriber | `prototypes/unity-presence/Assets/Presence/Bridge/` | `Protocol` (pure C#: config, envelope reader, relay client) and `Live` (the `PresenceLiveBridge` component, attached at runtime only when launched). |
+
+## Her Suite: Unity stage, Flutter panels
+
+Her Suite (`lib/her_suite/`) splits the work. The Flutter screens (the suite,
+Sit together, Her shelf and Resting) draw frosted glass panels over a stage
+slot. Today the slot shows the Flutter avatar. Once Unity takes over, pass a
+`HerSuiteStageBuilder` that hosts the Unity window; nothing else changes.
+
+The panels change only the display-only stage values (`lighting`, `camera`,
+`activity`) through `HerSuiteStageController`, which calls
+`NeuraAvatarRuntimeBridge.updateStage`. Those enum names are all that reach
+Unity. Chat, memories and settings stay in Flutter: Her shelf shows taught
+settings as labels and links to the screens that own them, never memory or
+conversation content. Safe Mode refuses resting and ends a rest at once.
+Visiting the suite switches the shell's room to `her_suite`, and leaving
+switches it back.
 
 ## Authorization
 

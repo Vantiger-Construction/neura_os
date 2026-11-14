@@ -12,6 +12,7 @@ using Neura.Presence.Bridge;
 // socket and uses the Unity bridge's own PresenceRelayClient as subscriber.
 public static class BridgeEndToEnd
 {
+    private const string SnapshotV2 = "{\"v\":2,\"room_id\":\"her_suite\",\"phase\":\"idle\",\"stance\":\"welcoming\",\"motion\":\"subtle\",\"scale\":\"standard\",\"safe_mode\":false,\"lighting\":\"aurora\",\"camera\":\"face\",\"activity\":\"resting\"}";
     private const string Snapshot = "{\"v\":1,\"room_id\":\"reflection_bay\",\"phase\":\"{PHASE}\",\"stance\":\"reflective\",\"motion\":\"subtle\",\"scale\":\"standard\",\"safe_mode\":false}";
 
     public static int Main()
@@ -59,6 +60,17 @@ public static class BridgeEndToEnd
                 Require(Next(unity, out json) == PresenceFrameKind.Presence && session.Accept(json) &&
                     session.Current.Phase == "speaking", "change delivered");
                 Console.WriteLine("PASS phase change delivered");
+
+                await PublishData(app, SnapshotV2);
+                Require(Next(unity, out json) == PresenceFrameKind.Presence && session.Accept(json) &&
+                    session.Current.RoomId == "her_suite" && session.Current.Lighting == "aurora" &&
+                    session.Current.Camera == "face" && session.Current.Resting, "v2 stage delivered");
+                Console.WriteLine("PASS v2 Her Suite stage delivered");
+
+                await Publish(app, "speaking");
+                Require(Next(unity, out json) == PresenceFrameKind.Presence && session.Accept(json) &&
+                    session.Current.SourceVersion == 1 && !session.Current.Resting, "v1 still accepted after v2");
+                Console.WriteLine("PASS v1 still accepted after v2");
 
                 unity.Reconnect();
                 Require(Next(unity, out json) == PresenceFrameKind.Presence && session.Accept(json) &&
@@ -112,7 +124,12 @@ public static class BridgeEndToEnd
 
     private static Task Publish(ClientWebSocket socket, string phase)
     {
-        string message = "{\"v\":1,\"kind\":\"presence_publish\",\"data\":" + Snapshot.Replace("{PHASE}", phase) + "}";
+        return PublishData(socket, Snapshot.Replace("{PHASE}", phase));
+    }
+
+    private static Task PublishData(ClientWebSocket socket, string data)
+    {
+        string message = "{\"v\":1,\"kind\":\"presence_publish\",\"data\":" + data + "}";
         byte[] bytes = Encoding.ASCII.GetBytes(message);
         return socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
     }

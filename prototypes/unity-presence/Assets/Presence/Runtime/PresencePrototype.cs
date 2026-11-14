@@ -8,10 +8,10 @@ namespace Neura.Presence
     public sealed class PresencePrototype : MonoBehaviour
     {
         private static readonly string[] Rooms = {
-            "penthouse", "reflection_bay", "joy_lounge", "mood_den", "dream_atrium", "legacy_vault"
+            "penthouse", "reflection_bay", "joy_lounge", "mood_den", "dream_atrium", "legacy_vault", "her_suite"
         };
         private static readonly string[] Stances = {
-            "welcoming", "reflective", "playful", "grounding", "dreaming", "guardian"
+            "welcoming", "reflective", "playful", "grounding", "dreaming", "guardian", "welcoming"
         };
         private static readonly string[] Motions = { "still", "subtle", "expressive" };
         private static readonly string[] Scales = { "compact", "standard", "large" };
@@ -19,7 +19,8 @@ namespace Neura.Presence
         private static readonly Color[] RoomColors = {
             new Color(0.12f, 0.73f, 0.72f), new Color(0.20f, 0.52f, 0.85f),
             new Color(0.72f, 0.43f, 0.92f), new Color(0.38f, 0.70f, 0.56f),
-            new Color(0.48f, 0.43f, 0.86f), new Color(0.72f, 0.61f, 0.36f)
+            new Color(0.48f, 0.43f, 0.86f), new Color(0.72f, 0.61f, 0.36f),
+            new Color(1.00f, 0.79f, 0.30f)
         };
 
         private readonly PresentationSession session = new PresentationSession();
@@ -202,10 +203,11 @@ namespace Neura.Presence
 
         private string SyntheticJson()
         {
-            return "{\"v\":1,\"room_id\":\"" + Rooms[roomIndex] + "\",\"phase\":\"" +
+            return "{\"v\":2,\"room_id\":\"" + Rooms[roomIndex] + "\",\"phase\":\"" +
                 Phases[phaseIndex] + "\",\"stance\":\"" + Stances[roomIndex] +
                 "\",\"motion\":\"" + Motions[motionIndex] + "\",\"scale\":\"" +
-                Scales[scaleIndex] + "\",\"safe_mode\":" + (phaseIndex == 4 ? "true" : "false") + "}";
+                Scales[scaleIndex] + "\",\"safe_mode\":" + (phaseIndex == 4 ? "true" : "false") +
+                ",\"lighting\":\"standard\",\"camera\":\"follow\",\"activity\":\"present\"}";
         }
 
         private void OnGUI()
@@ -230,7 +232,7 @@ namespace Neura.Presence
                 draft = SyntheticJson();
                 ApplySyntheticSnapshot(draft);
             }
-            GUILayout.Label("Synthetic v1 JSON (max 512 characters)");
+            GUILayout.Label("Synthetic v1 or v2 JSON (max 512 characters)");
             draft = GUILayout.TextArea(draft ?? "", AvatarSnapshot.MaxJsonCharacters, GUILayout.MinHeight(90));
             if (GUILayout.Button("Validate and apply JSON")) ApplySyntheticSnapshot(draft);
             if (GUILayout.Button("Reset to safe Still")) SuspendPresentation();
