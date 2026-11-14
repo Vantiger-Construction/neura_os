@@ -18,6 +18,17 @@ namespace Neura.Presence
                 !double.IsNaN(seconds) && !double.IsInfinity(seconds);
             double wave = moving ? Math.Sin(seconds * 1.6) : 0;
             float amplitude = state.Motion == "expressive" ? 1f : 0.4f;
+            if (state.Resting && !state.SafeMode)
+            {
+                // Settled by the window: lower and turned toward it, with only
+                // slow breathing. Feet stay on the anchor; only the mount scales.
+                return new PresentationPose
+                {
+                    Scale = scale,
+                    HeightMultiplier = 0.82f + (float)wave * 0.006f,
+                    YawDegrees = -28f + (float)wave * 1.5f
+                };
+            }
             return new PresentationPose
             {
                 Scale = scale,

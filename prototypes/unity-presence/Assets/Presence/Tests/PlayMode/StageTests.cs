@@ -9,6 +9,7 @@ namespace Neura.Presence.Tests
     {
         private GameObject root;
         private PresencePrototype stage;
+        private const string Suite = "{\"v\":2,\"room_id\":\"her_suite\",\"phase\":\"idle\",\"stance\":\"welcoming\",\"motion\":\"subtle\",\"scale\":\"standard\",\"safe_mode\":false,\"lighting\":\"gold\",\"camera\":\"follow\",\"activity\":\"present\"}";
         private const string Animated = "{\"v\":1,\"room_id\":\"joy_lounge\",\"phase\":\"speaking\",\"stance\":\"playful\",\"motion\":\"expressive\",\"scale\":\"large\",\"safe_mode\":false}";
 
         [UnitySetUp]
@@ -48,6 +49,51 @@ namespace Neura.Presence.Tests
             yield return null;
             Assert.AreEqual(scale, stage.VisualMount.localScale);
             Assert.AreEqual(rotation, stage.VisualMount.localRotation);
+        }
+        [UnityTest]
+        public IEnumerator HerSuiteShowsHerOwnSetOnlyInHerRoom()
+        {
+            Assert.IsFalse(stage.SuiteVisible);
+            Assert.IsTrue(stage.ApplySyntheticSnapshot(Suite));
+            Assert.IsTrue(stage.SuiteVisible);
+            Assert.IsTrue(stage.ApplySyntheticSnapshot(Animated));
+            Assert.IsFalse(stage.SuiteVisible);
+            yield return null;
+            Assert.AreEqual(0, root.GetComponentsInChildren<Collider>(true).Length);
+        }
+        [UnityTest]
+        public IEnumerator RestingSitsLowerWithoutMovingTheAnchor()
+        {
+            var anchor = stage.StageAnchor.position;
+            Assert.IsTrue(stage.ApplySyntheticSnapshot(Suite));
+            yield return null;
+            float standing = stage.VisualMount.localScale.y;
+            Assert.IsTrue(stage.ApplySyntheticSnapshot(Suite.Replace("present", "resting")));
+            yield return null;
+            Assert.Less(stage.VisualMount.localScale.y, standing * 0.9f);
+            Assert.AreEqual(anchor, stage.StageAnchor.position);
+            Assert.AreEqual(Vector3.zero, stage.VisualMount.localPosition);
+        }
+        [UnityTest]
+        public IEnumerator SafeModeInHerSuiteStandsHerUpAtOnce()
+        {
+            Assert.IsTrue(stage.ApplySyntheticSnapshot(Suite.Replace("present", "resting")));
+            yield return null;
+            Assert.IsTrue(stage.ApplySyntheticSnapshot(Suite.Replace("present", "resting").Replace("false", "true")));
+            Assert.IsFalse(stage.Current.Resting);
+            Assert.AreEqual(1f, stage.VisualMount.localScale.y / stage.VisualMount.localScale.x, 0.0001f);
+        }
+        [UnityTest]
+        public IEnumerator FaceToFaceMovesTheCameraCloser()
+        {
+            Assert.IsTrue(stage.ApplySyntheticSnapshot(Suite));
+            for (int i = 0; i < 90; i++) yield return null;
+            float follow = Mathf.Abs(stage.StageCamera.transform.localPosition.z);
+            Assert.IsTrue(stage.ApplySyntheticSnapshot(Suite.Replace("follow", "face")));
+            for (int i = 0; i < 90; i++) yield return null;
+            Assert.Less(Mathf.Abs(stage.StageCamera.transform.localPosition.z), follow - 1f);
+            stage.SuspendPresentation();
+            Assert.AreEqual(follow, Mathf.Abs(stage.StageCamera.transform.localPosition.z), 0.01f);
         }
         [UnityTest]
         public IEnumerator InvalidInputClearsPreviousMotion()
