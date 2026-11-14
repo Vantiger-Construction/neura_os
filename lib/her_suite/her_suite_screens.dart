@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -33,8 +34,9 @@ class _ShellHost implements HerSuiteHost {
   @override
   NeuraRoom get room => _shell.room;
 
+  // A visit never changes the saved room.
   @override
-  Future<void> setRoom(NeuraRoom room) => _shell.setRoom(room);
+  Future<void> setRoom(NeuraRoom room) => _shell.setRoom(room, persist: false);
 }
 
 /// The existing screens Her Suite opens. Each keeps its own consent and
@@ -95,9 +97,21 @@ class HerSuiteScreen extends StatefulWidget {
   final HerSuiteDestinations destinations;
   final HerSuiteStageBuilder? stageBuilder;
 
+  /// The stage the app's Her Suite visits use when none is passed: null
+  /// shows the Flutter avatar. The Unity integration sets this once at
+  /// startup to host the Unity window.
+  static HerSuiteStageBuilder? appStageBuilder;
+
+  /// Whether a Her Suite visit is on screen.
+  static bool get visiting => _visits > 0;
+  static int _visits = 0;
+
+  /// Opens a visit, unless one is already open: a second suite on top
+  /// would fight the first over the room and the stage.
   static Future<void> open(BuildContext context) {
+    if (visiting) return Future<void>.value();
     final route = MaterialPageRoute<void>(
-      builder: (_) => const HerSuiteScreen(),
+      builder: (_) => HerSuiteScreen(stageBuilder: appStageBuilder),
       settings: const RouteSettings(name: '/her-suite'),
     );
     return Navigator.of(context).push(route);
@@ -113,6 +127,13 @@ class _HerSuiteScreenState extends State<HerSuiteScreen> {
   AppHerShelfSource? _ownedShelf;
   HerSuiteHost? _host;
   NeuraRoom? _previousRoom;
+  Future<void> _entry = Future<void>.value();
+
+  @override
+  void initState() {
+    super.initState();
+    HerSuiteScreen._visits++;
+  }
 
   HerShelfSource get _shelf {
     return widget.shelf ?? (_ownedShelf ??= AppHerShelfSource());
@@ -130,9 +151,27 @@ class _HerSuiteScreenState extends State<HerSuiteScreen> {
     // Room changes notify the shell's listeners, which must not rebuild
     // while this route is still building; run them after this frame's
     // synchronous work.
+    final entry = Completer<void>();
+    _entry = entry.future;
     scheduleMicrotask(() {
-      if (!mounted) return;
-      unawaited(host.setRoom(NeuraRoom.herSuite).catchError((_) {}));
+      if (mounted) {
+        entry.complete(_move(host, NeuraRoom.herSuite));
+      } else {
+        entry.complete();
+      }
+    });
+  }
+
+  /// A failed move only loses optional room extras (the ambient loop); the
+  /// shell has already switched rooms in memory. Report it and carry on.
+  static Future<void> _move(HerSuiteHost host, NeuraRoom room) {
+    return host.setRoom(room).catchError((Object error, StackTrace stack) {
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'her suite',
+        context: ErrorDescription('while moving to ${room.id}'),
+      ));
     });
   }
 
@@ -145,9 +184,16 @@ class _HerSuiteScreenState extends State<HerSuiteScreen> {
     final shelf = _ownedShelf;
     // Leaving notifies the shell and the presence bridge. Do it outside
     // the locked dispose phase.
+    final entry = _entry;
+    HerSuiteScreen._visits--;
     scheduleMicrotask(() {
       if (previous != null && host != null) {
-        unawaited(host.setRoom(previous).catchError((_) {}));
+        // Restore only after the entry move finishes, so it can't land last,
+        // and only if nothing else moved Neura while the suite was open.
+        unawaited(entry.then((_) async {
+          if (host.room.id != NeuraRoom.herSuite.id) return;
+          await _move(host, previous);
+        }));
       }
       if (owned) {
         controller.dispose();
@@ -454,6 +500,7 @@ class _HerShelfScreenState extends State<HerShelfScreen> {
 
   static String _taught(HerShelfSummary shelf, String? label, bool today) {
     if (!shelf.teachingAvailable) return 'Unavailable right now';
+    if (shelf.teachingUnreadable) return 'Could not be read';
     if (label == null) return 'Not taught yet';
     return today ? '$label (today only)' : label;
   }
@@ -589,27 +636,43 @@ class _SuiteScaffold extends StatelessWidget {
               ),
             ),
             SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    header,
-                    const Spacer(),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 560),
-                      child: HerSuiteGlass(
-                        child: Builder(builder: panel),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              child: LayoutBuilder(builder: _layoutPanels(header)),
             ),
           ],
         ),
       ),
     );
+  }
+
+  /// Header at the top and the panel at the bottom; on short screens or
+  /// with large text the two scroll instead of overflowing.
+  LayoutWidgetBuilder _layoutPanels(Widget header) {
+    return (context, constraints) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: math.max(0, constraints.maxHeight - 32),
+          ),
+          child: IntrinsicHeight(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                header,
+                const Spacer(),
+                const SizedBox(height: 16),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: HerSuiteGlass(
+                    child: Builder(builder: panel),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    };
   }
 }
 

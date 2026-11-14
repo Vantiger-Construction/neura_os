@@ -18,6 +18,7 @@ class HerShelfSummary {
   const HerShelfSummary({
     required this.safeMode,
     required this.teachingAvailable,
+    this.teachingUnreadable = false,
     this.answerDetail,
     this.answerIsTemporary = false,
     this.planSize,
@@ -30,6 +31,10 @@ class HerShelfSummary {
 
   final bool safeMode;
   final bool teachingAvailable;
+
+  /// Teach Neura's saved settings exist but could not be read, so the shelf
+  /// must not show them as "not taught".
+  final bool teachingUnreadable;
   final NeuraAnswerDetail? answerDetail;
   final bool answerIsTemporary;
   final NeuraPlanSize? planSize;
@@ -57,21 +62,41 @@ class AppHerShelfSource extends ChangeNotifier implements HerShelfSource {
   })  : _teaching = teaching ?? NeuraTeachingService.instance,
         _intelligence = intelligence ?? NeuraIntelligenceController.instance,
         _safeMode = safeMode ?? SafeBoot.instance.safeMode {
-    _teaching.addListener(notifyListeners);
+    _teaching.addListener(_changed);
     _intelligence.addListener(notifyListeners);
-    _safeMode.addListener(notifyListeners);
+    _safeMode.addListener(_changed);
+    _wasAvailable = _teaching.available;
   }
 
   final NeuraTeachingService _teaching;
   final NeuraIntelligenceController _intelligence;
   final ValueListenable<bool> _safeMode;
+  bool _wanted = false;
+  bool _wasAvailable = false;
 
   @override
   void ensureLoaded() {
+    _wanted = true;
+    _loadTeaching();
+    unawaited(_intelligence.initialize().catchError((_) {}));
+  }
+
+  // A failed load is reported through the service's `error`, which the
+  // summary shows as unreadable, so the future's own error is handled.
+  void _loadTeaching() {
     if (_teaching.available && !_teaching.loaded) {
       unawaited(_teaching.load().catchError((_) {}));
     }
-    unawaited(_intelligence.initialize().catchError((_) {}));
+  }
+
+  void _changed() {
+    // Teach Neura is unavailable in Safe Mode or while hidden. When it comes
+    // back with the shelf open, load then: retry once per return, never in a
+    // loop after a failed read.
+    final available = _teaching.available;
+    if (_wanted && available && !_wasAvailable) _loadTeaching();
+    _wasAvailable = available;
+    notifyListeners();
   }
 
   @override
@@ -81,6 +106,7 @@ class AppHerShelfSource extends ChangeNotifier implements HerShelfSource {
     return HerShelfSummary(
       safeMode: _safeMode.value,
       teachingAvailable: _teaching.available,
+      teachingUnreadable: !_teaching.loaded && _teaching.error != null,
       answerDetail: teaching?.answerDetail,
       answerIsTemporary: teaching != null && _teaching.answerIsTemporary,
       planSize: teaching?.planSize,
@@ -95,9 +121,9 @@ class AppHerShelfSource extends ChangeNotifier implements HerShelfSource {
 
   @override
   void dispose() {
-    _teaching.removeListener(notifyListeners);
+    _teaching.removeListener(_changed);
     _intelligence.removeListener(notifyListeners);
-    _safeMode.removeListener(notifyListeners);
+    _safeMode.removeListener(_changed);
     super.dispose();
   }
 }

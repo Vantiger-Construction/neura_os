@@ -55,6 +55,16 @@ const _safe = HerShelfSummary(
   quietHoursEnd: 7,
 );
 
+const _unreadable = HerShelfSummary(
+  safeMode: false,
+  teachingAvailable: true,
+  teachingUnreadable: true,
+  suggestions: NeuraProactivityLevel.balanced,
+  quietHoursEnabled: false,
+  quietHoursStart: 22,
+  quietHoursEnd: 7,
+);
+
 Widget _page(String name) {
   return Scaffold(appBar: AppBar(), body: Text('opened $name'));
 }
@@ -267,6 +277,56 @@ void main() {
       await tester.pumpAndSettle();
       expect(controller.resting, isFalse);
       expect(find.text('Her Suite'), findsOneWidget);
+    });
+
+    testWidgets('a room picked elsewhere during the visit is kept',
+        (tester) async {
+      await openSuite(tester);
+      await host.setRoom(NeuraRoom.dreamAtrium);
+      await back(tester);
+      expect(host.room, NeuraRoom.dreamAtrium);
+      expect(host.visits, ['her_suite', 'dream_atrium']);
+    });
+
+    testWidgets('only one visit opens at a time', (tester) async {
+      await openSuite(tester);
+      expect(HerSuiteScreen.visiting, isTrue);
+      final context = tester.element(find.text('Her Suite'));
+      await HerSuiteScreen.open(context);
+      await tester.pumpAndSettle();
+      expect(find.byType(HerSuiteScreen), findsOneWidget);
+      await back(tester);
+      expect(HerSuiteScreen.visiting, isFalse);
+    });
+
+    testWidgets('unreadable taught settings are not shown as untaught',
+        (tester) async {
+      shelf.set(_unreadable);
+      await openSuite(tester);
+      await tester.tap(find.byKey(const ValueKey('her-suite-shelf')));
+      await tester.pumpAndSettle();
+      expect(find.text('Could not be read'), findsNWidgets(2));
+      expect(find.text('Not taught yet'), findsNothing);
+    });
+
+    testWidgets('a short screen scrolls instead of overflowing',
+        (tester) async {
+      tester.view.physicalSize = const Size(480, 320);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await openSuite(tester);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byKey(const ValueKey('her-suite-shelf')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('her-shelf-memories')),
+        100,
+      );
+      expect(
+        find.byKey(const ValueKey('her-shelf-memories')).hitTestable(),
+        findsOneWidget,
+      );
     });
 
     testWidgets('Safe Mode wakes her and leaves the resting screen',
