@@ -29,6 +29,8 @@ import '../../modules/mood/mood_history_screen.dart';
 import '../../modules/pay_it_forward/pay_it_forward_screen.dart';
 import '../../modules/quests/quest_mode_screen.dart';
 import '../../modules/support/support_center_screen.dart';
+import '../../modules/support/wellbeing_home_card.dart';
+import '../../modules/support/human_support_screen.dart';
 import '../../modules/timeline/life_timeline_screen.dart';
 import '../../modules/vault/memory_vault_screen.dart';
 import '../../os_shell/screens/os_shell_home_screen.dart';
@@ -518,6 +520,37 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
               _openRoute('/care/support', (_) => const SupportCenterScreen()),
         ),
         PresenceCommand(
+          id: 'wellbeing',
+          title: 'Everyday wellbeing support',
+          subtitle: 'Settle, take one step, or reach someone.',
+          icon: Icons.spa_outlined,
+          keywords: const <String>[
+            'wellbeing',
+            'mental health',
+            'stress',
+            'overwhelmed',
+            'calm'
+          ],
+          onSelected: () => _openRoute(
+              '/care/wellbeing',
+              (_) => Scaffold(
+                    appBar:
+                        AppBar(title: const Text('Everyday wellbeing support')),
+                    body: const SafeArea(
+                        child:
+                            SingleChildScrollView(child: WellbeingHomeCard())),
+                  )),
+        ),
+        PresenceCommand(
+          id: 'urgent-human-support',
+          title: 'Urgent human support',
+          subtitle: 'Offline crisis contacts, selected for where you are now.',
+          icon: Icons.support_agent,
+          keywords: const <String>['crisis', 'urgent', 'emergency', 'help'],
+          onSelected: () => _openRoute('/care/urgent-support',
+              (_) => const HumanSupportScreen(urgentOnly: true)),
+        ),
+        PresenceCommand(
           id: 'pay-it-forward',
           title: 'Pay It Forward',
           subtitle: 'Track kind acts and build a streak.',
@@ -632,6 +665,7 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
                 commands: _commandCatalog,
                 status: _presenceStatus(),
                 now: const ProactiveBannerCard(),
+                support: const WellbeingHomeCard(),
                 onOpenNeura: _openChat,
                 onOpenDiagnostics: _openDiagnostics,
                 room: (_shellState ?? NeuraShell.of(context)).room,

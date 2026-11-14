@@ -52,36 +52,39 @@ class _FocusBanner extends StatelessWidget {
 
         final accent =
             state.mode.accent ?? Theme.of(context).colorScheme.primary;
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: Colors.black.withValues(alpha: 0.35),
-            border: Border.all(color: accent.withValues(alpha: 0.35)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(state.mode.icon, color: accent),
-              const SizedBox(width: 8),
-              Text(
-                '${state.mode.label} Mode',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: Colors.white),
-              ),
-              const SizedBox(width: 8),
-              InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () => FocusController.instance.setMode(FocusMode.off),
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: Icon(Icons.close,
-                      size: 18, color: Colors.white.withValues(alpha: 0.75)),
+        return Material(
+          type: MaterialType.transparency,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              color: Colors.black.withValues(alpha: 0.35),
+              border: Border.all(color: accent.withValues(alpha: 0.35)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(state.mode.icon, color: accent),
+                const SizedBox(width: 8),
+                Text(
+                  '${state.mode.label} Mode',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: Colors.white),
                 ),
-              )
-            ],
+                const SizedBox(width: 8),
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => FocusController.instance.setMode(FocusMode.off),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(Icons.close,
+                        size: 18, color: Colors.white.withValues(alpha: 0.75)),
+                  ),
+                )
+              ],
+            ),
           ),
         );
       },
