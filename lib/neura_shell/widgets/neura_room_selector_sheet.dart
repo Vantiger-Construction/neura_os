@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../her_suite/her_suite_screens.dart';
 import '../../src/app.dart';
 import '../models/neura_room.dart';
 import '../neura_shell.dart';
@@ -47,8 +48,14 @@ class NeuraRoomSelectorSheet {
                       room: r,
                       selected: r.id == current.id,
                       onTap: () {
-                        state.setRoom(r);
                         Navigator.of(context).pop();
+                        // Her Suite is visited, not moved into: its screen
+                        // switches the room and switches it back on leaving.
+                        if (r.id == NeuraRoom.herSuite.id) {
+                          HerSuiteScreen.open(navContext);
+                        } else {
+                          state.setRoom(r);
+                        }
                       },
                     ),
                 ],
