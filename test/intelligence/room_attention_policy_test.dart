@@ -44,7 +44,12 @@ void main() {
 
     test('every listed room id is a real NeuraRoom', () {
       final realIds = NeuraRoom.all.map((room) => room.id).toSet();
-      for (final id in ['reflection_bay', 'legacy_vault', 'mood_den']) {
+      for (final id in [
+        'reflection_bay',
+        'legacy_vault',
+        'mood_den',
+        'her_suite',
+      ]) {
         expect(realIds, contains(id));
       }
     });

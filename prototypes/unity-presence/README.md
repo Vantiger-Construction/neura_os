@@ -59,8 +59,17 @@ avatar prefabs. No Animator, AudioSource or AudioListener is created.
 
 ## Contract profile
 
+The app now sends **v2**:
+[`Contract/avatar-presence-v2.schema.json`](Contract/avatar-presence-v2.schema.json)
+adds the `her_suite` room and the display-only `lighting`, `camera` and
+`activity` fields (ten fields in all, still at most 512 characters). The
+receiver also accepts **v1**, which reads as standard lighting, the follow
+camera and the present pose; a v1 snapshot can't name `her_suite` or carry the
+stage fields. [`Contract/synthetic-v2-states.json`](Contract/synthetic-v2-states.json)
+has seven synthetic v2 examples.
+
 [`Contract/avatar-presence-v1.schema.json`](Contract/avatar-presence-v1.schema.json)
-records the seven typed fields and current enum domains. The receiver accepts
+records the original seven typed fields and enum domains. The receiver accepts
 one flat JSON object, at most **512 characters**, in any field order with JSON
 whitespace. Strings must be unescaped ASCII enum tokens, matching the current
 Dart producer's `jsonEncode(snapshot.toJson())` output. Escaped equivalents,

@@ -3,10 +3,19 @@
 The presence bridge lets the Unity presence prototype
 (`prototypes/unity-presence`) follow Neura's live avatar state: room, phase
 (idle, listening, thinking, speaking, Safe Mode), stance, motion and scale. It
-carries only the existing content-free v1 snapshot
+carries only the content-free presentation snapshot
 (`NeuraAvatarRuntimeSnapshot.toJson()`, schema in
-`prototypes/unity-presence/Contract/avatar-presence-v1.schema.json`). No
+`prototypes/unity-presence/Contract/avatar-presence-v2.schema.json`). No
 conversation, memory, journal or credential data crosses it.
+
+The app publishes **v2**, which adds Neura's own room (`her_suite`) and three
+display-only stage fields: `lighting` (`standard`, `gold`, `aurora`, `dusk`),
+`camera` (`follow`, `wide`, `face`) and `activity` (`present`, `resting`). The
+relay and the Unity receiver still accept **v1** (the original seven fields,
+which can't name `her_suite`), so an older app build keeps working. Each
+version must carry exactly its own fields. Safe Mode forces Still motion and,
+in v2, the present pose. An older Unity build that only knows v1 rejects v2
+and stays in safe Still, so update Unity and the app together.
 
 It is **off by default**. Nothing connects unless Neura is started through
 the trusted launcher.

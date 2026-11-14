@@ -141,6 +141,9 @@ class NeuraPromptBuilder {
     'legacy_vault': 'This is the Legacy Vault: a space for recording things '
         'meant to be kept and remembered long-term. Treat entries as '
         'significant and worth preserving carefully.',
+    'her_suite': "This is Her Suite: Neura's own room, where the user visits "
+        'as a guest. Keep replies warm, unhurried and personal. Nothing here '
+        'is saved to long-term memory unless the user explicitly asks.',
   };
 
   String _moduleContextFor(String? module) {

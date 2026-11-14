@@ -12,30 +12,43 @@ namespace Neura.Presence
     // Deliberately independent of Unity, transport, storage and app services.
     public sealed class AvatarSnapshot
     {
-        public const int Version = 1;
+        // v2 added her_suite, lighting, camera and activity. v1 input is still
+        // accepted and reads as standard lighting, follow camera, present.
+        public const int Version = 2;
+        public const int MinVersion = 1;
         public const int MaxJsonCharacters = 512;
+        public int SourceVersion { get; private set; }
         public string RoomId { get; private set; }
         public string Phase { get; private set; }
         public string Stance { get; private set; }
         public string Motion { get; private set; }
         public string Scale { get; private set; }
         public bool SafeMode { get; private set; }
+        public string Lighting { get; private set; }
+        public string Camera { get; private set; }
+        public string Activity { get; private set; }
+        public bool Resting { get { return Activity == "resting"; } }
 
-        private AvatarSnapshot(string room, string phase, string stance,
-            string motion, string scale, bool safe)
+        private AvatarSnapshot(int version, string room, string phase, string stance,
+            string motion, string scale, bool safe, string lighting, string camera,
+            string activity)
         {
+            SourceVersion = version;
             RoomId = room;
             SafeMode = safe || phase == "safeMode";
             Phase = SafeMode ? "safeMode" : phase;
             Stance = stance;
             Motion = SafeMode ? "still" : motion;
             Scale = scale;
+            Lighting = lighting;
+            Camera = camera;
+            Activity = SafeMode ? "present" : activity;
         }
 
         public static AvatarSnapshot SafeDefault()
         {
-            return new AvatarSnapshot("penthouse", "safeMode", "welcoming",
-                "still", "standard", true);
+            return new AvatarSnapshot(Version, "penthouse", "safeMode", "welcoming",
+                "still", "standard", true, "standard", "follow", "present");
         }
 
         public static bool TryParse(string json, out AvatarSnapshot snapshot,
@@ -71,10 +84,31 @@ namespace Neura.Presence
                 fields.Add(key, value);
             } while (reader.Take(','));
             if (!reader.Take('}') || !reader.AtEnd) return false;
-            if (fields.Count != 7) { error = SnapshotError.MissingField; return false; }
-            if (fields["v"] != "1") { error = SnapshotError.UnsupportedVersion; return false; }
+            if (!fields.ContainsKey("v")) { error = SnapshotError.MissingField; return false; }
+            if (fields["v"] != "1" && fields["v"] != "2") { error = SnapshotError.UnsupportedVersion; return false; }
+            int version = fields["v"] == "2" ? 2 : 1;
+            bool hasStage = fields.ContainsKey("lighting") || fields.ContainsKey("camera") || fields.ContainsKey("activity");
+            // v1 can't carry v2's stage fields.
+            if (version == 1 && hasStage) { error = SnapshotError.UnknownField; return false; }
+            if (fields.Count != (version == 2 ? 10 : 7)) { error = SnapshotError.MissingField; return false; }
+            foreach (string required in new[] { "room_id", "phase", "stance", "motion", "scale", "safe_mode" })
+                if (!fields.ContainsKey(required)) { error = SnapshotError.MissingField; return false; }
+            if (version == 2 && (!fields.ContainsKey("lighting") || !fields.ContainsKey("camera") || !fields.ContainsKey("activity")))
+            { error = SnapshotError.MissingField; return false; }
+            // ...nor name v2's room.
+            if (version == 1 && fields["room_id"] == "her_suite") { error = SnapshotError.InvalidValue; return false; }
+            string lighting = version == 2 ? fields["lighting"] : "standard";
+            string camera = version == 2 ? fields["camera"] : "follow";
+            string activity = version == 2 ? fields["activity"] : "present";
+            if (!OneOf(lighting, "standard", "gold", "aurora", "dusk") ||
+                !OneOf(camera, "follow", "wide", "face") ||
+                !OneOf(activity, "present", "resting"))
+            {
+                error = SnapshotError.InvalidValue;
+                return false;
+            }
             if (!OneOf(fields["room_id"], "penthouse", "reflection_bay", "joy_lounge",
-                    "mood_den", "dream_atrium", "legacy_vault") ||
+                    "mood_den", "dream_atrium", "legacy_vault", "her_suite") ||
                 !OneOf(fields["phase"], "idle", "thinking", "speaking", "listening", "safeMode") ||
                 !OneOf(fields["stance"], "welcoming", "reflective", "playful", "grounding", "dreaming", "guardian") ||
                 !OneOf(fields["motion"], "still", "subtle", "expressive") ||
@@ -83,15 +117,17 @@ namespace Neura.Presence
                 error = SnapshotError.InvalidValue;
                 return false;
             }
-            snapshot = new AvatarSnapshot(fields["room_id"], fields["phase"],
-                fields["stance"], fields["motion"], fields["scale"], fields["safe_mode"] == "true");
+            snapshot = new AvatarSnapshot(version, fields["room_id"], fields["phase"],
+                fields["stance"], fields["motion"], fields["scale"], fields["safe_mode"] == "true",
+                lighting, camera, activity);
             error = SnapshotError.None;
             return true;
         }
 
         private static bool AllowedKey(string key)
         {
-            return OneOf(key, "v", "room_id", "phase", "stance", "motion", "scale", "safe_mode");
+            return OneOf(key, "v", "room_id", "phase", "stance", "motion", "scale", "safe_mode",
+                "lighting", "camera", "activity");
         }
 
         private static bool OneOf(string value, params string[] allowed)
@@ -99,7 +135,7 @@ namespace Neura.Presence
             return Array.IndexOf(allowed, value) >= 0;
         }
 
-        // A bounded flat JSON profile: seven typed fields, ASCII enum tokens only.
+        // A bounded flat JSON profile: seven (v1) or ten (v2) typed fields, ASCII enum tokens only.
         // No ignored fields, escaped strings, nested objects, arrays or raw text.
         // Dart toJson/jsonEncode emits this profile. Field order is unrestricted.
         private sealed class FlatReader

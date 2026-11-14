@@ -1,0 +1,86 @@
+[
+  {
+    "v": 2,
+    "room_id": "penthouse",
+    "phase": "idle",
+    "stance": "welcoming",
+    "motion": "still",
+    "scale": "compact",
+    "safe_mode": false,
+    "lighting": "standard",
+    "camera": "follow",
+    "activity": "present"
+  },
+  {
+    "v": 2,
+    "room_id": "reflection_bay",
+    "phase": "thinking",
+    "stance": "reflective",
+    "motion": "subtle",
+    "scale": "standard",
+    "safe_mode": false,
+    "lighting": "standard",
+    "camera": "wide",
+    "activity": "present"
+  },
+  {
+    "v": 2,
+    "room_id": "joy_lounge",
+    "phase": "speaking",
+    "stance": "playful",
+    "motion": "expressive",
+    "scale": "large",
+    "safe_mode": false,
+    "lighting": "standard",
+    "camera": "face",
+    "activity": "present"
+  },
+  {
+    "v": 2,
+    "room_id": "mood_den",
+    "phase": "listening",
+    "stance": "grounding",
+    "motion": "still",
+    "scale": "compact",
+    "safe_mode": false,
+    "lighting": "standard",
+    "camera": "follow",
+    "activity": "present"
+  },
+  {
+    "v": 2,
+    "room_id": "dream_atrium",
+    "phase": "safeMode",
+    "stance": "dreaming",
+    "motion": "still",
+    "scale": "standard",
+    "safe_mode": true,
+    "lighting": "standard",
+    "camera": "wide",
+    "activity": "present"
+  },
+  {
+    "v": 2,
+    "room_id": "legacy_vault",
+    "phase": "idle",
+    "stance": "guardian",
+    "motion": "expressive",
+    "scale": "large",
+    "safe_mode": false,
+    "lighting": "standard",
+    "camera": "follow",
+    "activity": "present"
+  },
+  {
+    "v": 2,
+    "room_id": "her_suite",
+    "phase": "idle",
+    "stance": "welcoming",
+    "motion": "subtle",
+    "scale": "standard",
+    "safe_mode": false,
+    "lighting": "gold",
+    "camera": "face",
+    "activity": "resting"
+  }
+]

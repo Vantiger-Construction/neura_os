@@ -42,6 +42,8 @@ pub(crate) enum Room {
     MoodDen,
     DreamAtrium,
     LegacyVault,
+    /// Neura's own room. Contract v2 only.
+    HerSuite,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -81,9 +83,35 @@ pub(crate) enum Scale {
     Large,
 }
 
-/// Mirrors `prototypes/unity-presence/Contract/avatar-presence-v1.schema.json`
-/// and the Dart `NeuraAvatarRuntimeSnapshot.toJson()`. Unknown, missing,
-/// duplicate or mistyped fields are rejected by serde.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Lighting {
+    Standard,
+    Gold,
+    Aurora,
+    Dusk,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Camera {
+    Follow,
+    Wide,
+    Face,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Activity {
+    Present,
+    Resting,
+}
+
+/// Mirrors `prototypes/unity-presence/Contract/avatar-presence-v2.schema.json`
+/// (and the earlier v1 schema) and the Dart `NeuraAvatarRuntimeSnapshot
+/// .toJson()`. Unknown, duplicate or mistyped fields are rejected by serde;
+/// [Snapshot::parse] then requires exactly the field set of the stated
+/// version.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Snapshot {
@@ -94,20 +122,42 @@ pub(crate) struct Snapshot {
     motion: Motion,
     scale: Scale,
     safe_mode: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lighting: Option<Lighting>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    camera: Option<Camera>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    activity: Option<Activity>,
 }
 
 impl Snapshot {
-    /// Parses and canonicalizes an untrusted snapshot. Either Safe Mode
-    /// signal forces Safe Mode, the safeMode phase and Still motion.
+    /// Parses and canonicalizes an untrusted snapshot. v1 has the original
+    /// seven fields and can't name `her_suite`; v2 adds `lighting`, `camera`
+    /// and `activity`, all required. Either Safe Mode signal forces Safe
+    /// Mode, the safeMode phase, Still motion and (in v2) the present pose.
     pub(crate) fn parse(data: Value) -> Option<Self> {
         let mut snapshot: Snapshot = serde_json::from_value(data).ok()?;
-        if snapshot.v != 1 {
-            return None;
+        let stage = (snapshot.lighting, snapshot.camera, snapshot.activity);
+        match snapshot.v {
+            1 => {
+                if stage != (None, None, None) || snapshot.room_id == Room::HerSuite {
+                    return None;
+                }
+            }
+            2 => {
+                if stage.0.is_none() || stage.1.is_none() || stage.2.is_none() {
+                    return None;
+                }
+            }
+            _ => return None,
         }
         if snapshot.safe_mode || snapshot.phase == Phase::SafeMode {
             snapshot.safe_mode = true;
             snapshot.phase = Phase::SafeMode;
             snapshot.motion = Motion::Still;
+            if snapshot.activity.is_some() {
+                snapshot.activity = Some(Activity::Present);
+            }
         }
         Some(snapshot)
     }
@@ -370,11 +420,81 @@ mod tests {
         let mut missing = valid();
         missing.as_object_mut().unwrap().remove("scale");
         assert!(Snapshot::parse(missing).is_none());
+        assert!(Snapshot::parse(with("v", json!(3))).is_none());
+        // v2 without its stage fields, and v1 with them, are both rejected.
         assert!(Snapshot::parse(with("v", json!(2))).is_none());
+        let mut v1_with_stage = valid();
+        v1_with_stage["lighting"] = json!("gold");
+        assert!(Snapshot::parse(v1_with_stage).is_none());
+        assert!(Snapshot::parse(with("room_id", json!("her_suite"))).is_none());
         assert!(Snapshot::parse(with("room_id", json!("bedroom"))).is_none());
         assert!(Snapshot::parse(with("phase", json!("safe_mode"))).is_none());
         assert!(Snapshot::parse(with("safe_mode", json!("false"))).is_none());
         assert!(Snapshot::parse(json!("not an object")).is_none());
+    }
+
+    fn valid_v2() -> Value {
+        json!({"v":2,"room_id":"her_suite","phase":"idle","stance":"welcoming",
+               "motion":"subtle","scale":"standard","safe_mode":false,
+               "lighting":"gold","camera":"follow","activity":"resting"})
+    }
+
+    #[test]
+    fn parses_the_full_v2_domain_and_round_trips() {
+        let parsed = Snapshot::parse(valid_v2()).unwrap();
+        assert_eq!(parsed.to_value(), valid_v2());
+        for room in ["penthouse", "legacy_vault", "her_suite"] {
+            let mut data = valid_v2();
+            data["room_id"] = json!(room);
+            assert!(Snapshot::parse(data).is_some(), "{room}");
+        }
+        for (key, values) in [
+            ("lighting", &["standard", "gold", "aurora", "dusk"][..]),
+            ("camera", &["follow", "wide", "face"][..]),
+            ("activity", &["present", "resting"][..]),
+        ] {
+            for value in values {
+                let mut data = valid_v2();
+                data[key] = json!(value);
+                assert!(Snapshot::parse(data).is_some(), "{key}={value}");
+            }
+        }
+        // v1 output keeps exactly the v1 shape.
+        let v1 = Snapshot::parse(valid()).unwrap().to_value();
+        assert_eq!(v1, valid());
+    }
+
+    #[test]
+    fn rejects_incomplete_or_unknown_v2_input() {
+        for key in ["lighting", "camera", "activity"] {
+            let mut missing = valid_v2();
+            missing.as_object_mut().unwrap().remove(key);
+            assert!(Snapshot::parse(missing).is_none(), "{key}");
+        }
+        for (key, value) in [
+            ("lighting", "neon"),
+            ("camera", "orbit"),
+            ("activity", "sleeping"),
+        ] {
+            let mut data = valid_v2();
+            data[key] = json!(value);
+            assert!(Snapshot::parse(data).is_none(), "{key}={value}");
+        }
+        let mut extra = valid_v2();
+        extra["memory"] = json!("private");
+        assert!(Snapshot::parse(extra).is_none());
+    }
+
+    #[test]
+    fn safe_mode_in_v2_forces_the_present_still_pose() {
+        let mut data = valid_v2();
+        data["safe_mode"] = json!(true);
+        data["motion"] = json!("expressive");
+        let value = Snapshot::parse(data).unwrap().to_value();
+        assert_eq!(value["phase"], "safeMode");
+        assert_eq!(value["motion"], "still");
+        assert_eq!(value["activity"], "present");
+        assert_eq!(value["lighting"], "gold");
     }
 
     #[test]
