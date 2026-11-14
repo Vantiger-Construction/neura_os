@@ -289,8 +289,7 @@ void main() {
     });
   });
 
-  test('a card that rendered is still recorded after a room change',
-      () async {
+  test('a card that rendered is still recorded after a room change', () async {
     await fixture.run(() async {
       final banner = await service.maybeGetBannerOnAppOpen();
       expect(banner, isNotNull);
