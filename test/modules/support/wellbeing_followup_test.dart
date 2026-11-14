@@ -141,6 +141,67 @@ void main() {
     expect(draft(tester), isNotEmpty);
   });
 
+  for (final exit in ['Escape', 'Back']) {
+    testWidgets('$exit disposes human support and revokes pending actions',
+        (tester) async {
+      await pump(tester, const Scaffold(body: Text('Synthetic home')));
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      final pendingCopy = Completer<void>();
+      final copies = <String>[];
+      Widget screen() => HumanSupportScreen(copyText: (text) async {
+            copies.add(text);
+            await pendingCopy.future;
+          });
+      unawaited(
+          navigator.push(MaterialPageRoute<void>(builder: (_) => screen())));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byType(TextField), 'Synthetic reviewed draft');
+      final oldTemplate = tester
+          .widget<OutlinedButton>(
+              find.widgetWithText(OutlinedButton, 'Start a message'))
+          .onPressed!;
+      final oldCopy = tester
+          .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'Copy reviewed draft'))
+          .onPressed!;
+      await tap(tester, 'Copy reviewed draft');
+      expect(copies, ['Synthetic reviewed draft']);
+      await tester.ensureVisible(find.byType(TextField));
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      if (exit == 'Escape') {
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      } else {
+        await tester.pageBack();
+      }
+      await tester.pumpAndSettle();
+      expect(find.byType(HumanSupportScreen), findsNothing);
+      expect(find.text('Synthetic home'), findsOneWidget);
+      oldTemplate();
+      oldCopy();
+      pendingCopy.complete();
+      await tester.pump();
+      expect(copies, ['Synthetic reviewed draft']);
+      expect(tester.takeException(), isNull);
+
+      unawaited(
+          navigator.push(MaterialPageRoute<void>(builder: (_) => screen())));
+      await tester.pumpAndSettle();
+      expect(draft(tester), isEmpty);
+      await tester.enterText(find.byType(TextField), 'Synthetic new draft');
+      oldTemplate();
+      oldCopy();
+      await tester.pump();
+      expect(draft(tester), 'Synthetic new draft');
+      expect(copies, ['Synthetic reviewed draft']);
+      expect(
+          find.textContaining('Copied to the system clipboard.'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
   testWidgets('changing the device clock cannot jump the timer countdown',
       (tester) async {
     var now = DateTime(2026, 11, 14, 12);
