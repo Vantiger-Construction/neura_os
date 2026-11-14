@@ -1,9 +1,19 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'mood_models.dart';
 import '../../core/memory/memory_crypto.dart';
 import '../../os_shell/widgets_bridge/home_widget_bridge.dart';
 import '../../startup/neura_prefs_cache.dart';
+
+/// The platform did not confirm this write. Restart before reading or retrying
+/// so speculative preferences cache contents cannot be treated as saved data.
+class MoodSaveUnconfirmedException implements Exception {
+  const MoodSaveUnconfirmedException();
+
+  @override
+  String toString() => 'Mood history save could not be confirmed.';
+}
 
 /// Local mood history, encrypted at rest (reuses the same per-install key
 /// as [MemoryCrypto]'s other callers). Previously stored as a plain JSON
@@ -19,6 +29,7 @@ class MoodStore {
   MemoryCrypto? _crypto;
   Future<void> _writeQueue = Future<void>.value();
   bool _writesSuspended = false;
+  bool _storageUnconfirmed = false;
   int _dataGeneration = 0;
 
   Future<MemoryCrypto> _ensureCrypto() async {
@@ -28,6 +39,7 @@ class MoodStore {
 
   Future<List<MoodEntry>> getAll() async {
     if (_writesSuspended) return <MoodEntry>[];
+    if (_storageUnconfirmed) throw const MoodSaveUnconfirmedException();
     final generation = _dataGeneration;
     return _readAll(generation);
   }
@@ -40,22 +52,35 @@ class MoodStore {
 
     final crypto = await _ensureCrypto();
     if (!_isCurrent(generation)) return <MoodEntry>[];
+    if (_storageUnconfirmed) throw const MoodSaveUnconfirmedException();
     try {
       final decrypted = await crypto.decryptJson(raw);
       if (!_isCurrent(generation)) return <MoodEntry>[];
-      final items = (decrypted['items'] as List)
-          .whereType<Map>()
+      if (_storageUnconfirmed) throw const MoodSaveUnconfirmedException();
+      final rows = decrypted['items'];
+      if (rows is! List || rows.any((item) => item is! Map)) {
+        throw const FormatException('Invalid mood history records.');
+      }
+      final items = rows
+          .cast<Map>()
           .map((m) => MoodEntry.fromJson(Map<String, Object?>.from(m)))
           .toList()
         ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
       return items;
     } catch (_) {
       if (!_isCurrent(generation)) return <MoodEntry>[];
-      // Not a valid encrypted blob - likely legacy plaintext from before
-      // mood data was encrypted. Migrate transparently rather than losing
-      // existing history: read it the old way, then re-save encrypted so
-      // it's fixed going forward.
-      final legacy = MoodEntry.decodeList(raw);
+      if (_storageUnconfirmed) throw const MoodSaveUnconfirmedException();
+      // Only a genuine legacy JSON list is eligible for migration. A failed
+      // encrypted envelope must remain untouched and surface as an error.
+      final legacyJson = jsonDecode(raw);
+      if (legacyJson is! List || legacyJson.any((item) => item is! Map)) {
+        throw const FormatException('Stored mood history could not be read.');
+      }
+      final legacy = legacyJson
+          .cast<Map>()
+          .map((item) => MoodEntry.fromJson(Map<String, Object?>.from(item)))
+          .toList()
+        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
       if (legacy.isNotEmpty) {
         await _persist(legacy, generation);
       }
@@ -85,11 +110,23 @@ class MoodStore {
       'items': items.map((e) => e.toJson()).toList(),
     });
     _requireCurrent(generation);
-    await NeuraPrefsCache.prefs.setString(_key, blob);
+    bool written;
+    try {
+      written = await NeuraPrefsCache.prefs.setString(_key, blob);
+    } catch (_) {
+      _requireCurrent(generation);
+      _storageUnconfirmed = true;
+      throw const MoodSaveUnconfirmedException();
+    }
     if (!_isCurrent(generation)) {
       await NeuraPrefsCache.prefs.remove(_key);
       _requireCurrent(generation);
     }
+    if (!written) {
+      _storageUnconfirmed = true;
+      throw const MoodSaveUnconfirmedException();
+    }
+    _requireCurrent(generation);
   }
 
   Future<MoodEntry?> latest() async {
@@ -120,6 +157,9 @@ class MoodStore {
     if (_writesSuspended) {
       return Future<T>.error(StateError('Mood history writes are suspended.'));
     }
+    if (_storageUnconfirmed) {
+      return Future<T>.error(const MoodSaveUnconfirmedException());
+    }
     final generation = _dataGeneration;
     Future<T> run() {
       _requireCurrent(generation);
@@ -141,5 +181,6 @@ class MoodStore {
     if (!_isCurrent(generation)) {
       throw StateError('Mood history operation was invalidated.');
     }
+    if (_storageUnconfirmed) throw const MoodSaveUnconfirmedException();
   }
 }
