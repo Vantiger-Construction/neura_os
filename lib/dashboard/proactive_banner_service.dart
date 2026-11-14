@@ -398,6 +398,11 @@ class ProactiveBannerService {
         NeuraInitiativeSource.arrivalSpecialist) {
       _routine = _routine?.acknowledgeArrival(banner.candidate.id);
       _persistRoutine();
+    } else if (banner.candidate.specialistId ==
+        NeuraInitiativeSource.windDownSpecialist) {
+      // Start the weekly cooldown only once the offer was actually seen.
+      _routine = _routine?.acknowledgeWindDown(banner.candidate.id);
+      _persistRoutine();
     }
     await _enqueueWrite((generation) async {
       final state = await _loadState();
@@ -487,10 +492,12 @@ class ProactiveBannerService {
   }
 
   _BannerCandidate _initiativeBanner(NeuraIntelligenceCandidate candidate) {
-    final kind = candidate.payload[NeuraInitiativeSource.kindKey] ==
-            NeuraInitiativeSource.routineShiftKind
-        ? ProactiveBannerKind.wellness
-        : ProactiveBannerKind.presence;
+    final kind = switch (candidate.payload[NeuraInitiativeSource.kindKey]) {
+      NeuraInitiativeSource.routineShiftKind => ProactiveBannerKind.wellness,
+      // Opens the Focus Office, where Wind Down is one tap away.
+      NeuraInitiativeSource.windDownKind => ProactiveBannerKind.focus,
+      _ => ProactiveBannerKind.presence,
+    };
     return _BannerCandidate(candidate: candidate, kind: kind);
   }
 

@@ -19,7 +19,14 @@ class NeuraInitiativeSource {
     this.unusualShare = 0.02,
     this.lateNightStartHour = 0,
     this.lateNightEndHour = 5,
+    this.minimumLateNights = 3,
+    this.lateNightWindow = 7,
+    this.windDownStartHour = 20,
+    this.windDownCooldownDays = 7,
   })  : assert(minimumRoutineDays > 0),
+        assert(minimumLateNights > 0 && minimumLateNights <= lateNightWindow),
+        assert(windDownStartHour >= 0 && windDownStartHour < 24),
+        assert(windDownCooldownDays > 0),
         assert(minimumRoutineOpens > 0),
         assert(unusualShare >= 0 && unusualShare <= 1),
         assert(lateNightStartHour >= 0 && lateNightStartHour < 24),
@@ -27,11 +34,13 @@ class NeuraInitiativeSource {
 
   static const String arrivalSpecialist = 'initiative.arrival';
   static const String routineShiftSpecialist = 'initiative.routine_shift';
+  static const String windDownSpecialist = 'initiative.wind_down';
 
   /// Payload key naming which initiative produced a candidate.
   static const String kindKey = 'initiative_kind';
   static const String arrivalKind = 'arrival';
   static const String routineShiftKind = 'routine_shift';
+  static const String windDownKind = 'wind_down';
 
   /// How long the user must have been away before a welcome-back card.
   final Duration arrivalGap;
@@ -48,6 +57,15 @@ class NeuraInitiativeSource {
   final int lateNightStartHour;
   final int lateNightEndHour;
 
+  /// A wind-down card is offered in the evening (from [windDownStartHour]
+  /// until midnight) when Neura was opened after midnight on at least
+  /// [minimumLateNights] of the last [lateNightWindow] nights, and no
+  /// wind-down card has reached a frame in the last [windDownCooldownDays].
+  final int minimumLateNights;
+  final int lateNightWindow;
+  final int windDownStartHour;
+  final int windDownCooldownDays;
+
   /// [routine] must be the history *before* the current app open is recorded,
   /// otherwise the current visit would count as its own precedent.
   List<NeuraIntelligenceCandidate> scan({
@@ -63,6 +81,8 @@ class NeuraInitiativeSource {
     if (arrival != null) candidates.add(arrival);
     final shift = _routineShift(routine, now);
     if (shift != null) candidates.add(shift);
+    final windDown = _windDown(routine, now);
+    if (windDown != null) candidates.add(windDown);
     return List<NeuraIntelligenceCandidate>.unmodifiable(candidates);
   }
 
@@ -151,6 +171,58 @@ class NeuraInitiativeSource {
       disruption: 0.25,
       confidence: confidence,
       payload: const <String, Object?>{kindKey: routineShiftKind},
+    );
+  }
+
+  /// An evening offer to slow down after several late nights. It states only
+  /// what Neura observed (visits after midnight), never a claim about sleep
+  /// or health, and it offers a mode rather than advice.
+  NeuraIntelligenceCandidate? _windDown(
+    NeuraRoutineModel routine,
+    DateTime now,
+  ) {
+    if (now.hour < windDownStartHour) return null;
+    final lateNights = routine.lateNightsBefore(now, nights: lateNightWindow);
+    if (lateNights < minimumLateNights) return null;
+    final sinceOffer = routine.daysSinceWindDownOffer(now);
+    if (sinceOffer != null && sinceOffer < windDownCooldownDays) return null;
+
+    final rawConfidence = 0.6 + 0.05 * (lateNights - minimumLateNights);
+    final confidence = rawConfidence.clamp(0.6, 0.8).toDouble();
+    final midnight = DateTime(now.year, now.month, now.day + 1);
+    final twoHours = now.add(const Duration(hours: 2));
+
+    return NeuraIntelligenceCandidate(
+      // One offer per evening; the weekly cooldown is kept in the routine.
+      id: '$windDownSpecialist:${NeuraRoutineModel.dayKey(now)}',
+      capabilityId: NeuraCapabilityRegistry.surfaceSuggestion,
+      specialistId: windDownSpecialist,
+      title: 'An easier evening?',
+      body: "You've stopped by after midnight on $lateNights of the last "
+          '$lateNightWindow nights. If you like, Wind Down can make tonight '
+          'feel slower.',
+      createdAt: now,
+      expiresAt: twoHours.isBefore(midnight) ? twoHours : midnight,
+      evidence: [
+        NeuraEvidenceRef(
+          id: 'routine.late_nights',
+          source: 'routine_model',
+          summary: 'Recent nights when Neura was opened after midnight.',
+          observedAt: now,
+          confidence: confidence,
+          sensitivity: NeuraSensitivity.personal,
+        ),
+      ],
+      // Scores about 0.41 at minimum confidence: just over the kernel's bar,
+      // so a few dismissals are enough to quiet it.
+      benefit: 0.6,
+      urgency: 0.4,
+      disruption: 0.15,
+      confidence: confidence,
+      payload: <String, Object?>{
+        kindKey: windDownKind,
+        'late_nights': lateNights,
+      },
     );
   }
 }
