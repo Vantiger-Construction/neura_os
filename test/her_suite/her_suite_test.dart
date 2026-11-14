@@ -55,7 +55,9 @@ const _safe = HerShelfSummary(
   quietHoursEnd: 7,
 );
 
-Widget _page(String name) => Scaffold(body: Text('opened $name'));
+Widget _page(String name) {
+  return Scaffold(appBar: AppBar(), body: Text('opened $name'));
+}
 
 const _destinations = HerSuiteDestinations(
   chat: _chat,
@@ -68,9 +70,10 @@ Widget _teach(BuildContext _) => _page('teach');
 Widget _memory(BuildContext _) => _page('memory');
 Widget _suggestions(BuildContext _) => _page('suggestions');
 
-Widget _stage(BuildContext _, NeuraStagePresentation stage) => Text(
-    'stage ${stage.lighting.name} ${stage.camera.name} '
-    '${stage.activity.name}');
+Widget _stage(BuildContext _, NeuraStagePresentation stage) {
+  final camera = stage.camera.name;
+  return Text('stage ${stage.lighting.name} $camera ${stage.activity.name}');
+}
 
 void main() {
   group('HerSuiteStageController', () {
@@ -82,7 +85,9 @@ void main() {
       published = [];
       safeMode = ValueNotifier(false);
       controller = HerSuiteStageController(
-          publish: published.add, safeMode: safeMode);
+        publish: published.add,
+        safeMode: safeMode,
+      );
     });
 
     tearDown(() {
@@ -145,7 +150,9 @@ void main() {
       published = [];
       safeMode = ValueNotifier(false);
       controller = HerSuiteStageController(
-          publish: published.add, safeMode: safeMode);
+        publish: published.add,
+        safeMode: safeMode,
+      );
     });
 
     tearDown(() {
@@ -155,24 +162,26 @@ void main() {
     });
 
     Future<void> openSuite(WidgetTester tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: Builder(
-          builder: (context) => TextButton(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => HerSuiteScreen(
-                  host: host,
-                  controller: controller,
-                  shelf: shelf,
-                  destinations: _destinations,
-                  stageBuilder: _stage,
-                ),
-              ),
-            ),
-            child: const Text('visit'),
-          ),
-        ),
-      ));
+      Widget suite(BuildContext _) {
+        return HerSuiteScreen(
+          host: host,
+          controller: controller,
+          shelf: shelf,
+          destinations: _destinations,
+          stageBuilder: _stage,
+        );
+      }
+
+      Widget visit(BuildContext context) {
+        return TextButton(
+          onPressed: () {
+            Navigator.of(context).push(MaterialPageRoute<void>(builder: suite));
+          },
+          child: const Text('visit'),
+        );
+      }
+
+      await tester.pumpWidget(MaterialApp(home: Builder(builder: visit)));
       await tester.tap(find.text('visit'));
       await tester.pumpAndSettle();
     }
@@ -187,8 +196,8 @@ void main() {
       await openSuite(tester);
       expect(host.room, NeuraRoom.herSuite);
       expect(find.text('Her Suite'), findsOneWidget);
-      expect(find.text("Neura's own room. You're a guest here."),
-          findsOneWidget);
+      final cue = find.text("Neura's own room. You're a guest here.");
+      expect(cue, findsOneWidget);
       await back(tester);
       expect(host.visits, ['her_suite', 'penthouse']);
       expect(published.last, NeuraStagePresentation.defaults);

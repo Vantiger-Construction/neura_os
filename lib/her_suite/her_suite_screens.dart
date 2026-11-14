@@ -27,9 +27,12 @@ class _ShellHost implements HerSuiteHost {
   // Holds the shell itself, not a context: the room is restored after this
   // screen has left the tree.
   _ShellHost(this._shell);
+
   final NeuraShellState _shell;
+
   @override
   NeuraRoom get room => _shell.room;
+
   @override
   Future<void> setRoom(NeuraRoom room) => _shell.setRoom(room);
 }
@@ -50,10 +53,22 @@ class HerSuiteDestinations {
   final WidgetBuilder suggestions;
 
   static Widget _chat(BuildContext _) => const NeuraChatScreen();
+
   static Widget _teach(BuildContext _) => const NeuraTeachScreen();
+
   static Widget _memory(BuildContext _) => const MemoryScreen();
-  static Widget _suggestions(BuildContext _) =>
-      const NeuraIntelligenceCenterScreen();
+
+  static Widget _suggestions(BuildContext _) {
+    return const NeuraIntelligenceCenterScreen();
+  }
+}
+
+void _open(BuildContext context, String name, WidgetBuilder builder) {
+  final route = MaterialPageRoute<void>(
+    builder: builder,
+    settings: RouteSettings(name: name),
+  );
+  Navigator.of(context).push(route);
 }
 
 /// Neura's own room. You visit it as a guest: opening it moves the shell to
@@ -80,11 +95,13 @@ class HerSuiteScreen extends StatefulWidget {
   final HerSuiteDestinations destinations;
   final HerSuiteStageBuilder? stageBuilder;
 
-  static Future<void> open(BuildContext context) =>
-      Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => const HerSuiteScreen(),
-        settings: const RouteSettings(name: '/her-suite'),
-      ));
+  static Future<void> open(BuildContext context) {
+    final route = MaterialPageRoute<void>(
+      builder: (_) => const HerSuiteScreen(),
+      settings: const RouteSettings(name: '/her-suite'),
+    );
+    return Navigator.of(context).push(route);
+  }
 
   @override
   State<HerSuiteScreen> createState() => _HerSuiteScreenState();
@@ -97,25 +114,26 @@ class _HerSuiteScreenState extends State<HerSuiteScreen> {
   HerSuiteHost? _host;
   NeuraRoom? _previousRoom;
 
-  HerShelfSource get _shelf =>
-      widget.shelf ?? (_ownedShelf ??= AppHerShelfSource());
+  HerShelfSource get _shelf {
+    return widget.shelf ?? (_ownedShelf ??= AppHerShelfSource());
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_host != null) return;
-    final host = _host = widget.host ?? _ShellHost(NeuraShell.of(context));
+    final host = widget.host ?? _ShellHost(NeuraShell.of(context));
+    _host = host;
     final current = host.room;
-    if (current.id != NeuraRoom.herSuite.id) {
-      _previousRoom = current;
-      // Room changes notify the shell's listeners, which must not rebuild
-      // while this route is still building; run them after this frame's
-      // synchronous work.
-      scheduleMicrotask(() {
-        if (!mounted) return;
-        unawaited(host.setRoom(NeuraRoom.herSuite).catchError((_) {}));
-      });
-    }
+    if (current.id == NeuraRoom.herSuite.id) return;
+    _previousRoom = current;
+    // Room changes notify the shell's listeners, which must not rebuild
+    // while this route is still building; run them after this frame's
+    // synchronous work.
+    scheduleMicrotask(() {
+      if (!mounted) return;
+      unawaited(host.setRoom(NeuraRoom.herSuite).catchError((_) {}));
+    });
   }
 
   @override
@@ -141,81 +159,86 @@ class _HerSuiteScreenState extends State<HerSuiteScreen> {
     super.dispose();
   }
 
-  void _push(Widget screen, String name) {
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => screen,
-      settings: RouteSettings(name: name),
-    ));
+  void _openSitTogether() {
+    _open(context, '/her-suite/sit-together', (_) {
+      return HerSitTogetherScreen(
+        controller: _controller,
+        destinations: widget.destinations,
+        stageBuilder: widget.stageBuilder,
+      );
+    });
+  }
+
+  void _openShelf() {
+    _open(context, '/her-suite/shelf', (_) {
+      return HerShelfScreen(
+        controller: _controller,
+        source: _shelf,
+        destinations: widget.destinations,
+        stageBuilder: widget.stageBuilder,
+      );
+    });
+  }
+
+  void _openResting() {
+    _open(context, '/her-suite/resting', (_) {
+      return HerRestingScreen(
+        controller: _controller,
+        stageBuilder: widget.stageBuilder,
+      );
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final cue = NeuraRoomPresenceProfile.forRoom(NeuraRoom.herSuite).cue;
+    final profile = NeuraRoomPresenceProfile.forRoom(NeuraRoom.herSuite);
     return _SuiteScaffold(
       controller: _controller,
       stageBuilder: widget.stageBuilder,
       title: 'Her Suite',
-      subtitle: cue,
-      panel: ListenableBuilder(
-        listenable: _controller,
-        builder: (context, _) => Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+      subtitle: profile.cue,
+      panel: _buildPanel,
+    );
+  }
+
+  Widget _buildPanel(BuildContext context) {
+    final safeMode = _controller.safeMode;
+    final restHint =
+        safeMode ? 'Not in Safe Mode' : 'She settles by the window';
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _StageChoices(controller: _controller),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
           children: [
-            _StageChoices(controller: _controller),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _SuiteAction(
-                  key: const ValueKey('her-suite-sit'),
-                  icon: Icons.weekend_outlined,
-                  title: 'Sit together',
-                  subtitle: 'Face to face on her sofa',
-                  onTap: () => _push(
-                      HerSitTogetherScreen(
-                        controller: _controller,
-                        destinations: widget.destinations,
-                        stageBuilder: widget.stageBuilder,
-                      ),
-                      '/her-suite/sit-together'),
-                ),
-                _SuiteAction(
-                  key: const ValueKey('her-suite-shelf'),
-                  icon: Icons.auto_stories_outlined,
-                  title: 'Her shelf',
-                  subtitle: 'What you have taught her',
-                  onTap: () => _push(
-                      HerShelfScreen(
-                        controller: _controller,
-                        source: _shelf,
-                        destinations: widget.destinations,
-                        stageBuilder: widget.stageBuilder,
-                      ),
-                      '/her-suite/shelf'),
-                ),
-                _SuiteAction(
-                  key: const ValueKey('her-suite-rest'),
-                  icon: Icons.nights_stay_outlined,
-                  title: 'Let her rest',
-                  subtitle: _controller.safeMode
-                      ? 'Not in Safe Mode'
-                      : 'She settles by the window',
-                  onTap: _controller.safeMode
-                      ? null
-                      : () => _push(
-                          HerRestingScreen(
-                            controller: _controller,
-                            stageBuilder: widget.stageBuilder,
-                          ),
-                          '/her-suite/resting'),
-                ),
-              ],
+            _SuiteAction(
+              key: const ValueKey('her-suite-sit'),
+              icon: Icons.weekend_outlined,
+              title: 'Sit together',
+              subtitle: 'Face to face on her sofa',
+              onTap: _openSitTogether,
+            ),
+            _SuiteAction(
+              key: const ValueKey('her-suite-shelf'),
+              icon: Icons.auto_stories_outlined,
+              title: 'Her shelf',
+              subtitle: 'What you have taught her',
+              onTap: _openShelf,
+            ),
+            _SuiteAction(
+              key: const ValueKey('her-suite-rest'),
+              icon: Icons.nights_stay_outlined,
+              title: 'Let her rest',
+              subtitle: restHint,
+              onTap: safeMode ? null : _openResting,
             ),
           ],
         ),
-      ),
+      ],
     );
   }
 }
@@ -246,8 +269,8 @@ class _HerSitTogetherScreenState extends State<HerSitTogetherScreen> {
   void initState() {
     super.initState();
     _previous = widget.controller.stage.camera;
-    // The parent suite rebuilds on stage changes, so change it after this
-    // frame rather than while the route is building.
+    // The suite underneath rebuilds on stage changes, so change it after
+    // this frame rather than while the route is building.
     scheduleMicrotask(() {
       if (mounted) widget.controller.setCamera(NeuraStageCamera.face);
     });
@@ -261,55 +284,56 @@ class _HerSitTogetherScreenState extends State<HerSitTogetherScreen> {
     super.dispose();
   }
 
+  void _talk() {
+    _open(context, '/her-suite/sit-together/chat', widget.destinations.chat);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
     return _SuiteScaffold(
       controller: widget.controller,
       stageBuilder: widget.stageBuilder,
       title: 'Sit together',
       subtitle: 'On her sofa, face to face.',
-      panel: _quiet
-          ? Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () => setState(() => _quiet = false),
-                child: const Text('Show options'),
+      panel: _buildPanel,
+    );
+  }
+
+  Widget _buildPanel(BuildContext context) {
+    if (_quiet) {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: TextButton(
+          onPressed: () => setState(() => _quiet = false),
+          child: const Text('Show options'),
+        ),
+      );
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text('Talk with her, or just keep each other company.'),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                key: const ValueKey('her-suite-talk'),
+                icon: const Icon(Icons.chat_bubble_outline),
+                label: const Text('Talk with her'),
+                onPressed: _talk,
               ),
-            )
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('Talk with her, or just keep each other company.',
-                    style: text.bodyMedium),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        key: const ValueKey('her-suite-talk'),
-                        icon: const Icon(Icons.chat_bubble_outline),
-                        label: const Text('Talk with her'),
-                        onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: widget.destinations.chat,
-                            settings: const RouteSettings(
-                                name: '/her-suite/sit-together/chat'),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    OutlinedButton(
-                      key: const ValueKey('her-suite-quiet'),
-                      onPressed: () => setState(() => _quiet = true),
-                      child: const Text('Just sit'),
-                    ),
-                  ],
-                ),
-              ],
             ),
+            const SizedBox(width: 10),
+            OutlinedButton(
+              key: const ValueKey('her-suite-quiet'),
+              onPressed: () => setState(() => _quiet = true),
+              child: const Text('Just sit'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -341,13 +365,6 @@ class _HerShelfScreenState extends State<HerShelfScreen> {
     widget.source.ensureLoaded();
   }
 
-  void _open(WidgetBuilder builder, String name) {
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: builder,
-      settings: RouteSettings(name: name),
-    ));
-  }
-
   @override
   Widget build(BuildContext context) {
     return _SuiteScaffold(
@@ -355,71 +372,83 @@ class _HerShelfScreenState extends State<HerShelfScreen> {
       stageBuilder: widget.stageBuilder,
       title: 'Her shelf',
       subtitle: 'What you have taught her. Only you can change it.',
-      panel: ListenableBuilder(
-        listenable: widget.source,
-        builder: (context, _) {
-          final shelf = widget.source.read();
-          if (shelf.safeMode) {
-            return const ListTile(
-              key: ValueKey('her-shelf-closed'),
-              leading: Icon(Icons.shield_outlined),
-              title: Text('Her shelf is closed in Safe Mode'),
-              subtitle: Text('Restart normally to see or change it.'),
-            );
-          }
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _ShelfItem(
-                key: const ValueKey('her-shelf-answers'),
-                icon: Icons.notes_outlined,
-                title: 'How you like answers',
-                value: _taught(shelf, shelf.answerDetail?.label,
-                    shelf.answerIsTemporary),
-                onTap: shelf.teachingAvailable
-                    ? () => _open(widget.destinations.teach, '/teach')
-                    : null,
-              ),
-              _ShelfItem(
-                key: const ValueKey('her-shelf-plans'),
-                icon: Icons.checklist_outlined,
-                title: 'Plan size',
-                value: _taught(
-                    shelf, shelf.planSize?.label, shelf.planIsTemporary),
-                onTap: shelf.teachingAvailable
-                    ? () => _open(widget.destinations.teach, '/teach')
-                    : null,
-              ),
-              _ShelfItem(
-                key: const ValueKey('her-shelf-suggestions'),
-                icon: Icons.lightbulb_outline,
-                title: 'Suggestions',
-                value: shelf.suggestions.label,
-                onTap: () =>
-                    _open(widget.destinations.suggestions, '/intelligence'),
-              ),
-              _ShelfItem(
-                key: const ValueKey('her-shelf-quiet'),
-                icon: Icons.bedtime_outlined,
-                title: 'Quiet hours',
-                value: shelf.quietHoursEnabled
-                    ? '${_hour(shelf.quietHoursStart)} to '
-                        '${_hour(shelf.quietHoursEnd)}'
-                    : 'Off',
-                onTap: () =>
-                    _open(widget.destinations.suggestions, '/intelligence'),
-              ),
-              _ShelfItem(
-                key: const ValueKey('her-shelf-memories'),
-                icon: Icons.lock_outline,
-                title: 'Memories',
-                value: 'Encrypted on this device. Review or forget them.',
-                onTap: () => _open(widget.destinations.memory, '/memory'),
-              ),
-            ],
-          );
-        },
-      ),
+      panel: (context) {
+        return ListenableBuilder(
+          listenable: widget.source,
+          builder: (context, _) => _buildShelf(widget.source.read()),
+        );
+      },
+    );
+  }
+
+  Widget _buildShelf(HerShelfSummary shelf) {
+    if (shelf.safeMode) {
+      return const ListTile(
+        key: ValueKey('her-shelf-closed'),
+        leading: Icon(Icons.shield_outlined),
+        title: Text('Her shelf is closed in Safe Mode'),
+        subtitle: Text('Restart normally to see or change it.'),
+      );
+    }
+    final destinations = widget.destinations;
+    void teach() => _open(context, '/teach', destinations.teach);
+    void suggestions() {
+      _open(context, '/intelligence', destinations.suggestions);
+    }
+
+    final canTeach = shelf.teachingAvailable;
+    final answers = _taught(
+      shelf,
+      shelf.answerDetail?.label,
+      shelf.answerIsTemporary,
+    );
+    final plans = _taught(
+      shelf,
+      shelf.planSize?.label,
+      shelf.planIsTemporary,
+    );
+    final quiet = shelf.quietHoursEnabled
+        ? '${_hour(shelf.quietHoursStart)} to ${_hour(shelf.quietHoursEnd)}'
+        : 'Off';
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _ShelfItem(
+          key: const ValueKey('her-shelf-answers'),
+          icon: Icons.notes_outlined,
+          title: 'How you like answers',
+          value: answers,
+          onTap: canTeach ? teach : null,
+        ),
+        _ShelfItem(
+          key: const ValueKey('her-shelf-plans'),
+          icon: Icons.checklist_outlined,
+          title: 'Plan size',
+          value: plans,
+          onTap: canTeach ? teach : null,
+        ),
+        _ShelfItem(
+          key: const ValueKey('her-shelf-suggestions'),
+          icon: Icons.lightbulb_outline,
+          title: 'Suggestions',
+          value: shelf.suggestions.label,
+          onTap: suggestions,
+        ),
+        _ShelfItem(
+          key: const ValueKey('her-shelf-quiet'),
+          icon: Icons.bedtime_outlined,
+          title: 'Quiet hours',
+          value: quiet,
+          onTap: suggestions,
+        ),
+        _ShelfItem(
+          key: const ValueKey('her-shelf-memories'),
+          icon: Icons.lock_outline,
+          title: 'Memories',
+          value: 'Encrypted on this device. Review or forget them.',
+          onTap: () => _open(context, '/memory', destinations.memory),
+        ),
+      ],
     );
   }
 
@@ -433,7 +462,7 @@ class _HerShelfScreenState extends State<HerShelfScreen> {
 }
 
 /// Resting: she settles by the window and the room dims. Leaving wakes her.
-/// Safe Mode wakes her at once and closes this screen.
+/// Safe Mode wakes her and closes this screen.
 class HerRestingScreen extends StatefulWidget {
   const HerRestingScreen({
     super.key,
@@ -481,22 +510,26 @@ class _HerRestingScreenState extends State<HerRestingScreen> {
       stageBuilder: widget.stageBuilder,
       title: 'Resting',
       subtitle: 'Neura is resting by the window.',
-      panel: Row(
-        children: [
-          const Expanded(
-            child: Text('She will still answer if you call her.'),
-          ),
-          FilledButton.tonal(
-            key: const ValueKey('her-suite-wake'),
-            onPressed: () => Navigator.of(context).maybePop(),
-            child: const Text('Wake her'),
-          ),
-        ],
-      ),
+      panel: (context) {
+        return Row(
+          children: [
+            const Expanded(
+              child: Text('She will still answer if you call her.'),
+            ),
+            FilledButton.tonal(
+              key: const ValueKey('her-suite-wake'),
+              onPressed: () => Navigator.of(context).maybePop(),
+              child: const Text('Wake her'),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
+/// The stage with a title panel on top and [panel] at the bottom. Both are
+/// rebuilt whenever the stage changes.
 class _SuiteScaffold extends StatelessWidget {
   const _SuiteScaffold({
     required this.controller,
@@ -509,7 +542,7 @@ class _SuiteScaffold extends StatelessWidget {
   final HerSuiteStageController controller;
   final String title;
   final String subtitle;
-  final Widget panel;
+  final WidgetBuilder panel;
   final HerSuiteStageBuilder? stageBuilder;
 
   @override
@@ -522,12 +555,29 @@ class _SuiteScaffold extends StatelessWidget {
 
   Widget _build(BuildContext context) {
     final theme = Theme.of(context);
-    return Theme(
-      data: theme.copyWith(
-        colorScheme: theme.colorScheme.copyWith(
-          primary: HerSuiteMood.of(controller.stage.lighting).accent,
-        ),
+    final accent = HerSuiteMood.of(controller.stage.lighting).accent;
+    final scheme = theme.colorScheme.copyWith(primary: accent);
+    final text = theme.textTheme;
+    final header = HerSuiteGlass(
+      padding: const EdgeInsets.fromLTRB(6, 6, 18, 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const BackButton(),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: text.titleMedium),
+                Text(subtitle, style: text.bodySmall),
+              ],
+            ),
+          ),
+        ],
       ),
+    );
+    return Theme(
+      data: theme.copyWith(colorScheme: scheme),
       child: Scaffold(
         backgroundColor: Colors.black,
         body: Stack(
@@ -544,29 +594,13 @@ class _SuiteScaffold extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    HerSuiteGlass(
-                      padding: const EdgeInsets.fromLTRB(6, 6, 18, 6),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const BackButton(),
-                          Flexible(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(title, style: theme.textTheme.titleMedium),
-                                Text(subtitle,
-                                    style: theme.textTheme.bodySmall),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    header,
                     const Spacer(),
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 560),
-                      child: HerSuiteGlass(child: panel),
+                      child: HerSuiteGlass(
+                        child: Builder(builder: panel),
+                      ),
                     ),
                   ],
                 ),
@@ -587,10 +621,12 @@ class _StageChoices extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final stage = controller.stage;
+    final mood = HerSuiteMood.of(stage.lighting);
+    final label = Theme.of(context).textTheme.labelMedium;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Light', style: Theme.of(context).textTheme.labelMedium),
+        Text('Light', style: label),
         const SizedBox(height: 6),
         Wrap(
           spacing: 8,
@@ -599,14 +635,13 @@ class _StageChoices extends StatelessWidget {
               ChoiceChip(
                 key: ValueKey('her-suite-light-${lighting.name}'),
                 label: Text(HerSuiteMood.of(lighting).label),
-                selected: HerSuiteMood.of(stage.lighting) ==
-                    HerSuiteMood.of(lighting),
+                selected: mood == HerSuiteMood.of(lighting),
                 onSelected: (_) => controller.setLighting(lighting),
               ),
           ],
         ),
         const SizedBox(height: 10),
-        Text('View', style: Theme.of(context).textTheme.labelMedium),
+        Text('View', style: label),
         const SizedBox(height: 6),
         Wrap(
           spacing: 8,
@@ -642,10 +677,11 @@ class _SuiteAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final alpha = onTap == null ? 0.03 : 0.08;
     return SizedBox(
       width: 160,
       child: Card(
-        color: Colors.white.withValues(alpha: onTap == null ? 0.03 : 0.08),
+        color: Colors.white.withValues(alpha: alpha),
         elevation: 0,
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -683,12 +719,14 @@ class _ShelfItem extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => ListTile(
-        dense: true,
-        leading: Icon(icon),
-        title: Text(title),
-        subtitle: Text(value),
-        trailing: onTap == null ? null : const Icon(Icons.chevron_right),
-        onTap: onTap,
-      );
+  Widget build(BuildContext context) {
+    return ListTile(
+      dense: true,
+      leading: Icon(icon),
+      title: Text(title),
+      subtitle: Text(value),
+      trailing: onTap == null ? null : const Icon(Icons.chevron_right),
+      onTap: onTap,
+    );
+  }
 }

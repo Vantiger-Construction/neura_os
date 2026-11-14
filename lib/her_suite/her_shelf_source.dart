@@ -85,9 +85,8 @@ class AppHerShelfSource extends ChangeNotifier implements HerShelfSource {
       answerIsTemporary: teaching != null && _teaching.answerIsTemporary,
       planSize: teaching?.planSize,
       planIsTemporary: teaching != null && _teaching.planIsTemporary,
-      suggestions: prefs.enabled
-          ? prefs.proactivityLevel
-          : NeuraProactivityLevel.off,
+      suggestions:
+          prefs.enabled ? prefs.proactivityLevel : NeuraProactivityLevel.off,
       quietHoursEnabled: prefs.quietHoursEnabled,
       quietHoursStart: prefs.quietHoursStart,
       quietHoursEnd: prefs.quietHoursEnd,

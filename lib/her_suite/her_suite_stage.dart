@@ -76,6 +76,8 @@ class HerSuiteStage extends StatelessWidget {
       NeuraStageCamera.face => (1.55, const Alignment(0, 1.4)),
       NeuraStageCamera.follow => (1.0, const Alignment(0.25, 0.8)),
     };
+    final lift = resting ? 0.25 : 0.0;
+    final avatar = builder?.call(context, stage) ?? const _FlutterAvatarStage();
 
     return AnimatedContainer(
       key: const ValueKey('her-suite-stage'),
@@ -93,9 +95,7 @@ class HerSuiteStage extends StatelessWidget {
       child: AnimatedAlign(
         duration: duration,
         curve: Curves.easeOutCubic,
-        alignment: resting
-            ? Alignment(alignment.x, alignment.y + 0.25)
-            : alignment,
+        alignment: Alignment(alignment.x, alignment.y + lift),
         child: AnimatedScale(
           duration: duration,
           curve: Curves.easeOutCubic,
@@ -105,8 +105,7 @@ class HerSuiteStage extends StatelessWidget {
             opacity: resting ? 0.82 : 1,
             child: FractionallySizedBox(
               heightFactor: 0.62,
-              child: builder?.call(context, stage) ??
-                  const _FlutterAvatarStage(),
+              child: avatar,
             ),
           ),
         ),
@@ -122,15 +121,19 @@ class _FlutterAvatarStage extends StatelessWidget {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<NeuraPresenceSnapshot>(
       valueListenable: NeuraCompanionPresence.instance.state,
-      builder: (context, presence, _) => ValueListenableBuilder<ShellPrefs>(
-        valueListenable: ShellPrefsController.instance.prefs,
-        builder: (context, prefs, _) => NeuraRoomPresenceAvatar(
-          room: NeuraRoom.herSuite,
-          phase: presence.phase,
-          motion: prefs.companionMotion,
-          scale: prefs.companionScale,
-        ),
-      ),
+      builder: (context, presence, _) {
+        return ValueListenableBuilder<ShellPrefs>(
+          valueListenable: ShellPrefsController.instance.prefs,
+          builder: (context, prefs, _) {
+            return NeuraRoomPresenceAvatar(
+              room: NeuraRoom.herSuite,
+              phase: presence.phase,
+              motion: prefs.companionMotion,
+              scale: prefs.companionScale,
+            );
+          },
+        );
+      },
     );
   }
 }
