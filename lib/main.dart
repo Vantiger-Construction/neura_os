@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager_plus/window_manager_plus.dart';
 
-import 'mascot/mascot_window_app.dart';
+import 'mascot/mascot_window_bootstrap.dart';
 import 'mascot/mascot_window_service.dart';
 import 'mascot/neura_window_role.dart';
 import 'reliability/safe_boot.dart';
@@ -133,22 +133,19 @@ Future<void> _bootstrapWindowAndLaunch() async {
     }
 
     if (role.isMascot) {
-      try {
-        await WindowManagerPlus.ensureInitialized(role.windowId)
-            .timeout(const Duration(seconds: 3));
-        _attachRoot(const MascotWindowApp());
-      } catch (error, stackTrace) {
-        NeuraErrorPipeline.instance.capture(
-          error,
-          stackTrace,
-          source: 'mascot_window_manager',
-          fatal: true,
-          phase: 'bootstrap',
-        );
-        // Attach a minimal root even on plugin failure so the secondary engine
-        // shows recovery UI rather than terminating without a frame.
-        _attachRoot(const MascotWindowApp());
-      }
+      // Select the secondary root before any optional plugin work. Its failure
+      // must neither build plugin-dependent controls nor start a primary app
+      // (and its services) inside this secondary engine.
+      _attachRoot(MascotWindowBootstrap(
+        windowId: role.windowId,
+        onInitializationError: (error, stackTrace) {
+          NeuraErrorPipeline.instance.captureBootstrapWarning(
+            error,
+            stackTrace,
+            source: 'mascot_window_manager',
+          );
+        },
+      ));
       return;
     }
 

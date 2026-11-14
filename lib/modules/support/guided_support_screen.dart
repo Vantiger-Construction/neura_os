@@ -3,16 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../guardrails/support_resources.dart';
 import '../../reliability/safe_boot.dart';
 import 'guided_support_activity.dart';
 import 'guided_support_store.dart';
-import 'support_center_screen.dart';
+import 'human_support_screen.dart';
 
 class GuidedSupportScreen extends StatefulWidget {
-  const GuidedSupportScreen({super.key, this.store});
+  const GuidedSupportScreen({super.key, this.store, this.initialActivity});
 
   final GuidedSupportStore? store;
+  final GuidedSupportActivity? initialActivity;
 
   @override
   State<GuidedSupportScreen> createState() => _GuidedSupportScreenState();
@@ -28,28 +28,64 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
   GuidedSupportFeedback? _feedback;
   int _step = 0;
   int _epoch = 0;
+  int _draftGeneration = 0;
   bool _checkIn = false;
   bool _working = false;
   bool _active = true;
-  bool _loading = true;
+  bool _visible = true;
+  bool _loading = false;
+  bool _preferenceHidden = false;
+  ValueNotifier<bool>? _dialogGate;
   String? _notice;
+
+  bool get _privateAvailable =>
+      _active &&
+      !SafeBoot.instance.safeMode.value &&
+      !SafeBoot.instance.restartRequired.value;
+
+  bool _currentRequest(int epoch) =>
+      mounted &&
+      _active &&
+      epoch == _epoch &&
+      (ModalRoute.of(context)?.isCurrent ?? false);
+
+  String get _safetyNotice => SafeBoot.instance.restartRequired.value
+      ? 'Restart Neura before opening or remembering saved activity preferences. '
+          'Manual activities are still available.'
+      : SafeBoot.instance.safeMode.value
+          ? 'Safe Mode: activities are available; remembering is paused.'
+          : 'Private support information is hidden. You can still use every activity.';
 
   @override
   void initState() {
     super.initState();
+    _activity = widget.initialActivity;
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _active = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
-    SafeBoot.instance.safeMode.addListener(_onSafeMode);
-    unawaited(_loadPreference());
+    SafeBoot.instance.safeMode.addListener(_onSafety);
+    SafeBoot.instance.restartRequired.addListener(_onSafety);
+    if (_privateAvailable) {
+      unawaited(_loadPreference());
+    } else {
+      _invalidateSession(_safetyNotice);
+    }
   }
 
   Future<void> _loadPreference() async {
-    final epoch = _epoch;
+    if (!_privateAvailable || !_visible || _loading) return;
+    final epoch = ++_epoch;
+    setState(() {
+      _loading = true;
+      _preferenceHidden = false;
+      _notice = null;
+    });
     try {
       final record = await _store.read();
-      if (!mounted || epoch != _epoch) return;
+      if (!_currentRequest(epoch) || !_privateAvailable) return;
       setState(() => _remembered = record);
     } catch (_) {
-      if (!mounted || epoch != _epoch) return;
+      if (!_currentRequest(epoch) || !_privateAvailable) return;
       setState(() => _notice =
           'Your remembered activity could not be opened. You can still use every activity.');
     } finally {
@@ -58,48 +94,57 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
   }
 
   void _clearDrafts() {
+    _draftGeneration++;
     for (final draft in _drafts) {
       draft.clear();
     }
   }
 
-  void _onSafeMode() {
+  void _invalidateSession(String notice) {
     _epoch++;
-    if (SafeBoot.instance.safeMode.value) {
-      _clearDrafts();
-      setState(() {
-        _remembered = null;
-        _feedback = null;
-        _loading = false;
-        _notice = 'Safe Mode: activities are available; remembering is paused.';
-      });
-    } else {
-      unawaited(_loadPreference());
+    _dialogGate?.value = false;
+    _clearDrafts();
+    _remembered = null;
+    _feedback = null;
+    _loading = false;
+    _preferenceHidden = true;
+    _notice = notice;
+  }
+
+  void _onSafety() {
+    if (mounted) setState(() => _invalidateSession(_safetyNotice));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final visible = ModalRoute.isCurrentOf(context) ?? true;
+    if (_visible && !visible && _dialogGate == null) {
+      _invalidateSession(
+          'Temporary writing was cleared when you left this screen.');
     }
+    _visible = visible;
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    _active = state == AppLifecycleState.resumed;
-    _epoch++;
-    if (!_active) {
-      _clearDrafts();
-      setState(() {
-        _feedback = null;
-        _remembered = null;
-        _loading = false;
-        _notice = 'Temporary writing was cleared when you left the app.';
-      });
-    } else {
-      unawaited(_loadPreference());
-    }
+    if (!mounted) return;
+    setState(() {
+      _active = state == AppLifecycleState.resumed;
+      if (!_active) {
+        _invalidateSession(
+            'Temporary writing was cleared when you left the app.');
+      }
+    });
   }
 
   @override
   void dispose() {
     _epoch++;
+    _dialogGate?.value = false;
     WidgetsBinding.instance.removeObserver(this);
-    SafeBoot.instance.safeMode.removeListener(_onSafeMode);
+    SafeBoot.instance.safeMode.removeListener(_onSafety);
+    SafeBoot.instance.restartRequired.removeListener(_onSafety);
     for (final draft in _drafts) {
       draft.dispose();
     }
@@ -107,7 +152,57 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
     super.dispose();
   }
 
+  Future<T?> _privateDialog<T>(WidgetBuilder builder) async {
+    if (_dialogGate != null || !_currentRequest(_epoch)) return null;
+    final gate = ValueNotifier(true);
+    _dialogGate = gate;
+    var covered = false;
+    try {
+      final result = await showDialog<T>(
+        context: context,
+        builder: (_) => ValueListenableBuilder<bool>(
+          valueListenable: gate,
+          builder: (context, allowed, _) {
+            final route = ModalRoute.of(context);
+            // A normal close also stops being current; only a covering route
+            // revokes this request here. Lifecycle/safety changes use the gate.
+            if (ModalRoute.isCurrentOf(context) == false &&
+                route?.isActive == true &&
+                route?.animation?.status != AnimationStatus.reverse &&
+                !covered) {
+              covered = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && identical(_dialogGate, gate) && gate.value) {
+                  setState(() => _invalidateSession(
+                      'Private support information was hidden when you left the request.'));
+                }
+              });
+            }
+            if (!allowed || covered) {
+              return AlertDialog(
+                title: const Text('Request expired'),
+                content: const Text(
+                    'This request is no longer active. Close it and start again when you are ready.'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Close')),
+                ],
+              );
+            }
+            return builder(context);
+          },
+        ),
+      );
+      return gate.value && !covered ? result : null;
+    } finally {
+      if (identical(_dialogGate, gate)) _dialogGate = null;
+      gate.dispose();
+    }
+  }
+
   void _choose(GuidedSupportActivity? activity) {
+    if (!_currentRequest(_epoch)) return;
     _epoch++;
     _clearDrafts();
     FocusScope.of(context).unfocus();
@@ -120,7 +215,7 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
       _loading = false;
     });
     if (_scroll.hasClients) _scroll.jumpTo(0);
-    if (activity == null) unawaited(_loadPreference());
+    if (activity == null && !_preferenceHidden) unawaited(_loadPreference());
   }
 
   void _advance() {
@@ -141,16 +236,15 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
     if (_working ||
         activity == null ||
         _feedback != GuidedSupportFeedback.helped ||
-        !_active ||
-        SafeBoot.instance.safeMode.value) {
+        !_privateAvailable ||
+        !_currentRequest(_epoch)) {
       return;
     }
     final epoch = _epoch;
     setState(() => _working = true);
     try {
-      final approved = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
+      final approved = await _privateDialog<bool>(
+        (context) => AlertDialog(
           title: Text('Remember ${activity.label.toLowerCase()}?'),
           scrollable: true,
           content: Text(
@@ -170,23 +264,19 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
           ],
         ),
       );
-      bool stillApproved() =>
-          mounted &&
-          _active &&
-          epoch == _epoch &&
-          !SafeBoot.instance.safeMode.value &&
-          (ModalRoute.of(context)?.isCurrent ?? false);
+      bool stillApproved() => _currentRequest(epoch) && _privateAvailable;
       if (approved != true || !stillApproved()) return;
       final record = await _store.rememberAfterConfirmation(activity,
           stillApproved: stillApproved);
       if (!stillApproved()) return;
       setState(() {
         _remembered = record;
+        _preferenceHidden = false;
         _notice =
             'Activity remembered on this device. Your writing was not saved.';
       });
     } catch (_) {
-      if (mounted) {
+      if (_currentRequest(epoch) && _privateAvailable) {
         setState(() => _notice =
             'Remembering did not complete. You can continue without saving.');
       }
@@ -196,18 +286,19 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
   }
 
   Future<void> _forget() async {
-    if (_working) return;
-    _epoch++;
+    if (_working || !_currentRequest(_epoch)) return;
+    final epoch = ++_epoch;
     setState(() => _working = true);
     try {
       await _store.forget();
-      if (!mounted) return;
+      if (!_currentRequest(epoch)) return;
       setState(() {
         _remembered = null;
+        _preferenceHidden = false;
         _notice = 'Remembered activity forgotten.';
       });
     } catch (_) {
-      if (mounted) {
+      if (_currentRequest(epoch)) {
         setState(() => _notice =
             'Could not verify deletion. Please try Forget activity again.');
       }
@@ -217,11 +308,11 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
   }
 
   Future<void> _managePreference() async {
-    final record = _remembered;
+    if (_working || !_currentRequest(_epoch)) return;
+    final record = _privateAvailable ? _remembered : null;
     final epoch = _epoch;
-    final action = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
+    final action = await _privateDialog<String>(
+      (context) => AlertDialog(
         title: const Text('Remembered activity'),
         content: SingleChildScrollView(
             child: Text(record == null
@@ -246,20 +337,16 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
         ],
       ),
     );
-    if (!mounted) return;
+    if (!_currentRequest(epoch)) return;
     if (action == 'forget') await _forget();
-    if (action == 'copy' &&
-        record != null &&
-        _active &&
-        epoch == _epoch &&
-        !SafeBoot.instance.safeMode.value) {
+    if (action == 'copy' && record != null && _privateAvailable) {
       try {
         await Clipboard.setData(ClipboardData(text: record.exportText()));
-        if (mounted) {
+        if (_currentRequest(epoch) && _privateAvailable) {
           setState(() => _notice = 'Preference copied to your clipboard.');
         }
       } catch (_) {
-        if (mounted) {
+        if (_currentRequest(epoch) && _privateAvailable) {
           setState(() => _notice = 'Preference could not be copied.');
         }
       }
@@ -267,37 +354,25 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
   }
 
   Future<void> _humanSupport() async {
-    _epoch++;
-    _clearDrafts();
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reach a person'),
-        content: Text('You can contact someone you trust.\n\n'
-            '${SupportResources.forLocale(Localizations.localeOf(context).toString())}'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close')),
-          TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.of(this.context).push(MaterialPageRoute<void>(
-                    builder: (_) => const SupportCenterScreen()));
-              },
-              child: const Text('Trusted contacts')),
-        ],
-      ),
-    );
+    if (!_currentRequest(_epoch)) return;
+    setState(() => _invalidateSession(
+        'Temporary writing was cleared when you left this screen.'));
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => const HumanSupportScreen(),
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
     final activity = _activity;
     final remembered = _remembered;
-    final safeMode = SafeBoot.instance.safeMode.value;
     return Scaffold(
       appBar: AppBar(title: const Text('Help me through this'), actions: [
+        if (activity != null)
+          IconButton(
+              tooltip: 'Stop activity',
+              onPressed: () => _choose(null),
+              icon: const Icon(Icons.stop_circle_outlined)),
         IconButton(
             tooltip: 'Remembered activity',
             onPressed: _working ? null : _managePreference,
@@ -324,7 +399,11 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
                       'Take a quiet moment to write, settle, or make a small plan. '
                       'Try a minute or two, and stop whenever you like.'),
                   const SizedBox(height: 16),
-                  if (remembered != null && !safeMode)
+                  if (_preferenceHidden && _privateAvailable && !_loading)
+                    OutlinedButton(
+                        onPressed: _loadPreference,
+                        child: const Text('Show remembered activity')),
+                  if (remembered != null && _privateAvailable)
                     Card(
                         child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -371,7 +450,8 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
                   if (activity.steps[_step].prompt != null) ...[
                     const SizedBox(height: 20),
                     TextField(
-                      key: ValueKey('${activity.name}_$_step'),
+                      key: ValueKey(
+                          '${activity.name}_${_step}_$_draftGeneration'),
                       controller: _drafts[_step],
                       minLines: 3,
                       maxLines: 6,
@@ -417,7 +497,8 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
                       ),
                   ]),
                   const SizedBox(height: 16),
-                  if (_feedback == GuidedSupportFeedback.helped && !safeMode)
+                  if (_feedback == GuidedSupportFeedback.helped &&
+                      _privateAvailable)
                     FilledButton(
                         onPressed: _working ? null : _remember,
                         child: const Text('Remember what helped…')),

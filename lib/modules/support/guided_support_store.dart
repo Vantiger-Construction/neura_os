@@ -51,7 +51,8 @@ class GuidedSupportStore {
   bool _allowed(int generation) =>
       !_suspended &&
       generation == _generation &&
-      !SafeBoot.instance.safeMode.value;
+      !SafeBoot.instance.safeMode.value &&
+      !SafeBoot.instance.restartRequired.value;
 
   Future<RememberedSupportActivity?> read() async {
     final generation = _generation;
