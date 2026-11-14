@@ -17,8 +17,20 @@ the existing app remains the release priority.
   orientation. Still/Subtle/Expressive and Compact/Standard/Large control
   bounded visual transforms. The selected phase is displayed as synthetic
   status; `speaking` and `listening` never activate audio.
-- The left panel applies room/motion/scale/phase selections or a manually
-  entered v1 JSON snapshot. Nothing advances or receives inputs in the background.
+- **Her Suite** (`her_suite`, contract v2) is Neura's own room. Selecting it
+  shows a placeholder set built from the same collider-free primitives: back
+  and side walls, a window onto a night skyline, her shelf of keepsakes, a
+  sofa and a plant, all beyond the standing area. `lighting` picks her room's
+  mood (`standard` there means her gold hour; `gold`, `aurora`, `dusk`), and
+  in other rooms a named mood tints the accent and background. `camera`
+  eases between `follow`, `wide` and `face` (to face) framings. `activity:
+  resting` settles her lower and turned toward the window's side (it is
+  behind her, so she never turns her back to the room) with only slow
+  breathing. Safe Mode always stands her up, still and present, at once.
+  Palette, framing and pose live in Core (`StageLook.cs`,
+  `PresentationPose.cs`) and are covered by the Mono scenarios.
+- The left panel applies room/motion/scale/phase/lighting/camera/activity
+  selections or a manually entered v1 or v2 JSON snapshot. Nothing advances or receives inputs in the background.
 - Unknown versions, fields, duplicate fields, missing fields, invalid types,
   unknown enum values and oversized input are rejected. Errors expose a fixed
   category, never the supplied JSON.
@@ -59,8 +71,17 @@ avatar prefabs. No Animator, AudioSource or AudioListener is created.
 
 ## Contract profile
 
+The app now sends **v2**:
+[`Contract/avatar-presence-v2.schema.json`](Contract/avatar-presence-v2.schema.json)
+adds the `her_suite` room and the display-only `lighting`, `camera` and
+`activity` fields (ten fields in all, still at most 512 characters). The
+receiver also accepts **v1**, which reads as standard lighting, the follow
+camera and the present pose; a v1 snapshot can't name `her_suite` or carry the
+stage fields. [`Contract/synthetic-v2-states.json`](Contract/synthetic-v2-states.json)
+has seven synthetic v2 examples.
+
 [`Contract/avatar-presence-v1.schema.json`](Contract/avatar-presence-v1.schema.json)
-records the seven typed fields and current enum domains. The receiver accepts
+records the original seven typed fields and enum domains. The receiver accepts
 one flat JSON object, at most **512 characters**, in any field order with JSON
 whitespace. Strings must be unescaped ASCII enum tokens, matching the current
 Dart producer's `jsonEncode(snapshot.toJson())` output. Escaped equivalents,

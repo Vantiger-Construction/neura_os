@@ -72,6 +72,16 @@ class NeuraRoom {
     ambientSoundAsset: 'assets/sounds/breathe.mp3',
   );
 
+  /// Neura's own room. The user visits as a guest; chats there aren't saved
+  /// to long-term memory, and suggestions stay calm.
+  static const herSuite = NeuraRoom(
+    id: 'her_suite',
+    title: 'Her Suite',
+    icon: Icons.weekend_outlined,
+    gradient: [Color(0xFF0E0A06), Color(0xFF221810), Color(0xFF3A2812)],
+    ambientSoundAsset: 'assets/sounds/ambient_loop.mp3',
+  );
+
   static const List<NeuraRoom> all = [
     penthouse,
     reflectionBay,
@@ -79,6 +89,7 @@ class NeuraRoom {
     moodDen,
     dreamAtrium,
     legacyVault,
+    herSuite,
   ];
 
   static final Map<String, NeuraRoom> _byId = {

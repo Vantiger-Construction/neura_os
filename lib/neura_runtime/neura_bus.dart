@@ -15,6 +15,7 @@ enum NeuraRoomKey {
   moodDen,
   dreamAtrium,
   legacyVault,
+  herSuite,
   settings,
 }
 

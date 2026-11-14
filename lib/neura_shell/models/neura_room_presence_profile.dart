@@ -99,6 +99,14 @@ class NeuraRoomPresenceProfile {
       avatarScale: 1.02,
       activityCommandIds: <String>['legacy', 'timeline', 'memory-vault'],
     ),
+    'her_suite': NeuraRoomPresenceProfile(
+      roomId: 'her_suite',
+      cue: "Neura's own room. You're a guest here.",
+      stance: NeuraRoomStance.welcoming,
+      alignment: Alignment.bottomCenter,
+      avatarScale: 1,
+      activityCommandIds: <String>['talk', 'rooms'],
+    ),
   };
 
   static NeuraRoomPresenceProfile forRoom(NeuraRoom room) =>

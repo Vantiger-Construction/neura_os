@@ -43,6 +43,7 @@ class NeuraChatPolicy {
     'mood_den',
     'dream_atrium',
     'legacy_vault',
+    'her_suite',
   };
 
   static const Set<String> knownTones = {
@@ -94,6 +95,14 @@ class NeuraChatPolicy {
         return const NeuraChatRoomPolicy(
           roomId: 'legacy_vault',
           persistMemory: true,
+          allowedTools: {dispatchIntent, setTone},
+        );
+      case 'her_suite':
+        // A guest visit to Neura's own room: like the ephemeral rooms, chat
+        // turns are not written to the long-term memory graph.
+        return const NeuraChatRoomPolicy(
+          roomId: 'her_suite',
+          persistMemory: false,
           allowedTools: {dispatchIntent, setTone},
         );
       case 'penthouse':
