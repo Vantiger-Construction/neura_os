@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/modules/mood/mood_models.dart';
 import 'package:neuro_companion/modules/support/appointment_prep_screen.dart';
+import 'package:neuro_companion/modules/support/human_support_screen.dart';
 import 'package:neuro_companion/modules/support/usability_feedback_screen.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 
@@ -276,6 +277,42 @@ void main() {
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
     expect(reads, 0);
+  });
+
+  testWidgets('Escape clears a focused human-support draft and revokes Copy',
+      (tester) async {
+    var copies = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: Builder(
+            builder: (context) => Scaffold(
+                body: TextButton(
+                    onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                            builder: (_) => HumanSupportScreen(
+                                copyText: (_) async => copies++))),
+                    child: const Text('Open synthetic route'))))));
+    await tap(tester, 'Open synthetic route');
+    final draft = field('Your draft (optional)');
+    await reveal(tester, draft);
+    await tester.enterText(draft, 'Synthetic temporary message');
+    await reveal(tester, find.text('Copy reviewed draft'));
+    final expiredCopy = tester
+        .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Copy reviewed draft'))
+        .onPressed!;
+    await reveal(tester, draft);
+    await tester.tap(draft);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byType(HumanSupportScreen), findsNothing);
+    expect(find.text('Open synthetic route'), findsOneWidget);
+    expiredCopy();
+    await tester.pump();
+    expect(copies, 0);
+    await tap(tester, 'Open synthetic route');
+    await reveal(tester, draft);
+    expect(tester.widget<TextField>(draft).controller!.text, isEmpty);
   });
 
   testWidgets('Escape leaves a focused support route', (tester) async {

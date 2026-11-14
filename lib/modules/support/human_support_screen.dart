@@ -214,7 +214,7 @@ class _HumanSupportScreenState extends State<HumanSupportScreen>
   @override
   Widget build(BuildContext context) {
     final generation = _draftGeneration;
-    return Scaffold(
+    final scaffold = Scaffold(
       appBar: AppBar(
           title: Text(widget.urgentOnly
               ? 'Urgent human support'
@@ -321,7 +321,8 @@ class _HumanSupportScreenState extends State<HumanSupportScreen>
                 onPressed: () {
                   setState(_clear);
                   Navigator.of(context).push(MaterialPageRoute<void>(
-                      builder: (_) => const SupportCenterScreen()));
+                      builder: widget.trustedContactsBuilder ??
+                          (_) => const SupportCenterScreen()));
                 },
                 icon: const Icon(Icons.contacts_outlined),
                 label: const Text('Open my trusted contacts')),
@@ -329,5 +330,6 @@ class _HumanSupportScreenState extends State<HumanSupportScreen>
         ]),
       ))),
     );
+    return SupportPageShortcuts(child: scaffold);
   }
 }
