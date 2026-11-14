@@ -17,6 +17,7 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen>
     with WidgetsBindingObserver {
   bool _loading = true;
   bool _failed = false;
+  bool _unconfirmed = false;
   bool _hidden = false;
   bool _foreground = true;
   bool _visible = true;
@@ -24,7 +25,10 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen>
   List<MoodEntry> _items = const [];
   MoodSummary? _summary;
   bool get _ready =>
-      _foreground && _visible && !SafeBoot.instance.restartRequired.value;
+      _foreground &&
+      _visible &&
+      !_unconfirmed &&
+      !SafeBoot.instance.restartRequired.value;
 
   @override
   void initState() {
@@ -97,12 +101,13 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen>
         _summary = MoodSummary(items, (widget.now ?? DateTime.now)());
         _loading = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted || request != _request || !_ready) return;
       setState(() {
         _items = [];
         _summary = null;
         _failed = true;
+        _unconfirmed = error is MoodSaveUnconfirmedException;
         _loading = false;
       });
     }
@@ -127,9 +132,10 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen>
                   Text('History is hidden',
                       style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 8),
-                  const Text(
-                      'Open your saved check-ins when you are ready. Your saved entries have not been changed.'),
-                  if (SafeBoot.instance.restartRequired.value)
+                  Text(_unconfirmed
+                      ? 'A check-in save could not be confirmed. Review history after restarting Neura.'
+                      : 'Open your saved check-ins when you are ready. Your saved entries have not been changed.'),
+                  if (SafeBoot.instance.restartRequired.value || _unconfirmed)
                     const Text('Restart Neura before opening saved history.'),
                   const SizedBox(height: 12),
                   FilledButton(
@@ -137,8 +143,9 @@ class _MoodHistoryScreenState extends State<MoodHistoryScreen>
                       child: const Text('Show saved history')),
                 ],
                 if (_failed)
-                  const Text(
-                      'History could not be opened. Your saved entries have not been changed. Try refreshing.'),
+                  Text(_unconfirmed
+                      ? 'A check-in save could not be confirmed. Restart Neura before opening saved history.'
+                      : 'History could not be opened. Your saved entries have not been changed. Try refreshing.'),
                 if (_summary case final summary?)
                   Card(
                       child: Padding(

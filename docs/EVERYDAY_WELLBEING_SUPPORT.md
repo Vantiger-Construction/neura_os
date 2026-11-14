@@ -41,8 +41,10 @@ models, clinic contact or companion-memory ingestion.
   a clipboard disclosure. Nothing is sent. Already-copied text remains outside
   Neura on the system clipboard. Appointment notes do not bypass the clinic hold.
   Templates leave existing writing intact until the user confirms replacement.
-  Editing or leaving invalidates a pending replacement. A late clipboard result
-  cannot label newer writing as copied.
+  Editing, declining or leaving invalidates a pending replacement, including
+  when the same template is offered again. A late clipboard result cannot label
+  newer writing as copied. Copy and template taps from an expired screen session
+  cannot export or replace newer writing after returning.
 - Clearing temporary human-support, small-step, guided-writing or check-in text
   also replaces the editor's Undo history. Undo/Redo cannot restore that cleared
   writing. This is logical removal, not a claim of physical memory zeroization.
@@ -55,6 +57,15 @@ models, clinic contact or companion-memory ingestion.
 - Check-ins reuse the encrypted mood store and its wipe/write-drain protections.
   Energy and sleep are nullable, optional metadata. Old entries are unchanged;
   missing/invalid optional metadata is omitted, never interpreted as zero.
+  Unreadable encrypted history is preserved and shown as an error; only a genuine
+  legacy JSON list may be migrated. If a platform save cannot be confirmed, the
+  screen retains its draft and mood history reads/writes pause until restart.
+  The entry may already exist. Restart and review history before trying again;
+  leaving the screen still clears its temporary writing. History also explains
+  the restart requirement rather than offering an ineffective refresh.
+  Legacy read-to-encrypted migrations share the save queue and wipe drain. A
+  timed-out operation stays tracked across wipe retries; deletion cannot be
+  reported as verified while that operation is still pending.
   The seven-day summary reports means of recorded entries with sample counts,
   excludes future entries, and makes no diagnosis or causal claim. Repeated
   check-ins are not presented as independent daily measurements.
@@ -101,11 +112,37 @@ covered routes, recovery admission, inactive startup, explicit preference recall
 late clipboard/deletion results and fresh confirmation after revocation.
 Timer-control tests use an injected synthetic monotonic clock to verify exact
 remaining time across pauses, repeated pauses and wall-clock changes, cancellation
-of paused sessions, stale Start/Resume/suggestion callbacks, and large-text access
-to controls. Routine reminders retain their existing start/stop and quiet-hours
+of paused sessions, repeated Start requests, stale Resume/suggestion callbacks,
+and large-text access to controls. Routine reminders retain their existing start/stop and quiet-hours
 behavior; pause/resume applies only to the five-minute small-step timer.
 
 These tests do not establish clinical benefit, real-world crisis availability,
 screen-reader usability or physical-device acceptance. Clinical and lived-
 experience review, accessible usability testing and a measured benefit evaluation
 remain needed before presenting this feature as clinically validated support.
+
+## Safety regression coverage
+
+Additional regressions cover corrupted encrypted history, unconfirmed platform
+writes, and Save/Start/Copy callbacks retained across interruptions. Replacement
+requests have a unique revision when declined and offered again. Storage tests
+use the production encrypted store with isolated synthetic platform fixtures,
+including refused writes, committed-but-false results and platform exceptions.
+An additional production-store regression holds a genuine legacy migration
+through two wipe attempts, then verifies deletion only after its write settles.
+
+An unreadable encrypted history must surface as an error and remain untouched.
+Only a genuine legacy JSON list may enter migration. An unconfirmed platform
+write must not close the check-in screen or invite a blind retry. The store stays
+unavailable until restart so its speculative preferences cache cannot be mistaken
+for a confirmed save. The draft stays on that screen; leaving still clears it.
+Restart and review history before another check-in. An acknowledgement is not a
+guarantee of crash durability.
+
+`tools/test_windows_window_manager_source.py` executes the real CMake correction
+against the locked dependency. It checks complete source preservation, LF/CRLF
+normalization, drift rejection, source replacement, include paths, licensing and
+receipt hashes. `tools/test_windows_bundle_layout.py` executes the production
+install rules with synthetic payloads for Debug, Profile and Release. Both run
+in the native Windows security lane. They test source/configuration behavior;
+they do not establish genuine Flutter hot-restart behavior or device acceptance.

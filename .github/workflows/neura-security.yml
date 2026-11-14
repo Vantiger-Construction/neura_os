@@ -93,6 +93,14 @@ jobs:
         run: |
           python tools/test_windows_notification_source.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify window-manager correction and all bundle configurations
+        if: matrix.language == 'c-cpp'
+        shell: pwsh
+        run: |
+          python tools/test_windows_window_manager_source.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/test_windows_bundle_layout.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Enable reviewed .NET SDK for C# source compilation
         if: matrix.language == 'csharp'
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
