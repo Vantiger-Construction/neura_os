@@ -16,6 +16,7 @@ import '../intelligence/intelligence_preferences.dart';
 import '../intelligence/models.dart';
 import '../intelligence/neura_intelligence_controller.dart';
 import '../intelligence/opportunity_radar.dart';
+import '../intelligence/room_attention_policy.dart';
 import '../intelligence/routine_model.dart';
 import '../intelligence/runtime_signal_adapter.dart';
 import '../joy_engine/joy_engine.dart';
@@ -354,17 +355,46 @@ class ProactiveBannerService {
     return banner;
   }
 
-  bool canDisplay(ProactiveBanner banner) {
-    final now = _clock();
+  /// Whether [banner] may be rendered now: every consent, generation and
+  /// timing gate, plus the attention of the room the user is in. A card
+  /// evaluated in one room is rechecked here if the user has since moved or
+  /// marked the room calm or private. A widget that knows the shell's room
+  /// passes it as [roomId]; otherwise the persisted current room is used.
+  bool canDisplay(ProactiveBanner banner, {String? roomId}) =>
+      _gatesAllow(banner, _clock()) &&
+      _roomAllows(banner, roomId ?? _currentRoomId());
+
+  /// Revocation gates, always read live: data generation, Safe Mode,
+  /// proactive suggestions (including pause) and routine consent. If any of
+  /// these is withdrawn, nothing more is recorded for the card.
+  bool _permitted(ProactiveBanner banner) {
     final preferences = NeuraIntelligenceController.instance.preferences;
     return _isCurrent(banner.dataGeneration) &&
         !SafeBoot.instance.safeMode.value &&
         preferences.allowsProactiveSuggestions &&
-        !preferences.isQuietAt(now) &&
-        banner.candidate.expiresAt.isAfter(now) &&
         (!banner.isInitiative ||
             (_canLearnRoutine &&
                 banner.routineGeneration == _routineGeneration));
+  }
+
+  /// [_permitted] plus quiet hours and expiry judged at [at]. Room attention
+  /// is deliberately not part of this: it decides whether a card may appear,
+  /// never whether a card that already rendered, or a gesture made on it,
+  /// counts.
+  bool _gatesAllow(ProactiveBanner banner, DateTime at) =>
+      _permitted(banner) &&
+      !NeuraIntelligenceController.instance.preferences.isQuietAt(at) &&
+      banner.candidate.expiresAt.isAfter(at);
+
+  bool _roomAllows(ProactiveBanner banner, String? roomId) {
+    final reason = NeuraRoomAttentionPolicy.suppressionReason(
+      roomId: roomId,
+      urgency: banner.candidate.urgency,
+      disruption: banner.candidate.disruption,
+      userChoices:
+          NeuraIntelligenceController.instance.preferences.roomAttention,
+    );
+    return reason == null;
   }
 
   /// An unmounted card has not consumed its welcome-back opportunity.
@@ -390,7 +420,13 @@ class ProactiveBannerService {
   /// Commits quota and cooldown only after the dashboard confirms the card
   /// reached a rendered frame.
   Future<void> recordShown(ProactiveBanner banner) async {
-    if (!canDisplay(banner) || !_shownReceipts.add(banner.receipt.id)) return;
+    // The card already reached a frame, so only revocation, quiet hours and
+    // expiry at that moment matter; a later room change can't unsee it.
+    final shownAt = _clock();
+    if (!_gatesAllow(banner, shownAt) ||
+        !_shownReceipts.add(banner.receipt.id)) {
+      return;
+    }
     if (_shownReceipts.length > 100) {
       _shownReceipts.remove(_shownReceipts.first);
     }
@@ -398,13 +434,18 @@ class ProactiveBannerService {
         NeuraInitiativeSource.arrivalSpecialist) {
       _routine = _routine?.acknowledgeArrival(banner.candidate.id);
       _persistRoutine();
+    } else if (banner.candidate.specialistId ==
+        NeuraInitiativeSource.windDownSpecialist) {
+      // Start the weekly cooldown only once the offer was actually seen.
+      _routine = _routine?.acknowledgeWindDown(banner.candidate.id);
+      _persistRoutine();
     }
     await _enqueueWrite((generation) async {
       final state = await _loadState();
-      if (!canDisplay(banner) || state['lastReceiptId'] == banner.receipt.id) {
+      if (!_permitted(banner) || state['lastReceiptId'] == banner.receipt.id) {
         return;
       }
-      final now = _clock();
+      final now = shownAt;
       await NeuraIntelligenceController.instance.markShown(
         banner.receipt.id,
         now: now,
@@ -487,10 +528,12 @@ class ProactiveBannerService {
   }
 
   _BannerCandidate _initiativeBanner(NeuraIntelligenceCandidate candidate) {
-    final kind = candidate.payload[NeuraInitiativeSource.kindKey] ==
-            NeuraInitiativeSource.routineShiftKind
-        ? ProactiveBannerKind.wellness
-        : ProactiveBannerKind.presence;
+    final kind = switch (candidate.payload[NeuraInitiativeSource.kindKey]) {
+      NeuraInitiativeSource.routineShiftKind => ProactiveBannerKind.wellness,
+      // Opens the Focus Office, where Wind Down is one tap away.
+      NeuraInitiativeSource.windDownKind => ProactiveBannerKind.focus,
+      _ => ProactiveBannerKind.presence,
+    };
     return _BannerCandidate(candidate: candidate, kind: kind);
   }
 
@@ -720,12 +763,15 @@ class ProactiveBannerService {
     required ProactiveBanner banner,
     required bool acted,
   }) async {
-    if (!canDisplay(banner)) return;
-    // The gesture happened now, not when the queued write gets its turn.
+    // The gesture happened now, not when the queued write gets its turn, so
+    // expiry and quiet hours are judged at this moment. A tap made before the
+    // card expired still counts if a slow write runs it afterwards. Only a
+    // revocation (consent, Safe Mode, wipe) made since can still drop it.
     final gestureAt = _clock();
+    if (!_gatesAllow(banner, gestureAt)) return;
     await _enqueueWrite((generation) async {
       final state = await _loadState();
-      if (!canDisplay(banner)) return;
+      if (!_permitted(banner)) return;
       final consecutive =
           acted ? 0 : (_coerceInt(state['consecutiveDismissals']) ?? 0) + 1;
       await _saveState({

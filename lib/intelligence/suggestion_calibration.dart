@@ -14,6 +14,7 @@ class NeuraCalibrationSources {
   static const Map<String, ({int id, String label})> _registry = {
     'initiative.arrival': (id: 1, label: 'Welcome back'),
     'initiative.routine_shift': (id: 2, label: 'Late-night check-in'),
+    'initiative.wind_down': (id: 3, label: 'Wind-down evenings'),
     'opportunity_radar.mood_reset': (id: 10, label: 'Mood reset'),
     'opportunity_radar.dream_pattern_check': (id: 11, label: 'Dream patterns'),
     'opportunity_radar.quest_micro_step': (id: 12, label: 'Quest steps'),

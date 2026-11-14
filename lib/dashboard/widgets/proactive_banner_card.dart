@@ -8,6 +8,7 @@ import '../../dreams/screens/dream_theater_screen.dart';
 import '../../intelligence/action_review_screen.dart';
 import '../../intelligence/neura_intelligence_controller.dart';
 import '../../modules/human/human_prefs_controller.dart';
+import '../../neura_shell/neura_shell_state.dart';
 import '../../reliability/safe_boot.dart';
 import '../../joy_engine/joy_screen.dart';
 import '../../modules/quests/quest_mode_screen.dart';
@@ -37,8 +38,17 @@ class ProactiveBannerCard extends StatefulWidget {
 class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
   ProactiveBanner? _banner;
   bool _dismissed = false;
+
+  /// The shell's current room, read synchronously from [NeuraShellScope] so
+  /// a room change hides the card in the same build instead of a frame
+  /// later. Null outside a shell; the service then reads the saved room.
+  String? _shellRoomId;
+
   ProactiveBannerService get _service =>
       widget.service ?? ProactiveBannerService.instance;
+
+  bool _allowed(ProactiveBanner banner) =>
+      _service.canDisplay(banner, roomId: _shellRoomId);
 
   @override
   void initState() {
@@ -49,9 +59,22 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
     _load();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Depend on the shell so a room change rebuilds this card. build hides
+    // a card the new room doesn't allow; the check after the frame then
+    // releases it.
+    final shell = context.dependOnInheritedWidgetOfExactType<NeuraShellScope>();
+    _shellRoomId = shell?.notifier?.room.id;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _checkPolicy();
+    });
+  }
+
   void _checkPolicy() {
     final banner = _banner;
-    if (banner == null || _service.canDisplay(banner)) return;
+    if (banner == null || _allowed(banner)) return;
     _service.releaseUnshown(banner);
     HomeWidgetBridge.instance.mirrorApprovedNudge(null);
     setState(() => _banner = null);
@@ -74,14 +97,18 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
         if (banner != null) _service.releaseUnshown(banner);
         return;
       }
-      if (banner != null && !_service.canDisplay(banner)) return;
+      if (banner != null && !_allowed(banner)) {
+        // Rejected before it could mount: keep the offer for a later visit.
+        _service.releaseUnshown(banner);
+        return;
+      }
       setState(() => _banner = banner);
       if (banner != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted ||
               _dismissed ||
               _banner?.receipt.id != banner.receipt.id ||
-              !_service.canDisplay(banner)) {
+              !_allowed(banner)) {
             return;
           }
           unawaited(_service.recordShown(banner).catchError((_) {}));
@@ -110,7 +137,7 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
     final banner = _banner;
     if (banner == null ||
         !mounted ||
-        !_service.canDisplay(banner) ||
+        !_allowed(banner) ||
         banner.kind == ProactiveBannerKind.presence) {
       return;
     }
@@ -177,7 +204,7 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
 
   Future<void> _briefMe() async {
     final banner = _banner;
-    if (banner == null || !_service.canDisplay(banner)) return;
+    if (banner == null || !_allowed(banner)) return;
     await NeuraTtsService.instance.speak(
       NeuraKindExplanation.spokenBrief(
         title: banner.title,
@@ -241,7 +268,7 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
   @override
   Widget build(BuildContext context) {
     final banner = _banner;
-    if (banner == null || _dismissed) {
+    if (banner == null || _dismissed || !_allowed(banner)) {
       return const NeuraAdaptiveIntentStatusCard();
     }
 

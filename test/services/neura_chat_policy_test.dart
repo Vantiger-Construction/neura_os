@@ -16,6 +16,14 @@ void main() {
       expect(policy.allowsTool(NeuraChatPolicy.dispatchIntent), isTrue);
     });
 
+    test("a visit to Neura's own room is not saved to long-term memory", () {
+      final policy = NeuraChatPolicy.forRoom('her_suite');
+      expect(policy.roomId, 'her_suite');
+      expect(policy.persistMemory, isFalse);
+      expect(policy.allowsTool(NeuraChatPolicy.getMoodHistory), isFalse);
+      expect(NeuraChatPolicy.knownRoomIds, contains('her_suite'));
+    });
+
     test('advertised tools exactly match allow list', () {
       final policy = NeuraChatPolicy.forRoom('mood_den');
       final names = NeuraChatPolicy.advertisedTools(policy)

@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/intelligence/routine_model.dart';
+import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 
 void main() {
   // 2026-10-05 is a Monday.
@@ -195,6 +197,125 @@ void main() {
       final model = NeuraRoutineModel(hourOfWeekCounts: counts);
 
       expect(model.totalCount, 2);
+    });
+  });
+
+  group('NeuraRoutineModel late nights', () {
+    // Local times: night keys are about the user's own evenings.
+    DateTime at(int day, int hour, [int minute = 0]) =>
+        DateTime(2026, 10, day, hour, minute);
+
+    test('a visit after midnight belongs to the previous evening', () {
+      final model = NeuraRoutineModel.empty()
+          .recordOpen(at(6, 0, 30))
+          .recordOpen(at(6, 4, 59))
+          .recordOpen(at(6, 5))
+          .recordOpen(at(6, 23, 30));
+      expect(model.lateNights, ['2026-10-05']);
+      expect(NeuraRoutineModel.nightKeyFor(at(1, 2)), '2026-09-30');
+      expect(NeuraRoutineModel.nightKeyFor(at(1, 5)), isNull);
+    });
+
+    test('keeps only the most recent nights', () {
+      var model = NeuraRoutineModel.empty();
+      for (var day = 1; day <= 20; day++) {
+        model = model.recordOpen(at(day, 1));
+      }
+      expect(model.lateNights, hasLength(NeuraRoutineModel.maxLateNights));
+      expect(model.lateNights.first, '2026-10-06');
+      expect(model.lateNights.last, '2026-10-19');
+    });
+
+    test('counts the previous seven nights and never tonight', () {
+      var model = NeuraRoutineModel.empty();
+      // Nights of Oct 3, 5, 9 and 11.
+      for (final day in [4, 6, 10, 12]) {
+        model = model.recordOpen(at(day, 1));
+      }
+      // Evening of Oct 12: window is the nights of Oct 5..11.
+      expect(model.lateNightsBefore(at(12, 21)), 3);
+      expect(model.lateNightsBefore(at(12, 21), nights: 2), 1);
+      // Evening of Oct 11: the Oct 11 night has not started yet.
+      expect(model.lateNightsBefore(at(11, 21)), 2);
+    });
+
+    test('round-trips through JSON and keeps older v2 history', () {
+      final model = NeuraRoutineModel.empty()
+          .recordOpen(at(6, 1))
+          .recordOpen(at(6, 21))
+          .acknowledgeWindDown('initiative.wind_down:2026-10-06');
+      final restored = NeuraRoutineModel.fromJson(
+        jsonDecode(jsonEncode(model.toJson())) as Map<String, Object?>,
+      );
+      expect(restored.lateNights, ['2026-10-05']);
+      expect(restored.windDownOfferedDay, '2026-10-06');
+
+      final older = Map<String, Object?>.of(model.toJson())
+        ..remove('late_nights')
+        ..remove('wind_down_day');
+      final upgraded = NeuraRoutineModel.fromJson(older);
+      expect(upgraded.totalCount, model.totalCount);
+      expect(upgraded.lateNights, isEmpty);
+      expect(upgraded.windDownOfferedDay, isNull);
+    });
+
+    test('malformed late-night fields are dropped, not guessed', () {
+      final json = NeuraRoutineModel.empty().recordOpen(at(6, 1)).toJson();
+      json['late_nights'] = [
+        '2026-10-05',
+        'yesterday',
+        7,
+        null,
+        '2026-13-45',
+        '2026-02-30',
+      ];
+      json['wind_down_day'] = 'tonight';
+      final model = NeuraRoutineModel.fromJson(json);
+      expect(model.lateNights, ['2026-10-05']);
+      expect(model.windDownOfferedDay, isNull);
+      json['wind_down_day'] = '2026-02-30';
+      expect(NeuraRoutineModel.fromJson(json).windDownOfferedDay, isNull);
+    });
+
+    test('a timezone reset keeps the wind-down cooldown', () {
+      tzdata.initializeTimeZones();
+      final chicago = tz.getLocation('America/Chicago');
+      final london = tz.getLocation('Europe/London');
+      final model = NeuraRoutineModel.empty()
+          .recordOpen(tz.TZDateTime(chicago, 2026, 10, 6, 1))
+          .acknowledgeWindDown('initiative.wind_down:2026-10-06');
+      expect(model.lateNights, ['2026-10-05']);
+      final travelled = tz.TZDateTime(london, 2026, 10, 7, 9);
+      expect(model.matchesTimeZone(travelled), isFalse);
+      final moved = model.recordOpen(travelled);
+      expect(moved.totalCount, 1);
+      expect(moved.lateNights, isEmpty);
+      expect(moved.windDownOfferedDay, '2026-10-06');
+    });
+
+    test('wind-down acknowledgement and cooldown arithmetic', () {
+      final model = NeuraRoutineModel.empty().recordOpen(at(6, 21));
+      expect(model.daysSinceWindDownOffer(at(6, 21)), isNull);
+      expect(
+        model.acknowledgeWindDown('initiative.arrival:1').windDownOfferedDay,
+        isNull,
+      );
+      expect(
+        model.acknowledgeWindDown('initiative.wind_down:soon'),
+        same(model),
+      );
+      final acked =
+          model.acknowledgeWindDown('initiative.wind_down:2026-10-06');
+      expect(acked.daysSinceWindDownOffer(at(6, 23)), 0);
+      expect(acked.daysSinceWindDownOffer(at(13, 20)), 7);
+      // Later opens keep the cooldown and the late nights.
+      final later = acked.recordOpen(at(7, 1));
+      expect(later.windDownOfferedDay, '2026-10-06');
+      expect(later.lateNights, ['2026-10-06']);
+      expect(
+        later.acknowledgeArrival('initiative.arrival:0').lateNights,
+        later.lateNights,
+      );
     });
   });
 }

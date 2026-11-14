@@ -18,6 +18,20 @@ namespace Neura.Presence
                 !double.IsNaN(seconds) && !double.IsInfinity(seconds);
             double wave = moving ? Math.Sin(seconds * 1.6) : 0;
             float amplitude = state.Motion == "expressive" ? 1f : 0.4f;
+            if (state.Resting && !state.SafeMode)
+            {
+                // Settled by the window: lower, with only slow breathing. She
+                // faces -Z (the camera), so -28 degrees of yaw turns her toward
+                // the window's side (+X) without putting her back to the room;
+                // the window itself is behind her. Feet stay on the anchor and
+                // only the mount scales.
+                return new PresentationPose
+                {
+                    Scale = scale,
+                    HeightMultiplier = 0.82f + (float)wave * 0.006f,
+                    YawDegrees = -28f + (float)wave * 1.5f
+                };
+            }
             return new PresentationPose
             {
                 Scale = scale,

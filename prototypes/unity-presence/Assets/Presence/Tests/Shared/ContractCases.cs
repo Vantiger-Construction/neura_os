@@ -8,11 +8,23 @@ namespace Neura.Presence.Tests
     public static class ContractCases
     {
         private const string Valid = "{\"v\":1,\"room_id\":\"penthouse\",\"phase\":\"idle\",\"stance\":\"welcoming\",\"motion\":\"expressive\",\"scale\":\"standard\",\"safe_mode\":false}";
+        private const string ValidV2 = "{\"v\":2,\"room_id\":\"her_suite\",\"phase\":\"idle\",\"stance\":\"welcoming\",\"motion\":\"subtle\",\"scale\":\"standard\",\"safe_mode\":false,\"lighting\":\"gold\",\"camera\":\"follow\",\"activity\":\"resting\"}";
         private static readonly Dictionary<string, Action> Cases = new Dictionary<string, Action>
         {
+            { "v2_domain_matrix", V2DomainMatrix },
+            { "v1_reads_as_standard_stage", V1StandardStage },
+            { "v1_cannot_name_her_suite_or_stage_fields", V1Boundaries },
+            { "v2_requires_every_stage_field", V2RequiresStage },
+            { "v2_unknown_stage_values", () => { Reject(ValidV2.Replace("gold", "neon"), SnapshotError.InvalidValue); Reject(ValidV2.Replace("follow", "orbit"), SnapshotError.InvalidValue); Reject(ValidV2.Replace("resting", "sleeping"), SnapshotError.InvalidValue); } },
+            { "v2_safe_mode_forces_present_still", V2SafeMode },
+            { "suite_lighting_moods_are_distinct", SuiteLighting },
+            { "standard_lighting_keeps_room_accents", StandardLighting },
+            { "camera_framings_are_distinct_and_bounded", CameraFraming },
+            { "resting_sits_lower_and_breathes_slowly", RestingPose },
+            { "safe_mode_stands_her_up_from_rest", SafeStandsUp },
             { "producer_domain_matrix", ProducerDomainMatrix },
             { "field_order_and_whitespace", () => Accept(" { \n\"safe_mode\" : false, \"scale\":\"standard\", \"motion\":\"subtle\", \"stance\":\"welcoming\", \"phase\":\"idle\", \"room_id\":\"penthouse\", \"v\":1 } \t") },
-            { "unsupported_versions", () => { Reject(Valid.Replace("\"v\":1", "\"v\":2"), SnapshotError.UnsupportedVersion); Reject(Valid.Replace("\"v\":1", "\"v\":0"), SnapshotError.UnsupportedVersion); } },
+            { "unsupported_versions", () => { Reject(Valid.Replace("\"v\":1", "\"v\":3"), SnapshotError.UnsupportedVersion); Reject(Valid.Replace("\"v\":1", "\"v\":0"), SnapshotError.UnsupportedVersion); Reject(ValidV2.Replace("\"v\":2", "\"v\":3"), SnapshotError.UnsupportedVersion); } },
             { "missing_fields", MissingFields },
             { "duplicate_fields", () => Reject(Valid.Replace("\"v\":1", "\"v\":1,\"v\":1"), SnapshotError.DuplicateField) },
             { "private_and_unknown_fields", () => { foreach (string key in new[] { "prompt", "journal", "credential", "memory", "action", "text" }) Reject(Valid.Insert(1, "\"" + key + "\":\"synthetic\","), SnapshotError.UnknownField); } },
@@ -65,6 +77,127 @@ namespace Neura.Presence.Tests
         private static void RequireSafe(AvatarSnapshot state)
         {
             Check(state.SafeMode && state.Phase == "safeMode" && state.Motion == "still", "Safe Mode must force Still.");
+        }
+        private static void V2DomainMatrix()
+        {
+            foreach (string room in new[] { "penthouse", "reflection_bay", "joy_lounge", "mood_den", "dream_atrium", "legacy_vault", "her_suite" })
+            foreach (string lighting in new[] { "standard", "gold", "aurora", "dusk" })
+            foreach (string camera in new[] { "follow", "wide", "face" })
+            foreach (string activity in new[] { "present", "resting" })
+            {
+                string json = ValidV2.Replace("her_suite", room).Replace("gold", lighting)
+                    .Replace("follow", camera).Replace("resting", activity);
+                // Resting belongs to Her Suite; anywhere else it is rejected.
+                if (activity == "resting" && room != "her_suite")
+                {
+                    Reject(json, SnapshotError.InvalidValue);
+                    continue;
+                }
+                var state = Accept(json);
+                Check(state.SourceVersion == 2 && state.RoomId == room && state.Lighting == lighting &&
+                    state.Camera == camera && state.Activity == activity, "Lost v2 stage data.");
+                Check(state.Resting == (activity == "resting"), "Resting flag mismatch.");
+            }
+        }
+        private static void V1StandardStage()
+        {
+            var state = Accept(Valid);
+            Check(state.SourceVersion == 1 && state.Lighting == "standard" && state.Camera == "follow" &&
+                state.Activity == "present" && !state.Resting, "v1 must read as the standard stage.");
+        }
+        private static void V1Boundaries()
+        {
+            Reject(Valid.Replace("penthouse", "her_suite"), SnapshotError.InvalidValue);
+            Reject(Valid.Insert(1, "\"lighting\":\"gold\","), SnapshotError.UnknownField);
+            Reject(Valid.Insert(1, "\"activity\":\"resting\","), SnapshotError.UnknownField);
+        }
+        private static void V2RequiresStage()
+        {
+            Reject(ValidV2.Replace(",\"lighting\":\"gold\"", ""), SnapshotError.MissingField);
+            Reject(ValidV2.Replace(",\"camera\":\"follow\"", ""), SnapshotError.MissingField);
+            Reject(ValidV2.Replace(",\"activity\":\"resting\"", ""), SnapshotError.MissingField);
+            Reject(ValidV2.Replace(",\"lighting\":\"gold\"", ",\"journal\":\"gold\""), SnapshotError.UnknownField);
+        }
+        private static void V2SafeMode()
+        {
+            var state = Accept(ValidV2.Replace("false", "true").Replace("subtle", "expressive"));
+            RequireSafe(state);
+            Check(state.Activity == "present" && !state.Resting, "Safe Mode must show the present pose.");
+            Check(state.Lighting == "gold", "Safe Mode keeps the lighting choice.");
+            RequireSafe(Accept(ValidV2.Replace("idle", "safeMode")));
+        }
+        private static AvatarSnapshot Suite(string lighting, string camera, string activity, string motion = "subtle")
+        {
+            return Accept(ValidV2.Replace("gold", lighting).Replace("follow", camera)
+                .Replace("resting", activity).Replace("subtle", motion));
+        }
+        private static void SuiteLighting()
+        {
+            var gold = StagePalette.Evaluate(Suite("gold", "follow", "present"));
+            var aurora = StagePalette.Evaluate(Suite("aurora", "follow", "present"));
+            var dusk = StagePalette.Evaluate(Suite("dusk", "follow", "present"));
+            var standard = StagePalette.Evaluate(Suite("standard", "follow", "present"));
+            Check(!gold.Accent.Equals(aurora.Accent) && !aurora.Accent.Equals(dusk.Accent) &&
+                !gold.Accent.Equals(dusk.Accent), "Lighting moods must differ.");
+            Check(standard.Accent.Equals(gold.Accent) && standard.Wall.Equals(gold.Wall),
+                "Her Suite's standard lighting is her gold hour.");
+            foreach (var palette in new[] { gold, aurora, dusk })
+                foreach (float c in new[] { palette.Accent.R, palette.Accent.G, palette.Accent.B,
+                    palette.Background.R, palette.Wall.B })
+                    Check(c >= 0f && c <= 1f, "Palette channel out of range.");
+        }
+        private static void StandardLighting()
+        {
+            string[] rooms = { "penthouse", "reflection_bay", "joy_lounge", "mood_den", "dream_atrium", "legacy_vault" };
+            var seen = new HashSet<string>();
+            foreach (string room in rooms)
+            {
+                var palette = StagePalette.Evaluate(Accept(Valid.Replace("penthouse", room)));
+                Check(seen.Add(palette.Accent.R + "," + palette.Accent.G + "," + palette.Accent.B),
+                    "Each room keeps its own accent: " + room);
+            }
+        }
+        private static void CameraFraming()
+        {
+            var follow = StageFraming.Evaluate(Suite("gold", "follow", "present"));
+            var wide = StageFraming.Evaluate(Suite("gold", "wide", "present"));
+            var face = StageFraming.Evaluate(Suite("gold", "face", "present"));
+            Check(Math.Abs(face.PositionZ) < Math.Abs(follow.PositionZ) &&
+                Math.Abs(follow.PositionZ) < Math.Abs(wide.PositionZ), "Face is closest and wide is farthest.");
+            Check(face.FieldOfView < follow.FieldOfView && follow.FieldOfView < wide.FieldOfView, "Field of view widens.");
+            foreach (var f in new[] { follow, wide, face })
+                Check(f.PositionZ < -1.5f && f.FieldOfView >= 20f && f.FieldOfView <= 60f &&
+                    f.TargetY > 0.5f && f.TargetY < 1.7f, "Framing out of bounds.");
+            var v1 = StageFraming.Evaluate(Accept(Valid));
+            Check(Near(v1.PositionZ, follow.PositionZ) && Near(v1.FieldOfView, follow.FieldOfView), "v1 uses the follow camera.");
+            var resting = StageFraming.Evaluate(Suite("gold", "face", "resting"));
+            Check(resting.TargetY < face.TargetY, "The camera follows her down when she rests.");
+        }
+        private static void RestingPose()
+        {
+            var standing = Suite("gold", "follow", "present");
+            var resting = Suite("gold", "follow", "resting");
+            float lowest = float.MaxValue, highest = float.MinValue;
+            for (int i = 0; i < 400; i++)
+            {
+                double t = i * 0.05;
+                var pose = PresentationPose.Evaluate(resting, t);
+                lowest = Math.Min(lowest, pose.HeightMultiplier);
+                highest = Math.Max(highest, pose.HeightMultiplier);
+                Check(pose.HeightMultiplier < PresentationPose.Evaluate(standing, t).HeightMultiplier,
+                    "Resting sits lower than standing.");
+                Check(pose.YawDegrees < -20f && pose.YawDegrees > -35f, "Resting faces the window.");
+            }
+            Check(highest - lowest < 0.02f && highest - lowest > 0f, "Resting only breathes slowly.");
+            var stillRest = Suite("gold", "follow", "resting", "still");
+            Check(Near(PresentationPose.Evaluate(stillRest, 0).HeightMultiplier,
+                PresentationPose.Evaluate(stillRest, 3.7).HeightMultiplier), "Still resting is time invariant.");
+        }
+        private static void SafeStandsUp()
+        {
+            var state = Accept(ValidV2.Replace("false", "true"));
+            var pose = PresentationPose.Evaluate(state, 1.3);
+            Check(Near(pose.HeightMultiplier, 1f) && !state.Resting, "Safe Mode shows the standing, present pose.");
         }
         private static void ProducerDomainMatrix()
         {
