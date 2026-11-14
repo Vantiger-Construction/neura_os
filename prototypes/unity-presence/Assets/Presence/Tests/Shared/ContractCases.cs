@@ -80,8 +80,15 @@ namespace Neura.Presence.Tests
             foreach (string camera in new[] { "follow", "wide", "face" })
             foreach (string activity in new[] { "present", "resting" })
             {
-                var state = Accept(ValidV2.Replace("her_suite", room).Replace("gold", lighting)
-                    .Replace("follow", camera).Replace("resting", activity));
+                string json = ValidV2.Replace("her_suite", room).Replace("gold", lighting)
+                    .Replace("follow", camera).Replace("resting", activity);
+                // Resting belongs to Her Suite; anywhere else it is rejected.
+                if (activity == "resting" && room != "her_suite")
+                {
+                    Reject(json, SnapshotError.InvalidValue);
+                    continue;
+                }
+                var state = Accept(json);
                 Check(state.SourceVersion == 2 && state.RoomId == room && state.Lighting == lighting &&
                     state.Camera == camera && state.Activity == activity, "Lost v2 stage data.");
                 Check(state.Resting == (activity == "resting"), "Resting flag mismatch.");
