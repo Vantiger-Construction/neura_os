@@ -4,7 +4,9 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/dashboard/proactive_banner_service.dart';
 import 'package:neuro_companion/intelligence/intelligence_preferences.dart';
+import 'package:neuro_companion/intelligence/models.dart';
 import 'package:neuro_companion/intelligence/neura_intelligence_controller.dart';
+import 'package:neuro_companion/intelligence/room_attention_policy.dart';
 import 'package:neuro_companion/intelligence/routine_model.dart';
 import 'package:neuro_companion/modules/human/human_prefs.dart';
 import 'package:neuro_companion/modules/human/human_prefs_controller.dart';
@@ -254,6 +256,177 @@ void main() {
           .setString(NeuraRoom.currentRoomPrefsKey, 'welcome_atrium');
       expect((await service.maybeGetBannerOnAppOpen())?.kind,
           ProactiveBannerKind.presence);
+      fixture.expectIsolation();
+    });
+  });
+
+  NeuraSuggestionOutcome outcomeOf(ProactiveBanner banner) {
+    final record = controller.records.lastWhere(
+      (record) => record.receipt.id == banner.receipt.id,
+    );
+    return record.receipt.userOutcome;
+  }
+
+  test('moving into a private room hides a pending card', () async {
+    await fixture.run(() async {
+      final banner = await service.maybeGetBannerOnAppOpen();
+      expect(banner, isNotNull);
+      expect(service.canDisplay(banner!), isTrue);
+      await NeuraPrefsCache.prefs
+          .setString(NeuraRoom.currentRoomPrefsKey, 'reflection_bay');
+      expect(service.canDisplay(banner), isFalse);
+      fixture.expectIsolation();
+    });
+  });
+
+  test('the shell room passed by the card overrides the saved room', () async {
+    await fixture.run(() async {
+      final banner = await service.maybeGetBannerOnAppOpen();
+      expect(banner, isNotNull);
+      expect(service.canDisplay(banner!, roomId: 'reflection_bay'), isFalse);
+      expect(service.canDisplay(banner, roomId: 'penthouse'), isTrue);
+      fixture.expectIsolation();
+    });
+  });
+
+  test('a card that rendered is still recorded after a room change',
+      () async {
+    await fixture.run(() async {
+      final banner = await service.maybeGetBannerOnAppOpen();
+      expect(banner, isNotNull);
+      await NeuraPrefsCache.prefs
+          .setString(NeuraRoom.currentRoomPrefsKey, 'reflection_bay');
+      await service.recordShown(banner!);
+      expect(outcomeOf(banner), NeuraSuggestionOutcome.shown);
+      fixture.expectIsolation();
+    });
+  });
+
+  test('quiet hours starting after a tap do not drop it', () async {
+    await fixture.run(() async {
+      final banner = await service.maybeGetBannerOnAppOpen();
+      expect(banner, isNotNull);
+      final started = Completer<void>();
+      final release = Completer<void>();
+      fixture.preferences.beforeSetValue = (key) async {
+        if (key.endsWith('neura.proactive_banner.state.v2') &&
+            !release.isCompleted) {
+          if (!started.isCompleted) started.complete();
+          await release.future;
+        }
+      };
+      final shown = service.recordShown(banner!);
+      await started.future;
+      final tapped = service.recordOutcome(banner: banner, acted: true);
+      await controller.updatePreferences(
+        controller.preferences.copyWith(
+          quietHoursEnabled: true,
+          quietHoursStart: 0,
+          quietHoursEnd: 0,
+        ),
+      );
+      release.complete();
+      await shown;
+      await tapped;
+      expect(outcomeOf(banner), NeuraSuggestionOutcome.acted);
+      fixture.expectIsolation();
+    });
+  });
+
+  test('Safe Mode turned on after a tap still drops it', () async {
+    await fixture.run(() async {
+      final banner = await service.maybeGetBannerOnAppOpen();
+      expect(banner, isNotNull);
+      final started = Completer<void>();
+      final release = Completer<void>();
+      fixture.preferences.beforeSetValue = (key) async {
+        if (key.endsWith('neura.proactive_banner.state.v2') &&
+            !release.isCompleted) {
+          if (!started.isCompleted) started.complete();
+          await release.future;
+        }
+      };
+      final shown = service.recordShown(banner!);
+      await started.future;
+      final tapped = service.recordOutcome(banner: banner, acted: true);
+      SafeBoot.instance.safeMode.value = true;
+      release.complete();
+      await shown;
+      await tapped;
+      expect(outcomeOf(banner), NeuraSuggestionOutcome.shown);
+      fixture.expectIsolation();
+    });
+  });
+
+  test('a dismissal still counts after the room becomes private', () async {
+    await fixture.run(() async {
+      final banner = await service.maybeGetBannerOnAppOpen();
+      expect(banner, isNotNull);
+      await service.recordShown(banner!);
+      await NeuraPrefsCache.prefs
+          .setString(NeuraRoom.currentRoomPrefsKey, 'reflection_bay');
+      expect(service.canDisplay(banner), isFalse);
+      await service.recordOutcome(banner: banner, acted: false);
+      expect(outcomeOf(banner), NeuraSuggestionOutcome.dismissed);
+      fixture.expectIsolation();
+    });
+  });
+
+  test('marking the current room private hides a pending card', () async {
+    await fixture.run(() async {
+      await NeuraPrefsCache.prefs
+          .setString(NeuraRoom.currentRoomPrefsKey, NeuraRoom.penthouse.id);
+      final banner = await service.maybeGetBannerOnAppOpen();
+      expect(banner, isNotNull);
+      expect(service.canDisplay(banner!), isTrue);
+      await controller.updatePreferences(
+        controller.preferences.withRoomAttention(
+          NeuraRoom.penthouse.id,
+          NeuraRoomAttention.private,
+        ),
+      );
+      expect(service.canDisplay(banner), isFalse);
+      fixture.expectIsolation();
+    });
+  });
+
+  test('a tap made before expiry counts even if its write runs after',
+      () async {
+    await fixture.run(() async {
+      final banner = await service.maybeGetBannerOnAppOpen();
+      expect(banner, isNotNull);
+      final started = Completer<void>();
+      final release = Completer<void>();
+      fixture.preferences.beforeSetValue = (key) async {
+        if (key.endsWith('neura.proactive_banner.state.v2') &&
+            !release.isCompleted) {
+          if (!started.isCompleted) started.complete();
+          await release.future;
+        }
+      };
+      // Hold the write queue on the shown write, queue a tap behind it, and
+      // let the card expire before the tap's write gets its turn.
+      final shown = service.recordShown(banner!);
+      await started.future;
+      final tapped = service.recordOutcome(banner: banner, acted: true);
+      now = now.add(const Duration(hours: 3));
+      expect(service.canDisplay(banner), isFalse);
+      release.complete();
+      await shown;
+      await tapped;
+      expect(outcomeOf(banner), NeuraSuggestionOutcome.acted);
+      fixture.expectIsolation();
+    });
+  });
+
+  test('a tap made after expiry is still ignored', () async {
+    await fixture.run(() async {
+      final banner = await service.maybeGetBannerOnAppOpen();
+      expect(banner, isNotNull);
+      await service.recordShown(banner!);
+      now = now.add(const Duration(hours: 3));
+      await service.recordOutcome(banner: banner, acted: true);
+      expect(outcomeOf(banner), NeuraSuggestionOutcome.shown);
       fixture.expectIsolation();
     });
   });
