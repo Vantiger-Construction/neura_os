@@ -96,6 +96,73 @@ void main() {
     expect(find.byType(HumanSupportScreen), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+  testWidgets('guided handoff keeps clipboard and contacts inside the demo',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(850, 1200);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final session = NeuraDemoSession();
+    addTearDown(session.dispose);
+    var systemCopies = 0;
+    var privateCalls = 0;
+    const secure =
+        MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(secure, (_) async {
+      privateCalls++;
+      throw StateError('Private storage forbidden');
+    });
+    binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') systemCopies++;
+      return null;
+    });
+    addTearDown(() {
+      binding.defaultBinaryMessenger.setMockMethodCallHandler(secure, null);
+      binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+    Future<void> tapLabel(String label) async {
+      final target = find.text(label);
+      if (target.evaluate().isEmpty) {
+        await tester.scrollUntilVisible(target, 200,
+            scrollable: find.byType(Scrollable).first, maxScrolls: 30);
+      }
+      await tester.ensureVisible(target);
+      await tester.pumpAndSettle();
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+    }
+
+    await tester.pumpWidget(NeuraDemoApp(session: session));
+    await tester.pumpAndSettle();
+    final home =
+        tester.widget<WellbeingHomeCard>(find.byType(WellbeingHomeCard));
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    unawaited(navigator.push(MaterialPageRoute<void>(
+        builder: (_) =>
+            home.destinationBuilder!(WellbeingDestination.quietWriting))));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byType(TextField), 'Synthetic private reflection');
+    await tapLabel('Reach a person');
+    expect(find.byType(HumanSupportScreen), findsOneWidget);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isEmpty);
+    await tester.enterText(
+        find.byType(TextField), 'Synthetic reviewed message');
+    await tapLabel('Copy reviewed draft');
+    expect(session.clipboard.value, 'Synthetic reviewed message');
+    expect(systemCopies, 0);
+    await tapLabel('Open my trusted contacts');
+    expect(find.textContaining('No private record has been opened'),
+        findsOneWidget);
+    expect(privateCalls, 0);
+    expect(() => NeuraPrefsCache.prefs, throwsStateError);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   test('demo copy and check-ins cannot survive disposal', () async {
     final session = NeuraDemoSession();
     await session.copyText('Synthetic clipboard');
