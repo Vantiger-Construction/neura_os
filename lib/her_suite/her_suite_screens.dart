@@ -654,21 +654,22 @@ class _SuiteScaffold extends StatelessWidget {
           constraints: BoxConstraints(
             minHeight: math.max(0, constraints.maxHeight - 32),
           ),
-          child: IntrinsicHeight(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                header,
-                const Spacer(),
-                const SizedBox(height: 16),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 560),
-                  child: HerSuiteGlass(
-                    child: Builder(builder: panel),
-                  ),
+          // The column is at least the screen's height, so spaceBetween
+          // pins the header to the top and the panel to the bottom; taller
+          // content just scrolls. (IntrinsicHeight misjudges wrapped tiles.)
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              header,
+              const SizedBox(height: 16),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: HerSuiteGlass(
+                  child: Builder(builder: panel),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       );
