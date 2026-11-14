@@ -70,6 +70,7 @@ void main() {
       Size size, {
       int currentIndex = 0,
       List<Widget>? destinationPages,
+      Widget? support,
       NeuraRoom room = NeuraRoom.penthouse,
     }) async {
       tester.view.devicePixelRatio = 1;
@@ -94,6 +95,7 @@ void main() {
               commands: commands,
               status: status,
               now: const Text('A quiet local moment'),
+              support: support,
               onOpenNeura: () {},
               onOpenDiagnostics: () {},
               room: room,
@@ -103,6 +105,15 @@ void main() {
       );
       await tester.pump();
     }
+
+    testWidgets('home displays support before its existing sections',
+        (tester) async {
+      await pumpShell(tester, const Size(1280, 800),
+          support: const Text('Wellbeing choices'));
+      expect(find.text('Wellbeing choices'), findsOneWidget);
+      expect(tester.getTopLeft(find.text('Wellbeing choices')).dy,
+          lessThan(tester.getTopLeft(find.text('Now')).dy));
+    });
 
     testWidgets('uses a dedicated stage and side rail on wide screens', (
       tester,

@@ -4,6 +4,7 @@ import '../../core/memory/memory_crypto.dart';
 import '../../reliability/safe_boot.dart';
 import '../../startup/neura_prefs_cache.dart';
 import 'guided_support_activity.dart';
+import 'support_suggestion_choices.dart';
 
 class RememberedSupportActivity {
   const RememberedSupportActivity(this.activity, this.confirmedAtUtc);
@@ -43,6 +44,7 @@ class GuidedSupportStore {
 
   static final instance = GuidedSupportStore();
   static const storageKey = 'neura.guidedSupport.preference.v1';
+  static const choicesKey = 'neura.guidedSupport.choices.v1';
   final Future<MemoryCrypto> Function() _loadCrypto;
   Future<void> _queue = Future<void>.value();
   int _generation = 0;
@@ -51,7 +53,8 @@ class GuidedSupportStore {
   bool _allowed(int generation) =>
       !_suspended &&
       generation == _generation &&
-      !SafeBoot.instance.safeMode.value;
+      !SafeBoot.instance.safeMode.value &&
+      !SafeBoot.instance.restartRequired.value;
 
   Future<RememberedSupportActivity?> read() async {
     final generation = _generation;
@@ -66,6 +69,56 @@ class GuidedSupportStore {
     if (!_allowed(generation)) return null;
     // Corrupt or unavailable data is surfaced; never reinterpret as plaintext.
     return RememberedSupportActivity.fromJson(json);
+  }
+
+  Future<SupportSuggestionChoices> readChoices() async {
+    final generation = _generation;
+    if (!_allowed(generation)) return SupportSuggestionChoices();
+    await _queue;
+    if (!_allowed(generation)) return SupportSuggestionChoices();
+    final raw = NeuraPrefsCache.prefs.getString(choicesKey);
+    if (raw == null) return SupportSuggestionChoices();
+    final crypto = await _loadCrypto();
+    if (!_allowed(generation)) return SupportSuggestionChoices();
+    final json = await crypto.decryptJson(raw);
+    if (!_allowed(generation)) return SupportSuggestionChoices();
+    return SupportSuggestionChoices.fromJson(json);
+  }
+
+  Future<void> saveChoicesAfterConfirmation(
+    SupportSuggestionChoices choices, {
+    required bool Function() stillApproved,
+  }) {
+    final generation = _generation;
+    void requireApproval() {
+      if (!_allowed(generation) || !stillApproved()) {
+        throw StateError('Suggestion choice approval is no longer active.');
+      }
+    }
+
+    return _enqueue(() async {
+      requireApproval();
+      final crypto = await _loadCrypto();
+      requireApproval();
+      final blob = await crypto.encryptJson(choices.toJson());
+      requireApproval();
+      final prefs = NeuraPrefsCache.prefs;
+      final written = await prefs.setString(choicesKey, blob);
+      if (!written || !_allowed(generation) || !stillApproved()) {
+        await prefs.remove(choicesKey);
+        throw StateError('Suggestion choices did not finish saving.');
+      }
+    });
+  }
+
+  Future<void> forgetChoices() {
+    _generation++;
+    return _enqueue(() async {
+      final prefs = NeuraPrefsCache.prefs;
+      if (!await prefs.remove(choicesKey) || prefs.containsKey(choicesKey)) {
+        throw StateError('Suggestion choice deletion could not be verified.');
+      }
+    });
   }
 
   Future<RememberedSupportActivity> rememberAfterConfirmation(
@@ -113,6 +166,7 @@ class GuidedSupportStore {
     _generation++;
     await _queue.timeout(const Duration(seconds: 3));
     await forget();
+    await forgetChoices();
   }
 
   Future<T> _enqueue<T>(Future<T> Function() operation) {

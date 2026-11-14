@@ -9,6 +9,8 @@ import 'package:neuro_companion/core/memory/memory_crypto.dart';
 import 'package:neuro_companion/modules/support/guided_support_activity.dart';
 import 'package:neuro_companion/modules/support/guided_support_screen.dart';
 import 'package:neuro_companion/modules/support/guided_support_store.dart';
+import 'package:neuro_companion/modules/support/support_suggestion_choices.dart';
+import 'package:neuro_companion/modules/support/human_support_screen.dart';
 import 'package:neuro_companion/modules/support/support_center_screen.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
@@ -307,7 +309,13 @@ void main() {
     expect(find.textContaining("Let's stop this activity"), findsOneWidget);
     expect(find.text('Remember what helped…'), findsNothing);
     await tapText(tester, 'Reach a person');
-    expect(find.textContaining('988'), findsOneWidget);
+    expect(find.byType(HumanSupportScreen), findsOneWidget);
+    expect(find.text('Call or text 988'), findsNothing);
+    await tester
+        .ensureVisible(find.widgetWithText(ChoiceChip, 'United States'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'United States'));
+    await tester.pumpAndSettle();
+    expect(find.text('Call or text 988'), findsOneWidget);
     expect((store as _ScreenStore).record, isNull);
     expect(NeuraPrefsCache.prefs.getKeys(), isEmpty);
   });
@@ -355,7 +363,9 @@ void main() {
     await tapText(tester, 'Remember what helped…');
     SafeBoot.instance.safeMode.value = true;
     await tester.pump();
-    await tapText(tester, 'Remember activity');
+    expect(find.text('Remember activity'), findsNothing);
+    expect(find.text('Request expired'), findsOneWidget);
+    await tapText(tester, 'Close');
     expect((store as _ScreenStore).record, isNull);
   });
 
@@ -426,7 +436,9 @@ void main() {
     binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
-    await tapText(tester, 'Remember activity');
+    expect(find.text('Remember activity'), findsNothing);
+    expect(find.text('Request expired'), findsOneWidget);
+    await tapText(tester, 'Close');
     expect((store as _ScreenStore).record, isNull);
   });
 
@@ -479,6 +491,10 @@ void main() {
 // encryption/store tests above, without crossing Flutter's fake clock.
 class _ScreenStore extends GuidedSupportStore {
   RememberedSupportActivity? record;
+
+  @override
+  Future<SupportSuggestionChoices> readChoices() async =>
+      SupportSuggestionChoices();
 
   @override
   Future<RememberedSupportActivity?> read() async => record;
