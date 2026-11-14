@@ -9,6 +9,7 @@ import 'package:neuro_companion/modules/mood/mood_models.dart';
 import 'package:neuro_companion/modules/support/guided_support_activity.dart';
 import 'package:neuro_companion/modules/support/guided_support_screen.dart';
 import 'package:neuro_companion/modules/support/guided_support_store.dart';
+import 'package:neuro_companion/modules/support/support_suggestion_choices.dart';
 import 'package:neuro_companion/modules/support/human_support_screen.dart';
 import 'package:neuro_companion/modules/support/wellbeing_session_screen.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
@@ -19,6 +20,10 @@ class _EmptySupportStore extends GuidedSupportStore {
 
   @override
   Future<RememberedSupportActivity?> read() async => null;
+
+  @override
+  Future<SupportSuggestionChoices> readChoices() async =>
+      SupportSuggestionChoices();
 }
 
 void main() {
