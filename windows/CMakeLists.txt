@@ -77,6 +77,9 @@ add_subdirectory("runner")
 # them to the application.
 include("${NEURA_WINDOWS_PLUGIN_LIST}")
 
+include(cmake/NeuraWindowManager.cmake)
+neura_configure_window_manager("${CMAKE_CURRENT_BINARY_DIR}/neura_plugins/window_manager")
+
 include(cmake/NeuraLocalAuth.cmake)
 neura_configure_local_auth("${CMAKE_CURRENT_BINARY_DIR}/neura_plugins/local_auth")
 include(cmake/NeuraWinrtPlugins.cmake)
@@ -103,26 +106,18 @@ endif()
 # run in place. This is done instead of making a separate bundle (as on Linux)
 # so that building and running from within Visual Studio will work.
 #
-# The Flutter template uses $<TARGET_FILE_DIR:...> here, but that generator
-# expression is not evaluated when cmake runs "cmake -P cmake_install.cmake"
-# (the -P script mode does not expand build-system generator expressions).
-# For a Visual Studio (multi-config) generator the expansion produces an empty
-# string, causing cmake_install.cmake to fall back to C:/Program Files/...
-# which requires elevation and is wrong.  Use an explicit non-genex path instead.
-get_property(_MULTI GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
-if(_MULTI)
-  set(BUILD_BUNDLE_DIR "${CMAKE_CURRENT_BINARY_DIR}/runner/Release")
-else()
-  set(BUILD_BUNDLE_DIR "${CMAKE_CURRENT_BINARY_DIR}/runner/${CMAKE_BUILD_TYPE}")
-endif()
+# Keep the install prefix concrete, and resolve the configuration in the
+# install destinations when CMake generates cmake_install.cmake. Debug runs
+# need their DLLs and assets beside the Debug executable, not in Release.
+set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/runner" CACHE PATH "" FORCE)
+set(BUILD_BUNDLE_DIR "${CMAKE_INSTALL_PREFIX}/$<CONFIG>")
 # Make the "install" step default, as it's required to run.
 set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD 1)
-set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "" FORCE)
 
-set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
-set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
+set(INSTALL_BUNDLE_DATA_DIR "${BUILD_BUNDLE_DIR}/data")
+set(INSTALL_BUNDLE_LIB_DIR "${BUILD_BUNDLE_DIR}")
 
-install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
+install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
 
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
