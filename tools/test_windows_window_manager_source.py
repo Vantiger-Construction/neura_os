@@ -144,8 +144,12 @@ class WindowManagerSourceTests(unittest.TestCase):
         self.assertEqual(set(build.joinpath('sources.txt').read_text().split(';')),
                          {'other.cpp', output.joinpath(
                              'window_manager_plus_plugin.cpp').as_posix()})
-        self.assertIn(plugin.as_posix(),
-                      build.joinpath('includes.txt').read_text().split(';'))
+        # CMake expands Windows 8.3 paths while tempfile can retain the alias.
+        # Require the same directory, rather than one spelling of its name.
+        self.assertTrue(any(
+            Path(path).samefile(plugin)
+            for path in build.joinpath('includes.txt').read_text().split(';')),
+            'The plugin directory must be an actual target include directory')
         self.assertEqual(output.joinpath('LICENSE').read_bytes(), license_bytes)
 
     def test_unreviewed_target_source_layout_is_rejected(self):
