@@ -226,12 +226,17 @@ class NeuraShellState extends ChangeNotifier {
     }
   }
 
-  Future<void> setRoom(NeuraRoom room) async {
+  /// Moves Neura to [room]. With [persist] false the move is a visit (Her
+  /// Suite): the saved room is left alone, so a restart opens where the user
+  /// actually lives rather than in the room they were visiting.
+  Future<void> setRoom(NeuraRoom room, {bool persist = true}) async {
     _room = room;
     notifyListeners();
 
-    final prefs = NeuraPrefsCache.prefs;
-    await prefs.setString(_kRoomId, room.id);
+    if (persist) {
+      final prefs = NeuraPrefsCache.prefs;
+      await prefs.setString(_kRoomId, room.id);
+    }
 
     final asset = room.ambientSoundAsset;
     if (_ambientEnabled &&

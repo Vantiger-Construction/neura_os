@@ -34,6 +34,22 @@ Neura app ──presence_publish──▶ neura_api presence relay ──avatar_
 | Publisher | `lib/avatar/presence_relay/` | Started from the navigation shell only when the launcher variables are present. Publishes on every change and every 2 s. |
 | Subscriber | `prototypes/unity-presence/Assets/Presence/Bridge/` | `Protocol` (pure C#: config, envelope reader, relay client) and `Live` (the `PresenceLiveBridge` component, attached at runtime only when launched). |
 
+## Her Suite: Unity stage, Flutter panels
+
+Her Suite (`lib/her_suite/`) splits the work. The Flutter screens (the suite,
+Sit together, Her shelf and Resting) draw frosted glass panels over a stage
+slot. Today the slot shows the Flutter avatar. Once Unity takes over, pass a
+`HerSuiteStageBuilder` that hosts the Unity window; nothing else changes.
+
+The panels change only the display-only stage values (`lighting`, `camera`,
+`activity`) through `HerSuiteStageController`, which calls
+`NeuraAvatarRuntimeBridge.updateStage`. Those enum names are all that reach
+Unity. Chat, memories and settings stay in Flutter: Her shelf shows taught
+settings as labels and links to the screens that own them, never memory or
+conversation content. Safe Mode refuses resting and ends a rest at once.
+Visiting the suite switches the shell's room to `her_suite`, and leaving
+switches it back.
+
 ## Authorization
 
 - The relay is part of `neura_api` and uses its existing session check:
