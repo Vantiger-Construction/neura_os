@@ -1,0 +1,14 @@
+{
+    "name": "Neura.NebulaAvatar.Editor",
+    "rootNamespace": "Neura.Avatar.EditorTools",
+    "references": ["Neura.NebulaAvatar"],
+    "includePlatforms": ["Editor"],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
