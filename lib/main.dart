@@ -12,6 +12,7 @@ import 'src/app.dart';
 import 'startup/neura_error_pipeline.dart';
 import 'startup/neura_process_exit.dart';
 import 'startup/neura_startup_avatar.dart';
+import 'preview/neura_demo_bootstrap.dart';
 
 const String kLaunchSmokeTestArgument = '--launch-smoke-test';
 const int kLaunchSmokeTestSuccessExitCode = 73;
@@ -50,6 +51,10 @@ bool launchSmokeTestRequested(List<String> arguments, {required bool isWeb}) {
 /// mascot) and its real window id come from [NeuraWindowRole], not from
 /// `args` -- see that class for why.
 void main(List<String> args) {
+  if (neuraDemoBuild) {
+    runNeuraDemo();
+    return;
+  }
   runZonedGuarded<void>(
     () {
       // Binding creation and runApp must happen in the same zone. Flutter

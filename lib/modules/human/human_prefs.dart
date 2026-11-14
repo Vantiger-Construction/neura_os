@@ -84,7 +84,8 @@ class HumanPrefs {
     );
 
     final ts = json['textScale'];
-    final textScale = (ts is num ? ts.toDouble() : 1.0).clamp(0.85, 1.35);
+    final textScale =
+        (ts is num && ts.isFinite ? ts.toDouble() : 1.0).clamp(0.85, 2.0);
 
     final personaRaw = json['persona'];
     PersonaProfile persona;

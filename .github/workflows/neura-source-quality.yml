@@ -15,6 +15,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  preview-isolation:
+    name: Preview host selection (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Check out source without persistent credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check isolated preview selection with runner-provided tools
+        run: python -m unittest discover -s tools/tests -p test_neura_preview_mode.py -v
+
   flutter:
     name: Flutter formatting and strict analysis
     runs-on: ubuntu-latest

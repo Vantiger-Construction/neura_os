@@ -5,6 +5,24 @@ if(POLICY CMP0153)
   cmake_policy(SET CMP0153 NEW)
 endif()
 
+# This target deliberately contains no production startup, generated plugin
+# registrant, diagnostics vault, speech/model channels, Rust engine or exporters.
+if(NEURA_ISOLATED_DEMO)
+  add_executable(${BINARY_NAME} WIN32
+    "neura_demo_main.cpp" "utils.cpp" "win32_window.cpp"
+    "Runner.rc" "runner.exe.manifest")
+  apply_standard_settings(${BINARY_NAME})
+  target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
+  target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION=\"${FLUTTER_VERSION}\"")
+  foreach(part IN ITEMS MAJOR MINOR PATCH BUILD)
+    target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_${part}=${FLUTTER_VERSION_${part}}")
+  endforeach()
+  target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}" "${FLUTTER_MANAGED_DIR}")
+  target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app "dwmapi.lib" "ole32.lib")
+  add_dependencies(${BINARY_NAME} flutter_assemble)
+  return()
+endif()
+
 # neura_speech_recognizer.cpp uses WinRT (Windows.Media.SpeechRecognition),
 # which needs the C++/WinRT projection headers. Fetched the same way
 # flutter_tts's own windows plugin fetches them for SpeechSynthesis.

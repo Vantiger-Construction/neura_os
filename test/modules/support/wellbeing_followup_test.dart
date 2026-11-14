@@ -9,6 +9,7 @@ import 'package:neuro_companion/modules/mood/mood_models.dart';
 import 'package:neuro_companion/modules/support/guided_support_activity.dart';
 import 'package:neuro_companion/modules/support/guided_support_screen.dart';
 import 'package:neuro_companion/modules/support/guided_support_store.dart';
+import 'package:neuro_companion/modules/support/support_suggestion_choices.dart';
 import 'package:neuro_companion/modules/support/human_support_screen.dart';
 import 'package:neuro_companion/modules/support/wellbeing_session_screen.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
@@ -19,6 +20,10 @@ class _EmptySupportStore extends GuidedSupportStore {
 
   @override
   Future<RememberedSupportActivity?> read() async => null;
+
+  @override
+  Future<SupportSuggestionChoices> readChoices() async =>
+      SupportSuggestionChoices();
 }
 
 void main() {
@@ -111,6 +116,91 @@ void main() {
     expect(draft(tester), 'Synthetic message to keep');
     expect(find.text('Call or text 9-8-8'), findsOneWidget);
   });
+
+  testWidgets('initially inactive human support cannot draft or copy',
+      (tester) async {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    String? copied;
+    await pump(tester, HumanSupportScreen(copyText: (text) async {
+      copied = text;
+    }));
+    await tap(tester, 'Start a message');
+    expect(draft(tester), isEmpty);
+
+    await tester.enterText(find.byType(TextField), 'Synthetic reviewed draft');
+    await tap(tester, 'Copy reviewed draft');
+    expect(copied, isNull);
+
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(copied, isNull);
+    await tap(tester, 'Copy reviewed draft');
+    expect(copied, 'Synthetic reviewed draft');
+    await tap(tester, 'Clear draft');
+    await tap(tester, 'Start a message');
+    expect(draft(tester), isNotEmpty);
+  });
+
+  for (final exit in ['Escape', 'Back']) {
+    testWidgets('$exit disposes human support and revokes pending actions',
+        (tester) async {
+      await pump(tester, const Scaffold(body: Text('Synthetic home')));
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      final pendingCopy = Completer<void>();
+      final copies = <String>[];
+      Widget screen() => HumanSupportScreen(copyText: (text) async {
+            copies.add(text);
+            await pendingCopy.future;
+          });
+      unawaited(
+          navigator.push(MaterialPageRoute<void>(builder: (_) => screen())));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byType(TextField), 'Synthetic reviewed draft');
+      final oldTemplate = tester
+          .widget<OutlinedButton>(
+              find.widgetWithText(OutlinedButton, 'Start a message'))
+          .onPressed!;
+      final oldCopy = tester
+          .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'Copy reviewed draft'))
+          .onPressed!;
+      await tap(tester, 'Copy reviewed draft');
+      expect(copies, ['Synthetic reviewed draft']);
+      await tester.ensureVisible(find.byType(TextField));
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      if (exit == 'Escape') {
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      } else {
+        await tester.pageBack();
+      }
+      await tester.pumpAndSettle();
+      expect(find.byType(HumanSupportScreen), findsNothing);
+      expect(find.text('Synthetic home'), findsOneWidget);
+      oldTemplate();
+      oldCopy();
+      pendingCopy.complete();
+      await tester.pump();
+      expect(copies, ['Synthetic reviewed draft']);
+      expect(tester.takeException(), isNull);
+
+      unawaited(
+          navigator.push(MaterialPageRoute<void>(builder: (_) => screen())));
+      await tester.pumpAndSettle();
+      expect(draft(tester), isEmpty);
+      await tester.enterText(find.byType(TextField), 'Synthetic new draft');
+      oldTemplate();
+      oldCopy();
+      await tester.pump();
+      expect(draft(tester), 'Synthetic new draft');
+      expect(copies, ['Synthetic reviewed draft']);
+      expect(
+          find.textContaining('Copied to the system clipboard.'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
 
   testWidgets('changing the device clock cannot jump the timer countdown',
       (tester) async {

@@ -41,6 +41,8 @@ class NeuroCompanionApp extends StatelessWidget {
     return ValueListenableBuilder<HumanPrefs>(
       valueListenable: HumanPrefsController.instance.prefs,
       builder: (context, prefs, _) {
+        final highContrast = prefs.highContrast ||
+            (MediaQuery.maybeOf(context)?.highContrast ?? false);
         return MaterialApp(
           navigatorKey: navigatorKey,
           navigatorObservers: [
@@ -50,8 +52,10 @@ class NeuroCompanionApp extends StatelessWidget {
           ],
           title: 'Neura OS',
           themeMode: _themeModeFor(prefs.theme),
-          theme: AppTheme.light(highContrast: prefs.highContrast),
-          darkTheme: AppTheme.dark(highContrast: prefs.highContrast),
+          theme: AppTheme.light(highContrast: highContrast),
+          darkTheme: AppTheme.dark(highContrast: highContrast),
+          highContrastTheme: AppTheme.light(highContrast: true),
+          highContrastDarkTheme: AppTheme.dark(highContrast: true),
           scaffoldMessengerKey: ErrorHandler.scaffoldMessengerKey,
           builder: (context, child) {
             final mediaQuery = applyHumanAccessibilityPreferences(

@@ -1,11 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import 'human_prefs.dart';
 import 'human_prefs_controller.dart';
 import '../../src/shell/shell_prefs.dart';
 
 class AccessibilityScreen extends StatelessWidget {
-  const AccessibilityScreen({super.key});
+  const AccessibilityScreen({super.key})
+      : _preferences = null,
+        _updatePreferences = null;
+
+  const AccessibilityScreen.preview({
+    super.key,
+    required ValueListenable<HumanPrefs> preferences,
+    required Future<void> Function(HumanPrefs) updatePreferences,
+  })  : _preferences = preferences,
+        _updatePreferences = updatePreferences;
+
+  final ValueListenable<HumanPrefs>? _preferences;
+  final Future<void> Function(HumanPrefs)? _updatePreferences;
+
+  Future<void> _update(HumanPrefs next) =>
+      (_updatePreferences ?? HumanPrefsController.instance.update)(next);
 
   Future<void> _applySafeMode(bool enabled, HumanPrefs prefs) async {
     // Safe Mode is the "make it calm and predictable" big red button.
@@ -14,9 +30,9 @@ class AccessibilityScreen extends StatelessWidget {
         ? prefs.copyWith(safeMode: true, reducedMotion: true, lowStim: true)
         : prefs.copyWith(safeMode: false);
 
-    await HumanPrefsController.instance.update(next);
+    await _update(next);
 
-    if (enabled) {
+    if (enabled && _updatePreferences == null) {
       final sp = ShellPrefsController.instance.prefs.value;
       await ShellPrefsController.instance.update(
         sp.copyWith(
@@ -32,7 +48,7 @@ class AccessibilityScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<HumanPrefs>(
-      valueListenable: HumanPrefsController.instance.prefs,
+      valueListenable: _preferences ?? HumanPrefsController.instance.prefs,
       builder: (context, prefs, _) {
         return Scaffold(
           appBar: AppBar(title: const Text('Accessibility')),
@@ -58,7 +74,7 @@ class AccessibilityScreen extends StatelessWidget {
                 value: prefs.lowStim,
                 onChanged: prefs.safeMode
                     ? null
-                    : (v) => HumanPrefsController.instance.update(
+                    : (v) => _update(
                           prefs.copyWith(lowStim: v),
                         ),
                 title: const Text('Low-stimulation mode'),
@@ -71,7 +87,7 @@ class AccessibilityScreen extends StatelessWidget {
                 value: prefs.reducedMotion,
                 onChanged: prefs.safeMode
                     ? null
-                    : (v) => HumanPrefsController.instance.update(
+                    : (v) => _update(
                           prefs.copyWith(reducedMotion: v),
                         ),
                 title: const Text('Reduce motion'),
@@ -82,7 +98,7 @@ class AccessibilityScreen extends StatelessWidget {
               ),
               SwitchListTile(
                 value: prefs.highContrast,
-                onChanged: (v) => HumanPrefsController.instance.update(
+                onChanged: (v) => _update(
                   prefs.copyWith(highContrast: v),
                 ),
                 title: const Text('High contrast'),
@@ -99,26 +115,29 @@ class AccessibilityScreen extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Slider(
                   min: 0.85,
-                  max: 1.35,
-                  divisions: 10,
+                  max: 2.0,
+                  divisions: 23,
+                  semanticFormatterCallback: (value) =>
+                      '${(value * 100).round()} percent text size',
                   value: prefs.textScale,
-                  onChanged: (v) => HumanPrefsController.instance.update(
+                  onChanged: (v) => _update(
                     prefs.copyWith(textScale: v),
                   ),
                 ),
               ),
               const Divider(),
-              SwitchListTile(
-                value: prefs.allowLearning,
-                onChanged: (v) => HumanPrefsController.instance.update(
-                  prefs.copyWith(allowLearning: v),
+              if (_updatePreferences == null)
+                SwitchListTile(
+                  value: prefs.allowLearning,
+                  onChanged: (v) => _update(
+                    prefs.copyWith(allowLearning: v),
+                  ),
+                  title: const Text('Allow local learning'),
+                  subtitle: const Text(
+                    'Let Neura remember what helps (stored on-device only).',
+                  ),
+                  secondary: const Icon(Icons.school_outlined),
                 ),
-                title: const Text('Allow local learning'),
-                subtitle: const Text(
-                  'Let Neura remember what helps (stored on-device only).',
-                ),
-                secondary: const Icon(Icons.school_outlined),
-              ),
             ],
           ),
         );
