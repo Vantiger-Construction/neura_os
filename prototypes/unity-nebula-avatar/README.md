@@ -65,12 +65,12 @@ controller's API.
 
 | Check | Result |
 |---|---|
-| C# compilation in Unity | **Not executed**: no Unity Editor or Mono in the authoring environment |
+| C# compilation | **Passed in CI** (`CodeQL Security (csharp)` on `4be6f3f`): compiled with all tracked C# against genuine Unity 6000.6.6f1 references. Compile/source analysis only |
 | Editor import, materials, visual result | **Not validated** |
 | Safe Mode / focus behavior in a player | **Not validated** |
 | Performance on Windows hardware | **Not measured** |
 | `prototypes/unity-presence` contract audit | Unaffected (no files changed there) |
 
-Next: open in Unity 6, fix any compile issues, import an approved humanoid (see
+Next: open in Unity 6, import an approved humanoid (see
 [`../unity-presence/ASSET_REVIEW.md`](../unity-presence/ASSET_REVIEW.md)), check visuals and Safe
 Mode, then measure on the Windows target.
