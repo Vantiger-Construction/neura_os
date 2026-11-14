@@ -84,9 +84,10 @@ namespace Neura.Presence
                 fields.Add(key, value);
             } while (reader.Take(','));
             if (!reader.Take('}') || !reader.AtEnd) return false;
-            if (!fields.ContainsKey("v")) { error = SnapshotError.MissingField; return false; }
-            if (fields["v"] != "1" && fields["v"] != "2") { error = SnapshotError.UnsupportedVersion; return false; }
-            int version = fields["v"] == "2" ? 2 : 1;
+            string versionText;
+            if (!fields.TryGetValue("v", out versionText)) { error = SnapshotError.MissingField; return false; }
+            if (versionText != "1" && versionText != "2") { error = SnapshotError.UnsupportedVersion; return false; }
+            int version = versionText == "2" ? 2 : 1;
             bool hasStage = fields.ContainsKey("lighting") || fields.ContainsKey("camera") || fields.ContainsKey("activity");
             // v1 can't carry v2's stage fields.
             if (version == 1 && hasStage) { error = SnapshotError.UnknownField; return false; }
@@ -113,6 +114,12 @@ namespace Neura.Presence
                 !OneOf(fields["stance"], "welcoming", "reflective", "playful", "grounding", "dreaming", "guardian") ||
                 !OneOf(fields["motion"], "still", "subtle", "expressive") ||
                 !OneOf(fields["scale"], "compact", "standard", "large"))
+            {
+                error = SnapshotError.InvalidValue;
+                return false;
+            }
+            // Resting belongs to Her Suite; no other room has her window.
+            if (activity == "resting" && fields["room_id"] != "her_suite")
             {
                 error = SnapshotError.InvalidValue;
                 return false;

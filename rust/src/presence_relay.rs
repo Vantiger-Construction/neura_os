@@ -130,22 +130,33 @@ pub(crate) struct Snapshot {
     activity: Option<Activity>,
 }
 
+const STAGE_FIELDS: [&str; 3] = ["lighting", "camera", "activity"];
+
 impl Snapshot {
     /// Parses and canonicalizes an untrusted snapshot. v1 has the original
     /// seven fields and can't name `her_suite`; v2 adds `lighting`, `camera`
     /// and `activity`, all required. Either Safe Mode signal forces Safe
     /// Mode, the safeMode phase, Still motion and (in v2) the present pose.
     pub(crate) fn parse(data: Value) -> Option<Self> {
+        // Serde reads an explicit `null` as an absent optional field, so check
+        // the raw keys: a v1 snapshot may not name a stage field at all.
+        let names_stage = data
+            .as_object()
+            .is_some_and(|fields| STAGE_FIELDS.iter().any(|key| fields.contains_key(*key)));
         let mut snapshot: Snapshot = serde_json::from_value(data).ok()?;
         let stage = (snapshot.lighting, snapshot.camera, snapshot.activity);
         match snapshot.v {
             1 => {
-                if stage != (None, None, None) || snapshot.room_id == Room::HerSuite {
+                if names_stage || snapshot.room_id == Room::HerSuite {
                     return None;
                 }
             }
             2 => {
                 if stage.0.is_none() || stage.1.is_none() || stage.2.is_none() {
+                    return None;
+                }
+                // Resting belongs to Her Suite; no other room has her window.
+                if stage.2 == Some(Activity::Resting) && snapshot.room_id != Room::HerSuite {
                     return None;
                 }
             }
@@ -426,6 +437,10 @@ mod tests {
         let mut v1_with_stage = valid();
         v1_with_stage["lighting"] = json!("gold");
         assert!(Snapshot::parse(v1_with_stage).is_none());
+        // Serde would read null as absent; the key alone breaks the v1 shape.
+        for key in ["lighting", "camera", "activity"] {
+            assert!(Snapshot::parse(with(key, Value::Null)).is_none(), "{key}");
+        }
         assert!(Snapshot::parse(with("room_id", json!("her_suite"))).is_none());
         assert!(Snapshot::parse(with("room_id", json!("bedroom"))).is_none());
         assert!(Snapshot::parse(with("phase", json!("safe_mode"))).is_none());
@@ -446,6 +461,7 @@ mod tests {
         for room in ["penthouse", "legacy_vault", "her_suite"] {
             let mut data = valid_v2();
             data["room_id"] = json!(room);
+            data["activity"] = json!("present");
             assert!(Snapshot::parse(data).is_some(), "{room}");
         }
         for (key, values) in [
@@ -483,6 +499,19 @@ mod tests {
         let mut extra = valid_v2();
         extra["memory"] = json!("private");
         assert!(Snapshot::parse(extra).is_none());
+        let mut null_stage = valid_v2();
+        null_stage["camera"] = Value::Null;
+        assert!(Snapshot::parse(null_stage).is_none());
+    }
+
+    #[test]
+    fn resting_belongs_to_her_suite() {
+        for room in ["penthouse", "reflection_bay", "legacy_vault"] {
+            let mut data = valid_v2();
+            data["room_id"] = json!(room);
+            assert!(Snapshot::parse(data).is_none(), "{room}");
+        }
+        assert!(Snapshot::parse(valid_v2()).is_some());
     }
 
     #[test]
