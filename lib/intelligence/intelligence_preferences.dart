@@ -1,4 +1,5 @@
 import 'models.dart';
+import 'room_attention_policy.dart';
 
 enum NeuraProactivityLevel { off, subtle, balanced }
 
@@ -42,7 +43,13 @@ class NeuraIntelligencePreferences {
     this.quietHoursStart = 22,
     this.quietHoursEnd = 7,
     this.pausedUntil,
+    this.roomAttention = const {},
   });
+
+  /// Upper bounds for stored per-room choices. Room ids are short code
+  /// constants; anything beyond these bounds is ignored when loading.
+  static const int maxRoomAttentionChoices = 32;
+  static const int maxRoomIdLength = 64;
 
   final bool enabled;
   final NeuraProactivityLevel proactivityLevel;
@@ -53,6 +60,33 @@ class NeuraIntelligencePreferences {
   final int quietHoursStart;
   final int quietHoursEnd;
   final DateTime? pausedUntil;
+
+  /// The user's per-room attention choices, keyed by `NeuraRoom.id`. Only
+  /// choices stricter than the built-in table are kept; see
+  /// [withRoomAttention]. The kernel merges these through
+  /// [NeuraRoomAttentionPolicy.effectiveFor], so they can only tighten.
+  final Map<String, NeuraRoomAttention> roomAttention;
+
+  /// Sets the user's attention for [roomId]. Choosing a level that is not
+  /// stricter than the room's built-in attention removes the user choice, so
+  /// a built-in calm or private room can never be loosened.
+  NeuraIntelligencePreferences withRoomAttention(
+    String roomId,
+    NeuraRoomAttention attention,
+  ) {
+    final id = roomId.trim();
+    if (id.isEmpty || id.length > maxRoomIdLength) return this;
+    final next = Map<String, NeuraRoomAttention>.of(roomAttention);
+    if (attention.index <= NeuraRoomAttentionPolicy.forRoom(id).index) {
+      next.remove(id);
+    } else {
+      if (!next.containsKey(id) && next.length >= maxRoomAttentionChoices) {
+        return this;
+      }
+      next[id] = attention;
+    }
+    return copyWith(roomAttention: next);
+  }
 
   bool get allowsProactiveSuggestions =>
       enabled && proactivityLevel != NeuraProactivityLevel.off;
@@ -85,6 +119,7 @@ class NeuraIntelligencePreferences {
     int? quietHoursEnd,
     DateTime? pausedUntil,
     bool clearPause = false,
+    Map<String, NeuraRoomAttention>? roomAttention,
   }) {
     final nextLevel = proactivityLevel ??
         (enabled == false
@@ -110,6 +145,9 @@ class NeuraIntelligencePreferences {
           (quietHoursStart ?? this.quietHoursStart).clamp(0, 23).toInt(),
       quietHoursEnd: (quietHoursEnd ?? this.quietHoursEnd).clamp(0, 23).toInt(),
       pausedUntil: clearPause ? null : pausedUntil ?? this.pausedUntil,
+      roomAttention: roomAttention == null
+          ? this.roomAttention
+          : Map<String, NeuraRoomAttention>.unmodifiable(roomAttention),
     );
   }
 
@@ -124,6 +162,11 @@ class NeuraIntelligencePreferences {
         'quiet_hours_start': quietHoursStart,
         'quiet_hours_end': quietHoursEnd,
         'paused_until': pausedUntil?.toUtc().toIso8601String(),
+        'room_attention': {
+          for (final entry in roomAttention.entries)
+            if (entry.value != NeuraRoomAttention.open)
+              entry.key: entry.value.name,
+        },
       };
 
   factory NeuraIntelligencePreferences.fromJson(Map<String, Object?> json) {
@@ -159,7 +202,33 @@ class NeuraIntelligencePreferences {
       pausedUntil: DateTime.tryParse(
         json['paused_until']?.toString() ?? '',
       )?.toLocal(),
+      roomAttention: _roomAttentionFromJson(json['room_attention']),
     );
+  }
+
+  /// Loads only well-formed, bounded choices that are stricter than the
+  /// built-in table. Malformed entries are dropped, never widened.
+  static Map<String, NeuraRoomAttention> _roomAttentionFromJson(Object? raw) {
+    if (raw is! Map) return const {};
+    final choices = <String, NeuraRoomAttention>{};
+    for (final entry in raw.entries) {
+      if (choices.length >= maxRoomAttentionChoices) break;
+      final key = entry.key;
+      if (key is! String) continue;
+      final id = key.trim();
+      if (id.isEmpty || id.length > maxRoomIdLength) continue;
+      final attention = switch (entry.value) {
+        'calm' => NeuraRoomAttention.calm,
+        'private' => NeuraRoomAttention.private,
+        _ => null,
+      };
+      if (attention == null) continue;
+      if (attention.index <= NeuraRoomAttentionPolicy.forRoom(id).index) {
+        continue;
+      }
+      choices[id] = attention;
+    }
+    return Map<String, NeuraRoomAttention>.unmodifiable(choices);
   }
 }
 
