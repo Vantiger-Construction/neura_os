@@ -9,7 +9,6 @@ import 'package:neuro_companion/core/memory/memory_crypto.dart';
 import 'package:neuro_companion/modules/support/guided_support_activity.dart';
 import 'package:neuro_companion/modules/support/guided_support_screen.dart';
 import 'package:neuro_companion/modules/support/guided_support_store.dart';
-import 'package:neuro_companion/modules/support/support_suggestion_choices.dart';
 import 'package:neuro_companion/modules/support/human_support_screen.dart';
 import 'package:neuro_companion/modules/support/support_center_screen.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';

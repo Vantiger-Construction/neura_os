@@ -3,62 +3,17 @@ import 'package:flutter/material.dart';
 import '../../screens/journal_prompt_screen.dart';
 import '../mood/mood_checkin_screen.dart';
 import '../mood/mood_history_screen.dart';
-import '../human/accessibility_screen.dart';
-import 'appointment_prep_screen.dart';
 import 'guided_support_activity.dart';
 import 'guided_support_screen.dart';
 import 'human_support_screen.dart';
 import 'wellbeing_session_screen.dart';
-import 'support_suggestion_screen.dart';
-import 'usability_feedback_screen.dart';
-import 'support_page_shortcuts.dart';
-
-enum WellbeingDestination {
-  settle,
-  smallStep,
-  reachSomeone,
-  urgentHelp,
-  quietWriting,
-  journal,
-  checkIn,
-  history,
-  reminder,
-  suggestions,
-  appointment,
-  accessibility,
-  feedback
-}
 
 /// Navigation only: mounting this card never opens personal storage or a model.
 class WellbeingHomeCard extends StatelessWidget {
-  const WellbeingHomeCard({super.key, this.destinationBuilder});
-  final Widget Function(WellbeingDestination)? destinationBuilder;
+  const WellbeingHomeCard({super.key});
 
-  Widget _destination(WellbeingDestination destination) =>
-      destinationBuilder?.call(destination) ??
-      switch (destination) {
-        WellbeingDestination.settle => const GuidedSupportScreen(),
-        WellbeingDestination.smallStep => const WellbeingSessionScreen(),
-        WellbeingDestination.reachSomeone => const HumanSupportScreen(),
-        WellbeingDestination.urgentHelp =>
-          const HumanSupportScreen(urgentOnly: true),
-        WellbeingDestination.quietWriting => const GuidedSupportScreen(
-            initialActivity: GuidedSupportActivity.quietWriting),
-        WellbeingDestination.journal => const JournalPromptScreen(),
-        WellbeingDestination.checkIn => const MoodCheckInScreen(),
-        WellbeingDestination.history => const MoodHistoryScreen(),
-        WellbeingDestination.reminder =>
-          const WellbeingSessionScreen(reminder: true),
-        WellbeingDestination.suggestions => const SupportSuggestionScreen(),
-        WellbeingDestination.appointment => const AppointmentPrepScreen(),
-        WellbeingDestination.accessibility => const AccessibilityScreen(),
-        WellbeingDestination.feedback => const UsabilityFeedbackScreen(),
-      };
-
-  void _open(BuildContext context, WellbeingDestination destination) {
-    Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) =>
-            SupportPageShortcuts(child: _destination(destination))));
+  void _open(BuildContext context, Widget screen) {
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
   }
 
   @override
@@ -79,22 +34,22 @@ class WellbeingHomeCard extends StatelessWidget {
                   'Help me settle',
                   'Grounding, optional gentle breathing, or a quiet pause.',
                   Icons.spa_outlined,
-                  WellbeingDestination.settle),
+                  const GuidedSupportScreen()),
               _choice(
                   context,
                   'Help me take one step',
                   'Make a task smaller, take a break, or try five minutes.',
                   Icons.self_improvement,
-                  WellbeingDestination.smallStep),
+                  const WellbeingSessionScreen()),
               _choice(
                   context,
                   'Help me reach someone',
                   'Draft a message, prepare for care, or find human support.',
                   Icons.people_outline,
-                  WellbeingDestination.reachSomeone),
+                  const HumanSupportScreen()),
               TextButton.icon(
                 onPressed: () =>
-                    _open(context, WellbeingDestination.urgentHelp),
+                    _open(context, const HumanSupportScreen(urgentOnly: true)),
                 icon: const Icon(Icons.support_agent),
                 label: const Text('Urgent help and crisis contacts'),
               ),
@@ -106,47 +61,28 @@ class WellbeingHomeCard extends StatelessWidget {
                       context,
                       'Write without saving',
                       'Optional prompts; writing clears when you leave.',
-                      WellbeingDestination.quietWriting),
+                      const GuidedSupportScreen(
+                          initialActivity: GuidedSupportActivity.quietWriting)),
                   _link(
                       context,
                       'Open my private journal',
                       'Review entries and explicitly save to your local journal.',
-                      WellbeingDestination.journal),
+                      const JournalPromptScreen()),
                   _link(
                       context,
                       'Optional check-in',
                       'Record mood, with optional energy, sleep and a note.',
-                      WellbeingDestination.checkIn),
+                      const MoodCheckInScreen()),
                   _link(
                       context,
                       'My check-in history',
                       'A factual summary of what you chose to record.',
-                      WellbeingDestination.history),
+                      const MoodHistoryScreen()),
                   _link(
                       context,
                       'Gentle routine reminder',
                       'A silent reminder while this screen stays open.',
-                      WellbeingDestination.reminder),
-                  _link(
-                      context,
-                      'My suggestion choices',
-                      'Choose when and which guided activities may be suggested.',
-                      WellbeingDestination.suggestions),
-                  _link(
-                      context,
-                      'Prepare for an appointment',
-                      'Select check-ins and questions, then review your own summary.',
-                      WellbeingDestination.appointment),
-                  _link(
-                      context,
-                      'Comfort and accessibility',
-                      'Text size, contrast, motion and visual comfort.',
-                      WellbeingDestination.accessibility),
-                  _link(
-                      context,
-                      'Help improve Neura',
-                      'Optional usability feedback; nothing is sent automatically.',
-                      WellbeingDestination.feedback),
+                      const WellbeingSessionScreen(reminder: true)),
                 ],
               ),
               const SizedBox(height: 8),
@@ -159,7 +95,7 @@ class WellbeingHomeCard extends StatelessWidget {
       );
 
   Widget _choice(BuildContext context, String title, String detail,
-          IconData icon, WellbeingDestination page) =>
+          IconData icon, Widget page) =>
       Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: OutlinedButton(
@@ -180,8 +116,8 @@ class WellbeingHomeCard extends StatelessWidget {
         ),
       );
 
-  Widget _link(BuildContext context, String title, String detail,
-          WellbeingDestination page) =>
+  Widget _link(
+          BuildContext context, String title, String detail, Widget page) =>
       ListTile(
         title: Text(title),
         subtitle: Text(detail),

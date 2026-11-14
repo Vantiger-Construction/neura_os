@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 
 import '../../reliability/safe_boot.dart';
 import 'support_center_screen.dart';
-import 'support_page_shortcuts.dart';
 
 enum SupportRegion {
   unitedStates(
@@ -42,14 +41,8 @@ enum SupportRegion {
 
 /// Public contacts and temporary user-edited drafts; no sending or inference.
 class HumanSupportScreen extends StatefulWidget {
-  const HumanSupportScreen(
-      {super.key,
-      this.urgentOnly = false,
-      this.copyText,
-      this.trustedContactsBuilder});
+  const HumanSupportScreen({super.key, this.urgentOnly = false});
   final bool urgentOnly;
-  final Future<void> Function(String)? copyText;
-  final WidgetBuilder? trustedContactsBuilder;
 
   @override
   State<HumanSupportScreen> createState() => _HumanSupportScreenState();
@@ -68,8 +61,6 @@ class _HumanSupportScreenState extends State<HumanSupportScreen>
   @override
   void initState() {
     super.initState();
-    final state = WidgetsBinding.instance.lifecycleState;
-    _foreground = state == null || state == AppLifecycleState.resumed;
     _draft.addListener(_draftChanged);
     WidgetsBinding.instance.addObserver(this);
     SafeBoot.instance.safeMode.addListener(_safetyChanged);
@@ -173,8 +164,7 @@ class _HumanSupportScreenState extends State<HumanSupportScreen>
     }
     final epoch = _epoch;
     try {
-      await (widget.copyText ??
-          (text) => Clipboard.setData(ClipboardData(text: text)))(_draft.text);
+      await Clipboard.setData(ClipboardData(text: _draft.text));
       if (!mounted || epoch != _epoch) return;
       setState(
           () => _notice = 'Copied to the system clipboard. Nothing was sent. '
@@ -197,8 +187,7 @@ class _HumanSupportScreenState extends State<HumanSupportScreen>
   }
 
   @override
-  Widget build(BuildContext context) => SupportPageShortcuts(
-          child: Scaffold(
+  Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
             title: Text(widget.urgentOnly
                 ? 'Urgent human support'
@@ -302,13 +291,12 @@ class _HumanSupportScreenState extends State<HumanSupportScreen>
                   onPressed: () {
                     setState(_clear);
                     Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: widget.trustedContactsBuilder ??
-                            (_) => const SupportCenterScreen()));
+                        builder: (_) => const SupportCenterScreen()));
                   },
                   icon: const Icon(Icons.contacts_outlined),
                   label: const Text('Open my trusted contacts')),
             ],
           ]),
         ))),
-      ));
+      );
 }
