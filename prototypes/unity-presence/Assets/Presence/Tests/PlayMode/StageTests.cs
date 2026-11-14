@@ -88,12 +88,20 @@ namespace Neura.Presence.Tests
         {
             Assert.IsTrue(stage.ApplySyntheticSnapshot(Suite));
             for (int i = 0; i < 90; i++) yield return null;
-            float follow = Mathf.Abs(stage.StageCamera.transform.localPosition.z);
+            var cam = stage.StageCamera;
+            var followPosition = cam.transform.localPosition;
+            var followRotation = cam.transform.localRotation;
+            float followFov = cam.fieldOfView;
             Assert.IsTrue(stage.ApplySyntheticSnapshot(Suite.Replace("follow", "face")));
             for (int i = 0; i < 90; i++) yield return null;
-            Assert.Less(Mathf.Abs(stage.StageCamera.transform.localPosition.z), follow - 1f);
+            Assert.Less(Mathf.Abs(cam.transform.localPosition.z), Mathf.Abs(followPosition.z) - 1f);
+            Assert.Less(cam.fieldOfView, followFov);
+            // Suspending snaps the whole framing back at once: position,
+            // aim and field of view, not just the distance.
             stage.SuspendPresentation();
-            Assert.AreEqual(follow, Mathf.Abs(stage.StageCamera.transform.localPosition.z), 0.01f);
+            Assert.Less(Vector3.Distance(followPosition, cam.transform.localPosition), 0.01f);
+            Assert.Less(Quaternion.Angle(followRotation, cam.transform.localRotation), 0.1f);
+            Assert.AreEqual(followFov, cam.fieldOfView, 0.01f);
         }
         [UnityTest]
         public IEnumerator InvalidInputClearsPreviousMotion()

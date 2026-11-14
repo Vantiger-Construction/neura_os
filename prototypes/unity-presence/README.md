@@ -24,7 +24,8 @@ the existing app remains the release priority.
   mood (`standard` there means her gold hour; `gold`, `aurora`, `dusk`), and
   in other rooms a named mood tints the accent and background. `camera`
   eases between `follow`, `wide` and `face` (to face) framings. `activity:
-  resting` settles her lower and turned toward the window with only slow
+  resting` settles her lower and turned toward the window's side (it is
+  behind her, so she never turns her back to the room) with only slow
   breathing. Safe Mode always stands her up, still and present, at once.
   Palette, framing and pose live in Core (`StageLook.cs`,
   `PresentationPose.cs`) and are covered by the Mono scenarios.
