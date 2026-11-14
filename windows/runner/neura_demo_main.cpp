@@ -3,6 +3,7 @@
 #include <flutter/method_channel.h>
 #include <flutter/standard_method_codec.h>
 #include <windows.h>
+#include <objbase.h>
 
 #include <memory>
 #include <optional>
@@ -12,6 +13,23 @@
 #include "win32_window.h"
 
 namespace {
+
+// Flutter's Windows input handling needs an STA even without any plugins.
+// Construct this before the window so COM outlives the engine on every exit.
+class ComApartment final {
+ public:
+  ComApartment()
+      : status_(::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED)) {}
+  ~ComApartment() {
+    if (SUCCEEDED(status_)) ::CoUninitialize();
+  }
+  ComApartment(const ComApartment&) = delete;
+  ComApartment& operator=(const ComApartment&) = delete;
+  bool initialized() const { return SUCCEEDED(status_); }
+
+ private:
+  const HRESULT status_;
+};
 
 // Separate host, not a switch inside the production startup path. Nothing here
 // registers plugins or constructs Neura storage, diagnostic, speech or engines.
@@ -77,6 +95,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE previous,
   if (error == ERROR_ALREADY_EXISTS) { ::CloseHandle(mutex); return EXIT_SUCCESS; }
   if (!::AttachConsole(ATTACH_PARENT_PROCESS) && ::IsDebuggerPresent()) {
     CreateAndAttachConsole();
+  }
+  const ComApartment apartment;
+  if (!apartment.initialized()) {
+    ::CloseHandle(mutex);
+    return EXIT_FAILURE;
   }
   DemoWindow window;
   if (!window.Create(L"Neura - Sample data preview", {10, 10}, {1280, 720})) {
