@@ -15,6 +15,15 @@ void main() {
     expect(reply.suggestedSteps, hasLength(3));
   });
 
+  test('offline replies in Her Suite name her room, not the Penthouse', () {
+    final reply = core.respondDetailed(
+      'Help me make a plan',
+      roomId: 'her_suite',
+    );
+    expect(reply.text, contains('my suite'));
+    expect(reply.text, isNot(contains('Penthouse')));
+  });
+
   test('offline image response does not pretend to inspect pixels', () {
     final reply = core.respondDetailed('What is this?', imageAttached: true);
     expect(reply.intent, 'image_unavailable_offline');

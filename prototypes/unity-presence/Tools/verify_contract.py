@@ -7,7 +7,10 @@ import unittest
 
 PROJECT = Path(__file__).resolve().parents[1]
 REPO = PROJECT.parents[1]
-SCHEMA = json.loads((PROJECT / "Contract/avatar-presence-v1.schema.json").read_text())
+SCHEMA = json.loads((PROJECT / "Contract/avatar-presence-v2.schema.json").read_text())
+# v1 is still accepted by every receiver; its schema must not drift.
+SCHEMA_V1 = json.loads((PROJECT / "Contract/avatar-presence-v1.schema.json").read_text())
+STAGE_FIELDS = ("lighting", "camera", "activity")
 
 
 def dart_enum(path, name):
@@ -25,6 +28,10 @@ class ContractSourceChecks(unittest.TestCase):
         self.assertEqual(set(fields), set(SCHEMA["properties"]))
         self.assertEqual(set(fields), set(SCHEMA["required"]))
         self.assertFalse(SCHEMA["additionalProperties"])
+        # v2 is exactly v1 plus the three stage fields.
+        self.assertEqual(SCHEMA_V1["properties"]["v"]["const"], 1)
+        self.assertEqual(set(SCHEMA["required"]) - set(SCHEMA_V1["required"]), set(STAGE_FIELDS))
+        self.assertFalse(SCHEMA_V1["additionalProperties"])
 
     def test_all_enum_domains_match_dart_and_consumer(self):
         mappings = {
@@ -39,10 +46,33 @@ class ContractSourceChecks(unittest.TestCase):
             self.assertEqual(expected, SCHEMA["properties"][field]["enum"])
             match = re.search(r'OneOf\(fields\["' + field + r'"\],([^)]*)\)', consumer, re.S)
             self.assertEqual(expected, re.findall(r'"([A-Za-z_]+)"', match[1]))
+            self.assertEqual(expected, SCHEMA_V1["properties"][field]["enum"])
+        stage = {
+            "lighting": "NeuraStageLighting",
+            "camera": "NeuraStageCamera",
+            "activity": "NeuraCompanionActivity",
+        }
+        for field, enum in stage.items():
+            expected = dart_enum("lib/avatar/neura_avatar_runtime_bridge.dart", enum)
+            self.assertEqual(expected, SCHEMA["properties"][field]["enum"])
+            match = re.search(r"OneOf\(" + field + r",([^)]*)\)", consumer, re.S)
+            self.assertEqual(expected, re.findall(r'"([A-Za-z_]+)"', match[1]))
+        rust = (REPO / "rust/src/presence_relay.rs").read_text()
+        for field, enum in (("lighting", "Lighting"), ("camera", "Camera"), ("activity", "Activity")):
+            variants = re.search(r"enum " + enum + r" \{([^}]+)\}", rust)[1]
+            names = [re.sub(r"(?<!^)([A-Z])", r"_\1", v.strip()).lower() for v in variants.split(",") if v.strip()]
+            self.assertEqual(SCHEMA["properties"][field]["enum"], names)
 
     def test_rooms_and_synthetic_room_stances_match_current_profiles(self):
         rooms = re.findall(r"id: '([^']+)'", (REPO / "lib/neura_shell/models/neura_room.dart").read_text())
         self.assertEqual(rooms, SCHEMA["properties"]["room_id"]["enum"])
+        # v1 lists every room except the one v2 added.
+        self.assertEqual([r for r in rooms if r != "her_suite"], SCHEMA_V1["properties"]["room_id"]["enum"])
+        rust = (REPO / "rust/src/presence_relay.rs").read_text()
+        variants = re.search(r"enum Room \{([^}]+)\}", rust)[1]
+        names = [re.sub(r"(?<!^)([A-Z])", r"_\1", line.strip().rstrip(",")).lower()
+                 for line in variants.splitlines() if line.strip() and not line.strip().startswith("//")]
+        self.assertEqual(rooms, names)
         runtime = (PROJECT / "Assets/Presence/Runtime/PresencePrototype.cs").read_text()
         self.assertEqual(rooms, re.findall(r'"([a-z_]+)"', re.search(r"string\[\] Rooms = \{([^}]+)", runtime)[1]))
         consumer = (PROJECT / "Assets/Presence/Core/AvatarSnapshot.cs").read_text()
@@ -52,11 +82,17 @@ class ContractSourceChecks(unittest.TestCase):
         self.assertEqual(stances, re.findall(r'"([a-z]+)"', re.search(r"string\[\] Stances = \{([^}]+)", runtime)[1]))
 
     def test_synthetic_fixtures_have_only_typed_presentation_fields(self):
-        fixtures = json.loads((PROJECT / "Contract/synthetic-v1-states.json").read_text())
-        self.assertEqual(6, len(fixtures))
+        for name, schema, count in (
+            ("synthetic-v1-states.json", SCHEMA_V1, 6),
+            ("synthetic-v2-states.json", SCHEMA, 7),
+        ):
+            self._check_fixtures(json.loads((PROJECT / "Contract" / name).read_text()), schema, count)
+
+    def _check_fixtures(self, fixtures, schema, count):
+        self.assertEqual(count, len(fixtures))
         for snapshot in fixtures:
-            self.assertEqual(set(SCHEMA["required"]), set(snapshot))
-            for field, rule in SCHEMA["properties"].items():
+            self.assertEqual(set(schema["required"]), set(snapshot))
+            for field, rule in schema["properties"].items():
                 value = snapshot[field]
                 if "enum" in rule:
                     self.assertIn(value, rule["enum"])
@@ -67,6 +103,8 @@ class ContractSourceChecks(unittest.TestCase):
                     self.assertIs(type(value), bool)
             if snapshot["safe_mode"]:
                 self.assertEqual("still", snapshot["motion"])
+                if "activity" in snapshot:
+                    self.assertEqual("present", snapshot["activity"])
 
     def test_scene_and_build_settings_reference_existing_stable_guids(self):
         assets = PROJECT / "Assets"

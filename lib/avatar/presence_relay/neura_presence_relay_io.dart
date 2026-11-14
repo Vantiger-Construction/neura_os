@@ -19,7 +19,7 @@ Future<WebSocket> _defaultConnect(Uri endpoint, Map<String, dynamic> headers) =>
 /// Publishes Neura's avatar presence to the opt-in `neura_api` relay.
 ///
 /// Starts only when the trusted launcher set both relay variables. It sends
-/// the content-free v1 snapshot on every change and every [heartbeat] (the
+/// the content-free v2 snapshot on every change and every [heartbeat] (the
 /// relay withdraws a snapshot that is not refreshed within six seconds), and
 /// withdraws it when the app is hidden, paused or detached. Losing the
 /// connection simply withdraws presence at the relay; this side reconnects

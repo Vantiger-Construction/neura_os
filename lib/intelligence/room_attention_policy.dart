@@ -44,6 +44,8 @@ class NeuraRoomAttentionPolicy {
     'legacy_vault': NeuraRoomAttention.private,
     // "A steady room for feelings, care, and grounding."
     'mood_den': NeuraRoomAttention.calm,
+    // "Neura's own room. You're a guest here."
+    'her_suite': NeuraRoomAttention.calm,
   };
 
   /// The built-in attention for [roomId]. User choices can only make a room
