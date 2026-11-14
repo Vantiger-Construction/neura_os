@@ -161,7 +161,12 @@ class HerSuiteGlass extends StatelessWidget {
             borderRadius: BorderRadius.circular(22),
             border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
           ),
-          child: Padding(padding: padding, child: child),
+          // Taps on tiles and buttons ink on this transparent Material,
+          // above the tinted glass rather than hidden beneath it.
+          child: Material(
+            type: MaterialType.transparency,
+            child: Padding(padding: padding, child: child),
+          ),
         ),
       ),
     );
