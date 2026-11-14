@@ -27,8 +27,7 @@ class MoodStore {
   static const _key = 'neura_mood_entries_v1';
 
   MemoryCrypto? _crypto;
-  // Public reads can migrate legacy data, so they must share writer admission
-  // and the same drain boundary as explicit saves.
+  // Legacy migrations discovered by reads share admission and drain with saves.
   Future<void> _writeQueue = Future<void>.value();
   bool _writesSuspended = false;
   bool _storageUnconfirmed = false;
@@ -43,7 +42,7 @@ class MoodStore {
     if (_writesSuspended) return <MoodEntry>[];
     if (_storageUnconfirmed) throw const MoodSaveUnconfirmedException();
     try {
-      return await _enqueueWrite((generation) => _readAll(generation));
+      return await _readAll(_dataGeneration, queueMigration: true);
     } catch (_) {
       // A wipe revokes an admitted read as well as a queued migration write.
       if (_writesSuspended) return <MoodEntry>[];
@@ -51,7 +50,8 @@ class MoodStore {
     }
   }
 
-  Future<List<MoodEntry>> _readAll(int generation) async {
+  Future<List<MoodEntry>> _readAll(int generation,
+      {bool queueMigration = false}) async {
     if (!_isCurrent(generation)) return <MoodEntry>[];
     final prefs = NeuraPrefsCache.prefs;
     final raw = prefs.getString(_key) ?? '';
@@ -89,6 +89,11 @@ class MoodStore {
           .toList()
         ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
       if (legacy.isNotEmpty) {
+        if (queueMigration) {
+          // Re-read after admission so a concurrent save/migration cannot be
+          // overwritten with the older snapshot. add() already owns this queue.
+          return _enqueueWrite((admitted) => _readAll(admitted));
+        }
         await _persist(legacy, generation);
       }
       return _isCurrent(generation) ? legacy : <MoodEntry>[];
