@@ -181,6 +181,104 @@ void main() {
     });
   });
 
+  group('wind down', () {
+    /// Daytime opens through Oct 12, plus a 01:30 visit on each night in
+    /// [lateNightsOf] (the day of the evening each night started).
+    NeuraRoutineModel withLateNights(List<int> lateNightsOf) {
+      var model = NeuraRoutineModel.empty();
+      for (var day = 1; day <= 12; day++) {
+        if (lateNightsOf.contains(day - 1)) {
+          model = model.recordOpen(DateTime(2026, 10, day, 1, 30));
+        }
+        model = model.recordOpen(DateTime(2026, 10, day, 9));
+      }
+      return model;
+    }
+
+    final evening = DateTime(2026, 10, 12, 21);
+
+    test('offers Wind Down after several late nights this week', () {
+      final windDown = only(
+        source.scan(routine: withLateNights([6, 8, 10]), now: evening),
+        NeuraInitiativeSource.windDownSpecialist,
+      );
+      expect(windDown, isNotNull);
+      expect(windDown!.id, 'initiative.wind_down:2026-10-12');
+      expect(windDown.body, contains('3 of the last 7 nights'));
+      expect(windDown.body, isNot(contains('sleep')));
+      expect(
+        windDown.payload[NeuraInitiativeSource.kindKey],
+        NeuraInitiativeSource.windDownKind,
+      );
+      expect(windDown.urgency, lessThan(0.85));
+      expect(
+        windDown.expiresAt.isAfter(DateTime(2026, 10, 13)),
+        isFalse,
+      );
+    });
+
+    test('expires at midnight when offered late in the evening', () {
+      final late = DateTime(2026, 10, 12, 23, 15);
+      final windDown = only(
+        source.scan(routine: withLateNights([6, 8, 10]), now: late),
+        NeuraInitiativeSource.windDownSpecialist,
+      );
+      expect(windDown!.expiresAt, DateTime(2026, 10, 13));
+    });
+
+    test('stays quiet before the evening and with too few late nights', () {
+      expect(
+        only(
+          source.scan(
+            routine: withLateNights([6, 8, 10]),
+            now: DateTime(2026, 10, 12, 19, 59),
+          ),
+          NeuraInitiativeSource.windDownSpecialist,
+        ),
+        isNull,
+      );
+      expect(
+        only(
+          source.scan(routine: withLateNights([8, 10]), now: evening),
+          NeuraInitiativeSource.windDownSpecialist,
+        ),
+        isNull,
+      );
+    });
+
+    test('late nights older than a week do not count', () {
+      expect(
+        only(
+          source.scan(routine: withLateNights([1, 2, 3, 4]), now: evening),
+          NeuraInitiativeSource.windDownSpecialist,
+        ),
+        isNull,
+      );
+    });
+
+    test('a shown offer is not repeated for a week', () {
+      final routine = withLateNights([6, 8, 10])
+          .acknowledgeWindDown('initiative.wind_down:2026-10-07');
+      expect(
+        only(
+          source.scan(routine: routine, now: evening),
+          NeuraInitiativeSource.windDownSpecialist,
+        ),
+        isNull,
+      );
+      final weekLater = routine
+          .recordOpen(DateTime(2026, 10, 13, 1, 30))
+          .recordOpen(DateTime(2026, 10, 14, 21));
+      expect(
+        only(
+          source.scan(routine: weekLater, now: DateTime(2026, 10, 14, 21, 5)),
+          NeuraInitiativeSource.windDownSpecialist,
+        ),
+        isNotNull,
+      );
+    });
+  });
+
   group('through the Autonomy Kernel', () {
     NeuraAutonomyPolicy policy({String? roomId}) => NeuraAutonomyPolicy(
           enabled: true,
@@ -226,6 +324,55 @@ void main() {
           reason: '${candidate.specialistId}: ${receipt.reasons}',
         );
       }
+    });
+
+    test('the wind-down offer clears the kernel score bar', () {
+      var routine = NeuraRoutineModel.empty();
+      for (final day in [7, 9, 11]) {
+        routine = routine.recordOpen(DateTime(2026, 10, day, 1, 30));
+      }
+      final now = DateTime(2026, 10, 12, 21);
+      final windDown = only(
+        source.scan(routine: routine, now: now),
+        NeuraInitiativeSource.windDownSpecialist,
+      );
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: windDown!,
+        policy: policy(),
+        now: now,
+      );
+      expect(
+        receipt.outcome,
+        NeuraDecisionOutcome.allow,
+        reason: receipt.reasons.join('; '),
+      );
+    });
+
+    test('an active Wind Down mode keeps the offer silent', () {
+      var routine = NeuraRoutineModel.empty();
+      for (final day in [7, 9, 11]) {
+        routine = routine.recordOpen(DateTime(2026, 10, day, 1, 30));
+      }
+      final now = DateTime(2026, 10, 12, 21);
+      final windDown = only(
+        source.scan(routine: routine, now: now),
+        NeuraInitiativeSource.windDownSpecialist,
+      );
+      final receipt = NeuraAutonomyKernel().evaluate(
+        candidate: windDown!,
+        policy: NeuraAutonomyPolicy(
+          enabled: true,
+          allowSensitiveSignals: false,
+          maxDailySuggestions: 5,
+          suggestionsToday: 0,
+          suggestionsLastHour: 0,
+          focusMode: 'windDown',
+          safeMode: false,
+          recentlyDeclined: false,
+        ),
+        now: now,
+      );
+      expect(receipt.outcome, NeuraDecisionOutcome.suppressed);
     });
 
     test('a private room keeps the welcome back silent', () {
