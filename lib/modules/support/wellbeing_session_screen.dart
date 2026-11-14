@@ -115,8 +115,10 @@ class _WellbeingSessionScreenState extends State<WellbeingSessionScreen>
     });
   }
 
-  void _start() {
-    if (!_canRun || _hasTimer) return;
+  void _start(int generation) {
+    if (!mounted || generation != _timerGeneration || !_canRun || _hasTimer) {
+      return;
+    }
     _cancel();
     if (_quietNow) {
       setState(
@@ -165,8 +167,14 @@ class _WellbeingSessionScreenState extends State<WellbeingSessionScreen>
     });
   }
 
-  void _pauseTimer() {
-    if (widget.reminder || !_canRun || !_running) return;
+  void _pauseTimer(int generation) {
+    if (!mounted ||
+        generation != _timerGeneration ||
+        widget.reminder ||
+        !_canRun ||
+        !_running) {
+      return;
+    }
     if (_remaining == Duration.zero) {
       _finish();
       return;
@@ -178,8 +186,14 @@ class _WellbeingSessionScreenState extends State<WellbeingSessionScreen>
     });
   }
 
-  void _resumeTimer() {
-    if (widget.reminder || !_canRun || !_paused) return;
+  void _resumeTimer(int generation) {
+    if (!mounted ||
+        generation != _timerGeneration ||
+        widget.reminder ||
+        !_canRun ||
+        !_paused) {
+      return;
+    }
     final remaining = _remaining;
     if (remaining == Duration.zero) {
       _finish();
@@ -213,8 +227,8 @@ class _WellbeingSessionScreenState extends State<WellbeingSessionScreen>
     setState(() {});
   }
 
-  void _suggest(String text) {
-    if (!_canRun) return;
+  void _suggest(String text, int generation) {
+    if (!mounted || generation != _timerGeneration || !_canRun) return;
     _suggestionRevision++;
     if (_step.text.trim().isEmpty || _step.text == text) {
       _useSuggestion(text);
@@ -269,6 +283,7 @@ class _WellbeingSessionScreenState extends State<WellbeingSessionScreen>
 
   @override
   Widget build(BuildContext context) {
+    final generation = _timerGeneration;
     // Elapsed time stays monotonic when the device clock or time zone changes.
     // Wall time remains appropriate for the user's quiet-hours preference.
     final seconds =
@@ -360,7 +375,9 @@ class _WellbeingSessionScreenState extends State<WellbeingSessionScreen>
                 'Ask for help',
                 'Do something enjoyable'
               ])
-                ActionChip(label: Text(text), onPressed: () => _suggest(text)),
+                ActionChip(
+                    label: Text(text),
+                    onPressed: () => _suggest(text, generation)),
             ]),
             if (_suggestedStep case final suggestion?)
               _replacementChoice(suggestion),
@@ -381,13 +398,14 @@ class _WellbeingSessionScreenState extends State<WellbeingSessionScreen>
                 onPressed: !_canRun
                     ? null
                     : _paused
-                        ? _resumeTimer
-                        : _pauseTimer,
+                        ? () => _resumeTimer(generation)
+                        : () => _pauseTimer(generation),
                 icon: Icon(_paused ? Icons.play_arrow : Icons.pause),
                 label: Text(_paused ? 'Resume timer' : 'Pause timer'))
           else
             FilledButton(
-                onPressed: _hasTimer || !_canRun ? null : _start,
+                onPressed:
+                    _hasTimer || !_canRun ? null : () => _start(generation),
                 child: Text(widget.reminder
                     ? 'Start this reminder'
                     : 'Try a five-minute timer (optional)')),
