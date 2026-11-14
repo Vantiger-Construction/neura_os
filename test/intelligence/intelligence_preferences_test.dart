@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/intelligence/intelligence_preferences.dart';
+import 'package:neuro_companion/intelligence/room_attention_policy.dart';
 
 void main() {
   group('NeuraIntelligencePreferences JSON', () {
@@ -122,6 +123,100 @@ void main() {
       expect(preferences.isQuietAt(DateTime(2026, 8, 14, 0)), isTrue);
       expect(preferences.isQuietAt(DateTime(2026, 8, 14, 12)), isTrue);
       expect(preferences.isQuietAt(DateTime(2026, 8, 14, 23, 59)), isTrue);
+    });
+  });
+
+  group('NeuraIntelligencePreferences room attention', () {
+    test('defaults to no user choices', () {
+      expect(const NeuraIntelligencePreferences().roomAttention, isEmpty);
+      expect(
+        NeuraIntelligencePreferences.fromJson(const <String, Object?>{})
+            .roomAttention,
+        isEmpty,
+      );
+    });
+
+    test('round-trips stricter choices through JSON', () {
+      final preferences = const NeuraIntelligencePreferences()
+          .withRoomAttention('joy_lounge', NeuraRoomAttention.private)
+          .withRoomAttention('mood_den', NeuraRoomAttention.private);
+      final restored = NeuraIntelligencePreferences.fromJson(
+        preferences.toJson(),
+      );
+      expect(restored.roomAttention, {
+        'joy_lounge': NeuraRoomAttention.private,
+        'mood_den': NeuraRoomAttention.private,
+      });
+    });
+
+    test('a choice no stricter than built in is removed, not stored', () {
+      var preferences = const NeuraIntelligencePreferences()
+          .withRoomAttention('joy_lounge', NeuraRoomAttention.calm);
+      expect(preferences.roomAttention, {
+        'joy_lounge': NeuraRoomAttention.calm,
+      });
+      preferences =
+          preferences.withRoomAttention('joy_lounge', NeuraRoomAttention.open);
+      expect(preferences.roomAttention, isEmpty);
+      preferences = preferences.withRoomAttention(
+        'reflection_bay',
+        NeuraRoomAttention.private,
+      );
+      preferences =
+          preferences.withRoomAttention('mood_den', NeuraRoomAttention.calm);
+      expect(preferences.roomAttention, isEmpty);
+    });
+
+    test('loading drops malformed, loosening and oversized entries', () {
+      final raw = <String, Object?>{
+        'room_attention': <Object?, Object?>{
+          'joy_lounge': 'private',
+          'reflection_bay': 'open',
+          'mood_den': 'calm',
+          'dream_atrium': 'loud',
+          'penthouse': 7,
+          '': 'private',
+          'x' * 65: 'private',
+          42: 'calm',
+        },
+      };
+      final preferences = NeuraIntelligencePreferences.fromJson(raw);
+      expect(preferences.roomAttention, {
+        'joy_lounge': NeuraRoomAttention.private,
+      });
+      expect(preferences.roomAttention.clear, throwsUnsupportedError);
+    });
+
+    test('stored choices are capped', () {
+      final raw = <String, Object?>{
+        'room_attention': {
+          for (var i = 0; i < 50; i++) 'room_$i': 'calm',
+        },
+      };
+      expect(
+        NeuraIntelligencePreferences.fromJson(raw).roomAttention,
+        hasLength(NeuraIntelligencePreferences.maxRoomAttentionChoices),
+      );
+      var preferences = const NeuraIntelligencePreferences();
+      for (var i = 0; i < 50; i++) {
+        preferences = preferences.withRoomAttention(
+          'room_$i',
+          NeuraRoomAttention.calm,
+        );
+      }
+      expect(
+        preferences.roomAttention,
+        hasLength(NeuraIntelligencePreferences.maxRoomAttentionChoices),
+      );
+    });
+
+    test('other preference changes keep room choices', () {
+      final preferences = const NeuraIntelligencePreferences()
+          .withRoomAttention('joy_lounge', NeuraRoomAttention.calm)
+          .copyWith(quietHoursEnabled: true);
+      expect(preferences.roomAttention, {
+        'joy_lounge': NeuraRoomAttention.calm,
+      });
     });
   });
 }

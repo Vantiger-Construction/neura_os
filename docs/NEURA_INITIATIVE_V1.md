@@ -25,6 +25,16 @@ Constitution: it can suppress a candidate, never allow one.
 Edit the table in `NeuraRoomAttentionPolicy._byRoomId` to change which rooms
 are private or calm.
 
+Users can also mark any room calm or private under **Room attention** in the
+Intelligence Center (`NeuraIntelligencePreferences.roomAttention`). A choice
+is merged with the table by `NeuraRoomAttentionPolicy.effectiveFor`, and the
+stricter setting wins, so a user choice can tighten a room but can't loosen a
+built-in calm or private one. Choices that are no stricter than the built-in
+setting aren't stored. Loading ignores malformed entries and caps the map at 32
+rooms with ids of 64 characters or fewer. The urgent override applies to
+user-marked rooms too, and the suppression reason says the user marked the
+room.
+
 **Routine initiative** (`lib/intelligence/routine_model.dart`,
 `lib/intelligence/initiative_source.dart`)
 
@@ -40,6 +50,12 @@ Both are ordinary `NeuraIntelligenceCandidate`s, so they go through the full
 kernel (Safe Mode, quiet hours, focus, room, caps, consent, constitution) and
 app guardrails, and their specialist reputation learns from accept/dismiss
 like every other specialist.
+
+**Calibration**
+
+Each initiative card that reaches a rendered frame is also recorded as a
+display-only forecast. The outcome is whether the user accepts it before it
+expires. See [SUGGESTION_CALIBRATION_INTEGRATION.md](SUGGESTION_CALIBRATION_INTEGRATION.md).
 
 ## Privacy
 

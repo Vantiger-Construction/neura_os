@@ -62,6 +62,10 @@ Unresolved/expired forecasts are never treated as false outcomes.
 ## Before any runtime integration
 
 Keep this disconnected until the actual integration is separately reviewed.
+The only reviewed integration so far is display-only suggestion calibration,
+which uses a Dart port of this contract; see
+[SUGGESTION_CALIBRATION_INTEGRATION.md](SUGGESTION_CALIBRATION_INTEGRATION.md).
+This Rust module itself remains disconnected.
 Define consent, stable source/event definitions, trustworthy outcome evidence,
 source ownership, UI wording and acceptable retention. Preserve current manual
 choices, Safe Mode, exact-request cloud approval and all autonomy gates. Existing
