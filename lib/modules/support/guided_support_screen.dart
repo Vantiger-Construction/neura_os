@@ -7,12 +7,22 @@ import '../../reliability/safe_boot.dart';
 import 'guided_support_activity.dart';
 import 'guided_support_store.dart';
 import 'human_support_screen.dart';
+import 'support_page_shortcuts.dart';
+import 'support_suggestion_choices.dart';
+import 'support_suggestion_screen.dart';
 
 class GuidedSupportScreen extends StatefulWidget {
-  const GuidedSupportScreen({super.key, this.store, this.initialActivity});
+  const GuidedSupportScreen(
+      {super.key,
+      this.store,
+      this.initialActivity,
+      this.copyText,
+      this.trustedContactsBuilder});
 
   final GuidedSupportStore? store;
   final GuidedSupportActivity? initialActivity;
+  final Future<void> Function(String)? copyText;
+  final WidgetBuilder? trustedContactsBuilder;
 
   @override
   State<GuidedSupportScreen> createState() => _GuidedSupportScreenState();
@@ -25,6 +35,8 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
   GuidedSupportStore get _store => widget.store ?? GuidedSupportStore.instance;
   GuidedSupportActivity? _activity;
   RememberedSupportActivity? _remembered;
+  SupportSuggestionChoices? _choices;
+  bool _suggestionRequested = false;
   GuidedSupportFeedback? _feedback;
   int _step = 0;
   int _epoch = 0;
@@ -72,18 +84,28 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
     }
   }
 
-  Future<void> _loadPreference() async {
+  Future<void> _loadPreference({bool requested = false}) async {
     if (!_privateAvailable || !_visible || _loading) return;
     final epoch = ++_epoch;
     setState(() {
       _loading = true;
       _preferenceHidden = false;
       _notice = null;
+      _remembered = null;
+      _choices = null;
+      _suggestionRequested = requested;
     });
     try {
+      final choices = await _store.readChoices();
+      if (!_currentRequest(epoch) || !_privateAvailable) return;
+      setState(() => _choices = choices);
+      if (choices.onlyWhenAsked && !requested) return;
       final record = await _store.read();
       if (!_currentRequest(epoch) || !_privateAvailable) return;
-      setState(() => _remembered = record);
+      setState(() => _remembered = record != null &&
+              choices.allows(record.activity, requested: requested)
+          ? record
+          : null);
     } catch (_) {
       if (!_currentRequest(epoch) || !_privateAvailable) return;
       setState(() => _notice =
@@ -105,6 +127,8 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
     _dialogGate?.value = false;
     _clearDrafts();
     _remembered = null;
+    _choices = null;
+    _suggestionRequested = false;
     _feedback = null;
     _loading = false;
     _preferenceHidden = true;
@@ -270,7 +294,11 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
           stillApproved: stillApproved);
       if (!stillApproved()) return;
       setState(() {
-        _remembered = record;
+        _remembered = _choices?.allows(record.activity,
+                    requested: _suggestionRequested) ==
+                true
+            ? record
+            : null;
         _preferenceHidden = false;
         _notice =
             'Activity remembered on this device. Your writing was not saved.';
@@ -341,7 +369,9 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
     if (action == 'forget') await _forget();
     if (action == 'copy' && record != null && _privateAvailable) {
       try {
-        await Clipboard.setData(ClipboardData(text: record.exportText()));
+        await (widget.copyText ??
+                (text) => Clipboard.setData(ClipboardData(text: text)))(
+            record.exportText());
         if (_currentRequest(epoch) && _privateAvailable) {
           setState(() => _notice = 'Preference copied to your clipboard.');
         }
@@ -358,7 +388,9 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
     setState(() => _invalidateSession(
         'Temporary writing was cleared when you left this screen.'));
     await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => const HumanSupportScreen(),
+      builder: (_) => HumanSupportScreen(
+          copyText: widget.copyText,
+          trustedContactsBuilder: widget.trustedContactsBuilder),
     ));
   }
 
@@ -366,7 +398,8 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
   Widget build(BuildContext context) {
     final activity = _activity;
     final remembered = _remembered;
-    return Scaffold(
+    return SupportPageShortcuts(
+        child: Scaffold(
       appBar: AppBar(title: const Text('Help me through this'), actions: [
         if (activity != null)
           IconButton(
@@ -401,8 +434,16 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
                   const SizedBox(height: 16),
                   if (_preferenceHidden && _privateAvailable && !_loading)
                     OutlinedButton(
-                        onPressed: _loadPreference,
+                        onPressed: () => _loadPreference(requested: true),
                         child: const Text('Show remembered activity')),
+                  if (!_preferenceHidden &&
+                      _choices?.onlyWhenAsked == true &&
+                      !_suggestionRequested &&
+                      _privateAvailable &&
+                      !_loading)
+                    OutlinedButton(
+                        onPressed: () => _loadPreference(requested: true),
+                        child: const Text('Show suggested activity')),
                   if (remembered != null && _privateAvailable)
                     Card(
                         child: Padding(
@@ -519,6 +560,15 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
                       onPressed: _working ? null : () => _choose(null),
                       child: const Text('Choose another activity')),
                 const SizedBox(height: 16),
+                TextButton.icon(
+                    onPressed: _working
+                        ? null
+                        : () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    SupportSuggestionScreen(store: _store))),
+                    icon: const Icon(Icons.tune),
+                    label: const Text('Suggestion choices')),
                 OutlinedButton.icon(
                     onPressed: _working ? null : _humanSupport,
                     icon: const Icon(Icons.people_outline),
@@ -530,6 +580,6 @@ class _GuidedSupportScreenState extends State<GuidedSupportScreen>
               ]),
         ),
       )),
-    );
+    ));
   }
 }

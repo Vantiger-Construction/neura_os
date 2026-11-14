@@ -8,7 +8,10 @@ MediaQueryData applyHumanAccessibilityPreferences(
   MediaQueryData source,
   HumanPrefs prefs,
 ) {
-  final reduceMotion = source.disableAnimations || prefs.reducedMotion;
+  final reduceMotion = source.disableAnimations ||
+      prefs.reducedMotion ||
+      prefs.lowStim ||
+      prefs.safeMode;
 
   return source.copyWith(
     textScaler: _HumanPreferenceTextScaler(
@@ -17,6 +20,7 @@ MediaQueryData applyHumanAccessibilityPreferences(
     ),
     disableAnimations: reduceMotion,
     accessibleNavigation: source.accessibleNavigation || reduceMotion,
+    highContrast: source.highContrast || prefs.highContrast,
   );
 }
 
