@@ -3,8 +3,10 @@
 /// This is the routine half of Neura's initiative: it lets her notice a
 /// return after a long absence, or a visit at an hour she has almost never
 /// seen. It stores only an hour-of-week histogram, a capped list of active
-/// calendar days, and the last-seen timestamp. It never stores what was
-/// said, which screen was open, or anything from journals or conversations.
+/// calendar days, a capped list of recent nights with a visit after
+/// midnight (date keys only), and the last-seen timestamp. It never stores
+/// what was said, which screen was open, or anything from journals or
+/// conversations.
 ///
 /// Pure and immutable so it can be unit tested without Flutter or storage.
 /// Times are interpreted in whatever zone the caller passes; the dashboard
@@ -17,10 +19,16 @@ class NeuraRoutineModel {
     this.timeZoneId,
     this.pendingArrivalFrom,
     this.pendingArrivalAt,
+    Iterable<String> lateNights = const <String>[],
+    String? windDownOfferedDay,
   })  : hourOfWeekCounts = List<int>.unmodifiable(
           _normaliseCounts(hourOfWeekCounts),
         ),
-        activeDays = List<String>.unmodifiable(_normaliseDays(activeDays));
+        activeDays = List<String>.unmodifiable(_normaliseDays(activeDays)),
+        lateNights = List<String>.unmodifiable(
+          _normaliseDays(lateNights, max: maxLateNights),
+        ),
+        windDownOfferedDay = _validDay(windDownOfferedDay);
 
   factory NeuraRoutineModel.empty() =>
       NeuraRoutineModel(hourOfWeekCounts: const <int>[]);
@@ -35,6 +43,15 @@ class NeuraRoutineModel {
   /// fade and current ones dominate.
   static const int maxTotalCount = 2000;
 
+  /// Only this many most-recent late nights are kept.
+  static const int maxLateNights = 14;
+
+  /// A visit before this local hour belongs to the previous evening's night.
+  static const int lateNightEndHour = 5;
+
+  /// Schema 2 gained the optional `late_nights` and `wind_down_day` fields
+  /// without a version bump: older readers ignore them, and missing fields
+  /// read as empty, so existing routine history is kept.
   static const int schemaVersion = 2;
 
   final List<int> hourOfWeekCounts;
@@ -49,6 +66,46 @@ class NeuraRoutineModel {
   /// Recording suppressed opens must not consume this opportunity.
   final DateTime? pendingArrivalFrom;
   final DateTime? pendingArrivalAt;
+
+  /// Ascending night keys: the `yyyy-mm-dd` of the evening a night started,
+  /// for nights when Neura was opened between midnight and
+  /// [lateNightEndHour]. Dates only; no times, counts or content.
+  final List<String> lateNights;
+
+  /// The day key of the evening a wind-down card last reached a frame.
+  final String? windDownOfferedDay;
+
+  /// The night [at] belongs to when it falls after midnight and before
+  /// [lateNightEndHour], or null for any other hour.
+  static String? nightKeyFor(DateTime at) {
+    if (at.hour >= lateNightEndHour) return null;
+    return dayKey(DateTime(at.year, at.month, at.day - 1));
+  }
+
+  /// Late nights among the [nights] evenings before the evening of [at].
+  /// The night that is about to start tonight is never counted.
+  int lateNightsBefore(DateTime at, {int nights = 7}) {
+    final newest = dayKey(DateTime(at.year, at.month, at.day - 1));
+    final oldest = dayKey(DateTime(at.year, at.month, at.day - nights));
+    var count = 0;
+    for (final night in lateNights) {
+      if (night.compareTo(oldest) >= 0 && night.compareTo(newest) <= 0) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  /// Whole days from [windDownOfferedDay] to the calendar day of [at], or
+  /// null when no wind-down card has been shown.
+  int? daysSinceWindDownOffer(DateTime at) {
+    final offered = windDownOfferedDay;
+    if (offered == null) return null;
+    final parts = offered.split('-').map(int.parse).toList(growable: false);
+    final offeredDate = DateTime.utc(parts[0], parts[1], parts[2]);
+    final today = DateTime.utc(at.year, at.month, at.day);
+    return today.difference(offeredDate).inDays;
+  }
 
   static String zoneFor(DateTime at) =>
       '${at.timeZoneName}:${at.timeZoneOffset.inMinutes}';
@@ -102,6 +159,10 @@ class NeuraRoutineModel {
     final day = dayKey(at);
     final days =
         activeDays.contains(day) ? activeDays : <String>[...activeDays, day];
+    final night = nightKeyFor(at);
+    final nights = night == null || lateNights.contains(night)
+        ? lateNights
+        : <String>[...lateNights, night];
     final returned =
         previous != null && at.difference(previous) >= const Duration(days: 3);
     return NeuraRoutineModel(
@@ -111,6 +172,8 @@ class NeuraRoutineModel {
       timeZoneId: zoneFor(at),
       pendingArrivalFrom: returned ? previous : pendingArrivalFrom,
       pendingArrivalAt: returned ? at : pendingArrivalAt,
+      lateNights: nights,
+      windDownOfferedDay: windDownOfferedDay,
     );
   }
 
@@ -125,6 +188,28 @@ class NeuraRoutineModel {
       activeDays: activeDays,
       lastSeenAt: lastSeenAt,
       timeZoneId: timeZoneId,
+      lateNights: lateNights,
+      windDownOfferedDay: windDownOfferedDay,
+    );
+  }
+
+  /// Records that the wind-down card for [candidateId] reached a frame, so
+  /// the weekly cooldown survives restarts. The id carries the evening's
+  /// day key (`initiative.wind_down:yyyy-mm-dd`); anything else is ignored.
+  NeuraRoutineModel acknowledgeWindDown(String candidateId) {
+    const prefix = 'initiative.wind_down:';
+    if (!candidateId.startsWith(prefix)) return this;
+    final day = candidateId.substring(prefix.length);
+    if (!_dayPattern.hasMatch(day)) return this;
+    return NeuraRoutineModel(
+      hourOfWeekCounts: hourOfWeekCounts,
+      activeDays: activeDays,
+      lastSeenAt: lastSeenAt,
+      timeZoneId: timeZoneId,
+      pendingArrivalFrom: pendingArrivalFrom,
+      pendingArrivalAt: pendingArrivalAt,
+      lateNights: lateNights,
+      windDownOfferedDay: day,
     );
   }
 
@@ -151,6 +236,8 @@ class NeuraRoutineModel {
         'zone': timeZoneId,
         'arrival_from_ms': pendingArrivalFrom?.millisecondsSinceEpoch,
         'arrival_at_ms': pendingArrivalAt?.millisecondsSinceEpoch,
+        'late_nights': lateNights,
+        'wind_down_day': windDownOfferedDay,
       };
 
   /// Never throws. Unknown versions or malformed fields fall back to an
@@ -166,13 +253,18 @@ class NeuraRoutineModel {
       }
     }
 
-    final rawDays = json['days'];
-    final days = <String>[];
-    if (rawDays is List) {
-      for (final value in rawDays) {
-        if (value is String) days.add(value);
-      }
+    List<String> dayKeys(String key) {
+      final raw = json[key];
+      if (raw is! List) return const <String>[];
+      return <String>[
+        for (final value in raw)
+          if (value is String) value,
+      ];
     }
+
+    final days = dayKeys('days');
+    final nights = dayKeys('late_nights');
+    final windDownDay = json['wind_down_day'];
 
     DateTime? timestamp(String key) {
       final raw = json[key];
@@ -201,6 +293,8 @@ class NeuraRoutineModel {
       timeZoneId: zone,
       pendingArrivalFrom: validArrival ? arrivalFrom : null,
       pendingArrivalAt: validArrival ? arrivalAt : null,
+      lateNights: nights,
+      windDownOfferedDay: windDownDay is String ? windDownDay : null,
     );
   }
 
@@ -211,9 +305,15 @@ class NeuraRoutineModel {
 
   static final RegExp _dayPattern = RegExp(r'^\d{4}-\d{2}-\d{2}$');
 
-  static List<String> _normaliseDays(Iterable<String> days) {
+  static String? _validDay(String? day) =>
+      day != null && _dayPattern.hasMatch(day) ? day : null;
+
+  static List<String> _normaliseDays(
+    Iterable<String> days, {
+    int max = maxActiveDays,
+  }) {
     final unique = days.where(_dayPattern.hasMatch).toSet().toList()..sort();
-    if (unique.length <= maxActiveDays) return unique;
-    return unique.sublist(unique.length - maxActiveDays);
+    if (unique.length <= max) return unique;
+    return unique.sublist(unique.length - max);
   }
 }

@@ -38,15 +38,25 @@ room.
 **Routine initiative** (`lib/intelligence/routine_model.dart`,
 `lib/intelligence/initiative_source.dart`)
 
-A content-free hour-of-week histogram of app opens feeds two new specialists:
+A content-free history of when Neura is opened feeds three specialists:
 
 - `initiative.arrival` — "Welcome back" after 3+ days away. Shown as the new
   `ProactiveBannerKind.presence` card.
 - `initiative.routine_shift` — a gentle check-in when Neura is opened between
   midnight and 5am at an hour the user almost never visits (needs 14+ active
   days and 30+ opens of history). Shown as a wellness card.
+- `initiative.wind_down`: an evening offer (20:00 until midnight) after Neura
+  was opened between midnight and 5am on 3 or more of the last 7 nights.
+  Shown as a focus card that opens the Focus Office, where Wind Down is one
+  tap away. The copy states only what Neura observed ("You've stopped by
+  after midnight on 3 of the last 7 nights") and makes no claim about sleep
+  or health. It's offered at most once a week; the cooldown starts when the
+  card reaches a rendered frame and is saved with the routine, like the
+  welcome-back acknowledgement. An active Wind Down or Deep Work focus mode
+  suppresses it in the kernel, and dismissals lower it below the score bar
+  quickly (it scores about 0.41 against a 0.38 bar).
 
-Both are ordinary `NeuraIntelligenceCandidate`s, so they go through the full
+All three are ordinary `NeuraIntelligenceCandidate`s, so they go through the full
 kernel (Safe Mode, quiet hours, focus, room, caps, consent, constitution) and
 app guardrails, and their specialist reputation learns from accept/dismiss
 like every other specialist.
@@ -59,9 +69,13 @@ expires. See [SUGGESTION_CALIBRATION_INTEGRATION.md](SUGGESTION_CALIBRATION_INTE
 
 ## Privacy
 
-- Stored: hour-of-week counts, up to 60 active day keys, last-seen time,
-  timezone name/offset, and at most one pending return's timestamps. No
-  content, screens, or conversation data.
+- Stored: hour-of-week counts, up to 60 active day keys, up to 14 late-night
+  keys (the date of the evening a night with a visit after midnight began),
+  the date a wind-down card was last shown, last-seen time, timezone
+  name/offset, and at most one pending return's timestamps. No content,
+  screens, or conversation data. The late-night and wind-down fields were
+  added to schema v2 without a version bump: older builds ignore them and
+  missing fields read as empty, so existing routine history is kept.
 - Routine history is read for inference and recorded only when proactive
   suggestions and `allowLearning` are on and Safe Mode is off. Disabling any
   of these gates clears the in-memory baseline and queues removal of the
