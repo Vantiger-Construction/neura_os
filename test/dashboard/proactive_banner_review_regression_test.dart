@@ -275,8 +275,85 @@ void main() {
       await NeuraPrefsCache.prefs
           .setString(NeuraRoom.currentRoomPrefsKey, 'reflection_bay');
       expect(service.canDisplay(banner), isFalse);
-      await service.recordShown(banner);
-      expect(outcomeOf(banner), isNot(NeuraSuggestionOutcome.shown));
+      fixture.expectIsolation();
+    });
+  });
+
+  test('the shell room passed by the card overrides the saved room', () async {
+    await fixture.run(() async {
+      final banner = await service.maybeGetBannerOnAppOpen();
+      expect(banner, isNotNull);
+      expect(service.canDisplay(banner!, roomId: 'reflection_bay'), isFalse);
+      expect(service.canDisplay(banner, roomId: 'penthouse'), isTrue);
+      fixture.expectIsolation();
+    });
+  });
+
+  test('a card that rendered is still recorded after a room change',
+      () async {
+    await fixture.run(() async {
+      final banner = await service.maybeGetBannerOnAppOpen();
+      expect(banner, isNotNull);
+      await NeuraPrefsCache.prefs
+          .setString(NeuraRoom.currentRoomPrefsKey, 'reflection_bay');
+      await service.recordShown(banner!);
+      expect(outcomeOf(banner), NeuraSuggestionOutcome.shown);
+      fixture.expectIsolation();
+    });
+  });
+
+  test('quiet hours starting after a tap do not drop it', () async {
+    await fixture.run(() async {
+      final banner = await service.maybeGetBannerOnAppOpen();
+      expect(banner, isNotNull);
+      final started = Completer<void>();
+      final release = Completer<void>();
+      fixture.preferences.beforeSetValue = (key) async {
+        if (key.endsWith('neura.proactive_banner.state.v2') &&
+            !release.isCompleted) {
+          if (!started.isCompleted) started.complete();
+          await release.future;
+        }
+      };
+      final shown = service.recordShown(banner!);
+      await started.future;
+      final tapped = service.recordOutcome(banner: banner, acted: true);
+      await controller.updatePreferences(
+        controller.preferences.copyWith(
+          quietHoursEnabled: true,
+          quietHoursStart: 0,
+          quietHoursEnd: 0,
+        ),
+      );
+      release.complete();
+      await shown;
+      await tapped;
+      expect(outcomeOf(banner), NeuraSuggestionOutcome.acted);
+      fixture.expectIsolation();
+    });
+  });
+
+  test('Safe Mode turned on after a tap still drops it', () async {
+    await fixture.run(() async {
+      final banner = await service.maybeGetBannerOnAppOpen();
+      expect(banner, isNotNull);
+      final started = Completer<void>();
+      final release = Completer<void>();
+      fixture.preferences.beforeSetValue = (key) async {
+        if (key.endsWith('neura.proactive_banner.state.v2') &&
+            !release.isCompleted) {
+          if (!started.isCompleted) started.complete();
+          await release.future;
+        }
+      };
+      final shown = service.recordShown(banner!);
+      await started.future;
+      final tapped = service.recordOutcome(banner: banner, acted: true);
+      SafeBoot.instance.safeMode.value = true;
+      release.complete();
+      await shown;
+      await tapped;
+      expect(outcomeOf(banner), NeuraSuggestionOutcome.shown);
       fixture.expectIsolation();
     });
   });
