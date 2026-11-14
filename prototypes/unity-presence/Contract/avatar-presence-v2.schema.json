@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Neura avatar presentation snapshot v2",
+  "description": "Presentation only. Input is a flat ASCII JSON profile limited to 512 characters. v2 adds the her_suite room and the lighting, camera and activity stage fields. The consumer canonicalizes either Safe Mode signal to phase safeMode, safe_mode true, motion still and activity present. Receivers also accept v1 input. No additional authority is granted.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "room_id",
+    "phase",
+    "stance",
+    "motion",
+    "scale",
+    "safe_mode",
+    "lighting",
+    "camera",
+    "activity"
+  ],
+  "properties": {
+    "v": {
+      "type": "integer",
+      "const": 2
+    },
+    "room_id": {
+      "type": "string",
+      "enum": [
+        "penthouse",
+        "reflection_bay",
+        "joy_lounge",
+        "mood_den",
+        "dream_atrium",
+        "legacy_vault",
+        "her_suite"
+      ]
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "idle",
+        "thinking",
+        "speaking",
+        "listening",
+        "safeMode"
+      ]
+    },
+    "stance": {
+      "type": "string",
+      "enum": [
+        "welcoming",
+        "reflective",
+        "playful",
+        "grounding",
+        "dreaming",
+        "guardian"
+      ]
+    },
+    "motion": {
+      "type": "string",
+      "enum": [
+        "still",
+        "subtle",
+        "expressive"
+      ]
+    },
+    "scale": {
+      "type": "string",
+      "enum": [
+        "compact",
+        "standard",
+        "large"
+      ]
+    },
+    "safe_mode": {
+      "type": "boolean"
+    },
+    "lighting": {
+      "type": "string",
+      "enum": [
+        "standard",
+        "gold",
+        "aurora",
+        "dusk"
+      ]
+    },
+    "camera": {
+      "type": "string",
+      "enum": [
+        "follow",
+        "wide",
+        "face"
+      ]
+    },
+    "activity": {
+      "type": "string",
+      "enum": [
+        "present",
+        "resting"
+      ]
+    }
+  }
+}

@@ -165,6 +165,7 @@ class NeuraAICore {
         'mood_den' => 'We can steady things here in the Mood Den.',
         'dream_atrium' => 'There is room to imagine in the Dream Atrium.',
         'legacy_vault' => 'We can handle this carefully in the Legacy Vault.',
+        'her_suite' => 'Make yourself at home in my suite.',
         _ => 'I am here with you in the Penthouse.',
       };
 }

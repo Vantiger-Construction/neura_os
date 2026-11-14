@@ -62,7 +62,7 @@ class NeuraPresenceRelayConfig {
   String toString() => 'NeuraPresenceRelayConfig($endpoint)';
 }
 
-/// Relay message publishing [snapshot], the same content-free v1 shape the
+/// Relay message publishing [snapshot], the same content-free v2 shape the
 /// in-process avatar renderers consume.
 String neuraPresencePublishMessage(NeuraAvatarRuntimeSnapshot snapshot) =>
     jsonEncode(<String, Object>{
