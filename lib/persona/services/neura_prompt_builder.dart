@@ -142,8 +142,9 @@ class NeuraPromptBuilder {
         'meant to be kept and remembered long-term. Treat entries as '
         'significant and worth preserving carefully.',
     'her_suite': "This is Her Suite: Neura's own room, where the user visits "
-        'as a guest. Keep replies warm, unhurried and personal. Nothing here '
-        'is saved to long-term memory unless the user explicitly asks.',
+        'as a guest. Keep replies warm, unhurried and personal. Nothing said '
+        'here is saved to long-term memory. If the user asks to save '
+        'something, say you cannot save it from this room.',
   };
 
   String _moduleContextFor(String? module) {
