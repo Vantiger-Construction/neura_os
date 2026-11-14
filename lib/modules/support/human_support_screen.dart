@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../reliability/safe_boot.dart';
 import 'support_center_screen.dart';
+import 'support_page_shortcuts.dart';
 
 enum SupportRegion {
   unitedStates(
@@ -41,8 +42,14 @@ enum SupportRegion {
 
 /// Public contacts and temporary user-edited drafts; no sending or inference.
 class HumanSupportScreen extends StatefulWidget {
-  const HumanSupportScreen({super.key, this.urgentOnly = false});
+  const HumanSupportScreen(
+      {super.key,
+      this.urgentOnly = false,
+      this.copyText,
+      this.trustedContactsBuilder});
   final bool urgentOnly;
+  final Future<void> Function(String)? copyText;
+  final WidgetBuilder? trustedContactsBuilder;
 
   @override
   State<HumanSupportScreen> createState() => _HumanSupportScreenState();
@@ -181,7 +188,8 @@ class _HumanSupportScreenState extends State<HumanSupportScreen>
     }
     final epoch = _epoch;
     try {
-      await Clipboard.setData(ClipboardData(text: _draft.text));
+      await (widget.copyText ??
+          (text) => Clipboard.setData(ClipboardData(text: text)))(_draft.text);
       if (!mounted || epoch != _epoch) return;
       setState(
           () => _notice = 'Copied to the system clipboard. Nothing was sent. '

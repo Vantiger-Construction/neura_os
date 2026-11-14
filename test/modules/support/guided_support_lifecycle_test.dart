@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/modules/support/guided_support_activity.dart';
 import 'package:neuro_companion/modules/support/guided_support_screen.dart';
 import 'package:neuro_companion/modules/support/guided_support_store.dart';
+import 'package:neuro_companion/modules/support/support_suggestion_choices.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,6 +20,10 @@ class _Store extends GuidedSupportStore {
   Future<void> Function()? delete;
   int reads = 0;
   int writes = 0;
+
+  @override
+  Future<SupportSuggestionChoices> readChoices() async =>
+      SupportSuggestionChoices();
 
   @override
   Future<RememberedSupportActivity?> read() async {
@@ -79,7 +84,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     await tester.pumpWidget(MaterialApp(
         home: GuidedSupportScreen(store: store, initialActivity: activity)));
-    await tester.pump();
+    await tester.pumpAndSettle();
   }
 
   Future<void> tap(WidgetTester tester, String label) async {
