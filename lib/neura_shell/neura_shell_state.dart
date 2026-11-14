@@ -264,6 +264,8 @@ class NeuraShellState extends ChangeNotifier {
         return NeuraRoomKey.dreamAtrium;
       case 'legacy_vault':
         return NeuraRoomKey.legacyVault;
+      case 'her_suite':
+        return NeuraRoomKey.herSuite;
       case 'settings':
         return NeuraRoomKey.settings;
       default:

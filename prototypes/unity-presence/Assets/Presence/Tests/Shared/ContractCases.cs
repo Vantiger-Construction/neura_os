@@ -8,11 +8,18 @@ namespace Neura.Presence.Tests
     public static class ContractCases
     {
         private const string Valid = "{\"v\":1,\"room_id\":\"penthouse\",\"phase\":\"idle\",\"stance\":\"welcoming\",\"motion\":\"expressive\",\"scale\":\"standard\",\"safe_mode\":false}";
+        private const string ValidV2 = "{\"v\":2,\"room_id\":\"her_suite\",\"phase\":\"idle\",\"stance\":\"welcoming\",\"motion\":\"subtle\",\"scale\":\"standard\",\"safe_mode\":false,\"lighting\":\"gold\",\"camera\":\"follow\",\"activity\":\"resting\"}";
         private static readonly Dictionary<string, Action> Cases = new Dictionary<string, Action>
         {
+            { "v2_domain_matrix", V2DomainMatrix },
+            { "v1_reads_as_standard_stage", V1StandardStage },
+            { "v1_cannot_name_her_suite_or_stage_fields", V1Boundaries },
+            { "v2_requires_every_stage_field", V2RequiresStage },
+            { "v2_unknown_stage_values", () => { Reject(ValidV2.Replace("gold", "neon"), SnapshotError.InvalidValue); Reject(ValidV2.Replace("follow", "orbit"), SnapshotError.InvalidValue); Reject(ValidV2.Replace("resting", "sleeping"), SnapshotError.InvalidValue); } },
+            { "v2_safe_mode_forces_present_still", V2SafeMode },
             { "producer_domain_matrix", ProducerDomainMatrix },
             { "field_order_and_whitespace", () => Accept(" { \n\"safe_mode\" : false, \"scale\":\"standard\", \"motion\":\"subtle\", \"stance\":\"welcoming\", \"phase\":\"idle\", \"room_id\":\"penthouse\", \"v\":1 } \t") },
-            { "unsupported_versions", () => { Reject(Valid.Replace("\"v\":1", "\"v\":2"), SnapshotError.UnsupportedVersion); Reject(Valid.Replace("\"v\":1", "\"v\":0"), SnapshotError.UnsupportedVersion); } },
+            { "unsupported_versions", () => { Reject(Valid.Replace("\"v\":1", "\"v\":3"), SnapshotError.UnsupportedVersion); Reject(Valid.Replace("\"v\":1", "\"v\":0"), SnapshotError.UnsupportedVersion); Reject(ValidV2.Replace("\"v\":2", "\"v\":3"), SnapshotError.UnsupportedVersion); } },
             { "missing_fields", MissingFields },
             { "duplicate_fields", () => Reject(Valid.Replace("\"v\":1", "\"v\":1,\"v\":1"), SnapshotError.DuplicateField) },
             { "private_and_unknown_fields", () => { foreach (string key in new[] { "prompt", "journal", "credential", "memory", "action", "text" }) Reject(Valid.Insert(1, "\"" + key + "\":\"synthetic\","), SnapshotError.UnknownField); } },
@@ -65,6 +72,47 @@ namespace Neura.Presence.Tests
         private static void RequireSafe(AvatarSnapshot state)
         {
             Check(state.SafeMode && state.Phase == "safeMode" && state.Motion == "still", "Safe Mode must force Still.");
+        }
+        private static void V2DomainMatrix()
+        {
+            foreach (string room in new[] { "penthouse", "reflection_bay", "joy_lounge", "mood_den", "dream_atrium", "legacy_vault", "her_suite" })
+            foreach (string lighting in new[] { "standard", "gold", "aurora", "dusk" })
+            foreach (string camera in new[] { "follow", "wide", "face" })
+            foreach (string activity in new[] { "present", "resting" })
+            {
+                var state = Accept(ValidV2.Replace("her_suite", room).Replace("gold", lighting)
+                    .Replace("follow", camera).Replace("resting", activity));
+                Check(state.SourceVersion == 2 && state.RoomId == room && state.Lighting == lighting &&
+                    state.Camera == camera && state.Activity == activity, "Lost v2 stage data.");
+                Check(state.Resting == (activity == "resting"), "Resting flag mismatch.");
+            }
+        }
+        private static void V1StandardStage()
+        {
+            var state = Accept(Valid);
+            Check(state.SourceVersion == 1 && state.Lighting == "standard" && state.Camera == "follow" &&
+                state.Activity == "present" && !state.Resting, "v1 must read as the standard stage.");
+        }
+        private static void V1Boundaries()
+        {
+            Reject(Valid.Replace("penthouse", "her_suite"), SnapshotError.InvalidValue);
+            Reject(Valid.Insert(1, "\"lighting\":\"gold\","), SnapshotError.UnknownField);
+            Reject(Valid.Insert(1, "\"activity\":\"resting\","), SnapshotError.UnknownField);
+        }
+        private static void V2RequiresStage()
+        {
+            Reject(ValidV2.Replace(",\"lighting\":\"gold\"", ""), SnapshotError.MissingField);
+            Reject(ValidV2.Replace(",\"camera\":\"follow\"", ""), SnapshotError.MissingField);
+            Reject(ValidV2.Replace(",\"activity\":\"resting\"", ""), SnapshotError.MissingField);
+            Reject(ValidV2.Replace(",\"lighting\":\"gold\"", ",\"journal\":\"gold\""), SnapshotError.UnknownField);
+        }
+        private static void V2SafeMode()
+        {
+            var state = Accept(ValidV2.Replace("false", "true").Replace("subtle", "expressive"));
+            RequireSafe(state);
+            Check(state.Activity == "present" && !state.Resting, "Safe Mode must show the present pose.");
+            Check(state.Lighting == "gold", "Safe Mode keeps the lighting choice.");
+            RequireSafe(Accept(ValidV2.Replace("idle", "safeMode")));
         }
         private static void ProducerDomainMatrix()
         {
