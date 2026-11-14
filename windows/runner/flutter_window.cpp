@@ -81,7 +81,14 @@ bool FlutterWindow::OnCreate() {
   flutter_controller_->engine()->SetNextFrameCallback([this]() {
     RecordNeuraNativeBreadcrumb(is_mascot_ ? "mascot_first_frame"
                                            : "primary_first_frame");
-    this->Show();
+    if (is_mascot_) {
+      this->Show();
+    } else {
+      // Use the available desktop area for the main app, while retaining the
+      // normal title bar and Restore control. The floating companion keeps
+      // its separate compact size.
+      ::ShowWindow(GetHandle(), SW_SHOWMAXIMIZED);
+    }
   });
 
   // Flutter can complete the first frame before the show callback is

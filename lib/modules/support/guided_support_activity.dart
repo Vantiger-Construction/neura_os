@@ -31,6 +31,26 @@ enum GuidedSupportActivity {
           'activities, or choose one small thing to do next.',
     ),
   ]),
+  gentleBreathing(
+      'Gentle breathing', 'An optional pause, without holding your breath.', [
+    GuidedSupportStep(
+      'Get comfortable',
+      'You can keep your eyes open. Let your breathing stay comfortable; '
+          'there is no target to reach. Choose grounding instead if focusing '
+          'on your breathing does not feel helpful.',
+    ),
+    GuidedSupportStep(
+      'Let the breath come and go',
+      'If comfortable, breathe in gently, then let the breath out gently. '
+          'Do not force a deep breath or hold it. Stop if you feel dizzy, '
+          'uncomfortable or more distressed. You can stop at any time.',
+    ),
+    GuidedSupportStep(
+      'Return at your own pace',
+      'Let your breathing take its usual rhythm. Notice the room around you. '
+          'Rest, change activities, or reach someone you trust.',
+    ),
+  ]),
   smallPlan('One small plan', 'Choose a manageable next step.', [
     GuidedSupportStep(
       'Choose one thing',

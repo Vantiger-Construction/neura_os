@@ -61,13 +61,18 @@ endfunction()
 set(FLUTTER_MANAGED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/flutter")
 add_subdirectory(${FLUTTER_MANAGED_DIR})
 
+include(cmake/NeuraDemo.cmake)
+neura_read_demo_configuration("${FLUTTER_MANAGED_DIR}/ephemeral/generated_config.cmake")
+
 # Do not load or bundle the legacy flutter_tts Windows implementation.
+if(NOT NEURA_ISOLATED_DEMO)
 include(cmake/NeuraWindowsPlugins.cmake)
 neura_prepare_windows_plugins(
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
   "${FLUTTER_MANAGED_DIR}/generated_plugins.cmake"
   "${CMAKE_CURRENT_BINARY_DIR}/neura_plugins"
 )
+endif()
 
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
@@ -75,7 +80,11 @@ add_subdirectory("runner")
 
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
+if(NOT NEURA_ISOLATED_DEMO)
 include("${NEURA_WINDOWS_PLUGIN_LIST}")
+
+include(cmake/NeuraWindowManager.cmake)
+neura_configure_window_manager("${CMAKE_CURRENT_BINARY_DIR}/neura_plugins/window_manager")
 
 include(cmake/NeuraLocalAuth.cmake)
 neura_configure_local_auth("${CMAKE_CURRENT_BINARY_DIR}/neura_plugins/local_auth")
@@ -84,6 +93,7 @@ neura_configure_winrt_plugins(
   "${CMAKE_CURRENT_BINARY_DIR}/neura_plugins/media"
   "${CMAKE_CURRENT_SOURCE_DIR}/runner"
 )
+endif()
 
 # flutter_sound is not in pubspec (stubbed for beta); this alias is kept as a
 # no-op guard in case the package is re-added later.
@@ -103,26 +113,18 @@ endif()
 # run in place. This is done instead of making a separate bundle (as on Linux)
 # so that building and running from within Visual Studio will work.
 #
-# The Flutter template uses $<TARGET_FILE_DIR:...> here, but that generator
-# expression is not evaluated when cmake runs "cmake -P cmake_install.cmake"
-# (the -P script mode does not expand build-system generator expressions).
-# For a Visual Studio (multi-config) generator the expansion produces an empty
-# string, causing cmake_install.cmake to fall back to C:/Program Files/...
-# which requires elevation and is wrong.  Use an explicit non-genex path instead.
-get_property(_MULTI GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
-if(_MULTI)
-  set(BUILD_BUNDLE_DIR "${CMAKE_CURRENT_BINARY_DIR}/runner/Release")
-else()
-  set(BUILD_BUNDLE_DIR "${CMAKE_CURRENT_BINARY_DIR}/runner/${CMAKE_BUILD_TYPE}")
-endif()
+# Keep the install prefix concrete, and resolve the configuration in the
+# install destinations when CMake generates cmake_install.cmake. Debug runs
+# need their DLLs and assets beside the Debug executable, not in Release.
+set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/runner" CACHE PATH "" FORCE)
+set(BUILD_BUNDLE_DIR "${CMAKE_INSTALL_PREFIX}/$<CONFIG>")
 # Make the "install" step default, as it's required to run.
 set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD 1)
-set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "" FORCE)
 
-set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
-set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
+set(INSTALL_BUNDLE_DATA_DIR "${BUILD_BUNDLE_DIR}/data")
+set(INSTALL_BUNDLE_LIB_DIR "${BUILD_BUNDLE_DIR}")
 
-install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
+install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
 
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
