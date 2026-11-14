@@ -27,6 +27,8 @@ class MoodStore {
   static const _key = 'neura_mood_entries_v1';
 
   MemoryCrypto? _crypto;
+  // Public reads can migrate legacy data, so they must share writer admission
+  // and the same drain boundary as explicit saves.
   Future<void> _writeQueue = Future<void>.value();
   bool _writesSuspended = false;
   bool _storageUnconfirmed = false;
@@ -40,8 +42,13 @@ class MoodStore {
   Future<List<MoodEntry>> getAll() async {
     if (_writesSuspended) return <MoodEntry>[];
     if (_storageUnconfirmed) throw const MoodSaveUnconfirmedException();
-    final generation = _dataGeneration;
-    return _readAll(generation);
+    try {
+      return await _enqueueWrite((generation) => _readAll(generation));
+    } catch (_) {
+      // A wipe revokes an admitted read as well as a queued migration write.
+      if (_writesSuspended) return <MoodEntry>[];
+      rethrow;
+    }
   }
 
   Future<List<MoodEntry>> _readAll(int generation) async {
@@ -145,10 +152,12 @@ class MoodStore {
       drainFailure = error;
     }
     _crypto = null;
-    _writeQueue = Future<void>.value();
     if (drainFailure != null) {
+      // Keep the pending operation reachable so a later wipe cannot mistake
+      // an already-timed-out migration or save for a drained writer.
       throw StateError('Mood history writer shutdown could not be verified.');
     }
+    _writeQueue = Future<void>.value();
   }
 
   Future<T> _enqueueWrite<T>(

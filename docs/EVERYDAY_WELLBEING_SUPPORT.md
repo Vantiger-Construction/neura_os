@@ -63,6 +63,9 @@ models, clinic contact or companion-memory ingestion.
   The entry may already exist. Restart and review history before trying again;
   leaving the screen still clears its temporary writing. History also explains
   the restart requirement rather than offering an ineffective refresh.
+  Legacy read-to-encrypted migrations share the save queue and wipe drain. A
+  timed-out operation stays tracked across wipe retries; deletion cannot be
+  reported as verified while that operation is still pending.
   The seven-day summary reports means of recorded entries with sample counts,
   excludes future entries, and makes no diagnosis or causal claim. Repeated
   check-ins are not presented as independent daily measurements.
@@ -125,6 +128,8 @@ writes, and Save/Start/Copy callbacks retained across interruptions. Replacement
 requests have a unique revision when declined and offered again. Storage tests
 use the production encrypted store with isolated synthetic platform fixtures,
 including refused writes, committed-but-false results and platform exceptions.
+An additional production-store regression holds a genuine legacy migration
+through two wipe attempts, then verifies deletion only after its write settles.
 
 An unreadable encrypted history must surface as an error and remain untouched.
 Only a genuine legacy JSON list may enter migration. An unconfirmed platform
