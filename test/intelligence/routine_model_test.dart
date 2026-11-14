@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/intelligence/routine_model.dart';
+import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 
 void main() {
   // 2026-10-05 is a Monday.
@@ -259,11 +261,36 @@ void main() {
 
     test('malformed late-night fields are dropped, not guessed', () {
       final json = NeuraRoutineModel.empty().recordOpen(at(6, 1)).toJson();
-      json['late_nights'] = ['2026-10-05', 'yesterday', 7, null];
+      json['late_nights'] = [
+        '2026-10-05',
+        'yesterday',
+        7,
+        null,
+        '2026-13-45',
+        '2026-02-30',
+      ];
       json['wind_down_day'] = 'tonight';
       final model = NeuraRoutineModel.fromJson(json);
       expect(model.lateNights, ['2026-10-05']);
       expect(model.windDownOfferedDay, isNull);
+      json['wind_down_day'] = '2026-02-30';
+      expect(NeuraRoutineModel.fromJson(json).windDownOfferedDay, isNull);
+    });
+
+    test('a timezone reset keeps the wind-down cooldown', () {
+      tzdata.initializeTimeZones();
+      final chicago = tz.getLocation('America/Chicago');
+      final london = tz.getLocation('Europe/London');
+      final model = NeuraRoutineModel.empty()
+          .recordOpen(tz.TZDateTime(chicago, 2026, 10, 6, 1))
+          .acknowledgeWindDown('initiative.wind_down:2026-10-06');
+      expect(model.lateNights, ['2026-10-05']);
+      final travelled = tz.TZDateTime(london, 2026, 10, 7, 9);
+      expect(model.matchesTimeZone(travelled), isFalse);
+      final moved = model.recordOpen(travelled);
+      expect(moved.totalCount, 1);
+      expect(moved.lateNights, isEmpty);
+      expect(moved.windDownOfferedDay, '2026-10-06');
     });
 
     test('wind-down acknowledgement and cooldown arithmetic', () {

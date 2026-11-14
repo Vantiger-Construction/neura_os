@@ -211,10 +211,8 @@ void main() {
         NeuraInitiativeSource.windDownKind,
       );
       expect(windDown.urgency, lessThan(0.85));
-      expect(
-        windDown.expiresAt.isAfter(DateTime(2026, 10, 13)),
-        isFalse,
-      );
+      expect(windDown.createdAt, evening);
+      expect(windDown.expiresAt, evening.add(const Duration(hours: 2)));
     });
 
     test('expires at midnight when offered late in the evening', () {

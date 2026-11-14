@@ -50,9 +50,12 @@ A content-free history of when Neura is opened feeds three specialists:
   Shown as a focus card that opens the Focus Office, where Wind Down is one
   tap away. The copy states only what Neura observed ("You've stopped by
   after midnight on 3 of the last 7 nights") and makes no claim about sleep
-  or health. It's offered at most once a week; the cooldown starts when the
-  card reaches a rendered frame and is saved with the routine, like the
-  welcome-back acknowledgement. An active Wind Down or Deep Work focus mode
+  or health. It's offered at most once a week, counted in calendar evenings:
+  after an offer is shown, it can't return on the next six evenings. The
+  cooldown starts when the card reaches a rendered frame and is saved with
+  the routine, like the welcome-back acknowledgement, and it survives the
+  routine reset that travel or a DST change causes. Persistence is
+  best-effort, like the rest of the routine. An active Wind Down or Deep Work focus mode
   suppresses it in the kernel, and dismissals lower it below the score bar
   quickly (it scores about 0.41 against a 0.38 bar).
 
@@ -75,7 +78,8 @@ expires. See [SUGGESTION_CALIBRATION_INTEGRATION.md](SUGGESTION_CALIBRATION_INTE
   name/offset, and at most one pending return's timestamps. No content,
   screens, or conversation data. The late-night and wind-down fields were
   added to schema v2 without a version bump: older builds ignore them and
-  missing fields read as empty, so existing routine history is kept.
+  missing fields read as empty, so existing routine history is kept. Day
+  keys that don't name a real date are dropped on load.
 - Routine history is read for inference and recorded only when proactive
   suggestions and `allowLearning` are on and Safe Mode is off. Disabling any
   of these gates clears the in-memory baseline and queues removal of the

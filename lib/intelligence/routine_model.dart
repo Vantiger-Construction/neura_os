@@ -141,7 +141,12 @@ class NeuraRoutineModel {
   NeuraRoutineModel recordOpen(DateTime at) {
     if (timeZoneId != null && !matchesTimeZone(at)) {
       // Local-hour slots cannot be compared across travel or DST changes.
-      return NeuraRoutineModel.empty().recordOpen(at);
+      // The wind-down cooldown is a date, not an hour, so it survives the
+      // reset; otherwise travel could bring the offer back early.
+      return NeuraRoutineModel(
+        hourOfWeekCounts: const <int>[],
+        windDownOfferedDay: windDownOfferedDay,
+      ).recordOpen(at);
     }
     final previous = lastSeenAt;
     if (previous != null && at.isBefore(previous)) return this;
@@ -200,7 +205,7 @@ class NeuraRoutineModel {
     const prefix = 'initiative.wind_down:';
     if (!candidateId.startsWith(prefix)) return this;
     final day = candidateId.substring(prefix.length);
-    if (!_dayPattern.hasMatch(day)) return this;
+    if (!_isRealDay(day)) return this;
     return NeuraRoutineModel(
       hourOfWeekCounts: hourOfWeekCounts,
       activeDays: activeDays,
@@ -306,13 +311,24 @@ class NeuraRoutineModel {
   static final RegExp _dayPattern = RegExp(r'^\d{4}-\d{2}-\d{2}$');
 
   static String? _validDay(String? day) =>
-      day != null && _dayPattern.hasMatch(day) ? day : null;
+      day != null && _isRealDay(day) ? day : null;
+
+  /// A `yyyy-mm-dd` key naming a date that exists, so `2026-13-45` or
+  /// `2026-02-30` can't be counted or normalised into another day.
+  static bool _isRealDay(String day) {
+    if (!_dayPattern.hasMatch(day)) return false;
+    final year = int.parse(day.substring(0, 4));
+    final month = int.parse(day.substring(5, 7));
+    final date = int.parse(day.substring(8, 10));
+    final parsed = DateTime.utc(year, month, date);
+    return parsed.year == year && parsed.month == month && parsed.day == date;
+  }
 
   static List<String> _normaliseDays(
     Iterable<String> days, {
     int max = maxActiveDays,
   }) {
-    final unique = days.where(_dayPattern.hasMatch).toSet().toList()..sort();
+    final unique = days.where(_isRealDay).toSet().toList()..sort();
     if (unique.length <= max) return unique;
     return unique.sublist(unique.length - max);
   }
