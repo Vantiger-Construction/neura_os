@@ -8,6 +8,7 @@ import '../../dreams/screens/dream_theater_screen.dart';
 import '../../intelligence/action_review_screen.dart';
 import '../../intelligence/neura_intelligence_controller.dart';
 import '../../modules/human/human_prefs_controller.dart';
+import '../../neura_shell/neura_shell_state.dart';
 import '../../reliability/safe_boot.dart';
 import '../../joy_engine/joy_screen.dart';
 import '../../modules/quests/quest_mode_screen.dart';
@@ -47,6 +48,18 @@ class _ProactiveBannerCardState extends State<ProactiveBannerCard> {
     HumanPrefsController.instance.prefs.addListener(_checkPolicy);
     NeuraIntelligenceController.instance.addListener(_checkPolicy);
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Depend on the shell so a room change rebuilds this card. The shell
+    // notifies before it persists the new room id, so recheck after the
+    // frame, once the id the service reads is current.
+    context.dependOnInheritedWidgetOfExactType<NeuraShellScope>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _checkPolicy();
+    });
   }
 
   void _checkPolicy() {
