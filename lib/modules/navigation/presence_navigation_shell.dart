@@ -80,6 +80,7 @@ class PresenceNavigationShell extends StatefulWidget {
     required this.now,
     required this.onOpenNeura,
     required this.onOpenDiagnostics,
+    this.support,
     this.room = NeuraRoom.penthouse,
     this.preferences = ShellPrefs.defaults,
   }) : assert(destinationPages.length == 5);
@@ -90,6 +91,7 @@ class PresenceNavigationShell extends StatefulWidget {
   final List<PresenceCommand> commands;
   final PresenceShellStatus status;
   final Widget now;
+  final Widget? support;
   final VoidCallback onOpenNeura;
   final VoidCallback onOpenDiagnostics;
   final NeuraRoom room;
@@ -272,6 +274,7 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
         if (index != 0) return widget.destinationPages[index];
         return _PresenceHomeSurface(
           now: widget.now,
+          support: widget.support,
           pinnedCommands: _pinnedCommands,
           recentCommands: _recentCommands,
           onRunCommand: _runCommand,
@@ -861,6 +864,7 @@ class _StatusChip extends StatelessWidget {
 class _PresenceHomeSurface extends StatelessWidget {
   const _PresenceHomeSurface({
     required this.now,
+    this.support,
     required this.pinnedCommands,
     required this.recentCommands,
     required this.onRunCommand,
@@ -869,6 +873,7 @@ class _PresenceHomeSurface extends StatelessWidget {
   });
 
   final Widget now;
+  final Widget? support;
   final List<PresenceCommand> pinnedCommands;
   final List<PresenceCommand> recentCommands;
   final ValueChanged<PresenceCommand> onRunCommand;
@@ -928,6 +933,10 @@ class _PresenceHomeSurface extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
+          if (support != null) ...[
+            support!,
+            const SizedBox(height: 16),
+          ],
           _HomeSection(title: 'Now', subtitle: 'In this moment', child: now),
           const SizedBox(height: 14),
           _HomeSection(
