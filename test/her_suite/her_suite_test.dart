@@ -316,17 +316,18 @@ void main() {
       addTearDown(tester.view.reset);
       await openSuite(tester);
       expect(tester.takeException(), isNull);
-      await tester.tap(find.byKey(const ValueKey('her-suite-shelf')));
+      final shelfCard = find.byKey(const ValueKey('her-suite-shelf'));
+      await tester.ensureVisible(shelfCard);
+      await tester.pumpAndSettle();
+      await tester.tap(shelfCard);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('her-shelf-memories')),
-        100,
-      );
-      expect(
-        find.byKey(const ValueKey('her-shelf-memories')).hitTestable(),
-        findsOneWidget,
-      );
+      final memories = find.byKey(const ValueKey('her-shelf-memories'));
+      await tester.ensureVisible(memories);
+      await tester.pumpAndSettle();
+      await tester.tap(memories);
+      await tester.pumpAndSettle();
+      expect(find.text('opened memory'), findsOneWidget);
     });
 
     testWidgets('Safe Mode wakes her and leaves the resting screen',
