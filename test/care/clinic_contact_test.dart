@@ -108,12 +108,20 @@ void main() {
     final fields = find.byType(TextFormField);
     await tester.enterText(fields.at(0), 'Alex Example');
     await tester.enterText(fields.at(1), 'Example Clinic');
-    await tester.enterText(fields.at(2), phone ? '+1 (202) 555-0123' : _portal);
-    await tester.enterText(fields.at(3), _notes);
+    await tester.enterText(fields.at(3), phone ? '+1 (202) 555-0123' : _portal);
+    await tester.enterText(fields.at(4), _notes);
     await tester.pump();
     await tester.tap(find.byType(CheckboxListTile));
     await tester.pump();
+    await tester.ensureVisible(find.text('Prepare locally'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Prepare locally'));
+    await tester.pumpAndSettle();
+    final permission = find.byKey(const ValueKey('clinic-permission-handoff'));
+    await tester.scrollUntilVisible(permission, 250,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    await tester.tap(permission);
     await tester.pumpAndSettle();
   }
 
@@ -142,6 +150,11 @@ void main() {
     expect(message, contains('To: Example Clinic'));
     expect(message, contains(_notes));
     expect(message, contains('AI assistant'));
+    tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position
+        .jumpTo(0);
+    await tester.pumpAndSettle();
     expect(find.textContaining('are not connected yet'), findsOneWidget);
     expect(NeuraPrefsCache.prefs.getKeys(), keys);
     expect(launches, isEmpty);
@@ -186,13 +199,21 @@ void main() {
   testWidgets('changed destination invalidates draft and contact confirmation',
       (tester) async {
     await prepare(tester);
+    tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position
+        .jumpTo(0);
+    await tester.pumpAndSettle();
     await tester.enterText(
-        find.byType(TextFormField).at(2), 'https://another.example.test/login');
+        find.byType(TextFormField).at(3), 'https://another.example.test/login');
     await tester.pump();
     expect(_reportField(), findsNothing);
     expect(tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
         false);
     await tester.tap(find.text('Prepare locally'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Review external handoff'), 250,
+        scrollable: find.byType(Scrollable).first);
     await tester.pumpAndSettle();
     final button = tester.widget<OutlinedButton>(
         find.widgetWithText(OutlinedButton, 'Review external handoff'));
@@ -317,6 +338,9 @@ void main() {
     await review(tester);
     await tester.tap(find.text('Open clinic portal'));
     await tester.pump();
+    await tester.scrollUntilVisible(find.text('Clear temporary details'), 250,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Clear temporary details'));
     await tester.pump();
     pendingLaunch!.complete(true);

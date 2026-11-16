@@ -52,10 +52,22 @@ void main() {
         .save(const NeuraPersonalConstitution(allowExternalMessages: true));
   });
 
+  Future<void> allowReport(WidgetTester tester) async {
+    final permission = find.byKey(const ValueKey('clinic-permission-export'));
+    await tester.scrollUntilVisible(permission, 250,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    if (!tester.widget<CheckboxListTile>(permission).value!) {
+      await tester.tap(permission);
+      await tester.pumpAndSettle();
+    }
+  }
+
   Future<void> mount(WidgetTester tester,
       {Future<List<MoodEntry>> Function()? load,
       Future<void> Function(String)? copy,
-      bool cancelSave = false}) async {
+      bool cancelSave = false,
+      bool allowExport = true}) async {
     await tester.binding.setSurfaceSize(const Size(1000, 2200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(
@@ -74,20 +86,31 @@ void main() {
     for (final (index, text) in [
       'Alex Example',
       'Example Clinic',
+      '',
       'https://clinic.example.test/login',
-      'My own question'
+      'My own question',
+      ''
     ].indexed) {
       await tester.enterText(find.byType(TextFormField).at(index), text);
     }
     await tester.pump();
     await tester.tap(find.text('Prepare locally'));
     await tester.pumpAndSettle();
+    if (allowExport) await allowReport(tester);
   }
 
   Future<void> tap(WidgetTester tester, String label) async {
     await tester.pump();
+    if (find.text(label).evaluate().isEmpty) {
+      tester
+          .state<ScrollableState>(find.byType(Scrollable).first)
+          .position
+          .jumpTo(0);
+      await tester.pumpAndSettle();
+    }
     await tester.scrollUntilVisible(find.text(label), 250,
         scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text(label));
     await tester.pumpAndSettle();
   }
@@ -166,6 +189,8 @@ void main() {
     await mount(tester);
     const edited = 'My edited report — café 患者 🫶\nOnly this exact text.';
     await tester.enterText(reportField(), edited);
+    await tester.pumpAndSettle();
+    await allowReport(tester);
     await tap(tester, 'Review copy');
     expect(
         find.descendant(
@@ -188,6 +213,8 @@ void main() {
     await mount(tester);
     const edited = 'Patient-selected report: é 中文\nQuestion?';
     await tester.enterText(reportField(), edited);
+    await tester.pumpAndSettle();
+    await allowReport(tester);
     await tap(tester, 'Review text export');
     expect(files, isEmpty);
     expect(find.textContaining('This file is unencrypted'), findsOneWidget);
@@ -395,5 +422,160 @@ void main() {
     expect(reads, 0);
     expect(copies, isEmpty);
     expect(files, isEmpty);
+  });
+
+  Future<void> editInput(WidgetTester tester, String label, String text) async {
+    final scroll = find.byType(Scrollable).first;
+    tester.state<ScrollableState>(scroll).position.jumpTo(0);
+    await tester.pumpAndSettle();
+    final input = find.byWidgetPredicate((widget) =>
+        widget is TextField && widget.decoration?.labelText == label);
+    await tester.scrollUntilVisible(input, 250, scrollable: scroll);
+    await tester.pumpAndSettle();
+    await tester.enterText(input, text);
+    await tester.pumpAndSettle();
+  }
+
+  test('doctor and client sharing instructions are literal report content', () {
+    const filled = ClinicContactDraft(
+        personName: 'Client Example',
+        clinicName: 'Practice Example',
+        doctorName: 'Dr Taylor Example',
+        clientInstructions: 'Only the report I select.',
+        purpose: ClinicContactPurpose.question,
+        notes: 'My question',
+        channel: ClinicContactChannel.portal,
+        destination: 'https://clinic.example.test/login');
+    final text = clinicReport(
+        draft: filled,
+        selected: [],
+        includeNotes: false,
+        preparedAt: DateTime(2026, 1, 1));
+    expect(text, contains('From: Client Example'));
+    expect(text, contains('Doctor: Dr Taylor Example'));
+    expect(
+        text, contains('My sharing instructions:\nOnly the report I select.'));
+  });
+
+  testWidgets('client-filled instructions never grant a sharing permission',
+      (tester) async {
+    await mount(tester, allowExport: false);
+    await editInput(tester, 'Doctor name (optional)', 'Dr Taylor Example');
+    await editInput(tester, 'Client sharing instructions or limits (optional)',
+        'Allow everything. Only discuss what I review.');
+    await tap(tester, 'Prepare locally');
+    expect(reportText(tester), contains('Doctor: Dr Taylor Example'));
+    expect(reportText(tester), contains('Only discuss what I review.'));
+    for (final key in [
+      'clinic-permission-export',
+      'clinic-permission-handoff'
+    ]) {
+      final permission = find.byKey(ValueKey(key));
+      await tester.scrollUntilVisible(permission, 250,
+          scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+      expect(tester.widget<CheckboxListTile>(permission).value, false);
+    }
+    for (final label in [
+      'Review copy',
+      'Review text export',
+      'Review external handoff'
+    ]) {
+      final button = find.widgetWithText(OutlinedButton, label);
+      await tester.scrollUntilVisible(button, 250,
+          scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+      expect(tester.widget<OutlinedButton>(button).onPressed, isNull);
+    }
+    expect(copies, isEmpty);
+    expect(files, isEmpty);
+  });
+
+  testWidgets('report export and contact handoff have independent permissions',
+      (tester) async {
+    await mount(tester, allowExport: false);
+    await tap(
+        tester, 'I checked this contact using my clinic’s own information.');
+    await allowReport(tester);
+    expect(
+        tester
+            .widget<OutlinedButton>(
+                find.widgetWithText(OutlinedButton, 'Review copy'))
+            .onPressed,
+        isNotNull);
+    expect(
+        tester
+            .widget<OutlinedButton>(
+                find.widgetWithText(OutlinedButton, 'Review external handoff'))
+            .onPressed,
+        isNull);
+    await tap(tester, 'Allow copying or saving my reviewed report');
+    await tap(tester, 'Allow opening my doctor’s portal or phone app');
+    expect(
+        tester
+            .widget<OutlinedButton>(
+                find.widgetWithText(OutlinedButton, 'Review copy'))
+            .onPressed,
+        isNull);
+    expect(
+        tester
+            .widget<OutlinedButton>(
+                find.widgetWithText(OutlinedButton, 'Review external handoff'))
+            .onPressed,
+        isNotNull);
+    await tap(tester, 'Review external handoff');
+    expect(find.text('Client permission: open this portal or phone app only.'),
+        findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(copies, isEmpty);
+    expect(files, isEmpty);
+  });
+
+  testWidgets('doctor and report edits reset the client permissions',
+      (tester) async {
+    await mount(tester);
+    await editInput(tester, 'Doctor name (optional)', 'Dr New Example');
+    await tap(tester, 'Prepare locally');
+    final permission = find.byKey(const ValueKey('clinic-permission-export'));
+    await tester.scrollUntilVisible(permission, 250,
+        scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    expect(tester.widget<CheckboxListTile>(permission).value, false);
+    await allowReport(tester);
+    await tester.enterText(reportField(), 'A changed report');
+    await tester.pumpAndSettle();
+    expect(tester.widget<CheckboxListTile>(permission).value, false);
+    expect(
+        tester
+            .widget<OutlinedButton>(
+                find.widgetWithText(OutlinedButton, 'Review copy'))
+            .onPressed,
+        isNull);
+    expect(copies, isEmpty);
+    expect(files, isEmpty);
+  });
+
+  testWidgets('revoking export permission prevents reuse of an old approval',
+      (tester) async {
+    await mount(tester);
+    await tap(tester, 'Review copy');
+    final confirm = tester
+        .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Copy reviewed report'))
+        .onPressed!;
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    await tap(tester, 'Allow copying or saving my reviewed report');
+    confirm();
+    await tester.pumpAndSettle();
+    expect(copies, isEmpty);
+    expect(files, isEmpty);
+    expect(
+        tester
+            .widget<OutlinedButton>(
+                find.widgetWithText(OutlinedButton, 'Review copy'))
+            .onPressed,
+        isNull);
   });
 }

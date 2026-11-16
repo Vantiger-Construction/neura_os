@@ -42,8 +42,10 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
   final _form = GlobalKey<FormState>();
   final _person = TextEditingController();
   final _clinic = TextEditingController();
+  final _doctor = TextEditingController();
   final _destination = TextEditingController();
   final _notes = TextEditingController();
+  final _clientInstructions = TextEditingController();
   final _report = TextEditingController();
   List<MoodEntry> _entries = [];
   final _selected = <int>{};
@@ -51,9 +53,11 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
   ClinicContactChannel _channel = ClinicContactChannel.portal;
   ClinicContactPurpose _purpose = ClinicContactPurpose.appointment;
   bool _checkedContact = false;
+  bool _allowReportExport = false;
+  bool _allowContactHandoff = false;
   bool _busy = false;
   bool _updatingControllers = false;
-  List<String> _inputValues = ['', '', '', ''];
+  List<String> _inputValues = ['', '', '', '', '', ''];
   String _reportValue = '';
   int _epoch = 0;
   int _editorGeneration = 0;
@@ -88,7 +92,14 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
     SafeBoot.instance.safeMode.addListener(_safetyChanged);
     SafeBoot.instance.restartRequired.addListener(_safetyChanged);
     clinicContactRouteObserver.addListener(_topChanged);
-    for (final controller in [_person, _clinic, _destination, _notes]) {
+    for (final controller in [
+      _person,
+      _clinic,
+      _doctor,
+      _destination,
+      _notes,
+      _clientInstructions
+    ]) {
       controller.addListener(_typedEdited);
     }
     _report.addListener(_reportEdited);
@@ -112,6 +123,8 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
     setState(() {
       _epoch++;
       _checkedContact = false;
+      _allowReportExport = false;
+      _allowContactHandoff = false;
       _draft = null;
       _updatingControllers = true;
       _report.clear();
@@ -123,7 +136,14 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
 
   void _typedEdited() {
     if (_updatingControllers) return;
-    final values = [_person.text, _clinic.text, _destination.text, _notes.text];
+    final values = [
+      _person.text,
+      _clinic.text,
+      _doctor.text,
+      _destination.text,
+      _notes.text,
+      _clientInstructions.text
+    ];
     if (listEquals(values, _inputValues)) return;
     _inputValues = values;
     _edited();
@@ -135,6 +155,8 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
     _dismissReview();
     setState(() {
       _epoch++;
+      _allowReportExport = false;
+      _allowContactHandoff = false;
       _status = null;
     });
   }
@@ -148,13 +170,15 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
     for (final controller in [
       _person,
       _clinic,
+      _doctor,
       _destination,
       _notes,
+      _clientInstructions,
       _report
     ]) {
       controller.clear();
     }
-    _inputValues = ['', '', '', ''];
+    _inputValues = ['', '', '', '', '', ''];
     _reportValue = '';
     _updatingControllers = false;
     setState(() {
@@ -163,6 +187,8 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
       _includeNotes = false;
       _draft = null;
       _checkedContact = false;
+      _allowReportExport = false;
+      _allowContactHandoff = false;
       _status = 'Temporary clinic details and draft cleared.';
     });
   }
@@ -207,7 +233,14 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
     WidgetsBinding.instance.removeObserver(this);
     SafeBoot.instance.safeMode.removeListener(_safetyChanged);
     SafeBoot.instance.restartRequired.removeListener(_safetyChanged);
-    for (final controller in [_person, _clinic, _destination, _notes]) {
+    for (final controller in [
+      _person,
+      _clinic,
+      _doctor,
+      _destination,
+      _notes,
+      _clientInstructions
+    ]) {
       controller.removeListener(_typedEdited);
       controller.dispose();
     }
@@ -265,6 +298,8 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
         notes: _notes.text,
         channel: _channel,
         destination: _destination.text,
+        doctorName: _doctor.text,
+        clientInstructions: _clientInstructions.text,
       );
       final report = clinicReport(
         draft: draft,
@@ -301,11 +336,28 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
     return decision.allowed ? null : decision.reason;
   }
 
+  bool _permitted(_ClinicAction action) => switch (action) {
+        _ClinicAction.copy || _ClinicAction.save => _allowReportExport,
+        _ClinicAction.handoff => _allowContactHandoff,
+      };
+
+  void _changePermission(int epoch, {bool? export, bool? handoff}) {
+    if (!_current(epoch) || _busy) return;
+    _dismissReview();
+    setState(() {
+      _epoch++;
+      if (export != null) _allowReportExport = export;
+      if (handoff != null) _allowContactHandoff = handoff;
+      _status = null;
+    });
+  }
+
   Future<void> _reviewAction(_ClinicAction action) async {
     final draft = _draft;
     final text = _report.text;
     if (_busy ||
         draft == null ||
+        !_permitted(action) ||
         !_mayPrepare ||
         text.trim().isEmpty ||
         text.length > 12000) {
@@ -322,7 +374,9 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
       await NeuraConstitutionService.instance
           .load()
           .timeout(const Duration(seconds: 8));
-      if (!_current(epoch) || _report.text != text) return;
+      if (!_current(epoch) || !_permitted(action) || _report.text != text) {
+        return;
+      }
       final blocked = _policyBlock();
       if (blocked != null) {
         setState(() =>
@@ -370,7 +424,15 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text('Clinic: ${draft.clinicName.trim()}'),
+                if (draft.doctorName.trim().isNotEmpty)
+                  Text('Doctor: ${draft.doctorName.trim()}'),
                 Text('For: ${draft.personName.trim()}'),
+                Text(action == _ClinicAction.handoff
+                    ? 'Client permission: open this portal or phone app only.'
+                    : 'Client permission: copy or save this reviewed report only.'),
+                if (draft.clientInstructions.trim().isNotEmpty)
+                  Text(
+                      'Client instructions: ${draft.clientInstructions.trim()}'),
                 if (action == _ClinicAction.handoff) Text('Destination: $uri'),
                 const SizedBox(height: 12),
                 Text(text),
@@ -420,6 +482,7 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
       final now = DateTime.now();
       if (approved != true ||
           !_current(epoch) ||
+          !_permitted(action) ||
           _report.text != text ||
           now.isBefore(issued) ||
           !now.isBefore(expires) ||
@@ -514,8 +577,12 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
                             'This is not emergency monitoring or medical advice.'),
                       ),
                     ),
-                    _field(_person, 'Your name', 100),
-                    _field(_clinic, 'Doctor or clinic name', 150),
+                    Text('Client and doctor details',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    _field(_person, 'Client full name', 100),
+                    _field(_clinic, 'Clinic or practice name', 150),
+                    _field(_doctor, 'Doctor name (optional)', 150,
+                        validator: (_) => null),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<ClinicContactPurpose>(
                       initialValue: _purpose,
@@ -572,6 +639,15 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
                     ),
                     _field(_notes, 'What I want my care team to know', 4000,
                         lines: 5),
+                    _field(
+                        _clientInstructions,
+                        'Client sharing instructions or limits (optional)',
+                        1000,
+                        lines: 2,
+                        validator: (_) => null),
+                    const Text('These instructions are included in your draft '
+                        'for you to check. They do not authorize an action or '
+                        'give Neura access to clinic records.'),
                     OutlinedButton(
                       onPressed: canEdit && !SafeBoot.instance.safeMode.value
                           ? _guarded(displayedEpoch, _loadCheckIns)
@@ -661,8 +737,45 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
                       const Text('Edit or remove any part. Every export needs '
                           'fresh review of the exact text. A copied report '
                           'may remain in your system clipboard.'),
+                      Card(
+                        child: Column(children: [
+                          ListTile(
+                            title: Text('Client permissions',
+                                style: Theme.of(context).textTheme.titleMedium),
+                            subtitle: const Text('Choose only the actions you '
+                                'want for this report. Permissions start off, '
+                                'last for this screen, and reset when details '
+                                'or report text change.'),
+                          ),
+                          CheckboxListTile(
+                            key: const ValueKey('clinic-permission-export'),
+                            value: _allowReportExport,
+                            title: const Text(
+                                'Allow copying or saving my reviewed report'),
+                            subtitle: const Text(
+                                'The exact text still needs my approval each time.'),
+                            onChanged: canEdit
+                                ? (value) => _changePermission(displayedEpoch,
+                                    export: value ?? false)
+                                : null,
+                          ),
+                          CheckboxListTile(
+                            key: const ValueKey('clinic-permission-handoff'),
+                            value: _allowContactHandoff,
+                            title: const Text(
+                                'Allow opening my doctor’s portal or phone app'),
+                            subtitle:
+                                const Text('This does not send my report or '
+                                    'let Neura speak on a call.'),
+                            onChanged: canEdit
+                                ? (value) => _changePermission(displayedEpoch,
+                                    handoff: value ?? false)
+                                : null,
+                          ),
+                        ]),
+                      ),
                       OutlinedButton.icon(
-                        onPressed: mayExport
+                        onPressed: mayExport && _allowReportExport
                             ? _guarded(displayedEpoch,
                                 () => _reviewAction(_ClinicAction.copy))
                             : null,
@@ -670,7 +783,7 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
                         label: const Text('Review copy'),
                       ),
                       OutlinedButton.icon(
-                        onPressed: mayExport
+                        onPressed: mayExport && _allowReportExport
                             ? _guarded(displayedEpoch,
                                 () => _reviewAction(_ClinicAction.save))
                             : null,
@@ -678,10 +791,11 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
                         label: const Text('Review text export'),
                       ),
                       OutlinedButton.icon(
-                        onPressed: mayExport && _checkedContact
-                            ? _guarded(displayedEpoch,
-                                () => _reviewAction(_ClinicAction.handoff))
-                            : null,
+                        onPressed:
+                            mayExport && _checkedContact && _allowContactHandoff
+                                ? _guarded(displayedEpoch,
+                                    () => _reviewAction(_ClinicAction.handoff))
+                                : null,
                         icon: Icon(
                             phone ? Icons.phone_outlined : Icons.open_in_new),
                         label: const Text('Review external handoff'),

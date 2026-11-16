@@ -13,10 +13,12 @@ String clinicReport({
   final summary = appointmentSummary(
       selected: selected, questions: draft.notes, includeNotes: includeNotes);
   final report = 'To: ${draft.clinicName.trim()}\n'
+      '${draft.doctorName.trim().isEmpty ? '' : 'Doctor: ${draft.doctorName.trim()}\n'}'
       'From: ${draft.personName.trim()}\n'
       'Request: ${draft.purpose.label}\n'
       'Prepared: ${preparedAt.toLocal().toIso8601String()} (local device time)\n\n'
       '$summary\n\n'
+      '${draft.clientInstructions.trim().isEmpty ? '' : 'My sharing instructions:\n${draft.clientInstructions.trim()}\n\n'}'
       'Prepared with Neura, an AI assistant, and reviewed by the person. '
       'Please respond through your usual patient contact process.';
   if (report.length > 12000) {

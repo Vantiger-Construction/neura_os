@@ -17,9 +17,9 @@ has been selected, registered, subscribed to or contacted by this change.
 
 ## Workflow
 
-1. Open **Care Loop / Care Mode → Doctor & clinic**. Enter your own name,
-   clinic name, purpose, question and clinic HTTPS sign-in address or phone
-   number. Check the contact against your clinic's own information. Syntax
+1. Open **Care Loop / Care Mode → Doctor & clinic**. Each client fills in
+   their full name, clinic/practice, optional named doctor, purpose, question,
+   contact address/number and optional sharing instructions or limits. Check the contact against your clinic's own information. Syntax
    validation does not verify clinic ownership or patient identity.
 2. Optionally press **Choose saved check-ins**. Only that gesture reads mood
    history. Choose up to ten of the latest thirty valid, non-future check-ins;
@@ -29,7 +29,11 @@ has been selected, registered, subscribed to or contacted by this change.
 3. Press **Prepare locally**. The deterministic report includes the chosen
    self-reports, your question, entered person/clinic, purpose and device time.
    It does not infer a diagnosis or invoke a model. Edit/remove any report text.
-   The report is capped at 12,000 characters.
+   The report is capped at 12,000 characters. In **Client permissions**, separately
+   choose whether to allow copying/saving this report or opening the supplied
+   doctor/clinic contact. Both start off. Each action still needs fresh review.
+   Free-text instructions are literal report content; they do not grant a scope,
+   enable a transport, or give access to clinic records.
 4. **Review copy** shows the exact current text and clipboard consequences.
    **Copy reviewed report** copies only that text. Sign in, paste, review and
    send it in the clinic's portal yourself. Copying is not clinic delivery.
@@ -59,6 +63,11 @@ patient changes **Adaptive Intent OS → Personal constitution → Allow externa
 messages**. Every action still requires a fresh review that expires after two
 minutes. Approval binds the exact edited report and destination, is checked
 again after asynchronous policy loading and is consumed before the OS call.
+Edits reset both client permission choices. Changing either choice revokes the
+current review. The scopes are checked before/after policy loading and again
+before dispatch; toggling one never grants the other. They are session-only,
+with no saved default or automatic authorisation for a later client.
+
 Edits, policy revocation, Stop, Safe Mode, recovery, background, route coverage
 or disposal invalidate pending work. Clock rollback also invalidates a review.
 A synchronous navigator observer catches a covering route even if immediately
