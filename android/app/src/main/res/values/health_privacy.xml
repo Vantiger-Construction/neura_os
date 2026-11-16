@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="neura_health_privacy_statement">Neura — connected health data\n\nNeura can read the heart rate, steps and sleep sessions you select from this Android user\'s Health Connect data. A foreground Read action is required each time. Permission approval alone does not read anything.\n\nReadings stay in this screen\'s memory and clear when you leave, background, stop, or enter Safe Mode or recovery. Neura does not write or delete Health Connect records, read in the background, send them to a model or clinic, or save them to a journal.\n\nCopying selected readings requires a separate review. Copied text is outside Neura and may be synced by your clipboard. Use Health Connect\'s permission controls to revoke Neura\'s access. Clearing this view does not delete source records or revoke Android grants.\n\nSource apps and wearables have their own sync policies. Synced readings can be delayed, incomplete or inaccurate. This feature does not diagnose a condition or monitor emergencies.</string>
+    <string name="neura_health_privacy_close">Close</string>
+</resources>
