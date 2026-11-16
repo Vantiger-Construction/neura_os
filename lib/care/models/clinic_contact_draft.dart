@@ -19,6 +19,8 @@ class ClinicContactDraft {
     required this.notes,
     required this.channel,
     required this.destination,
+    this.doctorName = '',
+    this.clientInstructions = '',
   });
 
   final String personName;
@@ -27,6 +29,8 @@ class ClinicContactDraft {
   final String notes;
   final ClinicContactChannel channel;
   final String destination;
+  final String doctorName;
+  final String clientInstructions;
 
   String get message => 'To: ${clinicName.trim()}\n'
       'From: ${personName.trim()}\n'
