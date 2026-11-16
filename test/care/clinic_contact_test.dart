@@ -128,6 +128,7 @@ void main() {
   Future<void> review(WidgetTester tester) async {
     await tester.scrollUntilVisible(find.text('Review external handoff'), 250,
         scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Review external handoff'));
     await tester.pumpAndSettle();
   }
