@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - agent/neura-consent-turn-safety-v1.5.1
+      - Neura
     paths:
       - ".github/workflows/neura-release-readiness.yml"
       - "tools/release/**"
@@ -11,6 +12,10 @@ on:
       - "BUILD_ALL_NEURA_UPGRADES.ps1"
   workflow_dispatch:
     inputs:
+      previous_windows_asset_id:
+        description: GitHub release asset ID of the previous Windows ZIP in this repository
+        required: true
+        type: string
       require_authenticode:
         description: Require valid Authenticode on every EXE and DLL
         required: true
@@ -36,61 +41,18 @@ env:
 jobs:
   contract:
     name: Verify release gate contracts
-    runs-on: [self-hosted, Windows, X64, neura]
+    runs-on: windows-latest
     timeout-minutes: 10
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Provision pinned PowerShell Core
-        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
-        run: |
-          $ErrorActionPreference = 'Stop'
-          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-          $requiredVersion = [version]$env:POWERSHELL_VERSION
-          $existing = Get-Command pwsh -ErrorAction SilentlyContinue
-          if ($existing) {
-            $existingVersion = & $existing.Source -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
-            if ([version]$existingVersion -ge [version]'7.2.0') {
-              Split-Path -Parent $existing.Source | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-              exit 0
-            }
-          }
-
-          $installRoot = Join-Path $env:RUNNER_TEMP "neura-pwsh-$requiredVersion"
-          $pwsh = Join-Path $installRoot 'pwsh.exe'
-          if (-not (Test-Path -LiteralPath $pwsh -PathType Leaf)) {
-            $archiveName = "PowerShell-$requiredVersion-win-x64.zip"
-            $releaseRoot = "https://github.com/PowerShell/PowerShell/releases/download/v$requiredVersion"
-            $archive = Join-Path $env:RUNNER_TEMP $archiveName
-            $hashes = Join-Path $env:RUNNER_TEMP "PowerShell-$requiredVersion-hashes.sha256"
-
-            Invoke-WebRequest -Uri "$releaseRoot/$archiveName" -OutFile $archive -UseBasicParsing
-            Invoke-WebRequest -Uri "$releaseRoot/hashes.sha256" -OutFile $hashes -UseBasicParsing
-
-            $hashLine = Get-Content -LiteralPath $hashes |
-              Where-Object { $_ -match [regex]::Escape($archiveName) } |
-              Select-Object -First 1
-            if (-not $hashLine -or $hashLine -notmatch '^(?<hash>[A-Fa-f0-9]{64})\s+\*?.+$') {
-              throw "No valid SHA-256 entry found for $archiveName."
-            }
-            $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
-            if ($actualHash -ne $Matches.hash) {
-              throw "PowerShell archive checksum mismatch for $archiveName."
-            }
-
-            New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
-            Expand-Archive -LiteralPath $archive -DestinationPath $installRoot -Force
-          }
-
-          $installedVersion = & $pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
-          if ([version]$installedVersion -ne $requiredVersion) {
-            throw "Expected PowerShell $requiredVersion; found $installedVersion."
-          }
-          $installRoot | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        with:
+          persist-credentials: false
       - name: Run fail-closed contract tests
         shell: pwsh
         run: ./tools/release/Test-NeuraReleaseReadiness.Tests.ps1
+      - name: Verify Android upgrade comparison cases
+        run: python -m unittest discover -s tools/release -p "test_*.py"
 
   windows-release:
     name: Build and verify Windows release
@@ -101,6 +63,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Provision pinned PowerShell Core
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
         run: |
@@ -154,9 +118,49 @@ jobs:
           & "$env:GITHUB_WORKSPACE\tools\Enable-NeuraFlutter.ps1" `
             -Version $env:FLUTTER_VERSION `
             -ExpectedSha256 $env:FLUTTER_SHA256
+      - name: Fetch and verify the previous Windows package
+        shell: pwsh
+        env:
+          PREVIOUS_ASSET_ID: ${{ inputs.previous_windows_asset_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:PREVIOUS_ASSET_ID -notmatch '^[1-9][0-9]*$') { throw 'Expected a numeric release asset ID.' }
+          $uri = "$env:GITHUB_API_URL/repos/$env:GITHUB_REPOSITORY/releases/assets/$env:PREVIOUS_ASSET_ID"
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
+          $asset = Invoke-RestMethod -Uri $uri -Headers $headers
+          if ($asset.name -notlike '*.zip' -or $asset.digest -notmatch '^sha256:[a-f0-9]{64}$') {
+            throw 'Previous Windows asset must be a ZIP with a published SHA-256.'
+          }
+          $work = Join-Path $env:RUNNER_TEMP ("neura-release-" + [guid]::NewGuid())
+          New-Item -ItemType Directory -Path $work | Out-Null
+          "NEURA_RELEASE_WORK=$work" >> $env:GITHUB_ENV
+          $zip = Join-Path $work 'previous.zip'
+          $headers.Accept = 'application/octet-stream'
+          Invoke-WebRequest -Uri $uri -Headers $headers -OutFile $zip
+          if ("sha256:$((Get-FileHash $zip -Algorithm SHA256).Hash)" -ne $asset.digest) {
+            throw 'Previous asset SHA-256 mismatch.'
+          }
+          $previous = Join-Path $work 'previous'
+          [IO.Compression.ZipFile]::ExtractToDirectory($zip, $previous)
+          if (Test-Path -LiteralPath (Join-Path $previous 'app/neuro_companion.exe')) {
+            $previous = Join-Path $previous 'app'
+          }
+          "NEURA_PREVIOUS_ROOT=$previous" >> $env:GITHUB_ENV
+          "Previous Windows asset $env:PREVIOUS_ASSET_ID ($($asset.name)), $($asset.digest)" >> $env:GITHUB_STEP_SUMMARY
       - name: Build tested Windows package
         shell: pwsh
-        run: ./BUILD_ALL_NEURA_UPGRADES.ps1 -Root "${{ github.workspace }}"
+        run: |
+          $before = @(Get-ChildItem -Path 'dist/*.zip' -File -ErrorAction SilentlyContinue | ForEach-Object FullName)
+          ./BUILD_ALL_NEURA_UPGRADES.ps1 -Root $env:GITHUB_WORKSPACE -SkipFormatting
+          $new = @(Get-ChildItem -Path 'dist/*.zip' -File | Where-Object { $_.FullName -notin $before })
+          if ($new.Count -ne 1) { throw 'Expected exactly one new Windows ZIP from this build.' }
+          $zip = $new[0].FullName
+          $delivery = Join-Path $env:NEURA_RELEASE_WORK $new[0].Name
+          Copy-Item -LiteralPath $zip -Destination $delivery
+          [IO.Compression.ZipFile]::ExtractToDirectory($delivery, (Join-Path $env:NEURA_RELEASE_WORK 'candidate'))
+          "NEURA_CANDIDATE_ZIP=$delivery" >> $env:GITHUB_ENV
+          "Candidate ZIP $($new[0].Name), SHA-256 $((Get-FileHash $delivery -Algorithm SHA256).Hash)" >> $env:GITHUB_STEP_SUMMARY
       - name: Run release readiness gates
         shell: pwsh
         env:
@@ -164,14 +168,10 @@ jobs:
           EXPECTED_PUBLISHER: ${{ inputs.expected_publisher }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $dist = Get-ChildItem -LiteralPath (Join-Path $PWD 'dist') -Directory |
-            Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
-          if (-not $dist) { throw 'Build did not produce a distribution directory.' }
-          $app = Join-Path $dist.FullName 'app'
           $arguments = @{
-            ArtifactRoot = $app
-            PreviousArtifactRoot = $app
-            OutputRoot = (Join-Path $dist.FullName 'release-readiness')
+            ArtifactRoot = (Join-Path $env:NEURA_RELEASE_WORK 'candidate/app')
+            PreviousArtifactRoot = $env:NEURA_PREVIOUS_ROOT
+            OutputRoot = (Join-Path $env:NEURA_RELEASE_WORK 'evidence')
           }
           if ($env:REQUIRE_AUTHENTICODE -eq 'true') {
             $arguments.RequireAuthenticode = $true
@@ -181,12 +181,15 @@ jobs:
           }
           ./tools/release/Test-NeuraReleaseReadiness.ps1 @arguments
       - name: Upload verified release evidence
-        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Neura-release-readiness-evidence
           path: |
-            dist/*/release-readiness/
-            dist/*.zip
+            ${{ env.NEURA_RELEASE_WORK }}/evidence/
+            ${{ env.NEURA_CANDIDATE_ZIP }}
           if-no-files-found: error
           retention-days: 30
+      - name: Remove this run's temporary verification files
+        if: always() && env.NEURA_RELEASE_WORK != ''
+        shell: pwsh
+        run: Remove-Item -LiteralPath $env:NEURA_RELEASE_WORK -Recurse -Force
