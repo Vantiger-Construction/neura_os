@@ -39,7 +39,8 @@ models, clinic contact or companion-memory ingestion.
 - Human-support drafts have a 2,000-character limit, stay in memory, and clear on
   leaving the screen/app or a safety transition. Copy is an explicit action with
   a clipboard disclosure. Nothing is sent. Already-copied text remains outside
-  Neura on the system clipboard. Appointment notes do not bypass the clinic hold.
+  Neura on the system clipboard. Appointment notes do not send to a clinic;
+  reviewed clinic handoff is a separate workflow.
   Templates leave existing writing intact until the user confirms replacement.
   Editing, declining or leaving invalidates a pending replacement, including
   when the same template is offered again. A late clipboard result cannot label
@@ -74,7 +75,7 @@ models, clinic contact or companion-memory ingestion.
   action. Hide history is also available manually; neither action deletes entries.
 
 No dependency, lockfile, backend, notification permission or clinical profile
-change is required. Existing privacy, wipe, provider-consent and clinic holds
+change is required. Existing privacy, wipe, provider-consent and direct clinic-integration boundaries
 remain in force. The home card only creates widgets; personal stores are not
 opened until a person chooses the corresponding screen.
 
