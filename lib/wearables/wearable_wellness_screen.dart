@@ -44,6 +44,13 @@ class _WearableWellnessScreenState
   bool get _tracked =>
       identical(wearableRouteObserver.navigator, Navigator.maybeOf(context));
   bool get _mayRead => mayReadSaved && _tracked && _route?.isCurrent == true;
+  // Revoking OS access must remain possible while Neura requires recovery.
+  // This action clears the view and opens settings; it never reads records.
+  bool get _mayManage =>
+      mounted &&
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed &&
+      _tracked &&
+      _route?.isCurrent == true;
   DateTime get _now => (widget.now ?? DateTime.now)();
   bool _current(int epoch) => isCurrent(epoch) && _mayRead;
   VoidCallback _guard(int epoch, VoidCallback action) => () {
@@ -211,8 +218,8 @@ class _WearableWellnessScreenState
     }
   }
 
-  Future<void> _manage() async {
-    if (!mayUse || !_tracked || _busy) return;
+  Future<void> _manage(int owner) async {
+    if (!_mayManage || _busy || owner != requestGeneration) return;
     setState(invalidateDraft);
     final epoch = requestGeneration;
     setState(() => _busy = true);
@@ -220,13 +227,13 @@ class _WearableWellnessScreenState
       final opened = await _gateway
           .managePermissions()
           .timeout(const Duration(seconds: 8));
-      if (isCurrent(epoch)) {
+      if (_mayManage && requestGeneration == epoch) {
         setState(() => _notice = opened
             ? 'Use Android’s controls to change or revoke access. No permission change is confirmed by opening settings.'
             : 'Settings could not be opened. Use Android Settings → Health Connect → App permissions.');
       }
     } catch (_) {
-      if (isCurrent(epoch)) {
+      if (_mayManage && requestGeneration == epoch) {
         setState(() => _notice =
             'Open Android Settings → Health Connect → App permissions to revoke access.');
       }
@@ -410,7 +417,7 @@ class _WearableWellnessScreenState
               child: Text(
                   _busy ? 'Working…' : 'Read selected data (last 24 hours)')),
           OutlinedButton(
-              onPressed: mayUse && _tracked && !_busy ? _manage : null,
+              onPressed: _mayManage && !_busy ? () => _manage(epoch) : null,
               child: const Text('Manage or revoke Android permissions')),
           if (_notice != null)
             Semantics(liveRegion: true, child: Text(_notice!)),

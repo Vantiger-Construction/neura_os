@@ -448,21 +448,44 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets(
-      'safe mode blocks reads while OS permission management stays available',
-      (tester) async {
+  for (final mode in ['safe mode', 'recovery']) {
+    testWidgets(
+        '$mode blocks reads while OS permission management stays available',
+        (tester) async {
+      final gateway = FakeGateway();
+      if (mode == 'safe mode') {
+        SafeBoot.instance.safeMode.value = true;
+      } else {
+        SafeBoot.instance.restartRequired.value = true;
+      }
+      await open(tester, gateway);
+      expect(
+          tester
+              .widget<OutlinedButton>(find.widgetWithText(
+                  OutlinedButton, 'Check connection and permissions'))
+              .onPressed,
+          isNull);
+      await tap(tester, 'Manage or revoke Android permissions');
+      expect(gateway.manages, 1);
+      expect(gateway.reads, isEmpty);
+      expect(gateway.permissionChecks, 0);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  testWidgets('Stop revokes a retained OS settings callback', (tester) async {
     final gateway = FakeGateway();
-    SafeBoot.instance.safeMode.value = true;
     await open(tester, gateway);
-    expect(
-        tester
-            .widget<OutlinedButton>(find.widgetWithText(
-                OutlinedButton, 'Check connection and permissions'))
-            .onPressed,
-        isNull);
-    await tap(tester, 'Manage or revoke Android permissions');
-    expect(gateway.manages, 1);
-    expect(gateway.reads, isEmpty);
+    await reveal(tester, find.text('Manage or revoke Android permissions'));
+    final old = tester
+        .widget<OutlinedButton>(find.widgetWithText(
+            OutlinedButton, 'Manage or revoke Android permissions'))
+        .onPressed!;
+    await tester.tap(find.byTooltip('Stop and clear readings'));
+    await tester.pump();
+    old();
+    await tester.pumpAndSettle();
+    expect(gateway.manages, 0);
     await tester.pumpWidget(const SizedBox());
   });
 }
