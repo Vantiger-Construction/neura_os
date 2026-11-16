@@ -1,100 +1,98 @@
 # Doctor and clinic contact
 
-## Status: on hold; preparation and handoff unavailable
+## Patient-controlled reports and reviewed handoff
 
-[PR #187](https://github.com/Vantiger-Construction/neura_os/pull/187) merged
-on November 6, 2026 at 15:01:43 UTC even though its description retained the
-maintainer's instruction to leave it open as a draft for later. The merge is
-not evidence that the hold was lifted. The
-[hold and privacy audit](DOCTOR_CLINIC_CONTACT_AUDIT.md) records the discrepancy
-and the corrective access restriction.
+The maintainer asked to resume clinic-contact work on November 15, 2026
+(America/Chicago). This source change restores **Doctor & clinic** in Care Loop
+and Care Mode and implements the patient-controlled report workflow below.
+The earlier [hold/privacy audit](DOCTOR_CLINIC_CONTACT_AUDIT.md) remains a record
+of its inspected revision. Enabling a setting alone never lifted that hold.
+This proposal needs current-head validation and review before integration.
 
-The Doctor & clinic entry points have been removed from Care Loop and Care
-Mode. Normal construction of `ClinicContactScreen` shows an on-hold notice
-without mounting the form, reading policy, accepting health details or opening
-an external application. Enabling the existing external-message permission
-does not lift this hold. No new preference, runtime switch or build define
-enables the feature. The retained implementation is reachable only through
-an explicitly named, debug-only test constructor, annotated `visibleForTesting`;
-that constructor also shows the hold notice in profile/release builds.
-Restoring application access requires a separately reviewed source change and
-an explicit maintainer decision. Existing sharing settings are not changed.
+The implemented scope is local report preparation, explicit copy/text-file
+export and opening the patient's existing clinic portal or phone app. Direct
+patient-to-clinic messaging, replies, AI participation in calls and appointment
+booking still need an actual provider integration. No clinic, vendor or patient
+has been selected, registered, subscribed to or contacted by this change.
 
-The requested destination is both secure written communication and live calls
-in which Neura can speak with a person's own doctor or health clinic. These
-channels require real integrations. The retained, deferred implementation
-provides **local preparation and a reviewed handoff to the person's browser
-or phone app**. It does not
-implement direct sending, clinic replies, patient authentication or an AI phone
-agent. No provider has been selected, subscribed to or contacted.
+## Workflow
 
-## Deferred workflow (synthetic regression tests only)
+1. Open **Care Loop / Care Mode → Doctor & clinic**. Enter your own name,
+   clinic name, purpose, question and clinic HTTPS sign-in address or phone
+   number. Check the contact against your clinic's own information. Syntax
+   validation does not verify clinic ownership or patient identity.
+2. Optionally press **Choose saved check-ins**. Only that gesture reads mood
+   history. Choose up to ten of the latest thirty valid, non-future check-ins;
+   none are selected automatically. Notes are excluded by default. Opting in
+   includes at most 500 Unicode characters per selected note, with a visible
+   shortening marker. Journals, chat and companion memory remain unopened.
+3. Press **Prepare locally**. The deterministic report includes the chosen
+   self-reports, your question, entered person/clinic, purpose and device time.
+   It does not infer a diagnosis or invoke a model. Edit/remove any report text.
+   The report is capped at 12,000 characters.
+4. **Review copy** shows the exact current text and clipboard consequences.
+   **Copy reviewed report** copies only that text. Sign in, paste, review and
+   send it in the clinic's portal yourself. Copying is not clinic delivery.
+5. **Review text export** shows the exact text and explains that a UTF-8
+   `neura-clinic-report.txt` file is unencrypted and may be synced by its chosen
+   location. **Save reviewed text file** opens the system save dialog. The app
+   does not automatically create temporary plaintext files. A cancelled picker
+   is not a save receipt. A saved file is not a clinic message or a PDF.
+6. **Review external handoff** shows the person, clinic, exact URL/number,
+   edited report and what the OS receives. Contact attestation is required for
+   this action. Approve **Open clinic portal** or **Open phone app** yourself.
+   Only the URL or normalized number is passed; no report, patient name,
+   clipboard text, authentication, query, fragment or headers are attached.
+   A phone handler may immediately dial. Neura does not join the call.
 
-The following describes the preserved workflow exercised by tests; these are
-not currently available application instructions.
+Portal visits use the existing external browser, including its cookies, DNS
+and redirects. The entered URL's path can itself reveal information, so use a
+clinic-provided sign-in address without patient details. No browser automation,
+provider inbox access, secret or OAuth token is added. Clinic messages are for
+nonurgent communication; the workflow does not monitor or respond to emergencies.
 
-1. Enter your name, doctor/clinic name, purpose and the details you want to
-   discuss. Choose **Portal message** or **Phone call brief**.
-2. Enter the clinic's HTTPS sign-in address or ordinary phone number. Check it
-   using information from your clinic. Neura validates syntax, not ownership or
-   your patient identity. Use a sign-in URL without query parameters, fragments
-   or embedded credentials; phone extensions and dial commands are rejected.
-3. Select **Prepare locally**. The deterministic template includes only what
-   you entered and identifies Neura as an AI assistant. No model is invoked.
-   No journals, mood entries, memories, saved contacts or other private stores
-   are read. This first version is for contacting your own care team; it does
-   not establish caregiver/proxy authority or authenticated multi-person profiles.
-4. For a portal message, select and copy the draft yourself if desired. The
-   UI warns that the system clipboard may be accessible to other apps or synced
-   devices. Neura does not write to the clipboard automatically.
-5. Select **Review external handoff**. The review names the person, clinic,
-   exact destination, draft and what is passed to the external app. Confirm
-   **Open clinic portal** or **Open phone app** to continue. Sign in and send the
-   message yourself, or speak to the clinic yourself using the call brief.
+## Consent, lifecycle and data boundaries
 
-The portal link contains no automatically attached patient name, message, notes,
-headers or authentication. The browser makes a normal visit to the address you
-entered, including its path. A manually entered path can itself contain sensitive
-information; syntax validation does not prove clinic ownership or control DNS,
-redirects, browser cookies or the browser's network disclosures.
-The phone link contains only the normalized number. The phone app may
-place a call immediately; a `tel:` link is not an audio connection for Neura.
-An OS link handler may be unavailable on Windows or Android. The UI reports
-handoff failure without claiming delivery, a clinic response or an appointment.
+Copy, file export and OS handoff respect the existing Personal Constitution's
+external-message permission. The screen does not enable it. If needed, the
+patient changes **Adaptive Intent OS → Personal constitution → Allow external
+messages**. Every action still requires a fresh review that expires after two
+minutes. Approval binds the exact edited report and destination, is checked
+again after asynchronous policy loading and is consumed before the OS call.
+Edits, policy revocation, Stop, Safe Mode, recovery, background, route coverage
+or disposal invalidate pending work. Clock rollback also invalidates a review.
+A synchronous navigator observer catches a covering route even if immediately
+popped. Only this workflow's own review may cover it without clearing details.
+Retained form/review callbacks cannot revive a stopped operation.
 
-## Consent and temporary data
+The workflow creates no preference, encrypted-store, memory, log, telemetry or
+contact-history record. Its own report, loaded check-ins and contact details
+are cleared on any non-resumed lifecycle state or when another route covers
+it. Returning never restores or sends a report. This is application-state
+cleanup, not forensic erasure of RAM or operating-system state.
 
-External handoff consults the existing Personal Constitution and is blocked by
-default when external messages are disabled. This screen cannot change that
-setting; it is in **Adaptive Intent OS → Personal constitution → Allow external
-messages**. Even when permitted, every handoff requires a fresh two-minute review.
-The permission is consumed before the platform call. There is no automatic
-retry, alternate destination, fallback, scheduling or background contact.
+A dispatched clipboard write, system save or URL launch cannot be retracted.
+An OS save may complete after backgrounding, closing or wiping Neura; the
+explicitly exported file is outside app-managed memory and is not removed by
+an app wipe. Clipboard data and files remain under the OS/destination's control.
+The UI suppresses late success/error updates after revocation and never treats
+an external app opening as delivery, a clinic reply or a booked appointment.
+An exception is an unconfirmed outcome; there is no automatic resend/fallback.
 
-Editing details invalidates the prepared draft and contact confirmation. Safe
-Mode blocks handoff and clears temporary details. Pausing, hiding or detaching
-the app clears the details and removes an open review. Transient inactivity
-invalidates and dismisses a review. Resuming cannot restore its approval. The
-screen owns its temporary controllers; closing it disposes them. There is no
-new file, preferences key, backup, log entry or companion-memory record.
-Removing the preparation route also dismisses its owned review dialog; it
-must not leave the person's details visible over another screen.
-This is application-state cleanup, not a guarantee of RAM zeroization or OS
-screenshot/clipboard deletion. Data a person copies or enters in another app
-is controlled by that app. The clinic draft is deliberately not restored after
-the browser opens and Neura backgrounds.
+## Validation and acceptance
 
-Cancellation, background transitions and Safe Mode revoke approval before a
-handoff is dispatched and suppress stale application callbacks. After a reviewed
-link has already been passed to the OS, Neura cannot retract the browser visit,
-close that application, stop a phone call or erase its data. These protections
-must not be presented as cancellation of an external operation already started.
+Synthetic tests cover report selection, note exclusion, exact edited Unicode
+exports, cancellation, policy changes, stale approvals, recovery, route
+interleavings, background/stop and late completions. Existing destination and
+OS-handoff regressions remain. No real patient data or clinic is used.
 
-This feature does not diagnose, prescribe, recommend medication changes or
-monitor emergencies. It passes along the person's own words and questions.
-Urgent care must not depend on a portal message or on Neura noticing a problem.
+Current-head Windows and Android builds must be checked separately. Physical
+Windows/Samsung save dialogs, clipboard, portal/phone handlers, accessibility,
+clinic acceptance and actual delivery remain unverified until explicitly tested.
+No patient authentication, hospital partnership, medical capability, compliance
+certification or clinical benefit follows from these unit tests.
 
-## Future requirements on hold: direct secure messages
+## Remaining integration: direct secure messages
 
 Select the first supported clinic/portal before implementing a transport.
 Verify its supported **patient-to-care-team messaging** interface and obtain
@@ -121,7 +119,7 @@ scope. Store any retained content encrypted under an authenticated owner's
 key, with revoke, wipe, retention and export behavior. Named personality
 preferences do not establish patient identity or record-access authority.
 
-## Future requirements on hold: Neura speaking on live calls
+## Remaining integration: Neura speaking on live calls
 
 Select a telephone provider and approved deployment before adding call audio.
 The current local SAPI/Android speech paths do not bridge Neura into a phone
@@ -145,22 +143,21 @@ session binding, replay prevention, spending limits and secret storage must
 be verified before real use. Windows and the Samsung SM-S366V need physical
 call and lifecycle acceptance; mocked link launches do not establish this.
 
-## Verification
+## Regression coverage
 
-`test/care/clinic_contact_test.dart` uses synthetic people, reserved example
-domains and mocked OS links. It covers local preparation, no preference writes,
-destination restrictions, exact URL/number handoff without patient payload,
-cancel, edited contact, policy changes, Safe Mode, background, inactivity,
-expiry, failure, late completion and route disposal. It cannot
-establish real delivery, clinician acceptance, physical audio or installation.
+`test/care/clinic_contact_test.dart` exercises ordinary clinic report entry
+points and uses synthetic people, reserved example domains and mocked OS links.
+It retains destination restrictions, exact URL/number handoff without patient
+payload, cancel, edited contact, policy changes, Safe Mode, inactivity, expiry,
+platform failure, late completion, route disposal and narrow-screen coverage.
 
-Hold regressions check the absence of entry points in both care screens, a
-blocked directly constructed screen even with external-message permission,
-and no automatic activation across background/resume or Safe Mode changes.
-The deferred tests use `ClinicContactScreen.previewForTesting()` in debug test
-execution. They retain all preparation and handoff safeguards, including late
-platform completions after background, Safe Mode, clearing or disposal. They
-do not enable a production route or authorize real patient communications.
+`test/care/clinic_report_test.dart` covers explicit history admission, selected
+records and optional notes, a ten-record cap, exact edited Unicode copy/text
+export, cancelled save, policy revocation, stale review/form callbacks, recovery,
+late history/clipboard results and synchronous route-cover/pop interleavings.
+These tests do not establish physical OS behavior or clinic delivery. The
+`previewForTesting` constructor is now an alias for the same normal workflow,
+not a feature switch; both entry points use normal construction.
 
 ## Primary technical references
 

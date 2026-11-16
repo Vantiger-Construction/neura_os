@@ -5,6 +5,7 @@ import '../profiles/local_profile_service.dart';
 
 import '../avatar/avatar_route_observer.dart';
 import '../core/neura_event_bus.dart';
+import '../care/services/clinic_contact_route_observer.dart';
 import '../modules/core/error_handler.dart';
 import '../modules/vault/vault_restore_route_observer.dart';
 import '../modules/human/human_prefs.dart';
@@ -47,6 +48,7 @@ class NeuroCompanionApp extends StatelessWidget {
           navigatorKey: navigatorKey,
           navigatorObservers: [
             AvatarRouteObserver(NeuraEventBus.I),
+            clinicContactRouteObserver,
             vaultRestoreRouteObserver,
             teachNeuraRouteObserver,
           ],
