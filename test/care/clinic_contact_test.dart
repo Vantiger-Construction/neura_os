@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/care/models/clinic_contact_draft.dart';
+import 'package:neuro_companion/care/services/clinic_contact_route_observer.dart';
 import 'package:neuro_companion/care/screens/care_mode_home_screen.dart';
 import 'package:neuro_companion/care/screens/clinic_contact_screen.dart';
 import 'package:neuro_companion/care/screens/neura_care_loop_screen.dart';
@@ -109,7 +110,9 @@ void main() {
     await tester.enterText(fields.at(1), 'Example Clinic');
     await tester.enterText(fields.at(2), phone ? '+1 (202) 555-0123' : _portal);
     await tester.enterText(fields.at(3), _notes);
+    await tester.pump();
     await tester.tap(find.byType(CheckboxListTile));
+    await tester.pump();
     await tester.tap(find.text('Prepare locally'));
     await tester.pumpAndSettle();
   }
@@ -117,14 +120,15 @@ void main() {
   Future<void> prepare(WidgetTester tester, {bool phone = false}) async {
     await tester.binding.setSurfaceSize(const Size(1000, 1900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-        const MaterialApp(home: ClinicContactScreen.previewForTesting()));
+    await tester
+        .pumpWidget(_clinicApp(home: ClinicContactScreen.previewForTesting()));
     await fillDraft(tester, phone: phone);
   }
 
   Future<void> review(WidgetTester tester) async {
     await tester.scrollUntilVisible(find.text('Review external handoff'), 250,
         scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Review external handoff'));
     await tester.pumpAndSettle();
   }
@@ -133,8 +137,7 @@ void main() {
       (tester) async {
     final keys = NeuraPrefsCache.prefs.getKeys();
     await prepare(tester);
-    final message =
-        tester.widget<SelectableText>(find.byType(SelectableText)).data!;
+    final message = tester.widget<TextField>(_reportField()).controller!.text;
     expect(message, contains('From: Alex Example'));
     expect(message, contains('To: Example Clinic'));
     expect(message, contains(_notes));
@@ -186,7 +189,7 @@ void main() {
     await tester.enterText(
         find.byType(TextFormField).at(2), 'https://another.example.test/login');
     await tester.pump();
-    expect(find.byType(SelectableText), findsNothing);
+    expect(_reportField(), findsNothing);
     expect(tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
         false);
     await tester.tap(find.text('Prepare locally'));
@@ -228,7 +231,7 @@ void main() {
     SafeBoot.instance.safeMode.value = true;
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsNothing);
-    expect(find.byType(SelectableText), findsNothing);
+    expect(_reportField(), findsNothing);
     for (final field
         in tester.widgetList<TextFormField>(find.byType(TextFormField))) {
       expect(field.controller!.text, isEmpty);
@@ -253,7 +256,7 @@ void main() {
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsNothing);
-    expect(find.byType(SelectableText), findsNothing);
+    expect(_reportField(), findsNothing);
     expect(find.textContaining('Temporary clinic details and draft cleared'),
         findsOneWidget);
     expect(launches, isEmpty);
@@ -301,8 +304,8 @@ void main() {
     await review(tester);
     await tester.tap(find.text('Open clinic portal'));
     await tester.pumpAndSettle();
-    expect(
-        find.textContaining('Handoff could not be confirmed'), findsOneWidget);
+    expect(find.textContaining('This action could not be confirmed'),
+        findsOneWidget);
     expect(find.textContaining('synthetic-error'), findsNothing);
     expect(launches, hasLength(1));
   });
@@ -318,7 +321,7 @@ void main() {
     await tester.pump();
     pendingLaunch!.complete(true);
     await tester.pumpAndSettle();
-    expect(find.byType(SelectableText), findsNothing);
+    expect(_reportField(), findsNothing);
     expect(find.textContaining('Temporary clinic details and draft cleared'),
         findsOneWidget);
     expect(find.textContaining('External app opened'), findsNothing);
@@ -331,14 +334,14 @@ void main() {
     await prepare(tester);
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
-    await tester.pumpWidget(
-        const MaterialApp(home: ClinicContactScreen.previewForTesting()));
+    await tester
+        .pumpWidget(_clinicApp(home: ClinicContactScreen.previewForTesting()));
     await tester.pumpAndSettle();
     for (final field
         in tester.widgetList<TextFormField>(find.byType(TextFormField))) {
       expect(field.controller!.text, isEmpty);
     }
-    expect(find.byType(SelectableText), findsNothing);
+    expect(_reportField(), findsNothing);
     expect(launches, isEmpty);
   });
 
@@ -365,7 +368,7 @@ void main() {
       await tester.pump();
       pendingLaunch!.complete(true);
       await tester.pumpAndSettle();
-      expect(find.byType(SelectableText), findsNothing);
+      expect(_reportField(), findsNothing);
       for (final field
           in tester.widgetList<TextFormField>(find.byType(TextFormField))) {
         expect(field.controller!.text, isEmpty);
@@ -386,10 +389,11 @@ void main() {
     await review(tester);
     await tester.tap(find.text('Open clinic portal'));
     await tester.pump();
-    await tester.pumpWidget(const MaterialApp(home: ClinicContactScreen()));
+    await tester
+        .pumpWidget(_clinicApp(home: const Scaffold(body: Text('Home'))));
     pendingLaunch!.complete(true);
     await tester.pumpAndSettle();
-    expect(find.textContaining('Clinic contact is on hold.'), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
     expect(find.byType(TextFormField), findsNothing);
     expect(find.textContaining('External app opened'), findsNothing);
     expect(launches, hasLength(1));
@@ -401,7 +405,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1000, 1900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final navigator = GlobalKey<NavigatorState>();
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(_clinicApp(
       navigatorKey: navigator,
       home: const Scaffold(body: Text('Home')),
     ));
@@ -423,16 +427,18 @@ void main() {
 
   testWidgets('message and review fit a narrow mobile screen with larger text',
       (tester) async {
-    await prepare(tester);
-    await tester.binding.setSurfaceSize(const Size(360, 740));
-    await tester.pumpWidget(MaterialApp(
+    await tester.binding.setSurfaceSize(const Size(1000, 2200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(_clinicApp(
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context)
             .copyWith(textScaler: const TextScaler.linear(1.3)),
         child: child!,
       ),
-      home: const ClinicContactScreen.previewForTesting(),
+      home: const ClinicContactScreen(),
     ));
+    await fillDraft(tester);
+    await tester.binding.setSurfaceSize(const Size(360, 740));
     await tester.pumpAndSettle();
     await review(tester);
     expect(find.byType(AlertDialog), findsOneWidget);
@@ -442,44 +448,56 @@ void main() {
     expect(launches, isEmpty);
   });
 
-  testWidgets('held screen blocks preparation even when sharing is permitted',
+  testWidgets('production screen opens without reading or changing policy',
       (tester) async {
     final keys = NeuraPrefsCache.prefs.getKeys();
-    await tester.pumpWidget(const MaterialApp(home: ClinicContactScreen()));
+    var reads = 0;
+    await tester.pumpWidget(_clinicApp(home: ClinicContactScreen(
+      loadCheckIns: () async {
+        reads++;
+        return [];
+      },
+    )));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Clinic contact is on hold.'), findsOneWidget);
-    expect(find.byType(TextFormField), findsNothing);
-    expect(find.text('Prepare locally'), findsNothing);
-    expect(find.text('Review external handoff'), findsNothing);
-    SafeBoot.instance.safeMode.value = true;
-    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-    binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
-    binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
-    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    SafeBoot.instance.safeMode.value = false;
-    await tester.pumpAndSettle();
-    expect(find.byType(TextFormField), findsNothing);
+    expect(find.byType(TextFormField), findsWidgets);
+    expect(reads, 0);
     expect(NeuraPrefsCache.prefs.getKeys(), keys);
-    expect(
-        NeuraConstitutionService.instance.current.allowExternalMessages, true);
     expect(launches, isEmpty);
   });
 
-  testWidgets('Care Loop does not expose held clinic contact', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: NeuraCareLoopScreen()));
+  testWidgets('Care Loop opens clinic report preparation', (tester) async {
+    await tester.pumpWidget(_clinicApp(home: NeuraCareLoopScreen()));
     await tester.pumpAndSettle();
-    expect(find.text('Doctor & clinic'), findsNothing);
+    expect(find.text('Doctor & clinic'), findsOneWidget);
     expect(find.text('Help me through this'), findsOneWidget);
+    await tester.tap(find.text('Doctor & clinic'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextFormField), findsWidgets);
     expect(launches, isEmpty);
   });
 
-  testWidgets('Care Mode does not expose held clinic contact', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: CareModeHomeScreen()));
+  testWidgets('Care Mode opens clinic report preparation', (tester) async {
+    await tester.pumpWidget(_clinicApp(home: CareModeHomeScreen()));
     await tester.pumpAndSettle();
-    expect(find.text('Doctor & clinic'), findsNothing);
+    expect(find.text('Doctor & clinic'), findsOneWidget);
     expect(find.text('Trusted Contacts'), findsOneWidget);
+    await tester.tap(find.text('Doctor & clinic'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextFormField), findsWidgets);
     expect(launches, isEmpty);
   });
 }
+
+Widget _clinicApp(
+        {required Widget home,
+        GlobalKey<NavigatorState>? navigatorKey,
+        TransitionBuilder? builder}) =>
+    MaterialApp(
+        home: home,
+        navigatorKey: navigatorKey,
+        builder: builder,
+        navigatorObservers: [clinicContactRouteObserver]);
+
+Finder _reportField() => find.byWidgetPredicate((widget) =>
+    widget is TextField &&
+    widget.decoration?.labelText == 'Editable clinic report');
