@@ -22,12 +22,11 @@ function Resolve-BoundedDirectory([string]$Path, [string]$Name) {
 }
 
 function Get-RelativePath([string]$Root, [string]$Path) {
-  return [IO.Path]::GetRelativePath($Root, $Path).Replace('\\', '/')
+  return [IO.Path]::GetRelativePath($Root, $Path).Replace([IO.Path]::DirectorySeparatorChar, '/')
 }
 
 function Get-PayloadManifest([string]$Root) {
-  $files = @(Get-ChildItem -LiteralPath $Root -File -Recurse |
-    Where-Object { $_.Name -notin @('RELEASE_MANIFEST.json', 'SHA256SUMS.txt') } |
+  $files = @(Get-ChildItem -LiteralPath $Root -File -Recurse -Force |
     Sort-Object FullName)
   if ($files.Count -eq 0) { throw "Artifact payload is empty: $Root" }
 
@@ -42,7 +41,7 @@ function Get-PayloadManifest([string]$Root) {
 
 function Assert-WindowsPayload([string]$Root) {
   $exe = Join-Path $Root 'neuro_companion.exe'
-  if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+  if (-not (Test-Path -LiteralPath $exe -PathType Leaf) -or (Get-Item -LiteralPath $exe).Length -le 0) {
     throw "Required executable is missing: $exe"
   }
   foreach ($relative in @('flutter_windows.dll', 'data/icudtl.dat', 'data/app.so')) {
@@ -87,7 +86,10 @@ function Get-TextSha256([string]$Text) {
 
 $artifact = Resolve-BoundedDirectory $ArtifactRoot 'ArtifactRoot'
 $output = [IO.Path]::GetFullPath($OutputRoot)
-New-Item -ItemType Directory -Path $output -Force | Out-Null
+# Receipts from another invocation must never be mistaken for this result.
+if ((Test-Path -LiteralPath $output) -and @(Get-ChildItem -LiteralPath $output -Force).Count) {
+  throw "OutputRoot must be a fresh or empty evidence directory: $output"
+}
 Assert-WindowsPayload $artifact
 if ($RequireAuthenticode) {
   if (-not $IsWindows) { throw 'Authenticode enforcement requires Windows PowerShell.' }
@@ -113,6 +115,17 @@ if (-not [string]::IsNullOrWhiteSpace($LatestTag)) {
   $manifest['htmlUrl'] = $HtmlUrl
   $manifest['artifactSha256'] = Get-TextSha256 $payloadDigestJson
 }
+if ($PreviousArtifactRoot) {
+  $previous = Resolve-BoundedDirectory $PreviousArtifactRoot 'PreviousArtifactRoot'
+  Assert-WindowsPayload $previous
+  $previousFiles = Get-PayloadManifest $previous
+  $previousDigest = Get-TextSha256 ($previousFiles | ConvertTo-Json -Depth 8 -Compress)
+  $currentDigest = Get-TextSha256 $payloadDigestJson
+  if ($currentDigest -eq $previousDigest) {
+    throw 'Rollback rehearsal requires two different payloads.'
+  }
+}
+New-Item -ItemType Directory -Path $output -Force | Out-Null
 $manifestPath = Join-Path $output 'RELEASE_MANIFEST.json'
 $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 $manifestFiles | ForEach-Object { "$($_.sha256)  $($_.path)" } |
@@ -120,23 +133,24 @@ $manifestFiles | ForEach-Object { "$($_.sha256)  $($_.path)" } |
 Assert-Manifest $artifact $manifestFiles
 
 if ($PreviousArtifactRoot) {
-  $previous = Resolve-BoundedDirectory $PreviousArtifactRoot 'PreviousArtifactRoot'
-  Assert-WindowsPayload $previous
-  $rehearsal = Join-Path $output 'upgrade-rehearsal'
+  $rehearsal = Join-Path ([IO.Path]::GetTempPath()) ("neura-slots-" + [guid]::NewGuid())
   $slotA = Join-Path $rehearsal 'slot-a'
   $slotB = Join-Path $rehearsal 'slot-b'
-  if (Test-Path -LiteralPath $rehearsal) {
+  New-Item -ItemType Directory -Path $rehearsal | Out-Null
+  try {
+    Copy-Item -LiteralPath $previous -Destination $slotA -Recurse -Force
+    Assert-Manifest $slotA $previousFiles
+    Copy-Item -LiteralPath $artifact -Destination $slotB -Recurse -Force
+    Assert-Manifest $slotB $manifestFiles
+    Remove-Item -LiteralPath $slotB -Recurse -Force
+    Assert-Manifest $slotA $previousFiles
+  } finally {
     Remove-Item -LiteralPath $rehearsal -Recurse -Force
   }
-  New-Item -ItemType Directory -Path $slotA, $slotB -Force | Out-Null
-  Copy-Item -Path (Join-Path $previous '*') -Destination $slotA -Recurse
-  $before = Get-PayloadManifest $slotA
-  Copy-Item -Path (Join-Path $artifact '*') -Destination $slotB -Recurse
-  Assert-Manifest $slotB $manifestFiles
-  Remove-Item -LiteralPath $slotB -Recurse -Force
-  Assert-Manifest $slotA $before
   [ordered]@{
     schema = 1
+    previousPayloadSha256 = $previousDigest
+    candidatePayloadSha256 = $currentDigest
     upgradeStaged = $true
     stagedPayloadVerified = $true
     rollbackPayloadVerified = $true

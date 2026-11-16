@@ -43,6 +43,26 @@ try {
       -not $rollback.rollbackPayloadVerified) {
     throw 'Rollback rehearsal did not prove all required states.'
   }
+  if ($rollback.previousPayloadSha256 -notmatch '^[0-9a-f]{64}$' -or
+      $rollback.candidatePayloadSha256 -notmatch '^[0-9a-f]{64}$' -or
+      $rollback.previousPayloadSha256 -eq $rollback.candidatePayloadSha256) {
+    throw 'Rollback evidence must identify two distinct payload inventories.'
+  }
+
+  $duplicate = Join-Path $root 'duplicate'
+  Copy-Item -LiteralPath $current -Destination $duplicate -Recurse
+  foreach ($baseline in @($current, $duplicate)) {
+    $rejectedOutput = Join-Path $root ([guid]::NewGuid().ToString())
+    try {
+      & $verifier -ArtifactRoot $current -PreviousArtifactRoot $baseline -OutputRoot $rejectedOutput
+      throw 'Identical payloads were accepted.'
+    } catch {
+      if ($_.Exception.Message -ne 'Rollback rehearsal requires two different payloads.') { throw }
+    }
+    if (Test-Path (Join-Path $rejectedOutput 'ROLLBACK_REHEARSAL.json')) {
+      throw 'An identical baseline produced a rollback receipt.'
+    }
+  }
   $manifest = Get-Content -LiteralPath (Join-Path $output 'RELEASE_MANIFEST.json') -Raw |
     ConvertFrom-Json
   if (-not $manifest.userInitiatedInstallOnly) {
