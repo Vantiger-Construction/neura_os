@@ -7,16 +7,12 @@ import 'package:neuro_companion/living_intelligence/device_continuity.dart';
 import 'package:neuro_companion/services/neura_device_continuity_service.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 
-// NeuraDeviceContinuityService.ensureLoaded() only ever reads from disk once
-// per process (guarded by an internal `_loaded` flag), so the "restores from
-// disk" scenario must be the very first thing this file's singleton does -
-// every later test in this file necessarily runs against the already-loaded
-// in-memory state, same as a real app session. The corrupted-store ("fails
-// closed") scenario needs its own process and lives in a separate test file
-// for the same reason.
 const _storeKey = 'neura.device_continuity.paired_devices.v1';
 
 void main() {
+  final service = NeuraDeviceContinuityService.instance;
+  late List<NeuraDeviceIdentity> initiallyRestored;
+
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({
       _storeKey: jsonEncode([
@@ -31,15 +27,13 @@ void main() {
       ]),
     });
     await NeuraPrefsCache.init();
+    service.ensureLoaded();
+    initiallyRestored = service.devices;
   });
 
-  final service = NeuraDeviceContinuityService.instance;
-
   test('ensureLoaded restores a previously paired device from disk', () {
-    service.ensureLoaded();
-
-    expect(service.devices, hasLength(1));
-    final restored = service.devices.single;
+    expect(initiallyRestored, hasLength(1));
+    final restored = initiallyRestored.single;
     expect(restored.deviceId, 'restored-device');
     expect(restored.displayName, 'Restored Phone');
     expect(restored.revoked, isFalse);
@@ -52,8 +46,9 @@ void main() {
   test(
       'ensureLoaded is a no-op on a later call (does not duplicate '
       'restored devices)', () {
+    final before = service.devices;
     service.ensureLoaded();
-    expect(service.devices, hasLength(1));
+    expect(service.devices, orderedEquals(before));
   });
 
   test('pairDevice adds a new device and persists it', () async {
@@ -87,8 +82,8 @@ void main() {
 
   test(
       'pairDevice refuses to add a device without a direct gesture or '
-      'verified fingerprint (the registry\'s own guarantee)', () {
-    expect(
+      'verified fingerprint (the registry\'s own guarantee)', () async {
+    await expectLater(
       () => service.pairDevice(
         identity: const NeuraDeviceIdentity(
           deviceId: 'sneaky-device',
@@ -110,15 +105,29 @@ void main() {
   });
 
   test('revokeDevice marks a device revoked and persists the change', () async {
-    await service.revokeDevice('new-device');
+    const identity = NeuraDeviceIdentity(
+      deviceId: 'revocation-target',
+      displayName: 'Paired Phone',
+      publicKeyFingerprint: 'AAAA-BBBB-CCCC-DDDD',
+    );
+    await service.pairDevice(
+      identity: identity,
+      policy: NeuraDeviceSyncPolicy(
+        allowedCategories: const {NeuraContinuityCategory.preferences},
+      ),
+      directUserGesture: true,
+      fingerprintVerified: true,
+    );
+    await service.revokeDevice(identity.deviceId);
 
     final revoked =
-        service.devices.firstWhere((d) => d.deviceId == 'new-device');
+        service.devices.singleWhere((d) => d.deviceId == identity.deviceId);
     expect(revoked.revoked, isTrue);
 
     final persisted =
         jsonDecode(NeuraPrefsCache.prefs.getString(_storeKey)!) as List;
-    final entry = persisted.firstWhere((e) => e['deviceId'] == 'new-device');
+    final entry =
+        persisted.singleWhere((e) => e['deviceId'] == identity.deviceId);
     expect(entry['revoked'], isTrue);
   });
 }
