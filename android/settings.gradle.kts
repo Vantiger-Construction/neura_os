@@ -10,6 +10,11 @@ pluginManagement {
 
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
+    plugins {
+        id("com.android.application") version providers.gradleProperty("neuraAndroidPluginVersion").get()
+        id("org.jetbrains.kotlin.android") version providers.gradleProperty("neuraKotlinPluginVersion").get()
+    }
+
     repositories {
         google()
         mavenCentral()
@@ -19,9 +24,9 @@ pluginManagement {
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    id("com.android.application") version "9.5.1" apply false
+    id("com.android.application") apply false
     // Resolve KGP before AGP enters the settings plugin classloader; do not apply it.
-    id("org.jetbrains.kotlin.android") version "2.4.21" apply false
+    id("org.jetbrains.kotlin.android") apply false
 }
 
 include(":app")

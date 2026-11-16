@@ -7,7 +7,7 @@ import '../../modules/support/guided_support_screen.dart';
 import '../../reliability/safe_boot.dart';
 import '../models/neura_care_plan.dart';
 import '../services/neura_care_loop_service.dart';
-import 'clinic_contact_screen.dart';
+import '../../wearables/wearable_wellness_screen.dart';
 
 class NeuraCareLoopScreen extends StatefulWidget {
   const NeuraCareLoopScreen({super.key});
@@ -101,10 +101,10 @@ class _NeuraCareLoopScreenState extends State<NeuraCareLoopScreen> {
           OutlinedButton.icon(
             onPressed: () => Navigator.of(context).push<void>(
               MaterialPageRoute<void>(
-                  builder: (_) => const ClinicContactScreen()),
+                  builder: (_) => const WearableWellnessScreen()),
             ),
-            icon: const Icon(Icons.local_hospital_outlined),
-            label: const Text('Doctor & clinic'),
+            icon: const Icon(Icons.watch_outlined),
+            label: const Text('Wearable body awareness'),
           ),
           const SizedBox(height: 12),
           FilledButton.icon(
