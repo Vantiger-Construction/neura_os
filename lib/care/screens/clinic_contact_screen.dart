@@ -191,7 +191,12 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) _clear();
+    if (state != AppLifecycleState.resumed) {
+      _clear();
+    } else if (mounted) {
+      // Re-enable a blank editor without restoring a report or approval.
+      setState(() {});
+    }
   }
 
   @override

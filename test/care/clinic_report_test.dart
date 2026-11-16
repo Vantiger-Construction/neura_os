@@ -373,4 +373,27 @@ void main() {
     expect(copies, isEmpty);
     expect(files, isEmpty);
   });
+
+  testWidgets('returning from background allows a new blank draft only',
+      (tester) async {
+    var reads = 0;
+    await mount(tester, load: () async {
+      reads++;
+      return [];
+    });
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pumpAndSettle();
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(reportField(), findsNothing);
+    final name = tester.widget<TextFormField>(find.byType(TextFormField).first);
+    expect(name.enabled, true);
+    expect(name.controller!.text, isEmpty);
+    await tester.enterText(find.byType(TextFormField).first, 'New Example');
+    await tester.pumpAndSettle();
+    expect(name.controller!.text, 'New Example');
+    expect(reads, 0);
+    expect(copies, isEmpty);
+    expect(files, isEmpty);
+  });
 }
