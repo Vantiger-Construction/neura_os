@@ -12,6 +12,8 @@ import 'package:neuro_companion/constitution/neura_constitution_service.dart';
 import 'package:neuro_companion/constitution/neura_personal_constitution.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
+import 'package:neuro_companion/wearables/wearable_route_observer.dart';
+import 'package:neuro_companion/wearables/wearable_wellness_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _portal = 'https://clinic.example.test/patient/login';
@@ -493,6 +495,7 @@ void main() {
     await tester.pumpWidget(_clinicApp(home: NeuraCareLoopScreen()));
     await tester.pumpAndSettle();
     expect(find.text('Doctor & clinic'), findsOneWidget);
+    expect(find.text('Wearable body awareness'), findsOneWidget);
     expect(find.text('Help me through this'), findsOneWidget);
     await tester.tap(find.text('Doctor & clinic'));
     await tester.pumpAndSettle();
@@ -504,12 +507,30 @@ void main() {
     await tester.pumpWidget(_clinicApp(home: CareModeHomeScreen()));
     await tester.pumpAndSettle();
     expect(find.text('Doctor & clinic'), findsOneWidget);
+    expect(find.text('Wearable body awareness'), findsOneWidget);
     expect(find.text('Trusted Contacts'), findsOneWidget);
     await tester.tap(find.text('Doctor & clinic'));
     await tester.pumpAndSettle();
     expect(find.byType(TextFormField), findsWidgets);
     expect(launches, isEmpty);
   });
+
+  for (final entry in <String, Widget>{
+    'Care Loop': const NeuraCareLoopScreen(),
+    'Care Mode': const CareModeHomeScreen(),
+  }.entries) {
+    testWidgets('${entry.key} keeps wearable navigation beside clinic',
+        (tester) async {
+      await tester.pumpWidget(_clinicApp(home: entry.value));
+      await tester.pumpAndSettle();
+      expect(find.text('Doctor & clinic'), findsOneWidget);
+      await tester.tap(find.text('Wearable body awareness'));
+      await tester.pumpAndSettle();
+      expect(find.byType(WearableWellnessScreen), findsOneWidget);
+      expect(find.byType(ClinicContactScreen), findsNothing);
+      expect(launches, isEmpty);
+    });
+  }
 }
 
 Widget _clinicApp(
@@ -520,7 +541,10 @@ Widget _clinicApp(
         home: home,
         navigatorKey: navigatorKey,
         builder: builder,
-        navigatorObservers: [clinicContactRouteObserver]);
+        navigatorObservers: [
+          clinicContactRouteObserver,
+          wearableRouteObserver
+        ]);
 
 Finder _reportField() => find.byWidgetPredicate((widget) =>
     widget is TextField &&
