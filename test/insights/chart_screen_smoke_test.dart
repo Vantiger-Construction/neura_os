@@ -12,12 +12,17 @@ import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 import '../helpers/data_wipe_fixture.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  late DataWipeFixture fixture;
+  setUp(() async {
+    fixture = await DataWipeFixture.create();
+  });
+
   for (final screen in ['Weekly Snapshot', 'Recap']) {
     for (final samples in [0, 1, 4]) {
       testWidgets(
           '$screen renders $samples synthetic samples and handles chart input',
           (tester) async {
-        final fixture = await DataWipeFixture.create();
         tester.view.devicePixelRatio = 1;
         tester.view.physicalSize = const Size(1000, 1800);
         addTearDown(tester.view.resetDevicePixelRatio);
@@ -44,10 +49,18 @@ void main() {
               home: screen == 'Recap'
                   ? const NeuraRecapScreen()
                   : const WeeklySnapshotScreen()));
-          // Real fixture-file reads and cryptography finish outside fake time.
-          await tester.runAsync(() async {
-            await Future<void>.delayed(const Duration(milliseconds: 100));
-          });
+          // Drain real file reads between virtual UI frames. A loading
+          // failure must be bounded instead of leaving an endless spinner.
+          for (var i = 0; i < 25; i++) {
+            await tester.runAsync(() async {
+              await Future<void>.delayed(const Duration(milliseconds: 40));
+            });
+            await tester.pump();
+            if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
+              break;
+            }
+          }
+          expect(find.byType(CircularProgressIndicator), findsNothing);
           await tester.pumpAndSettle();
           final chart = find.byType(LineChart);
           expect(chart, samples < 2 ? findsNothing : findsOneWidget);
@@ -69,7 +82,7 @@ void main() {
           await tester.pumpWidget(const SizedBox());
           fixture.expectIsolation();
         });
-      });
+      }, timeout: const Timeout(Duration(seconds: 30)));
     }
   }
 }
