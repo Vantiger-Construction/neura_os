@@ -86,11 +86,11 @@ def version_key(value):
     return tuple(int(part) for part in match[1].split('.'))
 
 
-def compare(baseline, candidate):
+def compare(baseline, candidate, expected_gradle='9.9.1'):
     _, old, old_inputs = load_inventory(baseline)
     _, new, new_inputs = load_inventory(candidate)
-    if new['gradle_version'] != '9.9.1':
-        raise ValueError('Candidate was not inventoried with Gradle 9.9.1')
+    if new['gradle_version'] != expected_gradle:
+        raise ValueError(f'Candidate was not inventoried with Gradle {expected_gradle}')
     if old['projects'] != new['projects']:
         raise ValueError('Android plugin project set changed')
     changes = {}
@@ -211,6 +211,7 @@ def main():
     comparison = commands.add_parser('compare')
     comparison.add_argument('--baseline', required=True, type=Path)
     comparison.add_argument('--candidate', required=True, type=Path)
+    comparison.add_argument('--expected-gradle', default='9.9.1')
     comparison.add_argument('--output', required=True, type=Path)
     audit = commands.add_parser('scan')
     audit.add_argument('--inventory', required=True, type=Path)
@@ -222,7 +223,7 @@ def main():
     code = 2
     try:
         if args.command == 'compare':
-            receipt.update(compare(args.baseline, args.candidate))
+            receipt.update(compare(args.baseline, args.candidate, args.expected_gradle))
             code = 1 if receipt['changes'] else 0
         else:
             args.output.mkdir(parents=True, exist_ok=True)

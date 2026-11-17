@@ -2,7 +2,7 @@ name: Android dependency validation
 
 on:
   pull_request:
-    branches: [Neura, 'dependabot/gradle/android/**', 'codex/pr220-android-validation']
+    branches: ['codex/pr221-isolated-kotlin-2-4-21']
     paths:
       - 'android/**'
       - 'pubspec.yaml'
@@ -56,13 +56,10 @@ jobs:
         run: |
           set -euo pipefail
           test "$RUNNER_ENVIRONMENT" = github-hosted
-          baseline=$(git merge-base HEAD refs/remotes/origin/Neura)
-          if [[ "${GITHUB_BASE_REF:-}" == "codex/pr220-android-validation" ]]; then
-            # Both sides use #221's app source and Gradle 9.9.1; only the candidate SDK changes.
-            baseline="${PR_BASE_SHA:?missing pull request base commit}"
-            git merge-base --is-ancestor "$baseline" HEAD
-            git diff --exit-code "$baseline" HEAD -- android lib test pubspec.yaml pubspec.lock rust
-          fi
+          baseline="${PR_BASE_SHA:-$(git merge-base HEAD refs/remotes/origin/codex/pr221-isolated-kotlin-2-4-21)}"
+          git merge-base --is-ancestor "$baseline" HEAD
+          git diff --exit-code "$baseline" HEAD -- android lib test pubspec.yaml pubspec.lock rust \
+            ':(exclude)android/gradle/wrapper/gradle-wrapper.properties'
           test "$baseline" != "$(git rev-parse HEAD)"
           evidence="$RUNNER_TEMP/neura-android-validation"
           mkdir -p "$evidence/baseline" "$evidence/candidate"
@@ -87,7 +84,7 @@ jobs:
           for label in baseline candidate; do
             source="$GITHUB_WORKSPACE"
             if [[ "$label" = baseline ]]; then source="$NEURA_ANDROID_BASELINE"; fi
-            if [[ "$label" == candidate && "${GITHUB_BASE_REF:-}" == "codex/pr220-android-validation" ]]; then
+            if [[ "$label" == candidate ]]; then
               git -C "$FLUTTER_ROOT" apply --check "$GITHUB_WORKSPACE/tools/android_validation/flutter-3.47.9-kotlin-2.4.21.patch"
               git -C "$FLUTTER_ROOT" apply "$GITHUB_WORKSPACE/tools/android_validation/flutter-3.47.9-kotlin-2.4.21.patch"
               git -C "$FLUTTER_ROOT" diff -- packages/flutter_tools/gradle/build.gradle.kts \
@@ -124,6 +121,7 @@ jobs:
           python3 tools/android_validation/check_dependencies.py compare \
             --baseline "$NEURA_ANDROID_EVIDENCE/baseline/graphs" \
             --candidate "$NEURA_ANDROID_EVIDENCE/candidate/graphs" \
+            --expected-gradle '9.9.2-20261117031137+0000' \
             --output "$NEURA_ANDROID_EVIDENCE/comparison.json"
           python3 tools/android_validation/check_apk.py --output "$NEURA_ANDROID_EVIDENCE/apk-comparison.json" \
             compare "$NEURA_ANDROID_EVIDENCE/baseline/apk.json" "$NEURA_ANDROID_EVIDENCE/candidate/apk.json"
