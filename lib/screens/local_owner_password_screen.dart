@@ -122,11 +122,16 @@ class _LocalOwnerPasswordScreenState extends State<LocalOwnerPasswordScreen> {
                   padding: const EdgeInsets.all(24),
                   children: [
                     Text(widget.creating
-                        ? 'Choose a phrase of at least 12 characters. Your device’s password manager can offer to save it.'
+                        ? (_windows
+                            ? 'Choose a phrase of at least 12 characters. Enable Windows Hello below to sign in without typing it next time.'
+                            : 'Choose a phrase of at least 12 characters. Your device’s password manager can offer to save it.')
                         : widget.removing
                             ? 'Enter your current password to turn off the Neura owner password on this device.'
                             : 'Enter your password to open your personal workspace.'),
-                    if (_windows && widget.remembered && !widget.removing)
+                    if (_windows &&
+                        widget.remembered &&
+                        _remember &&
+                        !widget.removing)
                       FilledButton.icon(
                           onPressed:
                               _busy ? null : () => _submit(useSaved: true),

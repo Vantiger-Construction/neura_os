@@ -9,6 +9,16 @@ import 'package:neuro_companion/startup/startup_access_gate.dart';
 class _ExistingOwner extends Fake implements LocalOwnerLogin {
   int reads = 0;
   bool failRead = false;
+  bool? savedPreference;
+
+  @override
+  Future<void> create(String password, {required bool remember}) async {
+    savedPreference = remember;
+  }
+
+  @override
+  Future<bool> unlockRemembered(Future<bool> Function() verifyDevice) =>
+      verifyDevice();
 
   @override
   Future<bool?> remembered() async {
@@ -74,6 +84,53 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Owner unlocked: true'), findsOneWidget);
   });
+
+  testWidgets(
+      'owner chooses remembered sign-in at setup and can fall back to a password',
+      (tester) async {
+    final login = _ExistingOwner();
+    int admissions = 0;
+    const phrase = 'synthetic owner phrase';
+    await tester.pumpWidget(MaterialApp(
+        home: LocalOwnerPasswordScreen(
+            creating: true, login: login, onSuccess: () => admissions++)));
+    await tester.enterText(find.byType(TextField).first, phrase);
+    await tester.tap(find.text('Save owner password'));
+    await tester.pumpAndSettle();
+    expect(admissions, 0);
+    expect(login.savedPreference, isNull);
+    await tester.enterText(find.byType(TextField).last, phrase);
+    await tester.tap(find.text('Remember me with Windows Hello'));
+    await tester.tap(find.text('Save owner password'));
+    await tester.pumpAndSettle();
+    expect(login.savedPreference, isTrue);
+    expect(admissions, 1);
+
+    bool deviceApproved = false;
+    await tester.pumpWidget(MaterialApp(
+        home: LocalOwnerPasswordScreen(
+            key: const ValueKey('returning owner'),
+            creating: false,
+            remembered: true,
+            login: login,
+            verifyDevice: () async => deviceApproved,
+            onSuccess: () => admissions++)));
+    await tester.tap(find.text('Use Windows Hello'));
+    await tester.pumpAndSettle();
+    expect(admissions, 1);
+    expect(find.text('Enter your owner password to continue.'), findsOneWidget);
+    deviceApproved = true;
+    await tester.tap(find.text('Use Windows Hello'));
+    await tester.pumpAndSettle();
+    expect(admissions, 2);
+    await tester.tap(find.text('Remember me with Windows Hello'));
+    await tester.pumpAndSettle();
+    expect(find.text('Use Windows Hello'), findsNothing);
+    await tester.enterText(find.byType(TextField), phrase);
+    await tester.tap(find.text('Unlock'));
+    await tester.pumpAndSettle();
+    expect(admissions, 3);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 
   for (final screen in <Widget>[
     const SignInScreen(),
