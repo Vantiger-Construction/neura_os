@@ -16,20 +16,30 @@ const root=fileURLToPath(new URL('../../', import.meta.url));
 for (const path of ['supabase/migrations/20260918181707_create_journal_entries.sql','supabase/migrations/20260918181725_track_journal_revision_time.sql','supabase/migrations/20260918181743_compare_journal_revisions.sql','supabase/migrations/20260918181858_restrict_rls_auto_enable_execution.sql']) await db.exec(readFileSync(root+path,'utf8'));
 await db.exec(`set role authenticated; set request.jwt.claim.sub = '00000000-0000-0000-0000-000000000001';`);
 const original={id:'entry1',timestamp:'2026-01-01T00:00:00Z',updated_at:'2026-01-01T00:00:00Z',content:'original',moodTag:'',isVoice:false};
-const rpc=async (entry, expected=null)=>(await db.query('select * from public.neura_sync_journal_revision($1::jsonb,$2::timestamptz)',[JSON.stringify(entry),expected])).rows[0];
+const rpc = async (entry, expected = null) => {
+  // Keep the full PostgreSQL timestamp for the next compare-and-set call.
+  const result = await db.query(`
+    select content, updated_at::text as updated_at,
+           updated_at > $2::timestamptz as revision_advanced
+    from public.neura_sync_journal_revision($1::jsonb, $2::timestamptz)
+  `, [JSON.stringify(entry), expected]);
+  return result.rows[0];
+};
 let row=await rpc(original);
 assert.equal(row.content,'original');
+const insertedRevision = row.updated_at;
 const newer={...original,content:'newer',updated_at:'2026-02-01T00:00:00Z'};
-row=await rpc(newer,original.updated_at);
+row=await rpc(newer,insertedRevision);
 assert.equal(row.content,'newer');
-assert.notEqual(new Date(row.updated_at).toISOString(),original.updated_at);
+assert.equal(row.revision_advanced, true, 'accepted edit must advance the stored revision');
 const revision=row.updated_at;
-row=await rpc({...original,content:'stale'},original.updated_at);
+row=await rpc({...original,content:'stale'},insertedRevision);
 assert.equal(row.content,'newer');
 row=await rpc({...original,content:'stale'});
 assert.equal(row.content,'newer');
-row=await rpc({...newer,updated_at:'2027-01-01T00:00:00Z'},revision);
-assert.equal(new Date(row.updated_at).toISOString(),new Date(revision).toISOString());
+const retryTime = new Date(Date.parse(revision) + 86_400_000).toISOString();
+row=await rpc({...newer,updated_at:retryTime},revision);
+assert.equal(row.updated_at,revision);
 await db.exec(`set request.jwt.claim.sub = '00000000-0000-0000-0000-000000000002';`);
 assert.equal((await db.query('select * from public.journal_entries')).rows.length,0);
 await assert.rejects(rpc({...original,content:'other user'},revision));

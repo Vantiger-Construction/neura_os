@@ -1,0 +1,39 @@
+name: Neura journal sync
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths:
+      - 'tools/sync_tests/**'
+      - 'supabase/migrations/**'
+      - '.github/workflows/neura-journal-sync.yml'
+  push:
+    branches: [Neura]
+    paths:
+      - 'tools/sync_tests/**'
+      - 'supabase/migrations/**'
+      - '.github/workflows/neura-journal-sync.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  journal:
+    name: Journal revision regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: tools/sync_tests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.22.1'
+          package-manager-cache: false
+      - name: Install locked test dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run synthetic journal regression
+        run: npm test
