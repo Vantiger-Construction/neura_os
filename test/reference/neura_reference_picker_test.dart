@@ -192,4 +192,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Source: private.txt'), findsOneWidget);
   });
+
+  for (final failure in ['picker error', 'empty file']) {
+    testWidgets('active $failure releases the reference picker for retry',
+        (tester) async {
+      await mount(tester);
+      await _tap(tester, 'Select a text document');
+      if (failure == 'picker error') {
+        picker.requests.single
+            .completeError(StateError('Synthetic dialog failure'));
+      } else {
+        picker.requests.single
+            .complete(FakePickedFile.fromBytes('empty.txt', []));
+      }
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Could not read that file.'), findsOneWidget);
+      expect(find.text('Source: empty.txt'), findsNothing);
+      await _tap(tester, 'Select a text document');
+      expect(picker.requests, hasLength(2));
+      picker.requests.last.complete(_file());
+      await tester.pumpAndSettle();
+      expect(find.text('Source: private.txt'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }
