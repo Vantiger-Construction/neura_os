@@ -3,7 +3,7 @@ name: Android startup voice safety
 on:
   pull_request:
     # Stacked reviews of Android Dependabot PRs run without release delivery.
-    branches: [Neura, 'dependabot/gradle/android/**', 'codex/pr220-android-validation']
+    branches: ['codex/pr221-isolated-kotlin-2-4-21']
     paths:
       - 'android/**'
       - 'lib/services/neura*speech*'
@@ -68,9 +68,8 @@ jobs:
         with:
           flutter-version: '3.47.9'
           channel: stable
-          cache: ${{ github.base_ref != 'codex/pr220-android-validation' }}
+          cache: false
       - name: Apply the candidate patch to the disposable Flutter SDK
-        if: github.base_ref == 'codex/pr220-android-validation'
         run: |
           set -euo pipefail
           test "$RUNNER_ENVIRONMENT" = github-hosted
