@@ -19,6 +19,15 @@ analyzer:
     - build/**
     - .dart_tool/**
     - analyze_output.txt
+    # Flutter 3.47.9's scaffold migration adds these exclusions. Commit the
+    # effective policy so tests/builds do not rewrite tracked package identity.
+    # Authored Dart remains in lib/ and test/ and is analyzed with fatal infos.
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
 
 linter:
   # The lint rules applied to this project can be customized in the
