@@ -3,7 +3,7 @@ name: Android startup voice safety
 on:
   pull_request:
     # Stacked reviews of Android Dependabot PRs run without release delivery.
-    branches: ['codex/pr221-isolated-kotlin-2-4-21']
+    branches: [Neura, 'dependabot/gradle/android/**', 'codex/pr220-android-validation']
     paths:
       - 'android/**'
       - 'lib/services/neura*speech*'
