@@ -5,7 +5,9 @@ import '../modules/navigation/enhanced_navigation.dart';
 import '../services/auth_service.dart';
 
 class VerifyEmailScreen extends StatefulWidget {
-  const VerifyEmailScreen({super.key});
+  const VerifyEmailScreen(
+      {super.key, this.destination = const EnhancedNavigation()});
+  final Widget destination;
 
   @override
   _VerifyEmailScreenState createState() => _VerifyEmailScreenState();
@@ -24,8 +26,9 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
     final verified = await AuthService().isEmailVerified();
     if (!mounted) return;
     if (verified) {
+      final destination = widget.destination;
       unawaited(Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const EnhancedNavigation()),
+        MaterialPageRoute(builder: (_) => destination),
         (route) => false,
       ));
     }
@@ -33,7 +36,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
 
   Future<void> _resend() async {
     await AuthService().sendEmailVerification();
-    setState(() => _emailSent = true);
+    if (mounted) setState(() => _emailSent = true);
   }
 
   @override

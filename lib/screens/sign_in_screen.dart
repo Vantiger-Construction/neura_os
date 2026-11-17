@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../widgets/login_password_field.dart';
 import '../modules/navigation/enhanced_navigation.dart';
 import '../services/auth_service.dart';
 import 'sign_up_screen.dart';
@@ -8,7 +11,9 @@ import 'reset_password_screen.dart';
 import 'verify_email_screen.dart';
 
 class SignInScreen extends StatefulWidget {
-  const SignInScreen({super.key});
+  const SignInScreen(
+      {super.key, this.destination = const EnhancedNavigation()});
+  final Widget destination;
 
   @override
   _SignInScreenState createState() => _SignInScreenState();
@@ -21,6 +26,8 @@ class _SignInScreenState extends State<SignInScreen> {
   String? _error;
 
   Future<void> _submit() async {
+    if (_loading) return;
+    final destination = widget.destination;
     setState(() {
       _loading = true;
       _error = null;
@@ -28,23 +35,27 @@ class _SignInScreenState extends State<SignInScreen> {
     try {
       await AuthService().signIn(_email.text, _pass.text);
       if (!mounted) return;
-      if (await AuthService().isEmailVerified()) {
+      final verified = await AuthService().isEmailVerified();
+      if (!mounted) return;
+      TextInput.finishAutofillContext();
+      if (verified) {
         unawaited(Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const EnhancedNavigation()),
+          MaterialPageRoute(builder: (_) => destination),
           (route) => false,
         ));
       } else {
         unawaited(Navigator.pushReplacement(
-            context, MaterialPageRoute(builder: (_) => VerifyEmailScreen())));
+            context,
+            MaterialPageRoute(
+                builder: (_) => VerifyEmailScreen(destination: destination))));
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
       });
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -57,21 +68,29 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   Widget build(BuildContext ctx) {
+    final destination = widget.destination;
     return Scaffold(
       appBar: AppBar(title: const Text('Sign In')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      body: AutofillGroup(
+        onDisposeAction: AutofillContextAction.cancel,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
           children: [
             if (_error != null)
               Text(_error!, style: const TextStyle(color: Colors.red)),
             TextField(
                 controller: _email,
+                enabled: !_loading,
+                keyboardType: TextInputType.emailAddress,
+                autofillHints: const [
+                  AutofillHints.username,
+                  AutofillHints.email
+                ],
                 decoration: const InputDecoration(labelText: 'Email')),
-            TextField(
+            LoginPasswordField(
                 controller: _pass,
-                decoration: const InputDecoration(labelText: 'Password'),
-                obscureText: true),
+                enabled: !_loading,
+                onSubmitted: (_) => _submit()),
             const SizedBox(height: 16),
             ElevatedButton(
                 onPressed: _loading ? null : _submit,
@@ -80,12 +99,21 @@ class _SignInScreenState extends State<SignInScreen> {
                     : const Text('Sign In')),
             const SizedBox(height: 8),
             TextButton(
-                onPressed: () => Navigator.push(
-                    ctx, MaterialPageRoute(builder: (_) => SignUpScreen())),
+                onPressed: _loading
+                    ? null
+                    : () => Navigator.push(
+                        ctx,
+                        MaterialPageRoute(
+                            builder: (_) =>
+                                SignUpScreen(destination: destination))),
                 child: const Text('Create account')),
             TextButton(
-                onPressed: () => Navigator.push(ctx,
-                    MaterialPageRoute(builder: (_) => ResetPasswordScreen())),
+                onPressed: _loading
+                    ? null
+                    : () => Navigator.push(
+                        ctx,
+                        MaterialPageRoute(
+                            builder: (_) => ResetPasswordScreen())),
                 child: const Text('Forgot password?')),
           ],
         ),
