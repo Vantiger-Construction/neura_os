@@ -79,6 +79,10 @@ jobs:
           flutter pub get --enforce-lockfile
           # Keep native compilation and the receipt on the committed policy.
           git restore --source=HEAD -- analysis_options.yaml
+          # Flutter may regenerate this tracked macOS file during dependency
+          # resolution. It is unrelated to the Android APK and must not make
+          # the source-identity receipt differ from the checked-out commit.
+          git restore --source=HEAD -- macos/Flutter/GeneratedPluginRegistrant.swift
       - name: Synthetic startup, permission, cancellation and settings tests
         run: >-
           flutter test --no-pub --concurrency 2 --timeout 2m
