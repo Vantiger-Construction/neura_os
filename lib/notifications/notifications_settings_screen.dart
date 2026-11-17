@@ -9,6 +9,7 @@ class NotificationsSettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final supported = NeuraNotificationsService.instance.platformSupported;
     return Scaffold(
       appBar: AppBar(title: const Text('Notifications')),
       body: ValueListenableBuilder<NeuraNotificationsPrefs>(
@@ -17,18 +18,22 @@ class NotificationsSettingsScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(12),
             children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                 child: Text(
-                  'Off by default. These use Windows toast notifications, so they can '
-                  'reach you even when Neura isn\'t focused.',
-                  style: TextStyle(fontSize: 12, color: Colors.black54),
+                  supported
+                      ? 'Off by default. These use Windows toast notifications, so they can '
+                          'reach you even when Neura isn\'t focused.'
+                      : 'Notifications are currently available only on Windows.',
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
                 ),
               ),
               SwitchListTile(
                 value: prefs.weeklyReviewReadyEnabled,
-                onChanged: (v) => NeuraNotificationsPrefsController.instance
-                    .update(prefs.copyWith(weeklyReviewReadyEnabled: v)),
+                onChanged: !supported
+                    ? null
+                    : (v) => NeuraNotificationsPrefsController.instance
+                        .update(prefs.copyWith(weeklyReviewReadyEnabled: v)),
                 secondary: const Icon(Icons.insights_outlined),
                 title: const Text('Weekly review ready'),
                 subtitle: const Text(
@@ -36,8 +41,10 @@ class NotificationsSettingsScreen extends StatelessWidget {
               ),
               SwitchListTile(
                 value: prefs.legacyOverdueEnabled,
-                onChanged: (v) => NeuraNotificationsPrefsController.instance
-                    .update(prefs.copyWith(legacyOverdueEnabled: v)),
+                onChanged: !supported
+                    ? null
+                    : (v) => NeuraNotificationsPrefsController.instance
+                        .update(prefs.copyWith(legacyOverdueEnabled: v)),
                 secondary: const Icon(Icons.auto_stories_outlined),
                 title: const Text('Legacy Guard check-in overdue'),
                 subtitle: const Text(
@@ -45,28 +52,31 @@ class NotificationsSettingsScreen extends StatelessWidget {
               ),
               SwitchListTile(
                 value: prefs.dailyMoodNudgeEnabled,
-                onChanged: (v) async {
-                  final next = prefs.copyWith(dailyMoodNudgeEnabled: v);
-                  await NeuraNotificationsPrefsController.instance.update(next);
-                  if (v) {
-                    await NeuraNotificationsService.instance
-                        .scheduleDailyMoodNudge(
-                      TimeOfDay(
-                          hour: next.dailyMoodNudgeHour,
-                          minute: next.dailyMoodNudgeMinute),
-                    );
-                  } else {
-                    await NeuraNotificationsService.instance
-                        .cancelDailyMoodNudge();
-                  }
-                },
+                onChanged: !supported
+                    ? null
+                    : (v) async {
+                        final next = prefs.copyWith(dailyMoodNudgeEnabled: v);
+                        await NeuraNotificationsPrefsController.instance
+                            .update(next);
+                        if (v) {
+                          await NeuraNotificationsService.instance
+                              .scheduleDailyMoodNudge(
+                            TimeOfDay(
+                                hour: next.dailyMoodNudgeHour,
+                                minute: next.dailyMoodNudgeMinute),
+                          );
+                        } else {
+                          await NeuraNotificationsService.instance
+                              .cancelDailyMoodNudge();
+                        }
+                      },
                 secondary: const Icon(Icons.favorite_outline),
                 title: const Text('Daily mood check-in nudge'),
                 subtitle: Text(
                   'Every day at ${TimeOfDay(hour: prefs.dailyMoodNudgeHour, minute: prefs.dailyMoodNudgeMinute).format(context)}.',
                 ),
               ),
-              if (prefs.dailyMoodNudgeEnabled)
+              if (supported && prefs.dailyMoodNudgeEnabled)
                 ListTile(
                   leading: const SizedBox(width: 24),
                   title: const Text('Change reminder time'),
@@ -92,11 +102,13 @@ class NotificationsSettingsScreen extends StatelessWidget {
                 ),
               SwitchListTile(
                 value: prefs.promiseReminderEnabled,
-                onChanged: (v) async {
-                  await NeuraNotificationsPrefsController.instance
-                      .update(prefs.copyWith(promiseReminderEnabled: v));
-                  await PromiseService.instance.syncAllReminders();
-                },
+                onChanged: !supported
+                    ? null
+                    : (v) async {
+                        await NeuraNotificationsPrefsController.instance
+                            .update(prefs.copyWith(promiseReminderEnabled: v));
+                        await PromiseService.instance.syncAllReminders();
+                      },
                 secondary: const Icon(Icons.handshake_outlined),
                 title: const Text('Promise reminders'),
                 subtitle:

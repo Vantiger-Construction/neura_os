@@ -75,7 +75,24 @@ jobs:
           # Analyze with the exact reviewed policy, including its platform scope.
           git restore --source=HEAD -- analysis_options.yaml
       - name: Check all application and test formatting
-        run: dart format --output=none --set-exit-if-changed lib test
+        id: formatting
+        shell: bash
+        run: |
+          # Keep the formatting gate fatal while retaining a reviewable fix
+          # when a contributor cannot run the pinned SDK locally.
+          set +e
+          dart format --set-exit-if-changed lib test
+          result=$?
+          git diff --binary -- lib test > "$RUNNER_TEMP/neura-formatting.patch"
+          exit "$result"
+      - name: Preserve formatting correction on failure
+        if: failure() && steps.formatting.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: neura-formatting-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/neura-formatting.patch
+          if-no-files-found: error
+          retention-days: 7
       - name: Require zero analyzer errors, warnings and infos
         run: dart analyze --fatal-infos
       - name: Record the analyzed source
