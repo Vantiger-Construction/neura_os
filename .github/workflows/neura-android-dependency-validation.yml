@@ -51,13 +51,16 @@ jobs:
           channel: stable
           cache: false
       - name: Prepare bounded disposable build storage and exact baseline
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
           test "$RUNNER_ENVIRONMENT" = github-hosted
           baseline=$(git merge-base HEAD refs/remotes/origin/Neura)
           if [[ "${GITHUB_BASE_REF:-}" == "codex/pr220-android-validation" ]]; then
             # Both sides use #221's app source and Gradle 9.9.1; only the candidate SDK changes.
-            baseline=7bc7f36c2b4f7e2eada3dc4b9e5c238e9962ceb2
+            baseline="${PR_BASE_SHA:?missing pull request base commit}"
+            git merge-base --is-ancestor "$baseline" HEAD
             git diff --exit-code "$baseline" HEAD -- android lib test pubspec.yaml pubspec.lock rust
           fi
           test "$baseline" != "$(git rev-parse HEAD)"
