@@ -28,8 +28,9 @@ class _Notifications extends Fake implements FlutterLocalNotificationsPlugin {
   }) async {
     initializations++;
     expect(settings.windows, isNotNull);
-    if (failInitialization)
+    if (failInitialization) {
       throw StateError('Synthetic first-use DLL failure.');
+    }
     return initGate == null ? true : await initGate!.future;
   }
 

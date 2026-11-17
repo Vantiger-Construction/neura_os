@@ -85,8 +85,9 @@ class ControlledRecorder extends Fake
   @override
   Future<String?> stop(String recorderId) async {
     stopCalls.add(recorderId);
-    if (failedStops.contains(recorderId))
+    if (failedStops.contains(recorderId)) {
       throw StateError('Synthetic Stop failure.');
+    }
     await stopGate?.future;
     if (live.remove(recorderId)) {
       states[recorderId]!.add(RecordState.stop);
@@ -99,8 +100,9 @@ class ControlledRecorder extends Fake
   @override
   Future<void> dispose(String recorderId) async {
     disposals++;
-    if (failedDisposals.contains(recorderId))
+    if (failedDisposals.contains(recorderId)) {
       throw StateError('Synthetic disposal failure.');
+    }
     await disposeGate?.future;
     live.remove(recorderId);
     await audio.remove(recorderId)?.close();

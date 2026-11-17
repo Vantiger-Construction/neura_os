@@ -111,10 +111,14 @@ class NeuraNotificationsService {
 
   Future<void> showWeeklyReviewReadyNotification() async {
     if (!NeuraNotificationsPrefsController
-        .instance.prefs.value.weeklyReviewReadyEnabled) return;
+        .instance.prefs.value.weeklyReviewReadyEnabled) {
+      return;
+    }
     if (!await _ready()) return;
     if (!NeuraNotificationsPrefsController
-        .instance.prefs.value.weeklyReviewReadyEnabled) return;
+        .instance.prefs.value.weeklyReviewReadyEnabled) {
+      return;
+    }
     await _showSafely(
       _weeklyReviewId,
       'Your weekly review is ready',
@@ -124,10 +128,14 @@ class NeuraNotificationsService {
 
   Future<void> showLegacyOverdueNotification() async {
     if (!NeuraNotificationsPrefsController
-        .instance.prefs.value.legacyOverdueEnabled) return;
+        .instance.prefs.value.legacyOverdueEnabled) {
+      return;
+    }
     if (!await _ready()) return;
     if (!NeuraNotificationsPrefsController
-        .instance.prefs.value.legacyOverdueEnabled) return;
+        .instance.prefs.value.legacyOverdueEnabled) {
+      return;
+    }
     await _showSafely(
       _legacyOverdueId,
       'Legacy Guard check-in overdue',
@@ -153,10 +161,14 @@ class NeuraNotificationsService {
 
   Future<void> scheduleDailyMoodNudge(TimeOfDay at) async {
     if (!NeuraNotificationsPrefsController
-        .instance.prefs.value.dailyMoodNudgeEnabled) return;
+        .instance.prefs.value.dailyMoodNudgeEnabled) {
+      return;
+    }
     if (!await _ready()) return;
     if (!NeuraNotificationsPrefsController
-        .instance.prefs.value.dailyMoodNudgeEnabled) return;
+        .instance.prefs.value.dailyMoodNudgeEnabled) {
+      return;
+    }
     try {
       final now = DateTime.now();
       var next = DateTime(now.year, now.month, now.day, at.hour, at.minute);
@@ -199,10 +211,14 @@ class NeuraNotificationsService {
     required DateTime dueAt,
   }) async {
     if (!NeuraNotificationsPrefsController
-        .instance.prefs.value.promiseReminderEnabled) return;
+        .instance.prefs.value.promiseReminderEnabled) {
+      return;
+    }
     if (!await _ready()) return;
     if (!NeuraNotificationsPrefsController
-        .instance.prefs.value.promiseReminderEnabled) return;
+        .instance.prefs.value.promiseReminderEnabled) {
+      return;
+    }
     if (!dueAt.isAfter(DateTime.now())) return;
     try {
       final scheduled = tz.TZDateTime.from(dueAt.toUtc(), tz.UTC);

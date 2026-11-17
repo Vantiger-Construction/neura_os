@@ -163,13 +163,15 @@ class AmbientListeningService with WidgetsBindingObserver {
   }
 
   Future<void> start() async {
-    if (_running || _starting || _shutdownUnverified || !_captureRequested)
+    if (_running || _starting || _shutdownUnverified || !_captureRequested) {
       return;
+    }
 
     final stopping = _stopInFlight;
     if (stopping != null) await stopping;
-    if (_running || _starting || _shutdownUnverified || !_captureRequested)
+    if (_running || _starting || _shutdownUnverified || !_captureRequested) {
       return;
+    }
 
     _starting = true;
     final generation = ++_lifecycleGeneration;

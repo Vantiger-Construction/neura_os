@@ -193,8 +193,9 @@ class SleepListenerService with WidgetsBindingObserver {
         failed = true;
       }
     }
-    if (failed)
+    if (failed) {
       throw StateError('Sleep recorder shutdown could not be verified.');
+    }
   }
 
   static Future<void> resetAllAfterDataWipe() async {
@@ -211,8 +212,9 @@ class SleepListenerService with WidgetsBindingObserver {
         failed = true;
       }
     }
-    if (failed)
+    if (failed) {
       throw StateError('Sleep recorder shutdown could not be verified.');
+    }
   }
 
   Future<void> _resetAfterDataWipe() async {

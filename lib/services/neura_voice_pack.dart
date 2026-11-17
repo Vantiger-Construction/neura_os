@@ -752,8 +752,9 @@ class _VoicePackMicDriver {
     _stateSub = _recorder.onStateChanged().listen((state) {
       if (state == RecordState.pause) onEnded();
     }, onError: (Object error, StackTrace stack) {
-      if (generation == _generation && !_out.isClosed)
+      if (generation == _generation && !_out.isClosed) {
         _out.addError(error, stack);
+      }
     });
     _stoppedSub = _recorder.onStopped().listen((_) => onEnded());
 
@@ -774,7 +775,9 @@ class _VoicePackMicDriver {
         if (_out.isClosed ||
             takeEnded ||
             generation != _generation ||
-            !mayCapture()) return;
+            !mayCapture()) {
+          return;
+        }
         final pcm = Int16List.view(
           bytes.buffer,
           bytes.offsetInBytes,
@@ -783,8 +786,9 @@ class _VoicePackMicDriver {
         _out.add(engine.processPcm16(pcm));
       },
       onError: (Object error, StackTrace stack) {
-        if (generation == _generation && !_out.isClosed)
+        if (generation == _generation && !_out.isClosed) {
           _out.addError(error, stack);
+        }
       },
       onDone: onEnded,
     );
