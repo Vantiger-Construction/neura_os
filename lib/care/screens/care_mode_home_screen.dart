@@ -6,6 +6,7 @@ import '../models/crisis_playbook.dart';
 import 'trusted_contacts_screen.dart';
 import 'crisis_playbook_detail_screen.dart';
 import '../../wearables/wearable_wellness_screen.dart';
+import 'clinic_contact_screen.dart';
 
 class CareModeHomeScreen extends StatefulWidget {
   const CareModeHomeScreen({super.key});
@@ -87,6 +88,16 @@ class _CareModeHomeScreenState extends State<CareModeHomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
+                  ListTile(
+                    leading: const Icon(Icons.medical_services_outlined),
+                    title: const Text('Doctor & clinic'),
+                    subtitle: const Text(
+                        'Prepare a report to share with your clinic.'),
+                    onTap: () => Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                          builder: (_) => const ClinicContactScreen()),
+                    ),
+                  ),
                   ListTile(
                     leading: const Icon(Icons.watch_outlined),
                     title: const Text('Wearable body awareness'),
