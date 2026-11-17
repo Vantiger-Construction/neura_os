@@ -1,0 +1,10 @@
+platform,checkpoint,status,source_commit,source_tree,package_sha256,observed_at,device,evidence_url,observation,next_action
+Windows,Ten-minute offline conversation,UNVERIFIED,,,,,Laptop with 8 GB RAM or less,,,Run the selected verified bundle and record RAM and response time
+Windows,Microphone shutdown and route loss,UNVERIFIED,,,,,Laptop with 8 GB RAM or less,,,Observe OS microphone release and no automatic resume
+Windows,First-use notifications and cancellation,UNVERIFIED,,,,,Laptop with 8 GB RAM or less,,,Test opt-out and first enable plus scheduled reminder cancellation
+Windows,Dialog and chart behavior,UNVERIFIED,,,,,Laptop with 8 GB RAM or less,,,Test real dialog failures and narrow-window touch and mouse input
+Windows,Synthetic encrypted-data upgrade,UNVERIFIED,,,,,Isolated test account,,,Upgrade compatible synthetic baseline without reset and verify backup decryption
+Android,APK signer and version preflight,UNVERIFIED,,,,,Samsung SM-S366V Android 16,,,Compare installed baseline APK and candidate before installation
+Android,Launch and conversation continuity,UNVERIFIED,,,,,Samsung SM-S366V Android 16,,,Run after identity preflight and retain any redacted startup failure
+Android,Mic lifecycle and SAF selection,UNVERIFIED,,,,,Samsung SM-S366V Android 16,,,Test denied permission and route loss and before-after-resume file results
+Android,Synthetic encrypted-data upgrade,UNVERIFIED,,,,,Isolated synthetic installation,,,Use compatible signer and increasing version without clearing data
