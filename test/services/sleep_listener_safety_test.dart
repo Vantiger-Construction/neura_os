@@ -184,7 +184,8 @@ void main() {
       await service.startRecording();
       final id = platform.live.single;
       final requested = File(platform.paths[id]!);
-      final returned = await fixture.seed('${fixture.documents.path}/final.m4a');
+      final returned =
+          await fixture.seed('${fixture.documents.path}/final.m4a');
       platform.returnedPaths[id] = returned.path;
       expect(await service.stopRecording(), returned.path);
       await service.deleteLastRecording();
