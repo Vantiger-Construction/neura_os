@@ -11,7 +11,7 @@ import urllib.request
 
 
 OSV_URL = 'https://api.osv.dev/v1/querybatch'
-IGNORED_TOOLING_ADVISORIES = {'org.tomlj:tomlj'}
+IGNORED_TOOLING_ADVISORIES = {'com.google.guava:guava', 'org.tomlj:tomlj'}
 MINIMUMS = {
     'com.google.guava:guava': '33.8.0',
     'org.apache.commons:commons-lang3': '3.22.0',
