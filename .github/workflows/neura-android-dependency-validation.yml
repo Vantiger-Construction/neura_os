@@ -2,7 +2,7 @@ name: Android dependency validation
 
 on:
   pull_request:
-    branches: [Neura, 'dependabot/gradle/android/**']
+    branches: [Neura, 'dependabot/gradle/android/**', 'codex/pr220-android-validation']
     paths:
       - 'android/**'
       - 'pubspec.yaml'
@@ -55,6 +55,11 @@ jobs:
           set -euo pipefail
           test "$RUNNER_ENVIRONMENT" = github-hosted
           baseline=$(git merge-base HEAD refs/remotes/origin/Neura)
+          if [[ "${GITHUB_BASE_REF:-}" == "codex/pr220-android-validation" ]]; then
+            # Both sides use #221's app source and Gradle 9.9.1; only the candidate SDK changes.
+            baseline=7bc7f36c2b4f7e2eada3dc4b9e5c238e9962ceb2
+            git diff --exit-code "$baseline" HEAD -- android lib test pubspec.yaml pubspec.lock rust
+          fi
           test "$baseline" != "$(git rev-parse HEAD)"
           evidence="$RUNNER_TEMP/neura-android-validation"
           mkdir -p "$evidence/baseline" "$evidence/candidate"
@@ -79,6 +84,12 @@ jobs:
           for label in baseline candidate; do
             source="$GITHUB_WORKSPACE"
             if [[ "$label" = baseline ]]; then source="$NEURA_ANDROID_BASELINE"; fi
+            if [[ "$label" == candidate && "${GITHUB_BASE_REF:-}" == "codex/pr220-android-validation" ]]; then
+              git -C "$FLUTTER_ROOT" apply --check "$GITHUB_WORKSPACE/tools/android_validation/flutter-3.47.9-kotlin-2.4.21.patch"
+              git -C "$FLUTTER_ROOT" apply "$GITHUB_WORKSPACE/tools/android_validation/flutter-3.47.9-kotlin-2.4.21.patch"
+              git -C "$FLUTTER_ROOT" diff -- packages/flutter_tools/gradle/build.gradle.kts \
+                | tee "$NEURA_ANDROID_EVIDENCE/candidate/flutter-sdk-diff.txt"
+            fi
             export GRADLE_USER_HOME="$RUNNER_TEMP/neura-android-gradle-$label"
             export NEURA_ANDROID_INVENTORY_DIR="$NEURA_ANDROID_EVIDENCE/$label/graphs"
             mkdir -p "$GRADLE_USER_HOME" "$NEURA_ANDROID_INVENTORY_DIR"
