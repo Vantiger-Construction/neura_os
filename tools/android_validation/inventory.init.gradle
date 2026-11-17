@@ -1,0 +1,88 @@
+// Read resolved graphs without changing dependency selection or application code.
+import groovy.json.JsonOutput
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.component.ProjectComponentIdentifier
+import org.gradle.api.artifacts.result.UnresolvedDependencyResult
+import java.util.jar.JarFile
+
+gradle.projectsEvaluated {
+    def root = gradle.rootProject
+    root.tasks.register('neuraDependencyInventory') {
+        // Init scripts also apply to the Flutter tools included build. Require
+        // its own inventory task, rather than treating the app graph as all tooling.
+        dependsOn gradle.includedBuilds.collect { it.task(':neuraDependencyInventory') }
+        doLast {
+            def output = System.getenv('NEURA_ANDROID_INVENTORY_DIR')
+            if (!output) throw new GradleException('NEURA_ANDROID_INVENTORY_DIR is required')
+            def errors = []
+            def describe = { project, kind, configuration ->
+                def result = configuration.incoming.resolutionResult
+                result.allDependencies.findAll { it instanceof UnresolvedDependencyResult }.each {
+                    errors << "${project.path}/${configuration.name}: ${it.requested.displayName}"
+                }
+                def components = result.allComponents.collect { it.id }
+                [project: project.path, kind: kind, name: configuration.name,
+                 modules: components.findAll { it instanceof ModuleComponentIdentifier }.collect {
+                     [name: "${it.group}:${it.module}".toString(), version: it.version]
+                 }.unique().sort { a, b -> (a.name + ':' + a.version) <=> (b.name + ':' + b.version) },
+                 projects: components.findAll { it instanceof ProjectComponentIdentifier }
+                     .collect { it.displayName }.unique().sort()]
+            }
+            def configurations = []
+            root.allprojects.sort { it.path }.each { project ->
+                def classpath = project.buildscript.configurations.findByName('classpath')
+                if (classpath == null || !classpath.canBeResolved) {
+                    errors << "Missing resolvable buildscript classpath: ${project.path}"
+                } else {
+                    configurations << describe(project, 'buildscript', classpath)
+                }
+                ['debugRuntimeClasspath', 'releaseRuntimeClasspath'].each { name ->
+                    if (project.path == ':app') {
+                        def config = project.configurations.findByName(name)
+                        if (config == null || !config.canBeResolved) errors << "Missing ${name}"
+                        else configurations << describe(project, 'app-runtime', config)
+                    }
+                }
+                // The Flutter included build is a JVM/Kotlin plugin project.
+                ['compileClasspath', 'runtimeClasspath'].each { name ->
+                    def config = project.configurations.findByName(name)
+                    if (config != null && config.canBeResolved) {
+                        configurations << describe(project, 'tool-runtime', config)
+                    }
+                }
+            }
+            def libraries = []
+            new File(gradle.gradleHomeDir, 'lib').eachFileRecurse { file ->
+                if (file.isFile() && file.name.endsWith('.jar')) {
+                    def coordinates = []
+                    new JarFile(file).withCloseable { jar ->
+                        jar.entries().each { entry ->
+                            if (entry.name.startsWith('META-INF/maven/') && entry.name.endsWith('/pom.properties')) {
+                                def props = new Properties()
+                                jar.getInputStream(entry).withCloseable { props.load(it) }
+                                if (props.groupId && props.artifactId && props.version) {
+                                    coordinates << [name: "${props.groupId}:${props.artifactId}".toString(),
+                                                    version: props.version]
+                                }
+                            }
+                        }
+                    }
+                    libraries << [file: gradle.gradleHomeDir.toPath().relativize(file.toPath()).toString(),
+                                  modules: coordinates.unique()]
+                }
+            }
+            def report = [schema: 1, status: errors ? 'incomplete' : 'complete', errors: errors,
+                          build_root: root.rootDir.canonicalPath, build_name: root.name,
+                          gradle_version: gradle.gradleVersion,
+                          projects: root.allprojects.collect { it.path }.sort(),
+                          included_builds: gradle.includedBuilds.collect { it.projectDir.canonicalPath }.sort(),
+                          configurations: configurations, distribution_libraries: libraries.sort { it.file }]
+            def directory = new File(output)
+            directory.mkdirs()
+            def key = java.security.MessageDigest.getInstance('SHA-256')
+                .digest(root.rootDir.canonicalPath.getBytes('UTF-8')).encodeHex().toString()
+            new File(directory, key + '.json').text = JsonOutput.prettyPrint(JsonOutput.toJson(report)) + '\n'
+            if (errors) throw new GradleException('Incomplete dependency inventory: ' + errors.join('; '))
+        }
+    }
+}
