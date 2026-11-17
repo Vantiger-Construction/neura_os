@@ -2,11 +2,12 @@ import hashlib
 import json
 from pathlib import Path
 import struct
+import subprocess
 import tempfile
 import unittest
 import zipfile
 
-from package_receipt import archive_windows, windows_manifest
+from package_receipt import archive_windows, source_identity, windows_manifest
 
 
 class PackageReceiptTests(unittest.TestCase):
@@ -68,6 +69,41 @@ class PackageReceiptTests(unittest.TestCase):
         (self.bundle / 'external.txt').symlink_to(self.root / 'outside.txt')
         with self.assertRaisesRegex(ValueError, 'cannot contain links'):
             windows_manifest(self.bundle)
+
+
+class SourceReceiptTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        (self.root / 'rust').mkdir()
+        (self.root / 'pubspec.lock').write_text('synthetic pub lock\n', encoding='utf-8')
+        (self.root / 'rust' / 'Cargo.lock').write_text('synthetic cargo lock\n', encoding='utf-8')
+        self.git('init')
+        self.git('config', 'user.name', 'Synthetic receipt test')
+        self.git('config', 'user.email', 'synthetic@example.invalid')
+        self.git('config', 'commit.gpgsign', 'false')
+        self.git('add', '.')
+        self.git('commit', '-m', 'Synthetic baseline')
+
+    def git(self, *args):
+        return subprocess.check_output(['git', '-C', str(self.root), *args], text=True,
+                                       stderr=subprocess.DEVNULL).strip()
+
+    def test_receipt_records_checkout_tree_and_actual_consumed_lock_bytes(self):
+        receipt = source_identity(self.root)
+        self.assertEqual(receipt['commit'], self.git('rev-parse', 'HEAD'))
+        self.assertEqual(receipt['tree'], self.git('rev-parse', 'HEAD^{tree}'))
+        for name, digest in receipt['locks'].items():
+            self.assertEqual(digest, hashlib.sha256((self.root / name).read_bytes()).hexdigest())
+
+    def test_staged_and_unstaged_source_changes_cannot_claim_the_committed_identity(self):
+        (self.root / 'pubspec.lock').write_text('changed synthetic lock\n', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'differs from HEAD'):
+            source_identity(self.root)
+        self.git('add', 'pubspec.lock')
+        with self.assertRaisesRegex(ValueError, 'differs from HEAD'):
+            source_identity(self.root)
 
 
 if __name__ == '__main__':

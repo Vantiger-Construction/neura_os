@@ -85,6 +85,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           flutter pub get
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Build and receipt must refer to the committed analyzer policy,
+          # rather than pub get's optional project-migration edits.
+          git restore --source=HEAD -- analysis_options.yaml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git diff --exit-code -- pubspec.lock rust/Cargo.lock
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Check locked notification source correction and drift rejection

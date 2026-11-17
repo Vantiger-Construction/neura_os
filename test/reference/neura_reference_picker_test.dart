@@ -199,9 +199,11 @@ void main() {
       await mount(tester);
       await _tap(tester, 'Select a text document');
       if (failure == 'picker error') {
-        picker.requests.single.completeError(StateError('Synthetic dialog failure'));
+        picker.requests.single
+            .completeError(StateError('Synthetic dialog failure'));
       } else {
-        picker.requests.single.complete(FakePickedFile.fromBytes('empty.txt', []));
+        picker.requests.single
+            .complete(FakePickedFile.fromBytes('empty.txt', []));
       }
       await tester.pumpAndSettle();
       expect(find.textContaining('Could not read that file.'), findsOneWidget);
@@ -214,5 +216,4 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
-
 }

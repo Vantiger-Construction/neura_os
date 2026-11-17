@@ -197,12 +197,13 @@ void main() {
       });
     });
 
-    test('$consumer: disposal revokes pending permission before native Start', () async {
+    test('$consumer: disposal revokes pending permission before native Start',
+        () async {
       await fixture.run(() async {
-        final ambient = consumer == 'ambient'
-            ? AmbientListeningService.forTesting() : null;
-        final voice = consumer == 'voice pack'
-            ? NeuraVoicePack.forTesting() : null;
+        final ambient =
+            consumer == 'ambient' ? AmbientListeningService.forTesting() : null;
+        final voice =
+            consumer == 'voice pack' ? NeuraVoicePack.forTesting() : null;
         final start = ambient?.start ?? voice!.startMic;
         final dispose = ambient?.dispose ?? voice!.dispose;
         platform.permissionGate = Completer<bool>();
@@ -218,6 +219,5 @@ void main() {
         fixture.expectIsolation();
       });
     });
-
   }
 }

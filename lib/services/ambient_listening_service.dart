@@ -258,13 +258,14 @@ class AmbientListeningService with WidgetsBindingObserver {
 
   Future<void> _handleAudioStreamError(Object error, StackTrace stack) async {
     try {
+      // Revoke capture/timers before any asynchronous diagnostic write.
+      await stop();
+    } finally {
       await AppLog.instance.caught(
         'ambient_listening_stream_failed',
         error,
         stack,
       );
-    } finally {
-      await stop();
     }
   }
 

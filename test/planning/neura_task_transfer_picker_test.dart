@@ -567,12 +567,14 @@ void main() {
   });
 
   for (final result in ['picker error', 'empty file']) {
-    testWidgets('active $result cannot restore a key and permits another selection',
+    testWidgets(
+        'active $result cannot restore a key and permits another selection',
         (tester) async {
       await mount(tester);
       await _tap(tester, 'Load encrypted packet file');
       if (result == 'picker error') {
-        picker.requests.single.completeError(StateError('Synthetic dialog failure'));
+        picker.requests.single
+            .completeError(StateError('Synthetic dialog failure'));
       } else {
         picker.requests.single.complete(_file('', size: 0));
       }
@@ -581,7 +583,8 @@ void main() {
       expect(_key(tester).text, isEmpty);
       expect(find.text('Bring this preview into my planner'), findsNothing);
       if (result == 'picker error') {
-        expect(find.text('Could not read the encrypted packet.'), findsOneWidget);
+        expect(
+            find.text('Could not read the encrypted packet.'), findsOneWidget);
       }
       await _tap(tester, 'Load encrypted packet file');
       expect(picker.requests, hasLength(2));
@@ -592,5 +595,4 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
-
 }

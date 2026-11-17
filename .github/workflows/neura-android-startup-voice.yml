@@ -71,7 +71,10 @@ jobs:
           channel: stable
           cache: true
       - name: Restore locked dependencies
-        run: flutter pub get --enforce-lockfile
+        run: |
+          flutter pub get --enforce-lockfile
+          # Keep native compilation and the receipt on the committed policy.
+          git restore --source=HEAD -- analysis_options.yaml
       - name: Synthetic startup, permission, cancellation and settings tests
         run: >-
           flutter test --no-pub --concurrency 2 --timeout 2m

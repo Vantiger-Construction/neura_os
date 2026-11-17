@@ -12,7 +12,9 @@ import '../helpers/data_wipe_fixture.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('timed-out disposal remains owned by wipe until native disposal completes', () async {
+  test(
+      'timed-out disposal remains owned by wipe until native disposal completes',
+      () async {
     final fixture = await DataWipeFixture.create();
     final original = RecordPlatform.instance;
     final platform = ControlledRecorder();
@@ -20,13 +22,15 @@ void main() {
     await fixture.run(() async {
       SafeBoot.instance.safeMode.value = false;
       SafeBoot.instance.restartRequired.value = false;
-      WidgetsBinding.instance.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      WidgetsBinding.instance
+          .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       final service = SleepListenerService();
       try {
         await service.startRecording();
         platform.disposeGate = Completer<void>();
         await expectLater(service.dispose(), throwsA(isA<TimeoutException>()));
-        await expectLater(SleepListenerService.resetAllAfterDataWipe(), throwsStateError);
+        await expectLater(
+            SleepListenerService.resetAllAfterDataWipe(), throwsStateError);
         expect(platform.disposals, 1);
         platform.disposeGate!.complete();
         await drainRecorderEvents();
@@ -35,7 +39,10 @@ void main() {
         expect(platform.disposals, 1);
         fixture.expectIsolation();
       } finally {
-        if (platform.disposeGate != null && !platform.disposeGate!.isCompleted) platform.disposeGate!.complete();
+        final gate = platform.disposeGate;
+        if (gate != null && !gate.isCompleted) {
+          gate.complete();
+        }
         await service.dispose();
         RecordPlatform.instance = original;
       }

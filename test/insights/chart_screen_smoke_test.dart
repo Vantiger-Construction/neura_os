@@ -14,7 +14,8 @@ import '../helpers/data_wipe_fixture.dart';
 void main() {
   for (final screen in ['Weekly Snapshot', 'Recap']) {
     for (final samples in [0, 1, 4]) {
-      testWidgets('$screen renders $samples synthetic samples and handles chart input',
+      testWidgets(
+          '$screen renders $samples synthetic samples and handles chart input',
           (tester) async {
         final fixture = await DataWipeFixture.create();
         tester.view.devicePixelRatio = 1;
@@ -29,14 +30,20 @@ void main() {
             final now = DateTime.now();
             final entries = [
               for (var i = 0; i < samples; i++)
-                MoodEntry(timestamp: now.subtract(Duration(hours: i + 1)),
-                    mood0to10: i.isEven ? 0 : 10, note: 'Synthetic chart sample'),
+                MoodEntry(
+                    timestamp: now.subtract(Duration(hours: i + 1)),
+                    mood0to10: i.isEven ? 0 : 10,
+                    note: 'Synthetic chart sample'),
             ];
-            final encrypted = await crypto.encryptJson({'items': entries.map((e) => e.toJson()).toList()});
-            await NeuraPrefsCache.prefs.setString('neura_mood_entries_v1', encrypted);
+            final encrypted = await crypto.encryptJson(
+                {'items': entries.map((e) => e.toJson()).toList()});
+            await NeuraPrefsCache.prefs
+                .setString('neura_mood_entries_v1', encrypted);
           });
-          await tester.pumpWidget(MaterialApp(home: screen == 'Recap'
-              ? const NeuraRecapScreen() : const WeeklySnapshotScreen()));
+          await tester.pumpWidget(MaterialApp(
+              home: screen == 'Recap'
+                  ? const NeuraRecapScreen()
+                  : const WeeklySnapshotScreen()));
           // Real fixture-file reads and cryptography finish outside fake time.
           await tester.runAsync(() async {
             await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -47,7 +54,8 @@ void main() {
           if (samples >= 2) {
             await tester.ensureVisible(chart);
             final bounds = tester.getRect(chart);
-            final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+            final mouse =
+                await tester.createGesture(kind: PointerDeviceKind.mouse);
             await mouse.addPointer(location: bounds.center);
             for (final offset in [-80.0, 0.0, 80.0, 0.0]) {
               await mouse.moveTo(bounds.center + Offset(offset, 0));

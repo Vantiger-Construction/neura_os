@@ -178,21 +178,20 @@ class NeuraVoicePack with WidgetsBindingObserver {
 
   Future<void> _handleMicStreamError(Object error, StackTrace stack) async {
     try {
+      // Clear session ownership and emit idle before waiting on logging.
+      await stopMic();
+    } catch (stopError, stopStack) {
+      await AppLog.instance.caught(
+        'voice_pack_mic_stop_failed',
+        stopError,
+        stopStack,
+      );
+    } finally {
       await AppLog.instance.caught(
         'voice_pack_mic_stream_failed',
         error,
         stack,
       );
-    } finally {
-      try {
-        await stopMic();
-      } catch (stopError, stopStack) {
-        await AppLog.instance.caught(
-          'voice_pack_mic_stop_failed',
-          stopError,
-          stopStack,
-        );
-      }
     }
   }
 
