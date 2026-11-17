@@ -2,7 +2,8 @@ name: Android startup voice safety
 
 on:
   pull_request:
-    branches: [Neura]
+    # Stacked reviews of Android Dependabot PRs run without release delivery.
+    branches: [Neura, 'dependabot/gradle/android/**', 'codex/pr220-android-validation']
     paths:
       - 'android/**'
       - 'lib/services/neura*speech*'
@@ -24,6 +25,10 @@ on:
       - 'test/services/neura_local_speech_input_test.dart'
       - 'test/services/neura_startup_voice_prefs_test.dart'
       - 'test/screens/neura_startup_voice_settings_test.dart'
+      - 'test/startup/native_speech_safe_mode_test.dart'
+      - 'test/services/local_journal_store_test.dart'
+      - 'test/encrypted_memory/**'
+      - 'test/data_wipe_memory_contracts_test.dart'
       - 'test/services/sleep_listener_safety_test.dart'
       - 'test/services/sleep_listener_disposal_wipe_test.dart'
       - 'test/services/neura_record_lifecycle_test.dart'
@@ -33,6 +38,8 @@ on:
       - 'tools/release/**'
       - 'pubspec.yaml'
       - 'pubspec.lock'
+      - 'tools/android_validation/**'
+      - 'tools/release/check_android_update.py'
       - '.github/workflows/neura-android-startup-voice.yml'
   workflow_dispatch:
 
@@ -73,7 +80,14 @@ jobs:
         with:
           flutter-version: '3.47.9'
           channel: stable
-          cache: true
+          cache: false
+      - name: Apply the candidate patch to the disposable Flutter SDK
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          git -C "$FLUTTER_ROOT" apply --check "$GITHUB_WORKSPACE/tools/android_validation/flutter-3.47.9-kotlin-2.4.21.patch"
+          git -C "$FLUTTER_ROOT" apply "$GITHUB_WORKSPACE/tools/android_validation/flutter-3.47.9-kotlin-2.4.21.patch"
+          git -C "$FLUTTER_ROOT" diff -- packages/flutter_tools/gradle/build.gradle.kts >> android-startup-voice-source.txt
       - name: Restore locked dependencies
         run: |
           flutter pub get --enforce-lockfile
@@ -83,7 +97,7 @@ jobs:
           # resolution. It is unrelated to the Android APK and must not make
           # the source-identity receipt differ from the checked-out commit.
           git restore --source=HEAD -- macos/Flutter/GeneratedPluginRegistrant.swift
-      - name: Synthetic startup, permission, cancellation and settings tests
+      - name: Synthetic startup, permissions, cancellation and private-storage tests
         run: >-
           flutter test --no-pub --concurrency 2 --timeout 2m
           test/startup/neura_startup_voice_test.dart
@@ -94,6 +108,11 @@ jobs:
           test/services/neura_local_speech_input_test.dart
           test/services/neura_startup_voice_prefs_test.dart
           test/screens/neura_startup_voice_settings_test.dart
+          test/startup/native_speech_safe_mode_test.dart
+          test/services/local_journal_store_test.dart
+          test/encrypted_memory/encrypted_memory_release_contracts_test.dart
+          test/encrypted_memory/encrypted_memory_durable_scoped_adapter_test.dart
+          test/data_wipe_memory_contracts_test.dart
           test/services/sleep_listener_safety_test.dart
           test/services/sleep_listener_disposal_wipe_test.dart
           test/services/neura_record_lifecycle_test.dart
@@ -110,9 +129,16 @@ jobs:
           flutter build apk --debug --no-pub 2>&1 | tee android-startup-voice-build.log
       - name: Verify the APK and record its checksum
         run: |
+          set -euo pipefail
           apk=build/app/outputs/flutter-apk/app-debug.apk
           test -s "$apk"
           "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest permissions "$apk" | grep -Fx 'android.permission.RECORD_AUDIO'
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk" \
+            | tee android-startup-voice-signature.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" > android-startup-voice-badging.txt
+          (cd android && ./gradlew --version) > android-startup-voice-toolchain.txt
+          python3 tools/android_validation/check_apk.py --output android-startup-voice-identity.json \
+            inspect --build-tools "$ANDROID_HOME/build-tools/36.0.0" --source "$GITHUB_WORKSPACE" "$apk"
           sha256sum "$apk" > android-startup-voice-sha256.txt
           python3 -m unittest discover -s tools/release -p 'test_*.py' -v
           python3 tools/release/package_receipt.py --platform android --apk "$apk" \
@@ -126,6 +152,7 @@ jobs:
           path: |
             android-startup-voice-*.log
             android-startup-voice-*.txt
+            android-startup-voice-*.json
             android-startup-voice-package/
             build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error

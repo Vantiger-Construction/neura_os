@@ -1,0 +1,207 @@
+name: Android dependency validation
+
+on:
+  pull_request:
+    branches: [Neura, 'dependabot/gradle/android/**', 'codex/pr220-android-validation']
+    paths:
+      - 'android/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'tools/android_validation/**'
+      - 'tools/release/check_android_update.py'
+      - 'tools/release/test_check_android_update.py'
+      - '.github/workflows/neura-android-dependency-validation.yml'
+      - '.github/workflows/neura-android-startup-voice.yml'
+  workflow_dispatch:
+
+# No secrets, release delivery, installation or persistent laptop runner.
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-android-dependencies-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evidence:
+    name: Resolved Android graphs, signatures, lint and release compilation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.workers.max=2'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        id: checkout
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify evidence failure handling
+        id: regression_tests
+        run: |
+          python3 -m unittest discover -s tools/android_validation -p 'test_*.py' -v
+          python3 -m unittest discover -s tools/release -p 'test_*.py' -v
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        id: java
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        id: flutter
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: false
+      - name: Prepare bounded disposable build storage and exact baseline
+        id: setup
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/neura-android-validation"
+          mkdir -p "$evidence"
+          # Keep a log even if baseline validation fails before the build evidence exists.
+          exec > >(tee -a "$evidence/setup.log") 2>&1
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          baseline=$(git merge-base HEAD refs/remotes/origin/Neura)
+          if [[ "${GITHUB_BASE_REF:-}" == "codex/pr220-android-validation" ]]; then
+            # Both sides use the PR base app source and Gradle wrapper; the candidate SDK patch is tested separately.
+            baseline="${PR_BASE_SHA:?missing pull request base commit}"
+            git merge-base --is-ancestor "$baseline" HEAD
+            git diff --exit-code "$baseline" HEAD -- android lib test pubspec.yaml pubspec.lock rust
+          fi
+          test "$baseline" != "$(git rev-parse HEAD)"
+          mkdir -p "$evidence/baseline" "$evidence/candidate"
+          git worktree add --detach "$RUNNER_TEMP/neura-android-baseline" "$baseline"
+          {
+            printf 'Candidate commit: %s\nCandidate tree: %s\n' "$(git rev-parse HEAD)" "$(git rev-parse 'HEAD^{tree}')"
+            printf 'Baseline commit: %s\n' "$baseline"
+            printf 'Synthetic debug signer/version comparison only; Samsung and encrypted-data upgrade acceptance remain UNVERIFIED.\n'
+          } | tee "$evidence/source.txt" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "NEURA_ANDROID_EVIDENCE=$evidence"
+            echo "NEURA_ANDROID_BASELINE=$RUNNER_TEMP/neura-android-baseline"
+            echo "PUB_CACHE=$RUNNER_TEMP/neura-android-pub"
+          } >> "$GITHUB_ENV"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            'platforms;android-36' 'platforms;android-37.0' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+      - name: Build and inventory baseline and candidate independently
+        id: graphs
+        run: |
+          set -euo pipefail
+          index=0
+          for label in baseline candidate; do
+            source="$GITHUB_WORKSPACE"
+            if [[ "$label" = baseline ]]; then source="$NEURA_ANDROID_BASELINE"; fi
+            if [[ "$label" == candidate ]]; then
+              git -C "$FLUTTER_ROOT" apply --check "$GITHUB_WORKSPACE/tools/android_validation/flutter-3.47.9-kotlin-2.4.21.patch"
+              git -C "$FLUTTER_ROOT" apply "$GITHUB_WORKSPACE/tools/android_validation/flutter-3.47.9-kotlin-2.4.21.patch"
+              git -C "$FLUTTER_ROOT" diff -- packages/flutter_tools/gradle/build.gradle.kts \
+                | tee "$NEURA_ANDROID_EVIDENCE/candidate/flutter-sdk-diff.txt"
+            fi
+            export GRADLE_USER_HOME="$RUNNER_TEMP/neura-android-gradle-$label"
+            export NEURA_ANDROID_INVENTORY_DIR="$NEURA_ANDROID_EVIDENCE/$label/graphs"
+            mkdir -p "$GRADLE_USER_HOME" "$NEURA_ANDROID_INVENTORY_DIR"
+            cat > "$GRADLE_USER_HOME/gradle.properties" <<'PROPERTIES'
+          org.gradle.jvmargs=-Xmx4G -XX:MaxMetaspaceSize=2G -XX:ReservedCodeCacheSize=512m
+          org.gradle.workers.max=2
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          PROPERTIES
+            (
+              cd "$source"
+              flutter pub get --enforce-lockfile
+              flutter build apk --debug --no-pub --build-number "$((GITHUB_RUN_NUMBER * 2 + index))"
+              git diff --exit-code -- lib test android pubspec.lock rust/Cargo.lock
+              cd android
+              ./gradlew --version
+              ./gradlew --no-daemon --max-workers=2 --no-configuration-cache \
+                --init-script "$GITHUB_WORKSPACE/tools/android_validation/inventory.init.gradle" neuraDependencyInventory
+            ) 2>&1 | tee "$NEURA_ANDROID_EVIDENCE/$label/build-and-inventory.log"
+            apk="$source/build/app/outputs/flutter-apk/app-debug.apk"
+            python3 tools/android_validation/check_apk.py --output "$NEURA_ANDROID_EVIDENCE/$label/apk.json" \
+              inspect --build-tools "$ANDROID_HOME/build-tools/36.0.0" --source "$source" "$apk"
+            cp "$apk" "$NEURA_ANDROID_EVIDENCE/$label.apk"
+            index=$((index + 1))
+          done
+      - name: Compare app runtime, tooling constraints and APK permissions
+        id: comparison
+        run: |
+          set -euo pipefail
+          python3 tools/android_validation/check_dependencies.py compare \
+            --baseline "$NEURA_ANDROID_EVIDENCE/baseline/graphs" \
+            --candidate "$NEURA_ANDROID_EVIDENCE/candidate/graphs" \
+            --expected-gradle '9.9.2-20261117031137+0000' \
+            --output "$NEURA_ANDROID_EVIDENCE/comparison.json"
+          python3 tools/android_validation/check_apk.py --output "$NEURA_ANDROID_EVIDENCE/apk-comparison.json" \
+            compare "$NEURA_ANDROID_EVIDENCE/baseline/apk.json" "$NEURA_ANDROID_EVIDENCE/candidate/apk.json"
+          python3 tools/release/check_android_update.py --build-tools "$ANDROID_HOME/build-tools/36.0.0" \
+            "$NEURA_ANDROID_EVIDENCE/baseline.apk" "$NEURA_ANDROID_EVIDENCE/candidate.apk" \
+            > "$NEURA_ANDROID_EVIDENCE/synthetic-signer-preflight.json"
+      - name: Record baseline advisory findings without treating them as a clean result
+        id: baseline_scan
+        run: |
+          set +e
+          python3 tools/android_validation/check_dependencies.py scan \
+            --inventory "$NEURA_ANDROID_EVIDENCE/baseline/graphs" --output "$NEURA_ANDROID_EVIDENCE/baseline/osv"
+          result=$?
+          if [[ "$result" -ne 0 && "$result" -ne 1 ]]; then exit "$result"; fi
+      - name: Scan candidate resolved Maven and Gradle dependencies
+        id: candidate_scan
+        run: >-
+          python3 tools/android_validation/check_dependencies.py scan
+          --inventory "$NEURA_ANDROID_EVIDENCE/candidate/graphs"
+          --output "$NEURA_ANDROID_EVIDENCE/candidate/osv"
+      - name: Compile candidate release variant and run Android lint
+        id: release_lint
+        if: ${{ !cancelled() && steps.graphs.outcome == 'success' }}
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/neura-android-gradle-candidate
+        run: |
+          set -euo pipefail
+          flutter build apk --release --no-pub --build-number "$((GITHUB_RUN_NUMBER * 2 + 1))" \
+            2>&1 | tee "$NEURA_ANDROID_EVIDENCE/candidate/release-build.log"
+          (cd android && ./gradlew --no-daemon --max-workers=2 :app:lintDebug) \
+            2>&1 | tee "$NEURA_ANDROID_EVIDENCE/candidate/lint.log"
+          git diff --exit-code -- lib test android pubspec.lock rust/Cargo.lock
+      - name: Record Android validation outcome
+        if: always()
+        env:
+          VALIDATION_JOB_STATUS: ${{ job.status }}
+          VALIDATION_STEPS: ${{ toJSON(steps) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          evidence = Path(os.environ['RUNNER_TEMP']) / 'neura-android-validation'
+          evidence.mkdir(parents=True, exist_ok=True)
+          steps = json.loads(os.environ['VALIDATION_STEPS'])
+          receipt = {
+              'schema': 1,
+              'kind': 'job-diagnostics',
+              'job_status': os.environ['VALIDATION_JOB_STATUS'],
+              'event_sha': os.environ['GITHUB_SHA'],
+              'run_id': os.environ['GITHUB_RUN_ID'],
+              'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'steps': {
+                  name: {'outcome': step['outcome'], 'conclusion': step['conclusion']}
+                  for name, step in steps.items()
+              },
+          }
+          (evidence / 'job-outcome.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          PY
+      - name: Preserve exact evidence including failures, without publishing APKs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-dependency-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/neura-android-validation/**/*.json
+            ${{ runner.temp }}/neura-android-validation/**/*.log
+            ${{ runner.temp }}/neura-android-validation/*.txt
+          if-no-files-found: error
+          retention-days: 14

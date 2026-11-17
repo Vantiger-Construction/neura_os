@@ -1,0 +1,13 @@
+diff --git a/packages/flutter_tools/gradle/build.gradle.kts b/packages/flutter_tools/gradle/build.gradle.kts
+index dd7341f..604bccf 100644
+--- a/packages/flutter_tools/gradle/build.gradle.kts
++++ b/packages/flutter_tools/gradle/build.gradle.kts
+@@ -55,7 +55,7 @@ dependencies {
+     compileOnly("androidx.annotation:annotation-jvm:1.9.1")
+     // When bumping, also update:
+     //  * KGP error version in packages/flutter_tools/gradle/src/main/kotlin/DependencyVersionChecker.kt
+-    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.0")
++    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21")
+     // Update to 1.8.0 when min kotlin is 2.1
+     // https://github.com/Kotlin/kotlinx.serialization/releases for kotlin version compatibility.
+     // All kotlinx implementation dependencies must work with the oldest kotlin supported versions.
