@@ -1,3 +1,4 @@
+import 'package:neuro_companion/services/local_owner_login.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -201,6 +202,7 @@ void main() {
         DataWipeFixture.providerKey: 'synthetic-provider-secret',
         DataWipeFixture.modelKey: 'synthetic-model-secret',
         DataWipeFixture.backupKey: 'synthetic-backup-secret',
+        LocalOwnerLogin.storageKey: 'synthetic-owner-record',
         'unrelated-fixture-secret': 'keep',
       });
       await NeuraDataWipeService.wipeAllLocalData();
@@ -369,6 +371,7 @@ void main() {
     DataWipeFixture.memoryKey: 'device encryption key deletion',
     DataWipeFixture.modelKey: 'model credential deletion',
     DataWipeFixture.backupKey: 'scheduled backup settings deletion',
+    LocalOwnerLogin.storageKey: 'owner login deletion',
   }.entries) {
     test('ignored ${entry.value} cannot report success', () async {
       final f = await DataWipeFixture.create();

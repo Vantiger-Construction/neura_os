@@ -57,6 +57,7 @@ import '../../services/app_lock_prefs.dart';
 import '../../services/neura_startup_voice_prefs.dart';
 import '../../services/neura_local_speech_input.dart';
 import '../../services/auth_service.dart';
+import '../../services/local_owner_login.dart';
 import '../../services/avatar_service.dart';
 import '../../services/neura_model_credentials.dart';
 import '../../services/neura_provider_credentials.dart';
@@ -370,6 +371,8 @@ class NeuraDataWipeService {
       'scheduled backup settings deletion',
       ScheduledBackupSettings.instance.clearForDataWipe,
     );
+    await _attempt(failures, 'owner login deletion',
+        LocalOwnerLogin.instance.clearForDataWipe);
     await _attempt(
       failures,
       'local sign-in session removal',
