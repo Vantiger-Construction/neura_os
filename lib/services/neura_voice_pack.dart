@@ -5,11 +5,14 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/widgets.dart';
 import 'package:record/record.dart';
 
 import '../modules/core/app_log.dart';
 import '../reliability/safe_boot.dart';
+import '../startup/neura_error_pipeline.dart';
 
 /// =========================
 ///  Neura Voice Pack (Offline)
@@ -39,10 +42,15 @@ class NeuraVoiceFrame {
   );
 }
 
-class NeuraVoicePack {
+class NeuraVoicePack with WidgetsBindingObserver {
   NeuraVoicePack._() {
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
+    SafeBoot.instance.restartRequired.addListener(_onSafeModeChanged);
+    NeuraErrorPipeline.instance.fatalError.addListener(_onSafeModeChanged);
   }
+
+  @visibleForTesting
+  NeuraVoicePack.forTesting() : this._();
 
   static final NeuraVoicePack I = NeuraVoicePack._();
 
@@ -52,6 +60,7 @@ class NeuraVoicePack {
   Stream<NeuraVoiceFrame> get stream => _out.stream;
 
   bool _disposed = false;
+  bool _observingLifecycle = false;
   bool _initialized = false;
   bool _playing = false;
   int _clipGeneration = 0;
@@ -72,10 +81,14 @@ class NeuraVoicePack {
   bool get audioAllowed =>
       !_disposed &&
       !SafeBoot.instance.safeMode.value &&
+      !SafeBoot.instance.restartRequired.value &&
+      NeuraErrorPipeline.instance.fatalError.value == null &&
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed &&
       !LocalProfileService.instance.enabled;
 
   Future<void> init({bool enableMic = true}) async {
     if (_initialized || !audioAllowed) return;
+    _observeLifecycle();
     _ensurePlayer();
     if (enableMic) await startMic();
     if (!audioAllowed) return;
@@ -86,6 +99,7 @@ class NeuraVoicePack {
     final existing = _micStartInFlight;
     if (existing != null) return existing;
     if (_micEnabled || !audioAllowed) return Future<void>.value();
+    _observeLifecycle();
 
     late final Future<void> operation;
     operation = _startMicOnce().whenComplete(() {
@@ -105,9 +119,11 @@ class NeuraVoicePack {
     StreamSubscription<_MicFrame>? newSubscription;
 
     try {
-      final started = await mic.start();
+      final started = await mic.start(
+        () => generation == _micGeneration && audioAllowed,
+      );
       if (!started) return;
-      if (generation != _micGeneration || !audioAllowed) {
+      if (generation != _micGeneration || !audioAllowed || mic.takeEnded) {
         await mic.stop();
         return;
       }
@@ -134,12 +150,13 @@ class NeuraVoicePack {
           );
         },
         onError: (Object error, StackTrace stack) {
+          if (generation != _micGeneration) return;
           unawaited(_handleMicStreamError(error, stack));
         },
       );
       newSubscription = subscription;
 
-      if (generation != _micGeneration || !audioAllowed) {
+      if (generation != _micGeneration || !audioAllowed || mic.takeEnded) {
         await subscription.cancel();
         newSubscription = null;
         await mic.stop();
@@ -163,21 +180,20 @@ class NeuraVoicePack {
 
   Future<void> _handleMicStreamError(Object error, StackTrace stack) async {
     try {
+      // Clear session ownership and emit idle before waiting on logging.
+      await stopMic();
+    } catch (stopError, stopStack) {
+      await AppLog.instance.caught(
+        'voice_pack_mic_stop_failed',
+        stopError,
+        stopStack,
+      );
+    } finally {
       await AppLog.instance.caught(
         'voice_pack_mic_stream_failed',
         error,
         stack,
       );
-    } finally {
-      try {
-        await stopMic();
-      } catch (stopError, stopStack) {
-        await AppLog.instance.caught(
-          'voice_pack_mic_stop_failed',
-          stopError,
-          stopStack,
-        );
-      }
     }
   }
 
@@ -187,6 +203,7 @@ class NeuraVoicePack {
 
     _micGeneration += 1;
     _micEnabled = false;
+    if (!_out.isClosed && !_playing) _out.add(NeuraVoiceFrame.idle);
     late final Future<void> operation;
     operation = _stopMicOnce().whenComplete(() {
       if (identical(_micStopInFlight, operation)) _micStopInFlight = null;
@@ -238,6 +255,7 @@ class NeuraVoicePack {
   Future<void> playAsset(String filename) async {
     await _stopClip();
     if (!audioAllowed) return;
+    _observeLifecycle();
     final generation = _clipGeneration;
 
     try {
@@ -329,6 +347,9 @@ class NeuraVoicePack {
     if (_disposed) return;
     _disposed = true;
     SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
+    SafeBoot.instance.restartRequired.removeListener(_onSafeModeChanged);
+    NeuraErrorPipeline.instance.fatalError.removeListener(_onSafeModeChanged);
+    if (_observingLifecycle) WidgetsBinding.instance.removeObserver(this);
 
     Object? cleanupError;
     StackTrace? cleanupStack;
@@ -366,8 +387,20 @@ class NeuraVoicePack {
   }
 
   void _onSafeModeChanged() {
+    if (!_playing && !_micEnabled && _micStartInFlight == null) return;
     if (audioAllowed) return;
     unawaited(_stopForSafeMode());
+  }
+
+  void _observeLifecycle() {
+    if (_observingLifecycle) return;
+    WidgetsBinding.instance.addObserver(this);
+    _observingLifecycle = true;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _onSafeModeChanged();
   }
 
   Future<void> _stopForSafeMode() async {
@@ -702,14 +735,40 @@ class _VoicePackMicDriver {
 
   final AudioRecorder _recorder = AudioRecorder();
   StreamSubscription<Uint8List>? _audioSub;
+  StreamSubscription<RecordState>? _stateSub;
+  StreamSubscription<RecordStop>? _stoppedSub;
+  bool _shutdownUnverified = false;
+  bool takeEnded = true;
+  int _generation = 0;
 
   _VoicePackMicDriver({NeuraMicVisemeEngine? engine})
       : engine = engine ?? NeuraMicVisemeEngine();
 
-  Future<bool> start() async {
+  Future<bool> start(bool Function() mayCapture) async {
     if (_audioSub != null) return true;
+    if (_shutdownUnverified || !mayCapture()) return false;
+    final generation = ++_generation;
     if (!await _recorder.hasPermission()) return false;
+    if (!mayCapture() || generation != _generation) return false;
 
+    takeEnded = false;
+    void onEnded() {
+      if (takeEnded || generation != _generation || _out.isClosed) return;
+      takeEnded = true;
+      _out.addError(
+          StateError('Microphone recording ended. Request listening again.'));
+    }
+
+    _stateSub = _recorder.onStateChanged().listen((state) {
+      if (state == RecordState.pause) onEnded();
+    }, onError: (Object error, StackTrace stack) {
+      if (generation == _generation && !_out.isClosed) {
+        _out.addError(error, stack);
+      }
+    });
+    _stoppedSub = _recorder.onStopped().listen((_) => onEnded());
+
+    _shutdownUnverified = true;
     final audioStream = await _recorder.startStream(
       const RecordConfig(
         encoder: AudioEncoder.pcm16bits,
@@ -717,9 +776,18 @@ class _VoicePackMicDriver {
         numChannels: 1,
       ),
     );
+    if (!mayCapture() || generation != _generation) {
+      await stop();
+      return false;
+    }
     _audioSub = audioStream.listen(
       (bytes) {
-        if (_out.isClosed) return;
+        if (_out.isClosed ||
+            takeEnded ||
+            generation != _generation ||
+            !mayCapture()) {
+          return;
+        }
         final pcm = Int16List.view(
           bytes.buffer,
           bytes.offsetInBytes,
@@ -728,18 +796,49 @@ class _VoicePackMicDriver {
         _out.add(engine.processPcm16(pcm));
       },
       onError: (Object error, StackTrace stack) {
-        if (!_out.isClosed) _out.addError(error, stack);
+        if (generation == _generation && !_out.isClosed) {
+          _out.addError(error, stack);
+        }
       },
+      onDone: onEnded,
     );
+    if (takeEnded) {
+      await stop();
+      return false;
+    }
     return true;
   }
 
   Future<void> stop() async {
-    await _audioSub?.cancel();
+    _generation++;
+    takeEnded = true;
+    final subscriptions = <StreamSubscription<dynamic>?>[
+      _audioSub,
+      _stateSub,
+      _stoppedSub,
+    ];
     _audioSub = null;
+    _stateSub = null;
+    _stoppedSub = null;
+    Object? failure;
+    StackTrace? failureStack;
+    for (final sub in subscriptions) {
+      try {
+        await sub?.cancel();
+      } catch (error, stack) {
+        failure ??= error;
+        failureStack ??= stack;
+      }
+    }
     try {
-      await _recorder.stop();
-    } catch (_) {}
+      _shutdownUnverified = true;
+      await _recorder.stop().timeout(const Duration(seconds: 3));
+      _shutdownUnverified = false;
+    } catch (error, stack) {
+      failure ??= error;
+      failureStack ??= stack;
+    }
+    if (failure != null) Error.throwWithStackTrace(failure, failureStack!);
   }
 
   Future<void> dispose() async {
