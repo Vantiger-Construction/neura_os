@@ -7,6 +7,9 @@ on:
       - 'android/**'
       - 'lib/services/neura*speech*'
       - 'lib/services/neura*voice*'
+      - 'lib/services/sleep_listener_service.dart'
+      - 'lib/services/ambient_listening_service.dart'
+      - 'lib/notifications/**'
       - 'lib/services/neura_tts_service.dart'
       - 'lib/modules/chat/**'
       - 'lib/modules/navigation/**'
@@ -14,9 +17,20 @@ on:
       - 'lib/startup/**'
       - 'lib/src/core/data_wipe_service.dart'
       - 'test/startup/neura_startup_voice_test.dart'
+      - 'test/startup/startup_platform_policy_test.dart'
+      - 'test/insights/chart_screen_smoke_test.dart'
+      - 'test/reference/neura_reference_picker_test.dart'
+      - 'test/planning/neura_task_transfer_picker_test.dart'
       - 'test/services/neura_local_speech_input_test.dart'
       - 'test/services/neura_startup_voice_prefs_test.dart'
       - 'test/screens/neura_startup_voice_settings_test.dart'
+      - 'test/services/sleep_listener_safety_test.dart'
+      - 'test/services/sleep_listener_disposal_wipe_test.dart'
+      - 'test/services/neura_record_lifecycle_test.dart'
+      - 'test/data_wipe_microphone_test.dart'
+      - 'test/notifications/**'
+      - 'test/helpers/controlled_recorder.dart'
+      - 'tools/release/**'
       - 'pubspec.yaml'
       - 'pubspec.lock'
       - '.github/workflows/neura-android-startup-voice.yml'
@@ -61,14 +75,26 @@ jobs:
           channel: stable
           cache: true
       - name: Restore locked dependencies
-        run: flutter pub get --enforce-lockfile
+        run: |
+          flutter pub get --enforce-lockfile
+          # Keep native compilation and the receipt on the committed policy.
+          git restore --source=HEAD -- analysis_options.yaml
       - name: Synthetic startup, permission, cancellation and settings tests
         run: >-
           flutter test --no-pub --concurrency 2 --timeout 2m
           test/startup/neura_startup_voice_test.dart
+          test/startup/startup_platform_policy_test.dart
+          test/insights/chart_screen_smoke_test.dart
+          test/reference/neura_reference_picker_test.dart
+          test/planning/neura_task_transfer_picker_test.dart
           test/services/neura_local_speech_input_test.dart
           test/services/neura_startup_voice_prefs_test.dart
           test/screens/neura_startup_voice_settings_test.dart
+          test/services/sleep_listener_safety_test.dart
+          test/services/sleep_listener_disposal_wipe_test.dart
+          test/services/neura_record_lifecycle_test.dart
+          test/data_wipe_microphone_test.dart
+          test/notifications/neura_notifications_platform_test.dart
       - name: Install the existing Android build baseline
         run: >-
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
@@ -84,6 +110,9 @@ jobs:
           test -s "$apk"
           "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" manifest permissions "$apk" | grep -Fx 'android.permission.RECORD_AUDIO'
           sha256sum "$apk" > android-startup-voice-sha256.txt
+          python3 -m unittest discover -s tools/release -p 'test_*.py' -v
+          python3 tools/release/package_receipt.py --platform android --apk "$apk" \
+            --build-tools "$ANDROID_HOME/build-tools/36.0.0" --output android-startup-voice-package
           git diff --exit-code -- lib test android pubspec.lock rust/Cargo.lock
       - name: Preserve Android build evidence and test APK
         if: always()
@@ -93,6 +122,7 @@ jobs:
           path: |
             android-startup-voice-*.log
             android-startup-voice-*.txt
+            android-startup-voice-package/
             build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 14
