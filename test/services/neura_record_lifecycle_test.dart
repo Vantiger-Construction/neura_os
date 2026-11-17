@@ -42,7 +42,8 @@ void main() {
   });
 
   for (final reason in ['Safe Mode', 'restart', 'background']) {
-    test('voice asset loading stays revoked after $reason is cleared', () async {
+    test('voice asset loading stays revoked after $reason is cleared',
+        () async {
       await fixture.run(() async {
         final voice = NeuraVoicePack.forTesting();
         final envelope = Completer<ByteData?>();
