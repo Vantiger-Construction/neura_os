@@ -17,15 +17,28 @@ class _SyntheticRecorder extends Fake
   final live = <String>{};
   final stopCalls = <String>[];
   final failedStops = <String>{};
+  final _states = <String, StreamController<RecordState>>{};
+  final _stops = <String, StreamController<RecordStop>>{};
   int starts = 0;
   int disposals = 0;
   final disposed = Completer<void>();
 
   @override
-  Future<void> create(String recorderId) async {}
+  Future<void> create(String recorderId) async {
+    _states[recorderId] = StreamController<RecordState>.broadcast();
+    _stops[recorderId] = StreamController<RecordStop>.broadcast();
+  }
 
   @override
-  Stream<RecordState> onStateChanged(String recorderId) => const Stream.empty();
+  Stream<RecordState> onStateChanged(String recorderId) =>
+      _states[recorderId]!.stream;
+
+  @override
+  Stream<RecordStop> onStopped(String recorderId) => _stops[recorderId]!.stream;
+
+  @override
+  Future<bool> isRecording(String recorderId) async =>
+      live.contains(recorderId);
 
   @override
   Future<bool> hasPermission(String recorderId, {bool request = true}) async =>
@@ -39,6 +52,7 @@ class _SyntheticRecorder extends Fake
     live.add(recorderId);
     // Synthetic bytes, written only within the fixture's guarded documents.
     await File(path).writeAsString('synthetic recording');
+    _states[recorderId]!.add(RecordState.record);
   }
 
   @override
@@ -47,13 +61,20 @@ class _SyntheticRecorder extends Fake
     if (failedStops.contains(recorderId)) {
       throw StateError('synthetic recorder stop failure');
     }
-    live.remove(recorderId);
+    if (live.remove(recorderId)) {
+      _states[recorderId]!.add(RecordState.stop);
+      _stops[recorderId]!.add(
+        RecordStop(reason: RecordStopReason.stop, path: paths[recorderId]),
+      );
+    }
     return paths[recorderId];
   }
 
   @override
   Future<void> dispose(String recorderId) async {
-    live.remove(recorderId);
+    if (live.contains(recorderId)) await stop(recorderId);
+    await _states.remove(recorderId)!.close();
+    await _stops.remove(recorderId)!.close();
     disposals += 1;
     if (disposals == 2) disposed.complete();
   }
