@@ -163,11 +163,13 @@ class AmbientListeningService with WidgetsBindingObserver {
   }
 
   Future<void> start() async {
-    if (_running || _starting || _shutdownUnverified || !_captureRequested) return;
+    if (_running || _starting || _shutdownUnverified || !_captureRequested)
+      return;
 
     final stopping = _stopInFlight;
     if (stopping != null) await stopping;
-    if (_running || _starting || _shutdownUnverified || !_captureRequested) return;
+    if (_running || _starting || _shutdownUnverified || !_captureRequested)
+      return;
 
     _starting = true;
     final generation = ++_lifecycleGeneration;
@@ -343,7 +345,8 @@ class AmbientListeningService with WidgetsBindingObserver {
   @visibleForTesting
   Future<void> dispose() async {
     _disposed = true;
-    AmbientListeningPrefsController.instance.enabled.removeListener(_onPrefChanged);
+    AmbientListeningPrefsController.instance.enabled
+        .removeListener(_onPrefChanged);
     SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
     SafeBoot.instance.restartRequired.removeListener(_onSafeModeChanged);
     NeuraErrorPipeline.instance.fatalError.removeListener(_onSafeModeChanged);

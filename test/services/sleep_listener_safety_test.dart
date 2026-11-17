@@ -54,7 +54,8 @@ void main() {
           SafeBoot.instance.restartRequired.value = false;
         case 'recovery':
           NeuraErrorPipeline.instance.fatalError.value = const NeuraFatalError(
-            source: 'synthetic', phase: 'test',
+            source: 'synthetic',
+            phase: 'test',
           );
           NeuraErrorPipeline.instance.fatalError.value = null;
         case 'background':
@@ -63,7 +64,8 @@ void main() {
       }
     }
 
-    test('permission completion after $reason cannot start or restart capture', () async {
+    test('permission completion after $reason cannot start or restart capture',
+        () async {
       await fixture.run(() async {
         platform.permissionGate = Completer<bool>();
         final starting = service.startRecording();
@@ -78,7 +80,8 @@ void main() {
       });
     });
 
-    test('active capture stops on $reason and stays stopped after recovery', () async {
+    test('active capture stops on $reason and stays stopped after recovery',
+        () async {
       await fixture.run(() async {
         await service.startRecording();
         expect(service.isRecording, isTrue);
@@ -91,7 +94,8 @@ void main() {
     });
   }
 
-  test('Safe Mode, restart and background reject before requesting permission', () async {
+  test('Safe Mode, restart and background reject before requesting permission',
+      () async {
     await fixture.run(() async {
       SafeBoot.instance.safeMode.value = true;
       await service.startRecording();
@@ -106,7 +110,9 @@ void main() {
     });
   });
 
-  test('denied permission and Windows-style capture denial never claim recording', () async {
+  test(
+      'denied permission and Windows-style capture denial never claim recording',
+      () async {
     await fixture.run(() async {
       platform.granted = false;
       await service.startRecording();
@@ -119,7 +125,9 @@ void main() {
     });
   });
 
-  test('normal Stop failure is visible, blocks restart, and permits an explicit Stop retry', () async {
+  test(
+      'normal Stop failure is visible, blocks restart, and permits an explicit Stop retry',
+      () async {
     await fixture.run(() async {
       await service.startRecording();
       final id = platform.live.single;
@@ -135,7 +143,9 @@ void main() {
     });
   });
 
-  test('Stop before the first sample drains the late start without resurrection', () async {
+  test(
+      'Stop before the first sample drains the late start without resurrection',
+      () async {
     await fixture.run(() async {
       platform.startGate = Completer<void>();
       final starting = service.startRecording();
@@ -150,11 +160,14 @@ void main() {
     });
   });
 
-  test('Stop timeout remains uncertain and repeated Stop joins the native operation', () async {
+  test(
+      'Stop timeout remains uncertain and repeated Stop joins the native operation',
+      () async {
     await fixture.run(() async {
       await service.startRecording();
       platform.stopGate = Completer<void>();
-      await expectLater(service.stopRecording(), throwsA(isA<TimeoutException>()));
+      await expectLater(
+          service.stopRecording(), throwsA(isA<TimeoutException>()));
       await service.startRecording();
       expect(platform.starts, 1);
       final stopping = service.stopRecording();
@@ -165,7 +178,8 @@ void main() {
     });
   });
 
-  test('disposal invalidates a pending permission and cannot capture afterward', () async {
+  test('disposal invalidates a pending permission and cannot capture afterward',
+      () async {
     await fixture.run(() async {
       platform.permissionGate = Completer<bool>();
       final starting = service.startRecording();

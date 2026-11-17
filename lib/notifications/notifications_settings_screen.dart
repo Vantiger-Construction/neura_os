@@ -30,8 +30,10 @@ class NotificationsSettingsScreen extends StatelessWidget {
               ),
               SwitchListTile(
                 value: prefs.weeklyReviewReadyEnabled,
-                onChanged: !supported ? null : (v) => NeuraNotificationsPrefsController.instance
-                    .update(prefs.copyWith(weeklyReviewReadyEnabled: v)),
+                onChanged: !supported
+                    ? null
+                    : (v) => NeuraNotificationsPrefsController.instance
+                        .update(prefs.copyWith(weeklyReviewReadyEnabled: v)),
                 secondary: const Icon(Icons.insights_outlined),
                 title: const Text('Weekly review ready'),
                 subtitle: const Text(
@@ -39,8 +41,10 @@ class NotificationsSettingsScreen extends StatelessWidget {
               ),
               SwitchListTile(
                 value: prefs.legacyOverdueEnabled,
-                onChanged: !supported ? null : (v) => NeuraNotificationsPrefsController.instance
-                    .update(prefs.copyWith(legacyOverdueEnabled: v)),
+                onChanged: !supported
+                    ? null
+                    : (v) => NeuraNotificationsPrefsController.instance
+                        .update(prefs.copyWith(legacyOverdueEnabled: v)),
                 secondary: const Icon(Icons.auto_stories_outlined),
                 title: const Text('Legacy Guard check-in overdue'),
                 subtitle: const Text(
@@ -48,21 +52,24 @@ class NotificationsSettingsScreen extends StatelessWidget {
               ),
               SwitchListTile(
                 value: prefs.dailyMoodNudgeEnabled,
-                onChanged: !supported ? null : (v) async {
-                  final next = prefs.copyWith(dailyMoodNudgeEnabled: v);
-                  await NeuraNotificationsPrefsController.instance.update(next);
-                  if (v) {
-                    await NeuraNotificationsService.instance
-                        .scheduleDailyMoodNudge(
-                      TimeOfDay(
-                          hour: next.dailyMoodNudgeHour,
-                          minute: next.dailyMoodNudgeMinute),
-                    );
-                  } else {
-                    await NeuraNotificationsService.instance
-                        .cancelDailyMoodNudge();
-                  }
-                },
+                onChanged: !supported
+                    ? null
+                    : (v) async {
+                        final next = prefs.copyWith(dailyMoodNudgeEnabled: v);
+                        await NeuraNotificationsPrefsController.instance
+                            .update(next);
+                        if (v) {
+                          await NeuraNotificationsService.instance
+                              .scheduleDailyMoodNudge(
+                            TimeOfDay(
+                                hour: next.dailyMoodNudgeHour,
+                                minute: next.dailyMoodNudgeMinute),
+                          );
+                        } else {
+                          await NeuraNotificationsService.instance
+                              .cancelDailyMoodNudge();
+                        }
+                      },
                 secondary: const Icon(Icons.favorite_outline),
                 title: const Text('Daily mood check-in nudge'),
                 subtitle: Text(
@@ -95,11 +102,13 @@ class NotificationsSettingsScreen extends StatelessWidget {
                 ),
               SwitchListTile(
                 value: prefs.promiseReminderEnabled,
-                onChanged: !supported ? null : (v) async {
-                  await NeuraNotificationsPrefsController.instance
-                      .update(prefs.copyWith(promiseReminderEnabled: v));
-                  await PromiseService.instance.syncAllReminders();
-                },
+                onChanged: !supported
+                    ? null
+                    : (v) async {
+                        await NeuraNotificationsPrefsController.instance
+                            .update(prefs.copyWith(promiseReminderEnabled: v));
+                        await PromiseService.instance.syncAllReminders();
+                      },
                 secondary: const Icon(Icons.handshake_outlined),
                 title: const Text('Promise reminders'),
                 subtitle:

@@ -21,6 +21,7 @@ on:
       - 'test/services/neura_startup_voice_prefs_test.dart'
       - 'test/screens/neura_startup_voice_settings_test.dart'
       - 'test/services/sleep_listener_safety_test.dart'
+      - 'test/services/sleep_listener_disposal_wipe_test.dart'
       - 'test/services/neura_record_lifecycle_test.dart'
       - 'test/data_wipe_microphone_test.dart'
       - 'test/notifications/**'
@@ -79,6 +80,7 @@ jobs:
           test/services/neura_startup_voice_prefs_test.dart
           test/screens/neura_startup_voice_settings_test.dart
           test/services/sleep_listener_safety_test.dart
+          test/services/sleep_listener_disposal_wipe_test.dart
           test/services/neura_record_lifecycle_test.dart
           test/data_wipe_microphone_test.dart
           test/notifications/neura_notifications_platform_test.dart

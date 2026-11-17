@@ -36,7 +36,8 @@ class ControlledRecorder extends Fake
   }
 
   @override
-  Stream<RecordState> onStateChanged(String recorderId) => states[recorderId]!.stream;
+  Stream<RecordState> onStateChanged(String recorderId) =>
+      states[recorderId]!.stream;
 
   @override
   Stream<RecordStop> onStopped(String recorderId) => stops[recorderId]!.stream;
@@ -56,14 +57,16 @@ class ControlledRecorder extends Fake
   }
 
   @override
-  Future<void> start(String recorderId, RecordConfig config, {required String path}) async {
+  Future<void> start(String recorderId, RecordConfig config,
+      {required String path}) async {
     paths[recorderId] = path;
     await File(path).writeAsString('synthetic recording');
     await _start(recorderId);
   }
 
   @override
-  Future<Stream<Uint8List>> startStream(String recorderId, RecordConfig config) async {
+  Future<Stream<Uint8List>> startStream(
+      String recorderId, RecordConfig config) async {
     audio[recorderId] = StreamController<Uint8List>.broadcast();
     await _start(recorderId);
     return audio[recorderId]!.stream;
@@ -76,16 +79,19 @@ class ControlledRecorder extends Fake
   }
 
   @override
-  Future<bool> isRecording(String recorderId) async => live.contains(recorderId);
+  Future<bool> isRecording(String recorderId) async =>
+      live.contains(recorderId);
 
   @override
   Future<String?> stop(String recorderId) async {
     stopCalls.add(recorderId);
-    if (failedStops.contains(recorderId)) throw StateError('Synthetic Stop failure.');
+    if (failedStops.contains(recorderId))
+      throw StateError('Synthetic Stop failure.');
     await stopGate?.future;
     if (live.remove(recorderId)) {
       states[recorderId]!.add(RecordState.stop);
-      stops[recorderId]!.add(RecordStop(reason: RecordStopReason.stop, path: paths[recorderId]));
+      stops[recorderId]!.add(
+          RecordStop(reason: RecordStopReason.stop, path: paths[recorderId]));
     }
     return paths[recorderId];
   }
@@ -93,7 +99,8 @@ class ControlledRecorder extends Fake
   @override
   Future<void> dispose(String recorderId) async {
     disposals++;
-    if (failedDisposals.contains(recorderId)) throw StateError('Synthetic disposal failure.');
+    if (failedDisposals.contains(recorderId))
+      throw StateError('Synthetic disposal failure.');
     await disposeGate?.future;
     live.remove(recorderId);
     await audio.remove(recorderId)?.close();

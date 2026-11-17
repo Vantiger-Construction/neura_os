@@ -94,7 +94,8 @@ void main() {
     await f.run(() async {
       SafeBoot.instance.safeMode.value = false;
       SafeBoot.instance.restartRequired.value = false;
-      WidgetsBinding.instance.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      WidgetsBinding.instance
+          .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       final first = SleepListenerService();
       final second = SleepListenerService();
       addTearDown(() async {
@@ -134,7 +135,8 @@ void main() {
       recorder.failedStops.clear();
       await NeuraDataWipeService.wipeAllLocalData();
       expect(recorder.live, isEmpty);
-      expect(recorder.stopCalls.where((id) => id == firstId), hasLength(attempts + 1));
+      expect(recorder.stopCalls.where((id) => id == firstId),
+          hasLength(attempts + 1));
       await NeuraDataWipeService.wipeAllLocalData();
       await first.startRecording();
       await second.startRecording();

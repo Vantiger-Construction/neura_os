@@ -31,13 +31,15 @@ import 'neura_notifications_prefs.dart';
 /// tradeoff is the repeat anchor drifts by an hour across a DST transition
 /// -- acceptable for a beta reminder feature.
 class NeuraNotificationsService {
-  NeuraNotificationsService._({FlutterLocalNotificationsPlugin? plugin}) : _plugin = plugin {
+  NeuraNotificationsService._({FlutterLocalNotificationsPlugin? plugin})
+      : _plugin = plugin {
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
     SafeBoot.instance.restartRequired.addListener(_onSafeModeChanged);
     NeuraErrorPipeline.instance.fatalError.addListener(_onSafeModeChanged);
   }
   @visibleForTesting
-  NeuraNotificationsService.forTesting(FlutterLocalNotificationsPlugin plugin) : this._(plugin: plugin);
+  NeuraNotificationsService.forTesting(FlutterLocalNotificationsPlugin plugin)
+      : this._(plugin: plugin);
   static final NeuraNotificationsService instance =
       NeuraNotificationsService._();
 
@@ -95,10 +97,11 @@ class NeuraNotificationsService {
       );
       _available = ok ?? false;
       if (!allowInSafeMode &&
-          (!deliveryAllowed || generation != _safetyGeneration) && _available) {
+          (!deliveryAllowed || generation != _safetyGeneration) &&
+          _available) {
         await plugin.cancelAll();
       }
-      _initialized = true;
+      _initialized = _available;
     } catch (e, st) {
       _initialized = false;
       _available = false;
@@ -107,9 +110,11 @@ class NeuraNotificationsService {
   }
 
   Future<void> showWeeklyReviewReadyNotification() async {
-    if (!NeuraNotificationsPrefsController.instance.prefs.value.weeklyReviewReadyEnabled) return;
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.weeklyReviewReadyEnabled) return;
     if (!await _ready()) return;
-    if (!NeuraNotificationsPrefsController.instance.prefs.value.weeklyReviewReadyEnabled) return;
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.weeklyReviewReadyEnabled) return;
     await _showSafely(
       _weeklyReviewId,
       'Your weekly review is ready',
@@ -118,9 +123,11 @@ class NeuraNotificationsService {
   }
 
   Future<void> showLegacyOverdueNotification() async {
-    if (!NeuraNotificationsPrefsController.instance.prefs.value.legacyOverdueEnabled) return;
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.legacyOverdueEnabled) return;
     if (!await _ready()) return;
-    if (!NeuraNotificationsPrefsController.instance.prefs.value.legacyOverdueEnabled) return;
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.legacyOverdueEnabled) return;
     await _showSafely(
       _legacyOverdueId,
       'Legacy Guard check-in overdue',
@@ -145,9 +152,11 @@ class NeuraNotificationsService {
   }
 
   Future<void> scheduleDailyMoodNudge(TimeOfDay at) async {
-    if (!NeuraNotificationsPrefsController.instance.prefs.value.dailyMoodNudgeEnabled) return;
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.dailyMoodNudgeEnabled) return;
     if (!await _ready()) return;
-    if (!NeuraNotificationsPrefsController.instance.prefs.value.dailyMoodNudgeEnabled) return;
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.dailyMoodNudgeEnabled) return;
     try {
       final now = DateTime.now();
       var next = DateTime(now.year, now.month, now.day, at.hour, at.minute);
@@ -189,8 +198,11 @@ class NeuraNotificationsService {
     required String description,
     required DateTime dueAt,
   }) async {
-    if (!NeuraNotificationsPrefsController.instance.prefs.value.promiseReminderEnabled) return;
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.promiseReminderEnabled) return;
     if (!await _ready()) return;
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.promiseReminderEnabled) return;
     if (!dueAt.isAfter(DateTime.now())) return;
     try {
       final scheduled = tz.TZDateTime.from(dueAt.toUtc(), tz.UTC);

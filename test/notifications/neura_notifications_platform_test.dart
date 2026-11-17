@@ -23,16 +23,23 @@ class _Notifications extends Fake implements FlutterLocalNotificationsPlugin {
   Future<bool?> initialize({
     required InitializationSettings settings,
     DidReceiveNotificationResponseCallback? onDidReceiveNotificationResponse,
-    DidReceiveBackgroundNotificationResponseCallback? onDidReceiveBackgroundNotificationResponse,
+    DidReceiveBackgroundNotificationResponseCallback?
+        onDidReceiveBackgroundNotificationResponse,
   }) async {
     initializations++;
     expect(settings.windows, isNotNull);
-    if (failInitialization) throw StateError('Synthetic first-use DLL failure.');
+    if (failInitialization)
+      throw StateError('Synthetic first-use DLL failure.');
     return initGate == null ? true : await initGate!.future;
   }
 
   @override
-  Future<void> show({required int id, String? title, String? body, NotificationDetails? notificationDetails, String? payload}) async {
+  Future<void> show(
+      {required int id,
+      String? title,
+      String? body,
+      NotificationDetails? notificationDetails,
+      String? payload}) async {
     shown++;
   }
 
@@ -67,29 +74,42 @@ void main() {
     NeuraNotificationsPrefsController.instance.resetAfterDataWipe();
   });
 
-  testWidgets('Android controls explain availability and cannot enable notifications', (tester) async {
+  testWidgets(
+      'Android controls explain availability and cannot enable notifications',
+      (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    await tester.pumpWidget(const MaterialApp(home: NotificationsSettingsScreen()));
-    expect(find.text('Notifications are currently available only on Windows.'), findsOneWidget);
-    final switches = tester.widgetList<SwitchListTile>(find.byType(SwitchListTile));
+    await tester
+        .pumpWidget(const MaterialApp(home: NotificationsSettingsScreen()));
+    expect(find.text('Notifications are currently available only on Windows.'),
+        findsOneWidget);
+    final switches =
+        tester.widgetList<SwitchListTile>(find.byType(SwitchListTile));
     expect(switches, hasLength(4));
     expect(switches.every((tile) => tile.onChanged == null), isTrue);
     await service.init();
     expect(plugin.initializations, 0);
+    debugDefaultTargetPlatformOverride = null;
   });
 
-  test('opt-out is enforced at the service boundary before first native use', () async {
+  test('opt-out is enforced at the service boundary before first native use',
+      () async {
     await service.showWeeklyReviewReadyNotification();
     await service.showLegacyOverdueNotification();
     await service.scheduleDailyMoodNudge(const TimeOfDay(hour: 19, minute: 0));
-    await service.schedulePromiseReminder(promiseId: 'synthetic', description: 'Synthetic promise', dueAt: DateTime.now().add(const Duration(days: 1)));
+    await service.schedulePromiseReminder(
+        promiseId: 'synthetic',
+        description: 'Synthetic promise',
+        dueAt: DateTime.now().add(const Duration(days: 1)));
     expect(plugin.initializations, 0);
     expect(plugin.shown, 0);
   });
 
-  test('failed first DLL use cannot deliver and a later explicit request may retry', () async {
+  test(
+      'failed first DLL use cannot deliver and a later explicit request may retry',
+      () async {
     await fixture.run(() async {
-      NeuraNotificationsPrefsController.instance.prefs.value = const NeuraNotificationsPrefs(weeklyReviewReadyEnabled: true);
+      NeuraNotificationsPrefsController.instance.prefs.value =
+          const NeuraNotificationsPrefs(weeklyReviewReadyEnabled: true);
       plugin.failInitialization = true;
       await service.showWeeklyReviewReadyNotification();
       expect(plugin.shown, 0);
@@ -101,8 +121,10 @@ void main() {
     });
   });
 
-  test('opt-out during first initialization suppresses a late notification', () async {
-    NeuraNotificationsPrefsController.instance.prefs.value = const NeuraNotificationsPrefs(weeklyReviewReadyEnabled: true);
+  test('opt-out during first initialization suppresses a late notification',
+      () async {
+    NeuraNotificationsPrefsController.instance.prefs.value =
+        const NeuraNotificationsPrefs(weeklyReviewReadyEnabled: true);
     plugin.initGate = Completer<bool>();
     final showing = service.showWeeklyReviewReadyNotification();
     await Future<void>.delayed(Duration.zero);
@@ -112,8 +134,10 @@ void main() {
     expect(plugin.shown, 0);
   });
 
-  test('Safe Mode entry and exit invalidate an in-flight initialization', () async {
-    NeuraNotificationsPrefsController.instance.prefs.value = const NeuraNotificationsPrefs(weeklyReviewReadyEnabled: true);
+  test('Safe Mode entry and exit invalidate an in-flight initialization',
+      () async {
+    NeuraNotificationsPrefsController.instance.prefs.value =
+        const NeuraNotificationsPrefs(weeklyReviewReadyEnabled: true);
     plugin.initGate = Completer<bool>();
     final showing = service.showWeeklyReviewReadyNotification();
     await Future<void>.delayed(Duration.zero);
@@ -125,7 +149,9 @@ void main() {
     expect(plugin.cancellations, greaterThan(0));
   });
 
-  test('restart cancellation initializes only the backend and propagates failure', () async {
+  test(
+      'restart cancellation initializes only the backend and propagates failure',
+      () async {
     SafeBoot.instance.restartRequired.value = true;
     await service.cancelAllForSafeMode();
     expect(plugin.initializations, 1);

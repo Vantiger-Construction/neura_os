@@ -121,7 +121,7 @@ class NeuraVoicePack with WidgetsBindingObserver {
         () => generation == _micGeneration && audioAllowed,
       );
       if (!started) return;
-      if (generation != _micGeneration || !audioAllowed) {
+      if (generation != _micGeneration || !audioAllowed || mic.takeEnded) {
         await mic.stop();
         return;
       }
@@ -154,7 +154,7 @@ class NeuraVoicePack with WidgetsBindingObserver {
       );
       newSubscription = subscription;
 
-      if (generation != _micGeneration || !audioAllowed) {
+      if (generation != _micGeneration || !audioAllowed || mic.takeEnded) {
         await subscription.cancel();
         newSubscription = null;
         await mic.stop();
@@ -729,6 +729,7 @@ class _VoicePackMicDriver {
   StreamSubscription<RecordState>? _stateSub;
   StreamSubscription<RecordStop>? _stoppedSub;
   bool _shutdownUnverified = false;
+  bool takeEnded = true;
   int _generation = 0;
 
   _VoicePackMicDriver({NeuraMicVisemeEngine? engine})
@@ -741,17 +742,19 @@ class _VoicePackMicDriver {
     if (!await _recorder.hasPermission()) return false;
     if (!mayCapture() || generation != _generation) return false;
 
-    var ended = false;
+    takeEnded = false;
     void onEnded() {
-      if (ended || generation != _generation || _out.isClosed) return;
-      ended = true;
-      _out.addError(StateError('Microphone recording ended. Request listening again.'));
+      if (takeEnded || generation != _generation || _out.isClosed) return;
+      takeEnded = true;
+      _out.addError(
+          StateError('Microphone recording ended. Request listening again.'));
     }
 
     _stateSub = _recorder.onStateChanged().listen((state) {
       if (state == RecordState.pause) onEnded();
     }, onError: (Object error, StackTrace stack) {
-      if (generation == _generation && !_out.isClosed) _out.addError(error, stack);
+      if (generation == _generation && !_out.isClosed)
+        _out.addError(error, stack);
     });
     _stoppedSub = _recorder.onStopped().listen((_) => onEnded());
 
@@ -769,7 +772,10 @@ class _VoicePackMicDriver {
     }
     _audioSub = audioStream.listen(
       (bytes) {
-        if (_out.isClosed || ended || generation != _generation || !mayCapture()) return;
+        if (_out.isClosed ||
+            takeEnded ||
+            generation != _generation ||
+            !mayCapture()) return;
         final pcm = Int16List.view(
           bytes.buffer,
           bytes.offsetInBytes,
@@ -778,11 +784,12 @@ class _VoicePackMicDriver {
         _out.add(engine.processPcm16(pcm));
       },
       onError: (Object error, StackTrace stack) {
-        if (generation == _generation && !_out.isClosed) _out.addError(error, stack);
+        if (generation == _generation && !_out.isClosed)
+          _out.addError(error, stack);
       },
       onDone: onEnded,
     );
-    if (ended) {
+    if (takeEnded) {
       await stop();
       return false;
     }
@@ -791,8 +798,11 @@ class _VoicePackMicDriver {
 
   Future<void> stop() async {
     _generation++;
+    takeEnded = true;
     final subscriptions = <StreamSubscription<dynamic>?>[
-      _audioSub, _stateSub, _stoppedSub,
+      _audioSub,
+      _stateSub,
+      _stoppedSub,
     ];
     _audioSub = null;
     _stateSub = null;

@@ -74,7 +74,8 @@ class SleepListenerService with WidgetsBindingObserver {
 
     final dir = await getApplicationDocumentsDirectory();
     if (!_mayCapture(generation)) return;
-    final path = '${dir.path}/sleep_${DateTime.now().microsecondsSinceEpoch}.m4a';
+    final path =
+        '${dir.path}/sleep_${DateTime.now().microsecondsSinceEpoch}.m4a';
     _currentPath = path;
     _shutdownUnverified = true;
 
@@ -122,7 +123,8 @@ class SleepListenerService with WidgetsBindingObserver {
       await stopRecording();
     } catch (error, stack) {
       try {
-        await AppLog.instance.caught('sleep_recording_stop_failed', error, stack);
+        await AppLog.instance
+            .caught('sleep_recording_stop_failed', error, stack);
       } catch (_) {}
     }
   }
@@ -154,7 +156,7 @@ class SleepListenerService with WidgetsBindingObserver {
     if (drainFailure != null) {
       throw StateError('Sleep recorder start could not be drained.');
     }
-    return _currentPath ?? '';
+    return _captureAllowed ? (_currentPath ?? '') : '';
   }
 
   Future<String?> _stopNative() {
@@ -186,11 +188,13 @@ class SleepListenerService with WidgetsBindingObserver {
     for (final service in _liveInstances.toList()) {
       try {
         await service.stopRecording();
+        service._currentPath = null;
       } catch (_) {
         failed = true;
       }
     }
-    if (failed) throw StateError('Sleep recorder shutdown could not be verified.');
+    if (failed)
+      throw StateError('Sleep recorder shutdown could not be verified.');
   }
 
   static Future<void> resetAllAfterDataWipe() async {
@@ -207,7 +211,8 @@ class SleepListenerService with WidgetsBindingObserver {
         failed = true;
       }
     }
-    if (failed) throw StateError('Sleep recorder shutdown could not be verified.');
+    if (failed)
+      throw StateError('Sleep recorder shutdown could not be verified.');
   }
 
   Future<void> _resetAfterDataWipe() async {
