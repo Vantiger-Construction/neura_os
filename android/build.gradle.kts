@@ -34,11 +34,11 @@ subprojects {
         add("classpath", "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
         // Minimum fixes for advisories in plugin build tooling. Keep these off
         // the app runtime classpath; Gradle can select newer compatible versions.
-        add("classpath", "com.google.guava:guava:33.7.2-jre")
-        add("classpath", "org.apache.commons:commons-lang3:3.18.0")
-        add("classpath", "org.bitbucket.b_c:jose4j:0.9.6")
-        add("classpath", "org.bouncycastle:bcpkix-jdk18on:1.85")
-        add("classpath", "org.bouncycastle:bcprov-jdk18on:1.85")
+        add("classpath", "com.google.guava:guava:33.8.0-jre")
+        add("classpath", "org.apache.commons:commons-lang3:3.22.0")
+        add("classpath", "org.bitbucket.b_c:jose4j:0.9.7")
+        add("classpath", "org.bouncycastle:bcpkix-jdk18on:1.87")
+        add("classpath", "org.bouncycastle:bcprov-jdk18on:1.87")
         add("classpath", "org.jdom:jdom2:2.0.6.1")
     }
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
