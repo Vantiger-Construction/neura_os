@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/services/sleep_listener_service.dart';
@@ -92,11 +93,13 @@ void main() {
     RecordPlatform.instance = recorder;
     await f.run(() async {
       SafeBoot.instance.safeMode.value = false;
+      SafeBoot.instance.restartRequired.value = false;
+      WidgetsBinding.instance.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       final first = SleepListenerService();
       final second = SleepListenerService();
       addTearDown(() async {
-        first.dispose();
-        second.dispose();
+        await first.dispose();
+        await second.dispose();
         try {
           await recorder.disposed.future.timeout(const Duration(seconds: 5));
         } finally {
@@ -111,6 +114,10 @@ void main() {
       final firstId = recorder.paths.keys.first;
       final secondId = recorder.paths.keys.last;
       recorder.failedStops.add(firstId);
+      // A failure during an ordinary Stop must remain owned by wipe/retry.
+      await expectLater(first.stopRecording(), throwsStateError);
+      await first.startRecording();
+      expect(recorder.starts, 2);
       await expectLater(
         NeuraDataWipeService.wipeAllLocalData(),
         throwsA(isA<NeuraDataWipeException>().having((e) => e.failedSteps,
@@ -123,10 +130,11 @@ void main() {
       for (final path in recorder.paths.values) {
         expect(await File(path).exists(), isFalse);
       }
+      final attempts = recorder.stopCalls.where((id) => id == firstId).length;
       recorder.failedStops.clear();
       await NeuraDataWipeService.wipeAllLocalData();
       expect(recorder.live, isEmpty);
-      expect(recorder.stopCalls.where((id) => id == firstId), hasLength(2));
+      expect(recorder.stopCalls.where((id) => id == firstId), hasLength(attempts + 1));
       await NeuraDataWipeService.wipeAllLocalData();
       await first.startRecording();
       await second.startRecording();

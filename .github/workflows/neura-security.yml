@@ -147,6 +147,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git diff --exit-code -- pubspec.lock rust/Cargo.lock windows/runner
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify and package the complete Windows Release payload
+        id: windows_bundle
+        if: matrix.language == 'c-cpp'
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tools/release -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/release/package_receipt.py --platform windows --bundle build/windows/x64/runner/Release --output "$env:RUNNER_TEMP/neura-windows-package"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve the complete Windows bundle and source identity
+        if: always() && matrix.language == 'c-cpp' && steps.windows_bundle.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: neura-windows-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/neura-windows-package/
+          if-no-files-found: error
+          retention-days: 14
       - name: Trace every tracked Neura C# source with genuine Unity references
         if: matrix.language == 'csharp'
         shell: bash

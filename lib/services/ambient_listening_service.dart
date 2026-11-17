@@ -6,6 +6,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
@@ -13,6 +14,7 @@ import '../core/memory/memory_crypto.dart';
 import '../mascot/mascot_window_service.dart';
 import '../modules/core/app_log.dart';
 import '../reliability/safe_boot.dart';
+import '../startup/neura_error_pipeline.dart';
 import 'ambient_listening_prefs.dart';
 import 'neura_tts_service.dart';
 
@@ -29,18 +31,28 @@ import 'neura_tts_service.dart';
 const bool kEnableProactiveGreetingTts = false;
 
 /// Opt-in, voice-activity-triggered ambient recording encrypted at rest.
-class AmbientListeningService {
+class AmbientListeningService with WidgetsBindingObserver {
   AmbientListeningService._() {
     AmbientListeningPrefsController.instance.enabled.addListener(
       _onPrefChanged,
     );
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
+    SafeBoot.instance.restartRequired.addListener(_onSafeModeChanged);
+    NeuraErrorPipeline.instance.fatalError.addListener(_onSafeModeChanged);
+    WidgetsBinding.instance.addObserver(this);
   }
+
+  @visibleForTesting
+  AmbientListeningService.forTesting() : this._();
 
   static final AmbientListeningService instance = AmbientListeningService._();
 
   bool get captureAllowed =>
+      !_disposed &&
       !SafeBoot.instance.safeMode.value &&
+      !SafeBoot.instance.restartRequired.value &&
+      NeuraErrorPipeline.instance.fatalError.value == null &&
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed &&
       !LocalProfileService.instance.enabled;
 
   bool get _captureRequested =>
@@ -58,6 +70,8 @@ class AmbientListeningService {
 
   AudioRecorder? _recorder;
   StreamSubscription<Uint8List>? _audioSub;
+  StreamSubscription<RecordState>? _stateSub;
+  StreamSubscription<RecordStop>? _stoppedSub;
   Timer? _amplitudeTimer;
   Timer? _silenceTimer;
 
@@ -65,6 +79,8 @@ class AmbientListeningService {
   bool _starting = false;
   bool _capturing = false;
   bool _pollInFlight = false;
+  bool _disposed = false;
+  bool _shutdownUnverified = false;
   int _lifecycleGeneration = 0;
   Future<void>? _stopInFlight;
 
@@ -106,6 +122,11 @@ class AmbientListeningService {
     }
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _onSafeModeChanged();
+  }
+
   void _runLifecycle(Future<void> operation, String logKey) {
     unawaited(_guardLifecycle(operation, logKey));
   }
@@ -142,15 +163,14 @@ class AmbientListeningService {
   }
 
   Future<void> start() async {
-    if (_running || _starting || !_captureRequested) return;
+    if (_running || _starting || _shutdownUnverified || !_captureRequested) return;
 
     final stopping = _stopInFlight;
     if (stopping != null) await stopping;
-    if (_running || _starting || !_captureRequested) return;
+    if (_running || _starting || _shutdownUnverified || !_captureRequested) return;
 
     _starting = true;
     final generation = ++_lifecycleGeneration;
-    var invalidated = false;
     StreamSubscription<Uint8List>? newSubscription;
     final recorder = _recorder ??= AudioRecorder();
 
@@ -160,10 +180,26 @@ class AmbientListeningService {
         return;
       }
       if (!_startStillWanted(generation)) {
-        invalidated = true;
         return;
       }
 
+      void ended() {
+        if (generation != _lifecycleGeneration) return;
+        _runLifecycle(stop(), 'ambient_listening_terminal_stop_failed');
+      }
+
+      _stateSub = recorder.onStateChanged().listen((state) {
+        // A route pause is an owned, unfinished take. End it explicitly;
+        // neither returning focus nor reconnecting a device resumes capture.
+        if (state == RecordState.pause) ended();
+      }, onError: (Object error, StackTrace stack) {
+        if (generation != _lifecycleGeneration) return;
+        _runLifecycle(_handleAudioStreamError(error, stack),
+            'ambient_listening_state_shutdown_failed');
+      });
+      _stoppedSub = recorder.onStopped().listen((_) => ended());
+
+      _shutdownUnverified = true;
       final audioStream = await recorder.startStream(
         const RecordConfig(
           encoder: AudioEncoder.pcm16bits,
@@ -172,30 +208,26 @@ class AmbientListeningService {
         ),
       );
       if (!_startStillWanted(generation)) {
-        invalidated = true;
-        try {
-          await recorder.stop();
-        } catch (_) {}
+        await _stopNative();
         return;
       }
 
       final subscription = audioStream.listen(
         _onAudioChunk,
         onError: (Object error, StackTrace stack) {
+          if (generation != _lifecycleGeneration) return;
           _runLifecycle(
             _handleAudioStreamError(error, stack),
             'ambient_listening_stream_shutdown_failed',
           );
         },
+        onDone: ended,
       );
       newSubscription = subscription;
       if (!_startStillWanted(generation)) {
-        invalidated = true;
         await subscription.cancel();
         newSubscription = null;
-        try {
-          await recorder.stop();
-        } catch (_) {}
+        await _stopNative();
         return;
       }
 
@@ -210,7 +242,7 @@ class AmbientListeningService {
         await newSubscription?.cancel();
       } catch (_) {}
       try {
-        await recorder.stop();
+        await stop();
       } catch (_) {}
       await AppLog.instance.caught(
         'ambient_listening_start_failed',
@@ -218,11 +250,7 @@ class AmbientListeningService {
         stack,
       );
     } finally {
-      invalidated = invalidated || generation != _lifecycleGeneration;
       _starting = false;
-      if (invalidated && _captureRequested && !_running) {
-        _runLifecycle(start(), 'ambient_listening_restart_after_toggle_failed');
-      }
     }
   }
 
@@ -266,6 +294,18 @@ class AmbientListeningService {
 
     final subscription = _audioSub;
     _audioSub = null;
+    final stateSub = _stateSub;
+    _stateSub = null;
+    final stoppedSub = _stoppedSub;
+    _stoppedSub = null;
+    for (final sub in <StreamSubscription<dynamic>?>[stateSub, stoppedSub]) {
+      try {
+        await sub?.cancel();
+      } catch (error, stack) {
+        cleanupError ??= error;
+        cleanupStack ??= stack;
+      }
+    }
     if (subscription != null) {
       try {
         await subscription.cancel();
@@ -280,7 +320,7 @@ class AmbientListeningService {
     _utteranceBuffer.clear();
 
     try {
-      await _recorder?.stop();
+      await _stopNative();
     } catch (error, stack) {
       cleanupError ??= error;
       cleanupStack ??= stack;
@@ -290,6 +330,27 @@ class AmbientListeningService {
     if (error != null) {
       Error.throwWithStackTrace(error, cleanupStack ?? StackTrace.current);
     }
+  }
+
+  Future<void> _stopNative() async {
+    final recorder = _recorder;
+    if (recorder == null) return;
+    _shutdownUnverified = true;
+    await recorder.stop().timeout(const Duration(seconds: 3));
+    _shutdownUnverified = false;
+  }
+
+  @visibleForTesting
+  Future<void> dispose() async {
+    _disposed = true;
+    AmbientListeningPrefsController.instance.enabled.removeListener(_onPrefChanged);
+    SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
+    SafeBoot.instance.restartRequired.removeListener(_onSafeModeChanged);
+    NeuraErrorPipeline.instance.fatalError.removeListener(_onSafeModeChanged);
+    WidgetsBinding.instance.removeObserver(this);
+    await stop();
+    await _recorder?.dispose();
+    isLive.dispose();
   }
 
   Future<void> resetAfterDataWipe() async {
