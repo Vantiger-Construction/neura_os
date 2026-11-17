@@ -5,10 +5,13 @@ import 'package:flutter/services.dart';
 
 import '../widgets/login_password_field.dart';
 import '../services/auth_service.dart';
+import '../modules/navigation/enhanced_navigation.dart';
 import 'verify_email_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({super.key});
+  const SignUpScreen(
+      {super.key, this.destination = const EnhancedNavigation()});
+  final Widget destination;
 
   @override
   _SignUpScreenState createState() => _SignUpScreenState();
@@ -22,6 +25,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   Future<void> _submit() async {
     if (_loading) return;
+    final destination = widget.destination;
     setState(() {
       _loading = true;
       _error = null;
@@ -31,7 +35,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       if (!mounted) return;
       TextInput.finishAutofillContext();
       unawaited(Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => VerifyEmailScreen())));
+          context,
+          MaterialPageRoute(
+              builder: (_) => VerifyEmailScreen(destination: destination))));
     } catch (e) {
       if (!mounted) return;
       setState(() {

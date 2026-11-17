@@ -132,6 +132,19 @@ void main() {
     expect(admissions, 3);
   }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 
+  testWidgets(
+      'first sign-in carries the guarded owner destination into account creation',
+      (tester) async {
+    const destination = Text('Synthetic owner destination');
+    await tester.pumpWidget(
+        const MaterialApp(home: SignInScreen(destination: destination)));
+    await tester.tap(find.text('Create account'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<SignUpScreen>(find.byType(SignUpScreen)).destination,
+        same(destination));
+    expect(find.text('Synthetic owner destination'), findsNothing);
+  });
+
   for (final screen in <Widget>[
     const SignInScreen(),
     const SignUpScreen(),

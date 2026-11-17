@@ -6,6 +6,7 @@ import '../config/supabase_config.dart';
 import '../modules/navigation/enhanced_navigation.dart';
 import '../reliability/safe_boot.dart';
 import '../screens/sign_in_screen.dart';
+import '../screens/verify_email_screen.dart';
 import '../screens/owner_password_setup.dart';
 import '../services/local_owner_login.dart';
 import 'neura_prefs_cache.dart';
@@ -77,14 +78,11 @@ class _NeuraBootScreenState extends State<NeuraBootScreen> {
         configured: SupabaseConfig.isConfigured,
         initialized: _coordinator.supabaseInitialized,
       );
-      final needsSignIn = canInspectSession && AuthService.currentUser == null;
-      // Device-lock only applies to the local-only dashboard path — once
-      // Supabase sign-in is active it already gates identity on its own.
-      final needsDeviceLock = !safeMode &&
-          !needsSignIn &&
-          AppLockPrefsController.instance.enabled.value;
+      final user = canInspectSession ? AuthService.currentUser : null;
+      final needsDeviceLock =
+          !safeMode && AppLockPrefsController.instance.enabled.value;
       final offerSetup = !safeMode &&
-          !SupabaseConfig.isConfigured &&
+          (!SupabaseConfig.isConfigured || canInspectSession) &&
           !widget.hasOwnerPassword &&
           NeuraPrefsCache.prefsOrNull
                   ?.getBool(LocalOwnerLogin.setupDismissedKey) !=
@@ -92,11 +90,18 @@ class _NeuraBootScreenState extends State<NeuraBootScreen> {
       Navigator.of(context).pushReplacement(
         PageRouteBuilder<void>(
           pageBuilder: (_, __, ___) {
-            if (needsSignIn) return const SignInScreen();
             final dashboard = offerSetup
                 ? const OwnerPasswordSetup(child: EnhancedNavigation())
                 : const EnhancedNavigation();
-            return needsDeviceLock ? AuthGuard(child: dashboard) : dashboard;
+            final destination =
+                needsDeviceLock ? AuthGuard(child: dashboard) : dashboard;
+            if (canInspectSession) {
+              if (user == null) return SignInScreen(destination: destination);
+              if (user.emailConfirmedAt == null) {
+                return VerifyEmailScreen(destination: destination);
+              }
+            }
+            return destination;
           },
           transitionsBuilder: (_, animation, __, child) {
             return FadeTransition(

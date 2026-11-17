@@ -11,7 +11,9 @@ import 'reset_password_screen.dart';
 import 'verify_email_screen.dart';
 
 class SignInScreen extends StatefulWidget {
-  const SignInScreen({super.key});
+  const SignInScreen(
+      {super.key, this.destination = const EnhancedNavigation()});
+  final Widget destination;
 
   @override
   _SignInScreenState createState() => _SignInScreenState();
@@ -25,6 +27,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
   Future<void> _submit() async {
     if (_loading) return;
+    final destination = widget.destination;
     setState(() {
       _loading = true;
       _error = null;
@@ -37,12 +40,14 @@ class _SignInScreenState extends State<SignInScreen> {
       TextInput.finishAutofillContext();
       if (verified) {
         unawaited(Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const EnhancedNavigation()),
+          MaterialPageRoute(builder: (_) => destination),
           (route) => false,
         ));
       } else {
         unawaited(Navigator.pushReplacement(
-            context, MaterialPageRoute(builder: (_) => VerifyEmailScreen())));
+            context,
+            MaterialPageRoute(
+                builder: (_) => VerifyEmailScreen(destination: destination))));
       }
     } catch (e) {
       if (!mounted) return;
@@ -63,6 +68,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   Widget build(BuildContext ctx) {
+    final destination = widget.destination;
     return Scaffold(
       appBar: AppBar(title: const Text('Sign In')),
       body: AutofillGroup(
@@ -96,7 +102,10 @@ class _SignInScreenState extends State<SignInScreen> {
                 onPressed: _loading
                     ? null
                     : () => Navigator.push(
-                        ctx, MaterialPageRoute(builder: (_) => SignUpScreen())),
+                        ctx,
+                        MaterialPageRoute(
+                            builder: (_) =>
+                                SignUpScreen(destination: destination))),
                 child: const Text('Create account')),
             TextButton(
                 onPressed: _loading
