@@ -56,15 +56,18 @@ jobs:
         run: |
           set -euo pipefail
           test "$RUNNER_ENVIRONMENT" = github-hosted
+          evidence="$RUNNER_TEMP/neura-android-validation"
+          mkdir -p "$evidence"
+          # Keep a log even if baseline validation fails before the build evidence exists.
+          exec > >(tee -a "$evidence/setup.log") 2>&1
           baseline=$(git merge-base HEAD refs/remotes/origin/Neura)
           if [[ "${GITHUB_BASE_REF:-}" == "codex/pr220-android-validation" ]]; then
-            # Both sides use #221's app source and Gradle 9.9.1; only the candidate SDK changes.
+            # Both sides use the PR base app source and Gradle wrapper; the candidate SDK patch is tested separately.
             baseline="${PR_BASE_SHA:?missing pull request base commit}"
             git merge-base --is-ancestor "$baseline" HEAD
             git diff --exit-code "$baseline" HEAD -- android lib test pubspec.yaml pubspec.lock rust
           fi
           test "$baseline" != "$(git rev-parse HEAD)"
-          evidence="$RUNNER_TEMP/neura-android-validation"
           mkdir -p "$evidence/baseline" "$evidence/candidate"
           git worktree add --detach "$RUNNER_TEMP/neura-android-baseline" "$baseline"
           {
@@ -162,5 +165,5 @@ jobs:
             ${{ runner.temp }}/neura-android-validation/**/*.json
             ${{ runner.temp }}/neura-android-validation/**/*.log
             ${{ runner.temp }}/neura-android-validation/*.txt
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
