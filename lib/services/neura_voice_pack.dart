@@ -387,7 +387,9 @@ class NeuraVoicePack with WidgetsBindingObserver {
   }
 
   void _onSafeModeChanged() {
-    if (!_playing && !_micEnabled && _micStartInFlight == null) return;
+    // Observation starts with an allowed request, before asset loading. A
+    // pending clip must be revoked even before playback/mic flags turn on.
+    if (!_observingLifecycle) return;
     if (audioAllowed) return;
     unawaited(_stopForSafeMode());
   }
@@ -404,6 +406,12 @@ class NeuraVoicePack with WidgetsBindingObserver {
   }
 
   Future<void> _stopForSafeMode() async {
+    // Both owners revoke synchronously; neither waits for the other's native
+    // shutdown before invalidating a pending permission or asset callback.
+    await Future.wait([_stopMicForSafety(), _stopClipForSafety()]);
+  }
+
+  Future<void> _stopMicForSafety() async {
     try {
       await stopMic();
     } catch (error, stack) {
@@ -413,6 +421,9 @@ class NeuraVoicePack with WidgetsBindingObserver {
         stack,
       );
     }
+  }
+
+  Future<void> _stopClipForSafety() async {
     try {
       await stop();
     } catch (error, stack) {

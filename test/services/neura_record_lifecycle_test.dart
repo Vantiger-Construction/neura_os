@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
@@ -39,6 +40,67 @@ void main() {
     NeuraErrorPipeline.instance.fatalError.value = null;
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   });
+
+  for (final reason in ['Safe Mode', 'restart', 'background']) {
+    test('voice asset loading stays revoked after $reason is cleared', () async {
+      await fixture.run(() async {
+        final voice = NeuraVoicePack.forTesting();
+        final envelope = Completer<ByteData?>();
+        final timeline = Completer<ByteData?>();
+        final requested = Completer<void>();
+        final assetRequests = <String>[];
+        final stem = 'synthetic_pending_${reason.replaceAll(' ', '_')}';
+        final envelopePath = 'assets/audio/neura/envelopes/$stem.json';
+        final timelinePath = 'assets/audio/neura/visemes/$stem.json';
+        binding.defaultBinaryMessenger.setMockMessageHandler('flutter/assets',
+            (message) async {
+          final path = const StringCodec().decodeMessage(message)!;
+          assetRequests.add(path);
+          if (path == envelopePath) {
+            if (!requested.isCompleted) requested.complete();
+            return envelope.future;
+          }
+          return timeline.future;
+        });
+        final playing = voice.playAsset('$stem.wav');
+        try {
+          await requested.future.timeout(const Duration(seconds: 2));
+          switch (reason) {
+            case 'Safe Mode':
+              SafeBoot.instance.safeMode.value = true;
+              SafeBoot.instance.safeMode.value = false;
+            case 'restart':
+              SafeBoot.instance.restartRequired.value = true;
+              SafeBoot.instance.restartRequired.value = false;
+            case 'background':
+              binding
+                  .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+              binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+          }
+          final syntheticEnvelope =
+              const StringCodec().encodeMessage('{"fps":30,"levels":[0.0]}');
+          envelope.complete(syntheticEnvelope);
+          await drainRecorderEvents();
+          expect(assetRequests, [envelopePath],
+              reason: 'Revoked loading cannot advance toward native playback.');
+          expect(voice.isPlaying, isFalse);
+        } finally {
+          // Release pending fake reads only after disposal has revoked them;
+          // even a failing regression must never construct a native player.
+          await voice.dispose();
+          if (!envelope.isCompleted) envelope.complete(null);
+          if (!timeline.isCompleted) timeline.complete(null);
+          await playing;
+          rootBundle.evict(envelopePath);
+          rootBundle.evict(timelinePath);
+          binding.defaultBinaryMessenger
+              .setMockMessageHandler('flutter/assets', null);
+        }
+        expect(platform.starts, 0);
+        fixture.expectIsolation();
+      });
+    });
+  }
 
   for (final consumer in ['ambient', 'voice pack']) {
     Future<void> run(
