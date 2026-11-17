@@ -17,6 +17,10 @@ on:
       - 'lib/startup/**'
       - 'lib/src/core/data_wipe_service.dart'
       - 'test/startup/neura_startup_voice_test.dart'
+      - 'test/startup/startup_platform_policy_test.dart'
+      - 'test/insights/chart_screen_smoke_test.dart'
+      - 'test/reference/neura_reference_picker_test.dart'
+      - 'test/planning/neura_task_transfer_picker_test.dart'
       - 'test/services/neura_local_speech_input_test.dart'
       - 'test/services/neura_startup_voice_prefs_test.dart'
       - 'test/screens/neura_startup_voice_settings_test.dart'
@@ -79,6 +83,10 @@ jobs:
         run: >-
           flutter test --no-pub --concurrency 2 --timeout 2m
           test/startup/neura_startup_voice_test.dart
+          test/startup/startup_platform_policy_test.dart
+          test/insights/chart_screen_smoke_test.dart
+          test/reference/neura_reference_picker_test.dart
+          test/planning/neura_task_transfer_picker_test.dart
           test/services/neura_local_speech_input_test.dart
           test/services/neura_startup_voice_prefs_test.dart
           test/screens/neura_startup_voice_settings_test.dart

@@ -47,7 +47,6 @@ class NeuraVoicePack with WidgetsBindingObserver {
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
     SafeBoot.instance.restartRequired.addListener(_onSafeModeChanged);
     NeuraErrorPipeline.instance.fatalError.addListener(_onSafeModeChanged);
-    WidgetsBinding.instance.addObserver(this);
   }
 
   @visibleForTesting
@@ -61,6 +60,7 @@ class NeuraVoicePack with WidgetsBindingObserver {
   Stream<NeuraVoiceFrame> get stream => _out.stream;
 
   bool _disposed = false;
+  bool _observingLifecycle = false;
   bool _initialized = false;
   bool _playing = false;
   int _clipGeneration = 0;
@@ -88,6 +88,7 @@ class NeuraVoicePack with WidgetsBindingObserver {
 
   Future<void> init({bool enableMic = true}) async {
     if (_initialized || !audioAllowed) return;
+    _observeLifecycle();
     _ensurePlayer();
     if (enableMic) await startMic();
     if (!audioAllowed) return;
@@ -98,6 +99,7 @@ class NeuraVoicePack with WidgetsBindingObserver {
     final existing = _micStartInFlight;
     if (existing != null) return existing;
     if (_micEnabled || !audioAllowed) return Future<void>.value();
+    _observeLifecycle();
 
     late final Future<void> operation;
     operation = _startMicOnce().whenComplete(() {
@@ -253,6 +255,7 @@ class NeuraVoicePack with WidgetsBindingObserver {
   Future<void> playAsset(String filename) async {
     await _stopClip();
     if (!audioAllowed) return;
+    _observeLifecycle();
     final generation = _clipGeneration;
 
     try {
@@ -346,7 +349,7 @@ class NeuraVoicePack with WidgetsBindingObserver {
     SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
     SafeBoot.instance.restartRequired.removeListener(_onSafeModeChanged);
     NeuraErrorPipeline.instance.fatalError.removeListener(_onSafeModeChanged);
-    WidgetsBinding.instance.removeObserver(this);
+    if (_observingLifecycle) WidgetsBinding.instance.removeObserver(this);
 
     Object? cleanupError;
     StackTrace? cleanupStack;
@@ -384,8 +387,15 @@ class NeuraVoicePack with WidgetsBindingObserver {
   }
 
   void _onSafeModeChanged() {
+    if (!_playing && !_micEnabled && _micStartInFlight == null) return;
     if (audioAllowed) return;
     unawaited(_stopForSafeMode());
+  }
+
+  void _observeLifecycle() {
+    if (_observingLifecycle) return;
+    WidgetsBinding.instance.addObserver(this);
+    _observingLifecycle = true;
   }
 
   @override

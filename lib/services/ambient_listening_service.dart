@@ -39,7 +39,6 @@ class AmbientListeningService with WidgetsBindingObserver {
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
     SafeBoot.instance.restartRequired.addListener(_onSafeModeChanged);
     NeuraErrorPipeline.instance.fatalError.addListener(_onSafeModeChanged);
-    WidgetsBinding.instance.addObserver(this);
   }
 
   @visibleForTesting
@@ -80,6 +79,7 @@ class AmbientListeningService with WidgetsBindingObserver {
   bool _capturing = false;
   bool _pollInFlight = false;
   bool _disposed = false;
+  bool _observingLifecycle = false;
   bool _shutdownUnverified = false;
   int _lifecycleGeneration = 0;
   Future<void>? _stopInFlight;
@@ -117,7 +117,7 @@ class AmbientListeningService with WidgetsBindingObserver {
   }
 
   void _onSafeModeChanged() {
-    if (!captureAllowed && (_running || _starting)) {
+    if ((_running || _starting) && !captureAllowed) {
       _runLifecycle(stop(), 'ambient_listening_safe_mode_stop_failed');
     }
   }
@@ -165,6 +165,11 @@ class AmbientListeningService with WidgetsBindingObserver {
   Future<void> start() async {
     if (_running || _starting || _shutdownUnverified || !_captureRequested) {
       return;
+    }
+
+    if (!_observingLifecycle) {
+      WidgetsBinding.instance.addObserver(this);
+      _observingLifecycle = true;
     }
 
     final stopping = _stopInFlight;
@@ -353,7 +358,7 @@ class AmbientListeningService with WidgetsBindingObserver {
     SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
     SafeBoot.instance.restartRequired.removeListener(_onSafeModeChanged);
     NeuraErrorPipeline.instance.fatalError.removeListener(_onSafeModeChanged);
-    WidgetsBinding.instance.removeObserver(this);
+    if (_observingLifecycle) WidgetsBinding.instance.removeObserver(this);
     await stop();
     await _recorder?.dispose();
     isLive.dispose();
