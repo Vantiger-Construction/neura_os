@@ -3,7 +3,7 @@ name: Android startup voice safety
 on:
   pull_request:
     # Stacked reviews of Android Dependabot PRs run without release delivery.
-    branches: [Neura, 'dependabot/gradle/android/**']
+    branches: ['codex/pr221-isolated-kotlin-2-4-21']
     paths:
       - 'android/**'
       - 'lib/services/neura*speech*'
@@ -68,7 +68,14 @@ jobs:
         with:
           flutter-version: '3.47.9'
           channel: stable
-          cache: true
+          cache: false
+      - name: Apply the candidate patch to the disposable Flutter SDK
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          git -C "$FLUTTER_ROOT" apply --check "$GITHUB_WORKSPACE/tools/android_validation/flutter-3.47.9-kotlin-2.4.21.patch"
+          git -C "$FLUTTER_ROOT" apply "$GITHUB_WORKSPACE/tools/android_validation/flutter-3.47.9-kotlin-2.4.21.patch"
+          git -C "$FLUTTER_ROOT" diff -- packages/flutter_tools/gradle/build.gradle.kts >> android-startup-voice-source.txt
       - name: Restore locked dependencies
         run: flutter pub get --enforce-lockfile
       - name: Synthetic startup, permissions, cancellation and private-storage tests

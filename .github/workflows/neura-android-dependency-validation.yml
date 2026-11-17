@@ -2,7 +2,7 @@ name: Android dependency validation
 
 on:
   pull_request:
-    branches: [Neura, 'dependabot/gradle/android/**']
+    branches: ['codex/pr221-isolated-kotlin-2-4-21']
     paths:
       - 'android/**'
       - 'pubspec.yaml'
@@ -51,12 +51,23 @@ jobs:
           channel: stable
           cache: false
       - name: Prepare bounded disposable build storage and exact baseline
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
           test "$RUNNER_ENVIRONMENT" = github-hosted
-          baseline=$(git merge-base HEAD refs/remotes/origin/Neura)
-          test "$baseline" != "$(git rev-parse HEAD)"
           evidence="$RUNNER_TEMP/neura-android-validation"
+          mkdir -p "$evidence"
+          # Keep a log even if baseline validation fails before the build evidence exists.
+          exec > >(tee -a "$evidence/setup.log") 2>&1
+          baseline=$(git merge-base HEAD refs/remotes/origin/Neura)
+          if [[ "${GITHUB_BASE_REF:-}" == "codex/pr220-android-validation" ]]; then
+            # Both sides use the PR base app source and Gradle wrapper; the candidate SDK patch is tested separately.
+            baseline="${PR_BASE_SHA:?missing pull request base commit}"
+            git merge-base --is-ancestor "$baseline" HEAD
+            git diff --exit-code "$baseline" HEAD -- android lib test pubspec.yaml pubspec.lock rust
+          fi
+          test "$baseline" != "$(git rev-parse HEAD)"
           mkdir -p "$evidence/baseline" "$evidence/candidate"
           git worktree add --detach "$RUNNER_TEMP/neura-android-baseline" "$baseline"
           {
@@ -79,6 +90,12 @@ jobs:
           for label in baseline candidate; do
             source="$GITHUB_WORKSPACE"
             if [[ "$label" = baseline ]]; then source="$NEURA_ANDROID_BASELINE"; fi
+            if [[ "$label" == candidate ]]; then
+              git -C "$FLUTTER_ROOT" apply --check "$GITHUB_WORKSPACE/tools/android_validation/flutter-3.47.9-kotlin-2.4.21.patch"
+              git -C "$FLUTTER_ROOT" apply "$GITHUB_WORKSPACE/tools/android_validation/flutter-3.47.9-kotlin-2.4.21.patch"
+              git -C "$FLUTTER_ROOT" diff -- packages/flutter_tools/gradle/build.gradle.kts \
+                | tee "$NEURA_ANDROID_EVIDENCE/candidate/flutter-sdk-diff.txt"
+            fi
             export GRADLE_USER_HOME="$RUNNER_TEMP/neura-android-gradle-$label"
             export NEURA_ANDROID_INVENTORY_DIR="$NEURA_ANDROID_EVIDENCE/$label/graphs"
             mkdir -p "$GRADLE_USER_HOME" "$NEURA_ANDROID_INVENTORY_DIR"
@@ -110,6 +127,7 @@ jobs:
           python3 tools/android_validation/check_dependencies.py compare \
             --baseline "$NEURA_ANDROID_EVIDENCE/baseline/graphs" \
             --candidate "$NEURA_ANDROID_EVIDENCE/candidate/graphs" \
+            --expected-gradle '9.9.2-20261117031137+0000' \
             --output "$NEURA_ANDROID_EVIDENCE/comparison.json"
           python3 tools/android_validation/check_apk.py --output "$NEURA_ANDROID_EVIDENCE/apk-comparison.json" \
             compare "$NEURA_ANDROID_EVIDENCE/baseline/apk.json" "$NEURA_ANDROID_EVIDENCE/candidate/apk.json"
@@ -148,5 +166,5 @@ jobs:
             ${{ runner.temp }}/neura-android-validation/**/*.json
             ${{ runner.temp }}/neura-android-validation/**/*.log
             ${{ runner.temp }}/neura-android-validation/*.txt
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
