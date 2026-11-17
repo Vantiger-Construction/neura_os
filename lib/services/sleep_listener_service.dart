@@ -31,6 +31,7 @@ class SleepListenerService with WidgetsBindingObserver {
   bool _shutdownUnverified = false;
   bool _disposed = false;
   String? _currentPath;
+  final Set<String> _currentTakePaths = <String>{};
   Future<void>? _startInFlight;
   Future<String>? _stopInFlight;
   Future<String?>? _nativeStopInFlight;
@@ -77,6 +78,9 @@ class SleepListenerService with WidgetsBindingObserver {
     final path =
         '${dir.path}/sleep_${DateTime.now().microsecondsSinceEpoch}.m4a';
     _currentPath = path;
+    _currentTakePaths
+      ..clear()
+      ..add(path);
     _shutdownUnverified = true;
 
     try {
@@ -164,7 +168,10 @@ class SleepListenerService with WidgetsBindingObserver {
     if (existing != null) return existing.timeout(_shutdownTimeout);
     late final Future<String?> pending;
     pending = _recorder.stop().then((path) {
-      if (path != null && path.isNotEmpty) _currentPath = path;
+      if (path != null && path.isNotEmpty) {
+        _currentPath = path;
+        _currentTakePaths.add(path);
+      }
       _shutdownUnverified = false;
       return path;
     }).whenComplete(() {
@@ -175,9 +182,11 @@ class SleepListenerService with WidgetsBindingObserver {
   }
 
   Future<void> deleteLastRecording() async {
-    final path = _currentPath;
-    if (path != null && path.isNotEmpty) {
+    // Native encoders may return a different final path. Retain both the
+    // requested path and final output until each deletion is acknowledged.
+    for (final path in _currentTakePaths.toList()) {
       await _deletePaths([path]);
+      _currentTakePaths.remove(path);
       if (_currentPath == path) _currentPath = null;
     }
   }
@@ -189,6 +198,7 @@ class SleepListenerService with WidgetsBindingObserver {
       try {
         await service.stopRecording();
         service._currentPath = null;
+        service._currentTakePaths.clear();
       } catch (_) {
         failed = true;
       }

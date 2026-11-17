@@ -14,6 +14,7 @@ class ControlledRecorder extends Fake
   final stops = <String, StreamController<RecordStop>>{};
   final audio = <String, StreamController<Uint8List>>{};
   final paths = <String, String>{};
+  final returnedPaths = <String, String>{};
   final live = <String>{};
   final stopCalls = <String>[];
   final failedStops = <String>{};
@@ -94,7 +95,7 @@ class ControlledRecorder extends Fake
       stops[recorderId]!.add(
           RecordStop(reason: RecordStopReason.stop, path: paths[recorderId]));
     }
-    return paths[recorderId];
+    return returnedPaths[recorderId] ?? paths[recorderId];
   }
 
   @override

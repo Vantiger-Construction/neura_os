@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -175,6 +176,43 @@ void main() {
       await stopping;
       expect(platform.stopCalls, hasLength(1));
       expect(platform.live, isEmpty);
+    });
+  });
+
+  test('deleting a take removes requested and native final paths', () async {
+    await fixture.run(() async {
+      await service.startRecording();
+      final id = platform.live.single;
+      final requested = File(platform.paths[id]!);
+      final returned = await fixture.seed('${fixture.documents.path}/final.m4a');
+      platform.returnedPaths[id] = returned.path;
+      expect(await service.stopRecording(), returned.path);
+      await service.deleteLastRecording();
+      expect(await requested.exists(), isFalse);
+      expect(await returned.exists(), isFalse);
+      await service.deleteLastRecording();
+      fixture.expectIsolation();
+    });
+  });
+
+  test('late-start cleanup removes both paths after Stop revokes capture',
+      () async {
+    await fixture.run(() async {
+      platform.startGate = Completer<void>();
+      final starting = service.startRecording();
+      await drainRecorderEvents();
+      final id = platform.live.single;
+      final requested = File(platform.paths[id]!);
+      final returned = await fixture.seed('${fixture.documents.path}/late.m4a');
+      platform.returnedPaths[id] = returned.path;
+      final stopping = service.stopRecording();
+      platform.startGate!.complete();
+      await starting;
+      await stopping;
+      expect(platform.live, isEmpty);
+      expect(await requested.exists(), isFalse);
+      expect(await returned.exists(), isFalse);
+      fixture.expectIsolation();
     });
   });
 
