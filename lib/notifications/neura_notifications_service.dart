@@ -9,6 +9,8 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../modules/core/app_log.dart';
 import '../reliability/safe_boot.dart';
+import '../startup/neura_error_pipeline.dart';
+import 'neura_notifications_prefs.dart';
 
 /// Opt-in Windows toast notifications for three existing app-open-gated
 /// signals ([WeeklySummaristService], [LegacyDeadmanService]) plus a daily
@@ -29,9 +31,15 @@ import '../reliability/safe_boot.dart';
 /// tradeoff is the repeat anchor drifts by an hour across a DST transition
 /// -- acceptable for a beta reminder feature.
 class NeuraNotificationsService {
-  NeuraNotificationsService._() {
+  NeuraNotificationsService._({FlutterLocalNotificationsPlugin? plugin})
+      : _plugin = plugin {
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
+    SafeBoot.instance.restartRequired.addListener(_onSafeModeChanged);
+    NeuraErrorPipeline.instance.fatalError.addListener(_onSafeModeChanged);
   }
+  @visibleForTesting
+  NeuraNotificationsService.forTesting(FlutterLocalNotificationsPlugin plugin)
+      : this._(plugin: plugin);
   static final NeuraNotificationsService instance =
       NeuraNotificationsService._();
 
@@ -58,15 +66,23 @@ class NeuraNotificationsService {
   FlutterLocalNotificationsPlugin? _plugin;
   bool _initialized = false;
   bool _available = false;
+  int _safetyGeneration = 0;
+  bool get platformSupported =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
   bool get deliveryAllowed =>
+      platformSupported &&
       !SafeBoot.instance.safeMode.value &&
+      !SafeBoot.instance.restartRequired.value &&
+      NeuraErrorPipeline.instance.fatalError.value == null &&
       !LocalProfileService.instance.enabled;
 
   Future<void> init() => _initialize();
 
   Future<void> _initialize({bool allowInSafeMode = false}) async {
+    if (!platformSupported) return;
     if (!allowInSafeMode && !deliveryAllowed) return;
     if (_initialized) return;
+    final generation = _safetyGeneration;
     try {
       tz_data.initializeTimeZones();
       final plugin = _plugin ??= FlutterLocalNotificationsPlugin();
@@ -80,10 +96,12 @@ class NeuraNotificationsService {
         ),
       );
       _available = ok ?? false;
-      if (!allowInSafeMode && !deliveryAllowed && _available) {
+      if (!allowInSafeMode &&
+          (!deliveryAllowed || generation != _safetyGeneration) &&
+          _available) {
         await plugin.cancelAll();
       }
-      _initialized = true;
+      _initialized = _available;
     } catch (e, st) {
       _initialized = false;
       _available = false;
@@ -92,7 +110,15 @@ class NeuraNotificationsService {
   }
 
   Future<void> showWeeklyReviewReadyNotification() async {
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.weeklyReviewReadyEnabled) {
+      return;
+    }
     if (!await _ready()) return;
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.weeklyReviewReadyEnabled) {
+      return;
+    }
     await _showSafely(
       _weeklyReviewId,
       'Your weekly review is ready',
@@ -101,7 +127,15 @@ class NeuraNotificationsService {
   }
 
   Future<void> showLegacyOverdueNotification() async {
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.legacyOverdueEnabled) {
+      return;
+    }
     if (!await _ready()) return;
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.legacyOverdueEnabled) {
+      return;
+    }
     await _showSafely(
       _legacyOverdueId,
       'Legacy Guard check-in overdue',
@@ -126,7 +160,15 @@ class NeuraNotificationsService {
   }
 
   Future<void> scheduleDailyMoodNudge(TimeOfDay at) async {
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.dailyMoodNudgeEnabled) {
+      return;
+    }
     if (!await _ready()) return;
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.dailyMoodNudgeEnabled) {
+      return;
+    }
     try {
       final now = DateTime.now();
       var next = DateTime(now.year, now.month, now.day, at.hour, at.minute);
@@ -168,7 +210,15 @@ class NeuraNotificationsService {
     required String description,
     required DateTime dueAt,
   }) async {
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.promiseReminderEnabled) {
+      return;
+    }
     if (!await _ready()) return;
+    if (!NeuraNotificationsPrefsController
+        .instance.prefs.value.promiseReminderEnabled) {
+      return;
+    }
     if (!dueAt.isAfter(DateTime.now())) return;
     try {
       final scheduled = tz.TZDateTime.from(dueAt.toUtc(), tz.UTC);
@@ -247,13 +297,22 @@ class NeuraNotificationsService {
 
   Future<bool> _ready() async {
     if (!deliveryAllowed) return false;
+    final generation = _safetyGeneration;
     if (!_initialized) await init();
-    return deliveryAllowed && _available;
+    return generation == _safetyGeneration && deliveryAllowed && _available;
   }
 
   void _onSafeModeChanged() {
+    _safetyGeneration++;
     if (!deliveryAllowed) {
       unawaited(cancelAll().catchError((_) {}));
     }
+  }
+
+  @visibleForTesting
+  void dispose() {
+    SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
+    SafeBoot.instance.restartRequired.removeListener(_onSafeModeChanged);
+    NeuraErrorPipeline.instance.fatalError.removeListener(_onSafeModeChanged);
   }
 }
