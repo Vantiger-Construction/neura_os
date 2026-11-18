@@ -81,19 +81,30 @@ void main() {
       await tester.ensureVisible(find.text('Prepare locally'));
       await tester.tap(find.text('Prepare locally'));
       await tester.pumpAndSettle();
-      expect(
-          find.textContaining('No clinic has been contacted'), findsOneWidget);
+      final reportField = find.byWidgetPredicate((widget) =>
+          widget is TextField &&
+          widget.decoration?.labelText == 'Editable clinic report');
+      await tester.scrollUntilVisible(reportField, 200,
+          scrollable: find.byType(Scrollable).first);
+      final report = tester.widget<TextField>(reportField).controller!;
+      expect(report.text, contains('From: Alex Example'));
+      expect(report.text, contains('To: Example Clinic'));
+      expect(report.text, contains('TEST ONLY — a fictional question'));
       final navigator = NeuroCompanionApp.navigatorKey.currentState!;
       final covered = navigator.push<void>(MaterialPageRoute<void>(
           builder: (_) => const Scaffold(body: Text('Synthetic cover'))));
       navigator.pop();
       await covered;
       await tester.pumpAndSettle();
+      expect(report.text, isEmpty);
       expect(
           find.byWidgetPredicate((widget) =>
               widget is TextField &&
               widget.decoration?.labelText == 'Editable clinic report'),
           findsNothing);
+      await tester.scrollUntilVisible(
+          find.textContaining('Temporary clinic details'), 200,
+          scrollable: find.byType(Scrollable).first);
       expect(find.textContaining('Temporary clinic details'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });

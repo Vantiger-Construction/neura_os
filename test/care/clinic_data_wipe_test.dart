@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,7 +11,6 @@ import 'package:neuro_companion/modules/mood/mood_models.dart';
 import 'package:neuro_companion/modules/vault/memory_vault_models.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/services/portable_vault_backup_service.dart';
-import 'package:neuro_companion/services/scheduled_backup_settings.dart';
 import 'package:neuro_companion/services/vault_item_source.dart';
 import 'package:neuro_companion/src/core/data_wipe_service.dart';
 
@@ -145,20 +143,17 @@ void main() {
     addTearDown(() {
       if (!release.isCompleted) release.complete();
     });
-    late Future<ScheduledBackupRunResult> backup;
+    late Future<Object?> backupOutcome;
+    // Hold an admitted source read without a scheduled queue, encryption or
+    // native picker. Releasing it after wipe must fail before any OS export.
     await tester.runAsync(() => fixture.run(() async {
-          await ScheduledBackupSettings.instance
-              .enable('synthetic backup passphrase');
           final service = PortableVaultBackupService(
-            store: _EmptyVaultSource(),
-            backupDirectory: () async {
-              entered.complete();
-              await release.future;
-              return Directory('${fixture.support.path}/synthetic-backup');
-            },
+            store: _HeldVaultSource(entered, release),
           );
-          backup = service.runScheduledBackupIfDue(pin: '1234');
-          await entered.future;
+          backupOutcome = service
+              .exportToFile(pin: '1234', passphrase: 'synthetic passphrase')
+              .then<Object?>((value) => value, onError: (Object error) => error);
+          await entered.future.timeout(const Duration(seconds: 5));
           PortableVaultBackupService.wipeDrainTimeout =
               const Duration(milliseconds: 20);
         }));
@@ -193,7 +188,7 @@ void main() {
     expect(saves, 0);
     await tester.runAsync(() => fixture.run(() async {
           release.complete();
-          expect((await backup).status, ScheduledBackupStatus.failed);
+          expect(await backupOutcome, isA<StateError>());
           await NeuraDataWipeService.wipeAllLocalData();
         }));
     await tester.pumpAndSettle();
@@ -207,9 +202,17 @@ void main() {
   });
 }
 
-class _EmptyVaultSource implements VaultItemSource {
+class _HeldVaultSource implements VaultItemSource {
+  _HeldVaultSource(this.entered, this.release);
+  final Completer<void> entered;
+  final Completer<void> release;
+
   @override
-  Future<List<VaultItem>> getItems({required String pin}) async => [];
+  Future<List<VaultItem>> getItems({required String pin}) async {
+    entered.complete();
+    await release.future;
+    return [];
+  }
 
   @override
   Future<int> importItems(

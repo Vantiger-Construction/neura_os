@@ -737,6 +737,14 @@ void main() {
     ]) {
       testWidgets('a delayed $result save stays revoked after $interruption',
           (tester) async {
+        const backgroundStates = [
+          AppLifecycleState.inactive,
+          AppLifecycleState.hidden,
+          AppLifecycleState.paused,
+          AppLifecycleState.detached,
+        ];
+        final backgroundIndex = backgroundStates
+            .indexWhere((state) => state.name == interruption);
         final pending = Completer<Uri?>();
         final dispatched = <String>[];
         await mount(tester, save: (bytes) {
@@ -760,10 +768,21 @@ void main() {
           await NeuraConstitutionService.instance
               .save(const NeuraPersonalConstitution());
         } else {
-          binding.handleAppLifecycleStateChanged(
-              AppLifecycleState.values.byName(interruption));
+          for (final state in backgroundStates.take(backgroundIndex + 1)) {
+            binding.handleAppLifecycleStateChanged(state);
+          }
         }
         await tester.pumpAndSettle();
+        if (backgroundIndex >= 0) {
+          if (backgroundIndex < backgroundStates.length - 1) {
+            for (final state
+                in backgroundStates.take(backgroundIndex).toList().reversed) {
+              binding.handleAppLifecycleStateChanged(state);
+            }
+          }
+          binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+          await tester.pumpAndSettle();
+        }
         if (result == 'error') {
           pending.completeError(StateError('synthetic-save-error'));
         } else {
