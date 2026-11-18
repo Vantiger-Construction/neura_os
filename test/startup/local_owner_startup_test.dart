@@ -112,10 +112,14 @@ void main() {
         home: NeuraBootScreen(
             coordinator: _CompletedBoot(),
             home: const Scaffold(body: Text('Synthetic local workspace')))));
-    await tester.pumpAndSettle();
+    // No OS approval is supplied. Inspect the blocked route without waiting
+    // for an animated pending native authentication prompt to settle.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(AuthGuard), findsOneWidget);
     expect(find.text('Synthetic local workspace'), findsNothing);
     expect(find.byType(LocalOwnerPasswordScreen), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('Safe Mode stays local and does not offer password enrolment',

@@ -61,8 +61,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onAuthenticated: () {
               if (!mounted || !origin.isActive) return;
               navigator.popUntil((route) => identical(route, origin));
+              _refreshAccount();
             })));
     if (!mounted) return;
+    _refreshAccount();
+  }
+
+  void _refreshAccount() {
     setState(() {
       _nameCtrl.text =
           _auth.user?.userMetadata?['display_name'] as String? ?? '';

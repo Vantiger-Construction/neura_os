@@ -15,7 +15,7 @@ class _Account extends AuthService {
   @override
   bool get available => true;
   @override
-  User? get user => signedIn
+  User? get user => signedIn && verified
       ? User(
           id: 'synthetic-owner',
           appMetadata: const {},
@@ -109,6 +109,24 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.text('Synthetic local workspace'), findsOneWidget);
+  });
+
+  testWidgets(
+      'a returning unverified account refreshes Profile after verification',
+      (tester) async {
+    final auth = _Account()..verified = false;
+    await _openProfile(tester, auth);
+    await tester.tap(find.text('Sign in to cloud account (optional)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Sign In'));
+    await tester.pumpAndSettle();
+    expect(find.byType(VerifyEmailScreen), findsOneWidget);
+    auth.verified = true;
+    await tester.tap(find.text('I have verified'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProfileScreen), findsOneWidget);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'Synthetic owner');
   });
 
   testWidgets(
