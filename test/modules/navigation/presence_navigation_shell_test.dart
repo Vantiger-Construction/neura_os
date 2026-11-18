@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:neuro_companion/modules/navigation/presence_navigation_shell.dart';
 import 'package:neuro_companion/neura_shell/models/neura_room.dart';
+import 'package:neuro_companion/neura_shell/widgets/neura_penthouse_scene.dart';
 
 void main() {
   group('PresenceNavigationLayoutPolicy', () {
@@ -124,6 +125,32 @@ void main() {
       expect(find.byType(NavigationBar), findsNothing);
       expect(find.text('Neura is here'), findsOneWidget);
       expect(find.text('Approval every time'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('gives Neura her own corner on the far right', (tester) async {
+      await pumpShell(tester, const Size(1280, 800));
+
+      final corner = tester.getRect(find.byKey(const ValueKey('neura-corner')));
+      final rail = tester.getRect(find.byType(NavigationRail));
+      final palette = tester.getRect(
+        find.text('Ask Neura or type a command…'),
+      );
+      expect(corner.right, closeTo(1280, 0.5));
+      expect(rail.right, lessThan(palette.left));
+      expect(palette.right, lessThan(corner.left));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('paints the penthouse behind Neura and the whole menu', (
+      tester,
+    ) async {
+      await pumpShell(tester, const Size(1280, 800));
+      expect(find.byType(NeuraPenthouseScene), findsNWidgets(2));
+      expect(find.byKey(const ValueKey('neura-penthouse')), findsOneWidget);
+
+      await pumpShell(tester, const Size(400, 860));
+      expect(find.byKey(const ValueKey('neura-penthouse')), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
