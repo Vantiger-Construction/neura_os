@@ -52,6 +52,7 @@ import '../../reliability/safe_boot.dart';
 import '../../services/ambient_listening_service.dart';
 import '../../services/wake_word_listener_service.dart';
 import '../../services/neura_startup_voice_prefs.dart';
+import '../../services/neura_startup_voice_setup.dart';
 import '../../src/modules/legacy/legacy_deadman_service.dart';
 import '../../widgets/ambient_recording_badge.dart';
 import '../../src/modules/legacy/legacy_home_screen.dart';
@@ -265,6 +266,34 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
     _openRoute('/chat', (_) => const NeuraChatScreen());
   }
 
+  /// One tap from Neura's corner: the chat opens already listening.
+  void _openVoice() {
+    if (SafeBoot.instance.safeMode.value ||
+        SafeBoot.instance.restartRequired.value) {
+      return;
+    }
+    _openRoute(
+      '/chat-voice',
+      (_) => const NeuraChatScreen(listenNow: true),
+    );
+  }
+
+  Future<void> _setListenOnOpen(bool value) async {
+    try {
+      await NeuraStartupVoiceSetup.setEnabled(
+        value,
+        stillWanted: () => mounted,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(error is StateError
+            ? error.message.toString()
+            : 'Could not change the listening setting. You can still type.'),
+      ));
+    }
+  }
+
   void _openDiagnostics() {
     _openRoute('/diagnostics', (_) => const DiagnosticsScreen());
   }
@@ -359,6 +388,14 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
           icon: Icons.chat_bubble_outline,
           keywords: const <String>['chat', 'companion', 'assistant'],
           onSelected: _openChat,
+        ),
+        PresenceCommand(
+          id: 'talk-voice',
+          title: 'Speak to Neura',
+          subtitle: 'Opens with the microphone already listening.',
+          icon: Icons.mic_none_rounded,
+          keywords: const <String>['voice', 'mic', 'microphone', 'speak'],
+          onSelected: _openVoice,
         ),
         PresenceCommand(
           id: 'care-loop',
@@ -667,6 +704,13 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
                 now: const ProactiveBannerCard(),
                 support: const WellbeingHomeCard(),
                 onOpenNeura: _openChat,
+                onListen: _openVoice,
+                listenOnOpen: NeuraStartupVoiceSetup.supported
+                    ? NeuraStartupVoicePrefs.instance.enabled
+                    : null,
+                onListenOnOpenChanged: NeuraStartupVoiceSetup.supported
+                    ? (value) => unawaited(_setListenOnOpen(value))
+                    : null,
                 onOpenDiagnostics: _openDiagnostics,
                 room: (_shellState ?? NeuraShell.of(context)).room,
                 preferences: ShellPrefsController.instance.prefs.value,

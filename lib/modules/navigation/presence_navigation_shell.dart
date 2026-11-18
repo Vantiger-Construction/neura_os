@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../neura_shell/models/neura_room.dart';
 import '../../neura_shell/models/neura_room_presence_profile.dart';
+import '../../neura_shell/widgets/neura_penthouse_scene.dart';
 import '../../neura_shell/widgets/neura_room_presence_avatar.dart';
 import '../../services/neura_companion_presence.dart';
 import '../../src/shell/shell_prefs.dart';
@@ -81,6 +83,9 @@ class PresenceNavigationShell extends StatefulWidget {
     required this.onOpenNeura,
     required this.onOpenDiagnostics,
     this.support,
+    this.onListen,
+    this.listenOnOpen,
+    this.onListenOnOpenChanged,
     this.room = NeuraRoom.penthouse,
     this.preferences = ShellPrefs.defaults,
   }) : assert(destinationPages.length == 5);
@@ -94,6 +99,15 @@ class PresenceNavigationShell extends StatefulWidget {
   final Widget? support;
   final VoidCallback onOpenNeura;
   final VoidCallback onOpenDiagnostics;
+
+  /// Opens a voice turn with the microphone already listening. Hidden when
+  /// null.
+  final VoidCallback? onListen;
+
+  /// The saved "listen when Neura opens" opt-in, shown as a switch in
+  /// Neura's corner when both this and [onListenOnOpenChanged] are given.
+  final ValueListenable<bool>? listenOnOpen;
+  final ValueChanged<bool>? onListenOnOpenChanged;
   final NeuraRoom room;
   final ShellPrefs preferences;
 
@@ -153,6 +167,9 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
     command.onSelected();
   }
 
+  /// Null while voice is unavailable, which disables every mic control.
+  VoidCallback? get _listen => widget.status.safeMode ? null : widget.onListen;
+
   Future<void> _openCommandPalette() async {
     final command = await showDialog<PresenceCommand>(
       context: context,
@@ -177,33 +194,29 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
       },
       child: Focus(
         autofocus: true,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: background,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: <Color>[
-                background,
-                Color.alphaBlend(
-                  scheme.primary.withValues(alpha: 0.055),
-                  background,
-                ),
-              ],
+        child: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            // Neura's penthouse sits behind the whole menu, dimmed so the
+            // workspace stays readable.
+            ColoredBox(color: background),
+            NeuraPenthouseScene(
+              dim: scheme.brightness == Brightness.dark ? 0.62 : 0.82,
+              dimColor: background,
             ),
-          ),
-          child: SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final mode = PresenceNavigationLayoutPolicy.modeForWidth(
-                  constraints.maxWidth,
-                );
-                return mode == PresenceLayoutMode.wide
-                    ? _buildWide(context)
-                    : _buildCompact(context);
-              },
+            SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final mode = PresenceNavigationLayoutPolicy.modeForWidth(
+                    constraints.maxWidth,
+                  );
+                  return mode == PresenceLayoutMode.wide
+                      ? _buildWide(context)
+                      : _buildCompact(context);
+                },
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -218,12 +231,16 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
           selectedIndex: widget.currentIndex,
           onDestinationSelected: widget.onDestinationSelected,
         ),
+        Expanded(child: _buildWorkspace(context)),
+        // Neura's own corner: pinned to the far right edge, away from the
+        // navigation rail and the workspace.
         AnimatedContainer(
+          key: const ValueKey<String>('neura-corner'),
           duration:
               reduceMotion ? Duration.zero : const Duration(milliseconds: 240),
           curve: Curves.easeOutCubic,
           width: _stageCollapsed ? 84 : 276,
-          padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
+          padding: const EdgeInsets.fromLTRB(4, 12, 12, 12),
           child: _NeuraStage(
             collapsed: _stageCollapsed,
             status: widget.status,
@@ -232,11 +249,14 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
             commands: widget.commands,
             onRunCommand: _runCommand,
             onOpenNeura: widget.onOpenNeura,
+            onListen: _listen,
+            showListen: widget.onListen != null,
+            listenOnOpen: widget.listenOnOpen,
+            onListenOnOpenChanged: widget.onListenOnOpenChanged,
             onToggleCollapsed: () =>
                 setState(() => _stageCollapsed = !_stageCollapsed),
           ),
         ),
-        Expanded(child: _buildWorkspace(context)),
       ],
     );
   }
@@ -253,6 +273,8 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
             commands: widget.commands,
             onRunCommand: _runCommand,
             onOpenNeura: widget.onOpenNeura,
+            onListen: _listen,
+            showListen: widget.onListen != null,
           ),
         ),
         Expanded(child: _buildWorkspace(context, compact: true)),
@@ -288,7 +310,7 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
       padding: EdgeInsets.fromLTRB(
         compact ? 12 : 8,
         10,
-        compact ? 12 : 16,
+        compact ? 12 : 8,
         compact ? 4 : 12,
       ),
       child: Column(
@@ -297,6 +319,8 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
           _WorkspaceHeader(
             status: widget.status,
             onOpenPalette: _openCommandPalette,
+            onListen: _listen,
+            showListen: widget.onListen != null,
           ),
           const SizedBox(height: 10),
           Expanded(
@@ -416,6 +440,10 @@ class _NeuraStage extends StatelessWidget {
     required this.onRunCommand,
     required this.onOpenNeura,
     required this.onToggleCollapsed,
+    this.onListen,
+    this.showListen = false,
+    this.listenOnOpen,
+    this.onListenOnOpenChanged,
   });
 
   final bool collapsed;
@@ -426,10 +454,13 @@ class _NeuraStage extends StatelessWidget {
   final ValueChanged<PresenceCommand> onRunCommand;
   final VoidCallback onOpenNeura;
   final VoidCallback onToggleCollapsed;
+  final VoidCallback? onListen;
+  final bool showListen;
+  final ValueListenable<bool>? listenOnOpen;
+  final ValueChanged<bool>? onListenOnOpenChanged;
 
   @override
   Widget build(BuildContext context) {
-    const stageBackground = Color(0xFF171023);
     const stageForeground = Color(0xFFF8F4FF);
     const stageMuted = Color(0xFFC8BEDA);
     final accent = Theme.of(context).colorScheme.primary;
@@ -439,19 +470,10 @@ class _NeuraStage extends StatelessWidget {
     return Semantics(
       container: true,
       label: 'Neura Stage. ${status.presenceLabel}',
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: stageBackground,
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: accent.withValues(alpha: 0.42)),
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: accent.withValues(alpha: 0.08),
-              blurRadius: 30,
-              spreadRadius: 2,
-            ),
-          ],
-        ),
+      child: _PenthouseFrame(
+        borderRadius: 28,
+        accent: accent,
+        glow: true,
         child: collapsed
             ? Column(
                 children: <Widget>[
@@ -475,6 +497,14 @@ class _NeuraStage extends StatelessWidget {
                       compact: true,
                     ),
                   ),
+                  if (showListen) ...<Widget>[
+                    const SizedBox(height: 8),
+                    IconButton.filled(
+                      tooltip: _ListenButton.tooltipFor(status),
+                      onPressed: onListen,
+                      icon: const Icon(Icons.mic_rounded),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   RotatedBox(
                     quarterTurns: 3,
@@ -580,19 +610,54 @@ class _NeuraStage extends StatelessWidget {
                       ),
                     ],
                     const SizedBox(height: 10),
-                    FilledButton.icon(
-                      onPressed: onOpenNeura,
-                      icon: const Icon(Icons.chat_bubble_outline_rounded),
-                      label: const Text('Talk to Neura'),
-                    ),
+                    if (showListen) ...<Widget>[
+                      _ListenButton(onListen: onListen, status: status),
+                      const SizedBox(height: 6),
+                      OutlinedButton.icon(
+                        onPressed: onOpenNeura,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: stageForeground,
+                          side: BorderSide(
+                            color: stageForeground.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        icon: const Icon(Icons.keyboard_alt_outlined),
+                        label: const Text('Type to Neura'),
+                      ),
+                    ] else
+                      FilledButton.icon(
+                        onPressed: onOpenNeura,
+                        icon: const Icon(Icons.chat_bubble_outline_rounded),
+                        label: const Text('Talk to Neura'),
+                      ),
                     const SizedBox(height: 6),
-                    Text(
-                      status.voiceLabel,
-                      textAlign: TextAlign.center,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.labelMedium?.copyWith(color: stageMuted),
-                    ),
+                    _LiveVoiceLabel(status: status, color: stageMuted),
+                    if (listenOnOpen != null && onListenOnOpenChanged != null)
+                      ValueListenableBuilder<bool>(
+                        valueListenable: listenOnOpen!,
+                        builder: (context, enabled, _) => Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: Text(
+                                'Listen as soon as Neura opens',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelMedium
+                                    ?.copyWith(color: stageForeground),
+                              ),
+                            ),
+                            Switch(
+                              key: const ValueKey<String>(
+                                'listen-on-open-switch',
+                              ),
+                              value: enabled,
+                              onChanged: status.safeMode
+                                  ? null
+                                  : onListenOnOpenChanged,
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -609,6 +674,8 @@ class _CompactNeuraStage extends StatelessWidget {
     required this.commands,
     required this.onRunCommand,
     required this.onOpenNeura,
+    this.onListen,
+    this.showListen = false,
   });
 
   final PresenceShellStatus status;
@@ -617,6 +684,8 @@ class _CompactNeuraStage extends StatelessWidget {
   final List<PresenceCommand> commands;
   final ValueChanged<PresenceCommand> onRunCommand;
   final VoidCallback onOpenNeura;
+  final VoidCallback? onListen;
+  final bool showListen;
 
   @override
   Widget build(BuildContext context) {
@@ -626,75 +695,229 @@ class _CompactNeuraStage extends StatelessWidget {
     return Semantics(
       container: true,
       label: 'Neura presence panel. ${status.presenceLabel}',
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 88),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF171023),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: scheme.primary.withValues(alpha: 0.42)),
+      child: _PenthouseFrame(
+        borderRadius: 22,
+        accent: scheme.primary,
+        showFurniture: false,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 88),
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            children: <Widget>[
+              SizedBox(
+                width: 60,
+                height: 68,
+                child: NeuraRoomPresenceAvatar(
+                  room: room,
+                  phase: status.safeMode
+                      ? NeuraPresencePhase.safeMode
+                      : status.phase,
+                  motion: preferences.companionMotion,
+                  scale: preferences.companionScale,
+                  compact: true,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      'Neura is here',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: scheme.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      status.presenceLabel,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFFC8BEDA),
+                          ),
+                    ),
+                    Text(
+                      '${room.title} · ${profile.stanceLabel}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.labelSmall?.copyWith(color: scheme.primary),
+                    ),
+                  ],
+                ),
+              ),
+              if (preferences.roomActivityHints && activities.isNotEmpty)
+                IconButton(
+                  tooltip: 'Try ${activities.first.title}',
+                  onPressed: () => onRunCommand(activities.first),
+                  icon: Icon(activities.first.icon),
+                ),
+              const SizedBox(width: 8),
+              if (showListen) ...<Widget>[
+                IconButton.filled(
+                  tooltip: _ListenButton.tooltipFor(status),
+                  onPressed: onListen,
+                  icon: const Icon(Icons.mic_rounded),
+                ),
+                const SizedBox(width: 6),
+              ],
+              IconButton.filledTonal(
+                tooltip: showListen ? 'Type to Neura' : 'Talk to Neura',
+                onPressed: onOpenNeura,
+                icon: const Icon(Icons.chat_bubble_outline_rounded),
+              ),
+            ],
+          ),
         ),
-        child: Row(
-          children: <Widget>[
-            SizedBox(
-              width: 60,
-              height: 68,
-              child: NeuraRoomPresenceAvatar(
-                room: room,
-                phase: status.safeMode
-                    ? NeuraPresencePhase.safeMode
-                    : status.phase,
-                motion: preferences.companionMotion,
-                scale: preferences.companionScale,
-                compact: true,
-              ),
+      ),
+    );
+  }
+}
+
+/// The main way to talk to Neura from the menu: one tap opens a voice turn
+/// that is already listening.
+class _ListenButton extends StatelessWidget {
+  const _ListenButton({required this.onListen, required this.status});
+
+  final VoidCallback? onListen;
+  final PresenceShellStatus status;
+
+  static String tooltipFor(PresenceShellStatus status) => status.safeMode
+      ? 'Voice is off in Safe Mode'
+      : 'Talk to Neura. She listens right away';
+
+  @override
+  Widget build(BuildContext context) {
+    final listening =
+        !status.safeMode && status.phase == NeuraPresencePhase.listening;
+    return Tooltip(
+      message: tooltipFor(status),
+      child: FilledButton.icon(
+        key: const ValueKey<String>('neura-listen-button'),
+        onPressed: onListen,
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(52),
+          textStyle: Theme.of(context)
+              .textTheme
+              .titleSmall
+              ?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        icon: Icon(listening ? Icons.graphic_eq_rounded : Icons.mic_rounded),
+        label: Text(
+          status.safeMode
+              ? 'Voice off'
+              : listening
+                  ? 'Listening…'
+                  : 'Talk to Neura',
+        ),
+      ),
+    );
+  }
+}
+
+/// Voice state with a live dot while Neura is listening or speaking.
+class _LiveVoiceLabel extends StatelessWidget {
+  const _LiveVoiceLabel({required this.status, required this.color});
+
+  final PresenceShellStatus status;
+  final Color color;
+
+  static const _liveColor = Color(0xFF5BE38C);
+
+  @override
+  Widget build(BuildContext context) {
+    final live = !status.safeMode &&
+        (status.phase == NeuraPresencePhase.listening ||
+            status.phase == NeuraPresencePhase.speaking);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        if (live) ...<Widget>[
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: _liveColor,
+              shape: BoxShape.circle,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    'Neura is here',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: scheme.primary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    status.presenceLabel,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFFC8BEDA),
-                        ),
-                  ),
-                  Text(
-                    '${room.title} · ${profile.stanceLabel}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.labelSmall?.copyWith(color: scheme.primary),
-                  ),
-                ],
+          ),
+          const SizedBox(width: 6),
+        ],
+        Flexible(
+          child: Text(
+            status.voiceLabel,
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context)
+                .textTheme
+                .labelMedium
+                ?.copyWith(color: live ? _liveColor : color),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Frames Neura's corner with her penthouse painted behind her.
+class _PenthouseFrame extends StatelessWidget {
+  const _PenthouseFrame({
+    required this.borderRadius,
+    required this.accent,
+    required this.child,
+    this.glow = false,
+    this.showFurniture = true,
+  });
+
+  final double borderRadius;
+  final Color accent;
+  final Widget child;
+  final bool glow;
+  final bool showFurniture;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(borderRadius);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        boxShadow: glow
+            ? <BoxShadow>[
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.08),
+                  blurRadius: 30,
+                  spreadRadius: 2,
+                ),
+              ]
+            : null,
+      ),
+      position: DecorationPosition.background,
+      child: DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          border: Border.all(color: accent.withValues(alpha: 0.42)),
+        ),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: Stack(
+            fit: StackFit.passthrough,
+            children: <Widget>[
+              Positioned.fill(
+                child: NeuraPenthouseScene(
+                  key: const ValueKey<String>('neura-penthouse'),
+                  dim: 0.18,
+                  dimColor: const Color(0xFF171023),
+                  showFurniture: showFurniture,
+                ),
               ),
-            ),
-            if (preferences.roomActivityHints && activities.isNotEmpty)
-              IconButton(
-                tooltip: 'Try ${activities.first.title}',
-                onPressed: () => onRunCommand(activities.first),
-                icon: Icon(activities.first.icon),
-              ),
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
-              tooltip: 'Talk to Neura',
-              onPressed: onOpenNeura,
-              icon: const Icon(Icons.chat_bubble_outline_rounded),
-            ),
-          ],
+              child,
+            ],
+          ),
         ),
       ),
     );
@@ -715,10 +938,17 @@ List<PresenceCommand> _roomActivities(
 }
 
 class _WorkspaceHeader extends StatelessWidget {
-  const _WorkspaceHeader({required this.status, required this.onOpenPalette});
+  const _WorkspaceHeader({
+    required this.status,
+    required this.onOpenPalette,
+    this.onListen,
+    this.showListen = false,
+  });
 
   final PresenceShellStatus status;
   final VoidCallback onOpenPalette;
+  final VoidCallback? onListen;
+  final bool showListen;
 
   @override
   Widget build(BuildContext context) {
@@ -750,6 +980,15 @@ class _WorkspaceHeader extends StatelessWidget {
                   const Expanded(child: Text('Ask Neura or type a command…')),
                   if (MediaQuery.of(context).size.width >= 700)
                     const _KeyboardHint(),
+                  if (showListen) ...<Widget>[
+                    const SizedBox(width: 6),
+                    IconButton(
+                      key: const ValueKey<String>('palette-mic'),
+                      tooltip: _ListenButton.tooltipFor(status),
+                      onPressed: onListen,
+                      icon: const Icon(Icons.mic_none_rounded),
+                    ),
+                  ],
                 ],
               ),
             ),
