@@ -239,11 +239,25 @@ void main() {
       (tester) async {
     await prepare(tester);
     await review(tester);
+    final confirm = tester
+        .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Open clinic portal'))
+        .onPressed!;
     await NeuraConstitutionService.instance
         .save(const NeuraPersonalConstitution());
-    await tester.tap(find.text('Open clinic portal'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    await NeuraConstitutionService.instance
+        .save(const NeuraPersonalConstitution(allowExternalMessages: true));
+    confirm();
     await tester.pumpAndSettle();
     expect(launches, isEmpty);
+    expect(
+        tester
+            .widget<CheckboxListTile>(
+                find.byKey(const ValueKey('clinic-permission-handoff')))
+            .value,
+        false);
   });
 
   testWidgets(
