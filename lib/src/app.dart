@@ -4,6 +4,7 @@ import '../profiles/local_profile_gate.dart';
 import '../profiles/local_profile_service.dart';
 
 import '../avatar/avatar_route_observer.dart';
+import '../care/services/clinic_contact_route_observer.dart';
 import '../core/neura_event_bus.dart';
 import '../wearables/wearable_route_observer.dart';
 import '../modules/core/error_handler.dart';
@@ -59,6 +60,7 @@ class _OwnerApp extends StatelessWidget {
           navigatorKey: NeuroCompanionApp.navigatorKey,
           navigatorObservers: [
             AvatarRouteObserver(NeuraEventBus.I),
+            clinicContactRouteObserver,
             wearableRouteObserver,
             vaultRestoreRouteObserver,
             teachNeuraRouteObserver,

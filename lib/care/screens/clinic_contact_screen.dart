@@ -91,6 +91,7 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
     WidgetsBinding.instance.addObserver(this);
     SafeBoot.instance.safeMode.addListener(_safetyChanged);
     SafeBoot.instance.restartRequired.addListener(_safetyChanged);
+    NeuraConstitutionService.instance.revision.addListener(_policyChanged);
     clinicContactRouteObserver.addListener(_topChanged);
     for (final controller in [
       _person,
@@ -215,6 +216,17 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
 
   void _safetyChanged() => _clear();
 
+  void _policyChanged() {
+    if (!mounted) return;
+    _epoch++;
+    _dismissReview();
+    setState(() {
+      _allowReportExport = false;
+      _allowContactHandoff = false;
+      _status = 'Sharing policy changed. Review your permissions again.';
+    });
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) {
@@ -233,6 +245,7 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
     WidgetsBinding.instance.removeObserver(this);
     SafeBoot.instance.safeMode.removeListener(_safetyChanged);
     SafeBoot.instance.restartRequired.removeListener(_safetyChanged);
+    NeuraConstitutionService.instance.revision.removeListener(_policyChanged);
     for (final controller in [
       _person,
       _clinic,
@@ -309,6 +322,8 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
       );
       setState(() {
         _epoch++;
+        _allowReportExport = false;
+        _allowContactHandoff = false;
         _draft = draft;
         _updatingControllers = true;
         _report.text = report;
@@ -579,6 +594,9 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
                     ),
                     Text('Client and doctor details',
                         style: Theme.of(context).textTheme.titleMedium),
+                    const Text('Standard field selection and cut/copy/paste '
+                        'shortcuts are disabled here. Use Review copy to '
+                        'export your report.'),
                     _field(_person, 'Client full name', 100),
                     _field(_clinic, 'Clinic or practice name', 150),
                     _field(_doctor, 'Doctor name (optional)', 150,
@@ -727,6 +745,7 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
                         maxLines: null,
                         maxLength: 12000,
                         enabled: canEdit,
+                        enableInteractiveSelection: false,
                         enableSuggestions: false,
                         enableIMEPersonalizedLearning: false,
                         autocorrect: false,
@@ -837,6 +856,7 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
         key: ValueKey('$label-$_editorGeneration'),
         controller: controller,
         enabled: _mayPrepare && !_busy,
+        enableInteractiveSelection: false,
         maxLength: limit,
         maxLines: lines,
         keyboardType: keyboard,
