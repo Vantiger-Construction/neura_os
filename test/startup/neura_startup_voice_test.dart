@@ -127,7 +127,9 @@ void main() {
   });
 
   Future<void> pumpChat(WidgetTester tester,
-      {bool startup = true, NeuraTtsService? ttsService}) async {
+      {bool startup = true,
+      bool listenNow = false,
+      NeuraTtsService? ttsService}) async {
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     input = _LocalInput();
     shell = NeuraShellState();
@@ -136,6 +138,7 @@ void main() {
         child: MaterialApp(
             home: NeuraChatScreen(
                 startWithVoice: startup,
+                listenNow: listenNow,
                 speechInput: input,
                 ttsService: ttsService))));
     await tester.pumpAndSettle();
@@ -329,6 +332,33 @@ void main() {
         reason: 'A disposed route must not respond to consent changes.');
     expect(tester.takeException(), isNull);
   });
+
+  startupTest('a mic tap opens the microphone at once, without a greeting',
+      (tester) async {
+    NeuraStartupVoicePrefs.instance.enabled.value = false;
+    await pumpChat(tester, startup: false, listenNow: true);
+    expect(spoken, isEmpty, reason: 'The user is waiting to speak.');
+    expect(input.starts, 1);
+    expect(input.isListening, isTrue);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(input.isListening, isFalse);
+  });
+
+  for (final reason in ['safe-mode', 'restart-required']) {
+    startupTest('a mic tap never opens the microphone in $reason',
+        (tester) async {
+      if (reason == 'safe-mode') {
+        SafeBoot.instance.safeMode.value = true;
+      } else {
+        SafeBoot.instance.restartRequired.value = true;
+      }
+      await pumpChat(tester, startup: false, listenNow: true);
+      expect(input.starts, 0);
+      expect(input.isListening, isFalse);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
 
   startupTest('startup route without a saved opt-in never activates audio',
       (tester) async {
