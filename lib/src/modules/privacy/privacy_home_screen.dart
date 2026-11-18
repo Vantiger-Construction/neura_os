@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 
 import '../../../screens/ambient_recordings_screen.dart';
+import '../../../screens/local_owner_password_screen.dart';
+import '../../../services/local_owner_login.dart';
 import '../../../services/ambient_listening_prefs.dart';
 import '../../../services/app_lock_prefs.dart';
 import '../../../services/wake_word_prefs.dart';
@@ -21,6 +23,30 @@ class PrivacyHomeScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           const Card(child: _DeviceLockToggle()),
+          Card(
+              child: ListTile(
+            leading: const Icon(Icons.password),
+            title: const Text('Owner password'),
+            subtitle: const Text(
+                'Set up or remove your Neura startup password on this device.'),
+            onTap: () async {
+              try {
+                final remembered = await LocalOwnerLogin.instance.remembered();
+                if (!context.mounted) return;
+                await Navigator.of(context).push<void>(MaterialPageRoute(
+                    builder: (context) => LocalOwnerPasswordScreen(
+                        creating: remembered == null,
+                        removing: remembered != null,
+                        onSuccess: () => Navigator.of(context).pop())));
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text(
+                          'Could not check the owner login. Please try again.')));
+                }
+              }
+            },
+          )),
           const SizedBox(height: 16),
           Card(
             child: Column(

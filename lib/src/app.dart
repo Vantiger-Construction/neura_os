@@ -12,6 +12,7 @@ import '../modules/human/human_prefs.dart';
 import '../modules/human/human_prefs_controller.dart';
 import '../modules/human/human_media_query.dart';
 import '../startup/neura_boot_screen.dart';
+import '../startup/startup_access_gate.dart';
 import '../theme/app_theme.dart';
 import 'shell/neura_shell.dart';
 import '../neura_shell/neura_shell_root.dart';
@@ -25,6 +26,16 @@ class NeuroCompanionApp extends StatelessWidget {
   /// not an ancestor, of that context. This key gives call sites like
   /// NeuraRoomSelectorSheet a context that's actually inside the Navigator.
   static final navigatorKey = GlobalKey<NavigatorState>();
+
+  @override
+  Widget build(BuildContext context) => StartupAccessGate(
+        ownerBuilder: (hasPassword) => _OwnerApp(hasPassword: hasPassword),
+      );
+}
+
+class _OwnerApp extends StatelessWidget {
+  const _OwnerApp({required this.hasPassword});
+  final bool hasPassword;
 
   static ThemeMode _themeModeFor(NeuraThemePref pref) {
     switch (pref) {
@@ -45,7 +56,7 @@ class NeuroCompanionApp extends StatelessWidget {
         final highContrast = prefs.highContrast ||
             (MediaQuery.maybeOf(context)?.highContrast ?? false);
         return MaterialApp(
-          navigatorKey: navigatorKey,
+          navigatorKey: NeuroCompanionApp.navigatorKey,
           navigatorObservers: [
             AvatarRouteObserver(NeuraEventBus.I),
             wearableRouteObserver,
@@ -77,7 +88,7 @@ class NeuroCompanionApp extends StatelessWidget {
             );
           },
           // NeuraBootScreen owns startup sequencing and fades into EnhancedNavigation.
-          home: const NeuraBootScreen(),
+          home: NeuraBootScreen(hasOwnerPassword: hasPassword),
         );
       },
     );

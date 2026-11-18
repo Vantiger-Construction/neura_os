@@ -6,6 +6,10 @@ import '../config/supabase_config.dart';
 import '../modules/navigation/enhanced_navigation.dart';
 import '../reliability/safe_boot.dart';
 import '../screens/sign_in_screen.dart';
+import '../screens/verify_email_screen.dart';
+import '../screens/owner_password_setup.dart';
+import '../services/local_owner_login.dart';
+import 'neura_prefs_cache.dart';
 import '../services/app_lock_prefs.dart';
 import '../services/auth_service.dart';
 import '../widgets/auth_guard.dart';
@@ -24,7 +28,8 @@ import 'neura_startup_coordinator.dart';
 /// awaits of its own — so it appears on screen within a single frame of
 /// [runApp].
 class NeuraBootScreen extends StatefulWidget {
-  const NeuraBootScreen({super.key});
+  const NeuraBootScreen({super.key, this.hasOwnerPassword = false});
+  final bool hasOwnerPassword;
 
   @override
   State<NeuraBootScreen> createState() => _NeuraBootScreenState();
@@ -73,20 +78,30 @@ class _NeuraBootScreenState extends State<NeuraBootScreen> {
         configured: SupabaseConfig.isConfigured,
         initialized: _coordinator.supabaseInitialized,
       );
-      final needsSignIn = canInspectSession && AuthService.currentUser == null;
-      // Device-lock only applies to the local-only dashboard path — once
-      // Supabase sign-in is active it already gates identity on its own.
-      final needsDeviceLock = !safeMode &&
-          !needsSignIn &&
-          AppLockPrefsController.instance.enabled.value;
+      final user = canInspectSession ? AuthService.currentUser : null;
+      final needsDeviceLock =
+          !safeMode && AppLockPrefsController.instance.enabled.value;
+      final offerSetup = !safeMode &&
+          (!SupabaseConfig.isConfigured || canInspectSession) &&
+          !widget.hasOwnerPassword &&
+          NeuraPrefsCache.prefsOrNull
+                  ?.getBool(LocalOwnerLogin.setupDismissedKey) !=
+              true;
       Navigator.of(context).pushReplacement(
         PageRouteBuilder<void>(
           pageBuilder: (_, __, ___) {
-            if (needsSignIn) return const SignInScreen();
-            const dashboard = EnhancedNavigation();
-            return needsDeviceLock
-                ? const AuthGuard(child: dashboard)
-                : dashboard;
+            final dashboard = offerSetup
+                ? const OwnerPasswordSetup(child: EnhancedNavigation())
+                : const EnhancedNavigation();
+            final destination =
+                needsDeviceLock ? AuthGuard(child: dashboard) : dashboard;
+            if (canInspectSession) {
+              if (user == null) return SignInScreen(destination: destination);
+              if (user.emailConfirmedAt == null) {
+                return VerifyEmailScreen(destination: destination);
+              }
+            }
+            return destination;
           },
           transitionsBuilder: (_, animation, __, child) {
             return FadeTransition(
