@@ -4,7 +4,7 @@ import '../services/local_owner_login.dart';
 import '../startup/neura_prefs_cache.dart';
 import 'local_owner_password_screen.dart';
 
-/// Offered after any account sign-in, verification and device lock.
+/// Optional local password setup, offered after any enabled device lock.
 class OwnerPasswordSetup extends StatefulWidget {
   const OwnerPasswordSetup({super.key, required this.child});
   final Widget child;
