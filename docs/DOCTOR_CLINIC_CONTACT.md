@@ -7,7 +7,11 @@ The maintainer asked to resume clinic-contact work on November 15, 2026
 and Care Mode and implements the patient-controlled report workflow below.
 The earlier [hold/privacy audit](DOCTOR_CLINIC_CONTACT_AUDIT.md) remains a record
 of its inspected revision. Enabling a setting alone never lifted that hold.
-This proposal needs current-head validation and review before integration.
+The maintainer explicitly approved the focused consent/lifecycle corrections on
+November 17, 2026 (America/Chicago), for implementation and tests on a review
+branch. Merging, persisted permission changes and repository settings were not
+authorized. Current-head validation, independent review and physical acceptance
+remain required before treating this workflow as release-ready.
 
 The implemented scope is local report preparation, explicit copy/text-file
 export and opening the patient's existing clinic portal or phone app. Direct
@@ -29,6 +33,9 @@ has been selected, registered, subscribed to or contacted by this change.
 3. Press **Prepare locally**. The deterministic report includes the chosen
    self-reports, your question, entered person/clinic, purpose and device time.
    It does not infer a diagnosis or invoke a model. Edit/remove any report text.
+   Standard field selection and cut/copy/paste controls are disabled, including
+   paste shortcuts; type edits and use the dedicated reviewed export buttons.
+   This restriction has a usability/accessibility cost that needs device testing.
    The report is capped at 12,000 characters. In **Client permissions**, separately
    choose whether to allow copying/saving this report or opening the supplied
    doctor/clinic contact. Both start off. Each action still needs fresh review.
@@ -63,7 +70,11 @@ patient changes **Adaptive Intent OS → Personal constitution → Allow externa
 messages**. Every action still requires a fresh review that expires after two
 minutes. Approval binds the exact edited report and destination, is checked
 again after asynchronous policy loading and is consumed before the OS call.
-Edits reset both client permission choices. Changing either choice revokes the
+Edits and regenerating a report reset both client permission choices. Explicit
+Personal Constitution saves/resets synchronously advance a policy revision and
+revoke the open review and both choices before persistence can finish. Restoring
+a policy value does not restore an old approval; the editable report is retained.
+Changing either client choice revokes the
 current review. The scopes are checked before/after policy loading and again
 before dispatch; toggling one never grants the other. They are session-only,
 with no saved default or automatic authorisation for a later client.
@@ -167,6 +178,64 @@ late history/clipboard results and synchronous route-cover/pop interleavings.
 These tests do not establish physical OS behavior or clinic delivery. The
 `previewForTesting` constructor is now an alias for the same normal workflow,
 not a feature switch; both entry points use normal construction.
+
+## November 17 correction and synthetic acceptance
+
+The production application now registers the clinic route observer used by its
+preparation gate. Previously only the clinic test harnesses registered it, so
+those tests could pass while the production editor remained disabled. The new
+navigator-configuration contract tests obtain the actual app builder's observer
+list and navigator key, substituting only a synthetic home and shell to avoid
+starting live services. They exercise both care entry points and route coverage;
+they do not claim that full application boot or a physical device was tested.
+
+Additional regressions cover revoke-then-restore without navigation, permission
+reset on regeneration and a new client session, changed contact/content, standard
+editor clipboard paths, and delayed save success/cancellation/errors after Stop,
+background, safety changes, disposal or policy revocation. Clipboard tests mock
+the actual platform channel rather than observing only the dedicated exporter.
+Full-wipe tests use the existing isolated fixture, including pending history,
+review and already-dispatched save, an early backup-drain failure, retry and
+repeated wipe while Safe Mode is already latched. A dispatched OS save remains
+outside app-managed encrypted storage; these tests must not assert retraction.
+
+Focused validation uses the branch-pinned Flutter 3.47.9 / Dart 3.13.7:
+
+```sh
+flutter test --no-pub --concurrency 2 --timeout 2m \
+  test/care/clinic_contact_test.dart \
+  test/care/clinic_report_test.dart \
+  test/care/clinic_app_integration_test.dart \
+  test/care/clinic_data_wipe_test.dart \
+  test/constitution/neura_constitution_service_test.dart
+```
+
+The baseline audited was `308765ef0e6a078bfe731b9aa8a2d5fdbc427b53`.
+The correction was rebased onto `1c0dcfacb2c4d2ac52e39e11f11e00aa0ad482ee`
+to preserve the subsequently merged owner/guest startup flow. Its navigator
+fixture obtains the owner's actual configuration through the existing access
+gate factory without mounting the gate or changing a login/permission record.
+New regression results, strict analysis and current-head package checks must be
+recorded in the correction PR. The implementation host did not have the pinned
+Flutter/Dart SDK; an attempted official SDK download returned HTTP 404. Local
+source/whitespace checks do not substitute for executing Flutter tests in CI.
+
+For a manual rehearsal, type only Alex Example, Example Clinic, Dr Taylor Example,
+`https://clinic.example.invalid/login` and a question marked TEST ONLY. On an
+installation with private data, leave **Choose saved check-ins** untouched. Use
+injected synthetic check-ins in automated tests or a disposable data environment.
+Prepare with both client scopes off, edit/regenerate, close/reopen and check that
+no scope follows the earlier report. If the Personal Constitution blocks export,
+record that result and leave the setting unchanged until separately authorized.
+
+Cancel the external-handoff review on real devices; approve URL/phone operations
+only against a mock launcher. Do not dial a fictional-looking number. Copy/save
+only fictional text to an empty local editor or unsynced test folder; test picker
+cancellation separately. Background or Stop may suppress Neura's late status while
+an already-dispatched file still completes. Wipe tests belong only in disposable
+synthetic fixtures, never against real encrypted memories. Record exact source
+and package identity, platform, expected/observed outcome and PASS/FAIL/BLOCKED.
+Windows and Samsung physical results remain separate from CI and packaging.
 
 ## Primary technical references
 

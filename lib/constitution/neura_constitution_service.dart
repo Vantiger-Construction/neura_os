@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../startup/neura_prefs_cache.dart';
 import 'neura_personal_constitution.dart';
 
@@ -20,6 +22,11 @@ class NeuraConstitutionService {
 
   NeuraPersonalConstitution _current = const NeuraPersonalConstitution();
   bool _loaded = false;
+  final ValueNotifier<int> _revision = ValueNotifier<int>(0);
+
+  /// Explicit policy changes invalidate outstanding approvals synchronously,
+  /// before persistence can wait or fail. Restoring a value is a new revision.
+  ValueListenable<int> get revision => _revision;
 
   /// The current constitution. Safe to read synchronously and before
   /// [load] completes -- callers get the default constitution until a saved
@@ -64,6 +71,7 @@ class NeuraConstitutionService {
   Future<void> save(NeuraPersonalConstitution value) async {
     final normalized = value.normalized();
     _current = normalized;
+    _revision.value++;
     try {
       await NeuraPrefsCache.prefs
           .setString(_key, jsonEncode(_toJson(normalized)));
@@ -76,6 +84,7 @@ class NeuraConstitutionService {
   void resetAfterDataWipe() {
     _current = const NeuraPersonalConstitution();
     _loaded = false;
+    _revision.value++;
   }
 
   static Map<String, dynamic> _toJson(NeuraPersonalConstitution value) => {

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/care/models/clinic_contact_draft.dart';
 import 'package:neuro_companion/care/models/clinic_report.dart';
@@ -66,6 +67,7 @@ void main() {
   Future<void> mount(WidgetTester tester,
       {Future<List<MoodEntry>> Function()? load,
       Future<void> Function(String)? copy,
+      Future<Uri?> Function(Uint8List)? save,
       bool cancelSave = false,
       bool allowExport = true}) async {
     await tester.binding.setSurfaceSize(const Size(1000, 2200));
@@ -75,11 +77,12 @@ void main() {
       home: ClinicContactScreen(
         loadCheckIns: load ?? () async => [],
         copyReport: copy ?? (text) async => copies.add(text),
-        saveReport: (bytes) async {
-          if (cancelSave) return null;
-          files.add(utf8.decode(bytes));
-          return Uri.file('/synthetic/neura-clinic-report.txt');
-        },
+        saveReport: save ??
+            (bytes) async {
+              if (cancelSave) return null;
+              files.add(utf8.decode(bytes));
+              return Uri.file('/synthetic/neura-clinic-report.txt');
+            },
       ),
     ));
     await tester.pumpAndSettle();
@@ -261,10 +264,17 @@ void main() {
         (tester) async {
       await mount(tester);
       await tap(tester, save ? 'Review text export' : 'Review copy');
+      final confirm = tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton,
+              save ? 'Save reviewed text file' : 'Copy reviewed report'))
+          .onPressed!;
       await NeuraConstitutionService.instance
           .save(const NeuraPersonalConstitution());
-      await tester.tap(
-          find.text(save ? 'Save reviewed text file' : 'Copy reviewed report'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      await NeuraConstitutionService.instance
+          .save(const NeuraPersonalConstitution(allowExternalMessages: true));
+      confirm();
       await tester.pumpAndSettle();
       expect(copies, isEmpty);
       expect(files, isEmpty);
@@ -578,4 +588,204 @@ void main() {
             .onPressed,
         isNull);
   });
+
+  Future<void> expectScopesOff(WidgetTester tester) async {
+    for (final key in [
+      'clinic-permission-export',
+      'clinic-permission-handoff'
+    ]) {
+      final permission = find.byKey(ValueKey(key));
+      await tester.scrollUntilVisible(permission, 250,
+          scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+      expect(tester.widget<CheckboxListTile>(permission).value, false);
+    }
+  }
+
+  testWidgets('regenerating edited content revokes both report scopes',
+      (tester) async {
+    await mount(tester);
+    await editInput(tester, 'Editable clinic report', 'APPROVED-EDIT-ONLY');
+    await allowReport(tester);
+    await tap(tester, 'Allow opening my doctor’s portal or phone app');
+    final oldCopy = tester
+        .widget<OutlinedButton>(
+            find.widgetWithText(OutlinedButton, 'Review copy'))
+        .onPressed!;
+    await tap(tester, 'Prepare locally');
+    expect(reportText(tester), isNot(contains('APPROVED-EDIT-ONLY')));
+    await expectScopesOff(tester);
+    oldCopy();
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(copies, isEmpty);
+    expect(files, isEmpty);
+  });
+
+  testWidgets('a new client session never inherits either sharing scope',
+      (tester) async {
+    await mount(tester);
+    await tap(tester, 'Allow opening my doctor’s portal or phone app');
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await mount(tester, allowExport: false);
+    await expectScopesOff(tester);
+    expect(copies, isEmpty);
+    expect(files, isEmpty);
+  });
+
+  for (final input in <String, String>{
+    'Client full name': 'Another Example',
+    'Clinic or practice name': 'Another Example Clinic',
+    'Doctor name (optional)': 'Dr Another Example',
+    'Clinic portal HTTPS address': 'https://another.example.invalid/login',
+    'What I want my care team to know': 'Another fictional question',
+    'Client sharing instructions or limits (optional)': 'Only this new report',
+  }.entries) {
+    testWidgets('${input.key} changes revoke both scopes', (tester) async {
+      await mount(tester);
+      await tap(tester, 'Allow opening my doctor’s portal or phone app');
+      await editInput(tester, input.key, input.value);
+      expect(reportField(), findsNothing);
+      await tap(tester, 'Prepare locally');
+      await expectScopesOff(tester);
+      expect(copies, isEmpty);
+      expect(files, isEmpty);
+    });
+  }
+
+  for (final safeMode in [false, true]) {
+    testWidgets(
+        'standard editor clipboard controls are blocked in '
+        '${safeMode ? 'Safe Mode' : 'ordinary mode'}', (tester) async {
+      final clipboardWrites = <String>[];
+      binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboardWrites.add((call.arguments as Map)['text'] as String);
+        }
+        if (call.method == 'Clipboard.getData') {
+          return <String, String>{'text': 'SYNTHETIC-CLIPBOARD'};
+        }
+        if (call.method == 'Clipboard.hasStrings') {
+          return <String, bool>{'value': true};
+        }
+        return null;
+      });
+      addTearDown(() => binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null));
+      await mount(tester, allowExport: false);
+      if (safeMode) {
+        SafeBoot.instance.safeMode.value = true;
+        await tester.pumpAndSettle();
+        for (final (index, value) in [
+          'Alex Example',
+          'Example Clinic',
+          '',
+          'https://clinic.example.invalid/login',
+          'SYNTHETIC-SAFE-MODE',
+          ''
+        ].indexed) {
+          await tester.enterText(find.byType(TextFormField).at(index), value);
+        }
+        await tap(tester, 'Prepare locally');
+      }
+      for (final label in ['Client full name', 'Editable clinic report']) {
+        await editInput(tester, label, 'SYNTHETIC-EDIT-ONLY');
+        if (label == 'Client full name') await tap(tester, 'Prepare locally');
+        final field = find.byWidgetPredicate((widget) =>
+            widget is TextField && widget.decoration?.labelText == label);
+        await tester.scrollUntilVisible(field, 250,
+            scrollable: find.byType(Scrollable).first);
+        await tester.pumpAndSettle();
+        final editable =
+            find.descendant(of: field, matching: find.byType(EditableText));
+        final editor = tester.widget<EditableText>(editable);
+        expect(editor.enableInteractiveSelection, false);
+        await tester.tap(field);
+        await tester.pump();
+        editor.controller.selection = TextSelection(
+            baseOffset: 0, extentOffset: editor.controller.text.length);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyX);
+        await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+        expect(editor.controller.text, isNot(contains('SYNTHETIC-CLIPBOARD')));
+        await tester.longPress(field);
+        await tester.pumpAndSettle();
+        expect(find.byType(AdaptiveTextSelectionToolbar), findsNothing);
+      }
+      expect(clipboardWrites, isEmpty);
+      expect(copies, isEmpty);
+      expect(files, isEmpty);
+    });
+  }
+
+  for (final result in ['saved', 'cancelled', 'error']) {
+    for (final interruption in [
+      'Stop',
+      'inactive',
+      'hidden',
+      'paused',
+      'detached',
+      'Safe Mode',
+      'recovery',
+      'route disposal',
+      'policy revocation',
+    ]) {
+      testWidgets('a delayed $result save stays revoked after $interruption',
+          (tester) async {
+        final pending = Completer<Uri?>();
+        final dispatched = <String>[];
+        await mount(tester, save: (bytes) {
+          dispatched.add(utf8.decode(bytes));
+          return pending.future;
+        });
+        final reviewed = reportText(tester);
+        await tap(tester, 'Review text export');
+        await tester.tap(find.text('Save reviewed text file'));
+        await tester.pumpAndSettle();
+        expect(dispatched, [reviewed]);
+        if (interruption == 'Stop') {
+          await tap(tester, 'Clear temporary details');
+        } else if (interruption == 'Safe Mode') {
+          SafeBoot.instance.safeMode.value = true;
+        } else if (interruption == 'recovery') {
+          SafeBoot.instance.restartRequired.value = true;
+        } else if (interruption == 'route disposal') {
+          await tester.pumpWidget(const SizedBox.shrink());
+        } else if (interruption == 'policy revocation') {
+          await NeuraConstitutionService.instance
+              .save(const NeuraPersonalConstitution());
+        } else {
+          binding.handleAppLifecycleStateChanged(
+              AppLifecycleState.values.byName(interruption));
+        }
+        await tester.pumpAndSettle();
+        if (result == 'error') {
+          pending.completeError(StateError('synthetic-save-error'));
+        } else {
+          pending.complete(result == 'saved'
+              ? Uri.file('/synthetic/approved-report.txt')
+              : null);
+        }
+        await tester.pumpAndSettle();
+        expect(dispatched, [reviewed], reason: 'No automatic repeat dispatch.');
+        expect(copies, isEmpty);
+        expect(files, isEmpty);
+        expect(find.textContaining('Report saved to'), findsNothing);
+        expect(find.textContaining('Save cancelled.'), findsNothing);
+        expect(find.textContaining('This action could not be confirmed.'),
+            findsNothing);
+        if (interruption == 'policy revocation') {
+          await expectScopesOff(tester);
+        } else {
+          expect(reportField(), findsNothing);
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 }
