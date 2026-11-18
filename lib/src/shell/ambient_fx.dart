@@ -7,79 +7,39 @@ import 'package:flutter/material.dart';
 /// - No dependencies
 /// - Runs behind the entire app
 /// - Off by toggle in Settings
-class AmbientFx extends StatefulWidget {
+///
+/// Painted once, not animated. This layer sits under the Navigator, and every
+/// route paints an opaque background over it, so a 60Hz full-screen repaint
+/// here was never visible but kept the raster thread busy the whole time the
+/// app was open.
+class AmbientFx extends StatelessWidget {
   final bool enabled;
   const AmbientFx({super.key, required this.enabled});
 
-  @override
-  State<AmbientFx> createState() => _AmbientFxState();
-}
+  static final List<_Orb> _orbs = _seedOrbs();
 
-class _AmbientFxState extends State<AmbientFx>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-  final Random _r = Random(7);
-  late final List<_Orb> _orbs;
-
-  @override
-  void initState() {
-    super.initState();
-    // Created eagerly (not lazily) so a widget that starts disabled doesn't
-    // build its Ticker for the first time inside dispose(), where looking up
-    // TickerMode on a deactivated element asserts.
-    _c =
-        AnimationController(vsync: this, duration: const Duration(seconds: 12));
-    _orbs = List.generate(9, (i) {
+  static List<_Orb> _seedOrbs() {
+    final r = Random(7);
+    return List.generate(9, (i) {
       return _Orb(
-        x: _r.nextDouble(),
-        y: _r.nextDouble(),
-        radius: 40 + _r.nextDouble() * 120,
-        speed: 0.15 + _r.nextDouble() * 0.45,
-        phase: _r.nextDouble() * pi * 2,
+        x: r.nextDouble(),
+        y: r.nextDouble(),
+        radius: 40 + r.nextDouble() * 120,
+        speed: 0.15 + r.nextDouble() * 0.45,
+        phase: r.nextDouble() * pi * 2,
       );
     });
-    if (widget.enabled) _c.repeat();
-  }
-
-  @override
-  void didUpdateWidget(covariant AmbientFx oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // A repeating controller keeps waking the engine every frame even when
-    // nothing is listening, so toggling FX off in Settings must actually stop
-    // it, not just stop drawing.
-    if (widget.enabled == oldWidget.enabled) return;
-    if (widget.enabled) {
-      _c.repeat();
-    } else {
-      _c.stop();
-    }
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.enabled) return const SizedBox.shrink();
+    if (!enabled) return const SizedBox.shrink();
 
-    // RepaintBoundary keeps this full-screen 60Hz repaint in its own layer so
-    // it doesn't drag the rest of the shell's layer along with it each frame.
     return IgnorePointer(
       child: RepaintBoundary(
-        child: AnimatedBuilder(
-          animation: _c,
-          builder: (context, _) {
-            return CustomPaint(
-              painter: _AmbientPainter(
-                t: _c.value,
-                orbs: _orbs,
-              ),
-              child: const SizedBox.expand(),
-            );
-          },
+        child: CustomPaint(
+          painter: _AmbientPainter(t: 0, orbs: _orbs),
+          child: const SizedBox.expand(),
         ),
       ),
     );
