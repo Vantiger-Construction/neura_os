@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../neura_shell/models/neura_room.dart';
 import '../../neura_shell/models/neura_room_presence_profile.dart';
+import '../../neura_shell/widgets/neura_penthouse_scene.dart';
 import '../../neura_shell/widgets/neura_room_presence_avatar.dart';
 import '../../services/neura_companion_presence.dart';
 import '../../src/shell/shell_prefs.dart';
@@ -177,33 +178,29 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
       },
       child: Focus(
         autofocus: true,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: background,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: <Color>[
-                background,
-                Color.alphaBlend(
-                  scheme.primary.withValues(alpha: 0.055),
-                  background,
-                ),
-              ],
+        child: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            // Neura's penthouse sits behind the whole menu, dimmed so the
+            // workspace stays readable.
+            ColoredBox(color: background),
+            NeuraPenthouseScene(
+              dim: scheme.brightness == Brightness.dark ? 0.62 : 0.82,
+              dimColor: background,
             ),
-          ),
-          child: SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final mode = PresenceNavigationLayoutPolicy.modeForWidth(
-                  constraints.maxWidth,
-                );
-                return mode == PresenceLayoutMode.wide
-                    ? _buildWide(context)
-                    : _buildCompact(context);
-              },
+            SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final mode = PresenceNavigationLayoutPolicy.modeForWidth(
+                    constraints.maxWidth,
+                  );
+                  return mode == PresenceLayoutMode.wide
+                      ? _buildWide(context)
+                      : _buildCompact(context);
+                },
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -218,12 +215,16 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
           selectedIndex: widget.currentIndex,
           onDestinationSelected: widget.onDestinationSelected,
         ),
+        Expanded(child: _buildWorkspace(context)),
+        // Neura's own corner: pinned to the far right edge, away from the
+        // navigation rail and the workspace.
         AnimatedContainer(
+          key: const ValueKey<String>('neura-corner'),
           duration:
               reduceMotion ? Duration.zero : const Duration(milliseconds: 240),
           curve: Curves.easeOutCubic,
           width: _stageCollapsed ? 84 : 276,
-          padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
+          padding: const EdgeInsets.fromLTRB(4, 12, 12, 12),
           child: _NeuraStage(
             collapsed: _stageCollapsed,
             status: widget.status,
@@ -236,7 +237,6 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
                 setState(() => _stageCollapsed = !_stageCollapsed),
           ),
         ),
-        Expanded(child: _buildWorkspace(context)),
       ],
     );
   }
@@ -288,7 +288,7 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
       padding: EdgeInsets.fromLTRB(
         compact ? 12 : 8,
         10,
-        compact ? 12 : 16,
+        compact ? 12 : 8,
         compact ? 4 : 12,
       ),
       child: Column(
@@ -429,7 +429,6 @@ class _NeuraStage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const stageBackground = Color(0xFF171023);
     const stageForeground = Color(0xFFF8F4FF);
     const stageMuted = Color(0xFFC8BEDA);
     final accent = Theme.of(context).colorScheme.primary;
@@ -439,19 +438,10 @@ class _NeuraStage extends StatelessWidget {
     return Semantics(
       container: true,
       label: 'Neura Stage. ${status.presenceLabel}',
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: stageBackground,
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: accent.withValues(alpha: 0.42)),
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: accent.withValues(alpha: 0.08),
-              blurRadius: 30,
-              spreadRadius: 2,
-            ),
-          ],
-        ),
+      child: _PenthouseFrame(
+        borderRadius: 28,
+        accent: accent,
+        glow: true,
         child: collapsed
             ? Column(
                 children: <Widget>[
@@ -626,75 +616,136 @@ class _CompactNeuraStage extends StatelessWidget {
     return Semantics(
       container: true,
       label: 'Neura presence panel. ${status.presenceLabel}',
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 88),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF171023),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: scheme.primary.withValues(alpha: 0.42)),
+      child: _PenthouseFrame(
+        borderRadius: 22,
+        accent: scheme.primary,
+        showFurniture: false,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 88),
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            children: <Widget>[
+              SizedBox(
+                width: 60,
+                height: 68,
+                child: NeuraRoomPresenceAvatar(
+                  room: room,
+                  phase: status.safeMode
+                      ? NeuraPresencePhase.safeMode
+                      : status.phase,
+                  motion: preferences.companionMotion,
+                  scale: preferences.companionScale,
+                  compact: true,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      'Neura is here',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: scheme.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      status.presenceLabel,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFFC8BEDA),
+                          ),
+                    ),
+                    Text(
+                      '${room.title} · ${profile.stanceLabel}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.labelSmall?.copyWith(color: scheme.primary),
+                    ),
+                  ],
+                ),
+              ),
+              if (preferences.roomActivityHints && activities.isNotEmpty)
+                IconButton(
+                  tooltip: 'Try ${activities.first.title}',
+                  onPressed: () => onRunCommand(activities.first),
+                  icon: Icon(activities.first.icon),
+                ),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
+                tooltip: 'Talk to Neura',
+                onPressed: onOpenNeura,
+                icon: const Icon(Icons.chat_bubble_outline_rounded),
+              ),
+            ],
+          ),
         ),
-        child: Row(
-          children: <Widget>[
-            SizedBox(
-              width: 60,
-              height: 68,
-              child: NeuraRoomPresenceAvatar(
-                room: room,
-                phase: status.safeMode
-                    ? NeuraPresencePhase.safeMode
-                    : status.phase,
-                motion: preferences.companionMotion,
-                scale: preferences.companionScale,
-                compact: true,
+      ),
+    );
+  }
+}
+
+/// Frames Neura's corner with her penthouse painted behind her.
+class _PenthouseFrame extends StatelessWidget {
+  const _PenthouseFrame({
+    required this.borderRadius,
+    required this.accent,
+    required this.child,
+    this.glow = false,
+    this.showFurniture = true,
+  });
+
+  final double borderRadius;
+  final Color accent;
+  final Widget child;
+  final bool glow;
+  final bool showFurniture;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(borderRadius);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        boxShadow: glow
+            ? <BoxShadow>[
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.08),
+                  blurRadius: 30,
+                  spreadRadius: 2,
+                ),
+              ]
+            : null,
+      ),
+      position: DecorationPosition.background,
+      child: DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          border: Border.all(color: accent.withValues(alpha: 0.42)),
+        ),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: Stack(
+            fit: StackFit.passthrough,
+            children: <Widget>[
+              Positioned.fill(
+                child: NeuraPenthouseScene(
+                  key: const ValueKey<String>('neura-penthouse'),
+                  dim: 0.18,
+                  dimColor: const Color(0xFF171023),
+                  showFurniture: showFurniture,
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    'Neura is here',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: scheme.primary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    status.presenceLabel,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFFC8BEDA),
-                        ),
-                  ),
-                  Text(
-                    '${room.title} · ${profile.stanceLabel}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.labelSmall?.copyWith(color: scheme.primary),
-                  ),
-                ],
-              ),
-            ),
-            if (preferences.roomActivityHints && activities.isNotEmpty)
-              IconButton(
-                tooltip: 'Try ${activities.first.title}',
-                onPressed: () => onRunCommand(activities.first),
-                icon: Icon(activities.first.icon),
-              ),
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
-              tooltip: 'Talk to Neura',
-              onPressed: onOpenNeura,
-              icon: const Icon(Icons.chat_bubble_outline_rounded),
-            ),
-          ],
+              child,
+            ],
+          ),
         ),
       ),
     );
