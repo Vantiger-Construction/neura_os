@@ -114,7 +114,7 @@ class _ProductionNavigatorFixture extends NeuroCompanionApp {
         root.builder(context, root.valueListenable.value, null) as MaterialApp;
     return MaterialApp(
       navigatorKey: configured.navigatorKey,
-      navigatorObservers: configured.navigatorObservers,
+      navigatorObservers: configured.navigatorObservers!,
       home: home,
     );
   }

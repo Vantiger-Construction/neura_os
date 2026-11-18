@@ -211,6 +211,10 @@ flutter test --no-pub --concurrency 2 --timeout 2m \
 ```
 
 The baseline audited was `308765ef0e6a078bfe731b9aa8a2d5fdbc427b53`.
+The correction was rebased onto `1c0dcfacb2c4d2ac52e39e11f11e00aa0ad482ee`
+to preserve the subsequently merged owner/guest startup flow. Its navigator
+fixture obtains the owner's actual configuration through the existing access
+gate factory without mounting the gate or changing a login/permission record.
 New regression results, strict analysis and current-head package checks must be
 recorded in the correction PR. The implementation host did not have the pinned
 Flutter/Dart SDK; an attempted official SDK download returned HTTP 404. Local

@@ -594,6 +594,9 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
                     ),
                     Text('Client and doctor details',
                         style: Theme.of(context).textTheme.titleMedium),
+                    const Text('Standard field selection and cut/copy/paste '
+                        'shortcuts are disabled here. Use Review copy to '
+                        'export your report.'),
                     _field(_person, 'Client full name', 100),
                     _field(_clinic, 'Clinic or practice name', 150),
                     _field(_doctor, 'Doctor name (optional)', 150,
@@ -753,9 +756,6 @@ class _ClinicContactScreenState extends State<ClinicContactScreen>
                       const Text('Edit or remove any part. Every export needs '
                           'fresh review of the exact text. A copied report '
                           'may remain in your system clipboard.'),
-                      const Text('Standard field selection and cut/copy/paste '
-                          'shortcuts are disabled here. Use Review copy to '
-                          'export your report.'),
                       Card(
                         child: Column(children: [
                           ListTile(
