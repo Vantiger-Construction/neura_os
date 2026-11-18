@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/local_owner_login.dart';
 import '../widgets/login_password_field.dart';
@@ -16,6 +17,8 @@ class LocalOwnerPasswordScreen extends StatefulWidget {
     this.onSkip,
     this.login,
     this.verifyDevice,
+    this.deviceSupported,
+    this.openDeviceSettings,
   });
   final bool creating;
   final bool remembered;
@@ -24,6 +27,8 @@ class LocalOwnerPasswordScreen extends StatefulWidget {
   final VoidCallback? onSkip;
   final LocalOwnerLogin? login;
   final Future<bool> Function()? verifyDevice;
+  final Future<bool> Function()? deviceSupported;
+  final Future<bool> Function()? openDeviceSettings;
 
   @override
   State<LocalOwnerPasswordScreen> createState() =>
@@ -35,10 +40,46 @@ class _LocalOwnerPasswordScreenState extends State<LocalOwnerPasswordScreen> {
   final _confirmation = TextEditingController();
   late bool _remember = widget.remembered;
   bool _busy = false;
+  bool? _helloSupported;
   String? _message;
   bool get _windows =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
   LocalOwnerLogin get _login => widget.login ?? LocalOwnerLogin.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_windows && !widget.removing) _checkWindowsHello();
+  }
+
+  Future<void> _checkWindowsHello() async {
+    bool supported;
+    try {
+      supported = await (widget.deviceSupported?.call() ??
+          LocalAuthentication().isDeviceSupported());
+    } catch (_) {
+      supported = false;
+    }
+    if (mounted) setState(() => _helloSupported = supported);
+  }
+
+  Future<void> _openWindowsHelloSettings() async {
+    if (_busy) return;
+    try {
+      final opened = await (widget.openDeviceSettings?.call() ??
+          launchUrl(Uri.parse('ms-settings:signinoptions'),
+              mode: LaunchMode.externalApplication));
+      if (!opened && mounted) {
+        setState(() => _message =
+            'Open Windows Settings > Accounts > Sign-in options to set up Windows Hello.');
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _message =
+            'Open Windows Settings > Accounts > Sign-in options to set up Windows Hello.');
+      }
+    }
+  }
 
   Future<bool> _authenticateDevice() =>
       widget.verifyDevice?.call() ??
@@ -67,6 +108,27 @@ class _LocalOwnerPasswordScreenState extends State<LocalOwnerPasswordScreen> {
                 'Use at least 12 characters and enter the same password twice.');
             return;
           }
+        }
+        // Enabling remembered access requires a real OS approval. Cancelling
+        // enrolment never saves a remembered preference or creates a password.
+        if (_windows &&
+            _remember &&
+            !widget.removing &&
+            (widget.creating || !widget.remembered)) {
+          bool verified;
+          try {
+            verified = _helloSupported == true && await _authenticateDevice();
+          } catch (_) {
+            verified = false;
+          }
+          if (!mounted) return;
+          if (!verified) {
+            setState(() => _message =
+                'Windows Hello was not completed. Try again or turn off Remember me to use your password.');
+            return;
+          }
+        }
+        if (widget.creating) {
           await _login.create(password, remember: _remember);
         } else if (!(widget.removing
             ? await _login.remove(password)
@@ -154,10 +216,24 @@ class _LocalOwnerPasswordScreenState extends State<LocalOwnerPasswordScreen> {
                           contentPadding: EdgeInsets.zero,
                           value: _remember,
                           title: const Text('Remember me with Windows Hello'),
-                          onChanged: _busy
+                          onChanged: _busy ||
+                                  (_helloSupported != true && !_remember)
                               ? null
                               : (value) =>
                                   setState(() => _remember = value == true)),
+                    if (_windows && !widget.removing) ...[
+                      Text(_helloSupported == null
+                          ? 'Checking Windows Hello…'
+                          : _helloSupported == true
+                              ? 'Windows will ask you to confirm your PIN, face, or fingerprint. Your owner password remains available as a fallback.'
+                              : 'Set up Windows Hello in Windows Settings, then return and check again. You can continue with your owner password.'),
+                      TextButton(
+                          onPressed: _busy ? null : _openWindowsHelloSettings,
+                          child: const Text('Set up Windows Hello')),
+                      TextButton(
+                          onPressed: _busy ? null : _checkWindowsHello,
+                          child: const Text('Check Windows Hello again')),
+                    ],
                     if (_message != null)
                       Text(_message!, semanticsLabel: _message),
                     const SizedBox(height: 16),

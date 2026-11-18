@@ -88,12 +88,21 @@ void main() {
   testWidgets(
       'owner chooses remembered sign-in at setup and can fall back to a password',
       (tester) async {
+    tester.view.physicalSize = const Size(1000, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final login = _ExistingOwner();
     int admissions = 0;
     const phrase = 'synthetic owner phrase';
     await tester.pumpWidget(MaterialApp(
         home: LocalOwnerPasswordScreen(
-            creating: true, login: login, onSuccess: () => admissions++)));
+            creating: true,
+            login: login,
+            deviceSupported: () async => true,
+            verifyDevice: () async => true,
+            onSuccess: () => admissions++)));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, phrase);
     await tester.tap(find.text('Save owner password'));
     await tester.pumpAndSettle();
@@ -113,6 +122,7 @@ void main() {
             creating: false,
             remembered: true,
             login: login,
+            deviceSupported: () async => true,
             verifyDevice: () async => deviceApproved,
             onSuccess: () => admissions++)));
     await tester.tap(find.text('Use Windows Hello'));

@@ -4,7 +4,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_config.dart';
 
+/// Local access is independent of account state. Cloud operations still
+/// require a confirmed account after removing the old startup sign-in gate.
+User? verifiedAccountUser(User? user) =>
+    user?.emailConfirmedAt != null ? user : null;
+
 class AuthService {
+  bool get available => isAvailable;
+  User? get user => verifiedUser;
+
   static SupabaseClient? _clientCache;
 
   static SupabaseClient? get _clientOrNull {
@@ -31,6 +39,7 @@ class AuthService {
   static bool get isAvailable => _clientOrNull != null;
 
   static User? get currentUser => _clientOrNull?.auth.currentUser;
+  static User? get verifiedUser => verifiedAccountUser(currentUser);
 
   static Stream<User?> get onAuthStateChanged {
     final client = _clientOrNull;
@@ -49,9 +58,15 @@ class AuthService {
 
   Future<void> signOut() => _client.auth.signOut();
 
-  Future<void> updateDisplayName(String displayName) => _client.auth.updateUser(
-        UserAttributes(data: {'display_name': displayName.trim()}),
-      );
+  Future<void> updateDisplayName(String displayName) {
+    if (verifiedUser == null) {
+      throw StateError(
+          'Verify your cloud account before updating its profile.');
+    }
+    return _client.auth.updateUser(
+      UserAttributes(data: {'display_name': displayName.trim()}),
+    );
+  }
 
   /// Clears only this device's live Supabase session during a local-data
   /// wipe. Other devices remain signed in. Local invalidation happens before

@@ -61,7 +61,7 @@ class SyncService {
   final Future<bool> Function()? _testOnline;
 
   String? get _currentUserId =>
-      _testUser != null ? _testUser!() : _supabase.auth.currentUser?.id;
+      _testUser != null ? _testUser!() : AuthService.verifiedUser?.id;
 
   static const _kTable = 'journal_entries';
 

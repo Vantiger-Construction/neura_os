@@ -9,9 +9,15 @@ import '../modules/navigation/enhanced_navigation.dart';
 import 'verify_email_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen(
-      {super.key, this.destination = const EnhancedNavigation()});
+  const SignUpScreen({
+    super.key,
+    this.destination = const EnhancedNavigation(),
+    this.onAuthenticated,
+    this.auth,
+  });
   final Widget destination;
+  final VoidCallback? onAuthenticated;
+  final AuthService? auth;
 
   @override
   _SignUpScreenState createState() => _SignUpScreenState();
@@ -31,13 +37,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
       _error = null;
     });
     try {
-      await AuthService().signUp(_email.text, _pass.text);
+      await (widget.auth ?? AuthService()).signUp(_email.text, _pass.text);
       if (!mounted) return;
       TextInput.finishAutofillContext();
       unawaited(Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-              builder: (_) => VerifyEmailScreen(destination: destination))));
+              builder: (_) => VerifyEmailScreen(
+                  destination: destination,
+                  onAuthenticated: widget.onAuthenticated,
+                  auth: widget.auth))));
     } catch (e) {
       if (!mounted) return;
       setState(() {

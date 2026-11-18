@@ -7,9 +7,8 @@ import '../startup/neura_prefs_cache.dart';
 /// PIN/password) before showing the dashboard.
 ///
 /// Off by default — this is opt-in so existing local-only installs never
-/// get locked out by a change they didn't ask for. Only meaningful when
-/// Supabase is unconfigured (the sign-in screen already gates identity
-/// once real Supabase keys are set — see [SupabaseConfig.isConfigured]).
+/// get locked out by a change they didn't ask for. This device choice is
+/// independent of optional cloud account configuration and sign-in.
 class AppLockPrefsController {
   AppLockPrefsController._();
 

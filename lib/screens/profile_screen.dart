@@ -1,12 +1,11 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import 'sign_in_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({super.key, this.auth});
+  final AuthService? auth;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -16,11 +15,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late final TextEditingController _nameCtrl;
   bool _updating = false;
   String? _error;
+  AuthService get _auth => widget.auth ?? AuthService();
 
   @override
   void initState() {
     super.initState();
-    final meta = AuthService.currentUser?.userMetadata;
+    final meta = _auth.user?.userMetadata;
     _nameCtrl = TextEditingController(
       text: meta?['display_name'] as String? ?? '',
     );
@@ -38,7 +38,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _error = null;
     });
     try {
-      await AuthService().updateDisplayName(_nameCtrl.text);
+      await _auth.updateDisplayName(_nameCtrl.text);
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -51,12 +51,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _signIn() async {
+    final origin = ModalRoute.of(context);
+    if (origin == null) return;
+    final navigator = Navigator.of(context);
+    await navigator.push<void>(MaterialPageRoute(
+        builder: (_) => SignInScreen(
+            auth: widget.auth,
+            onAuthenticated: () {
+              if (!mounted || !origin.isActive) return;
+              navigator.popUntil((route) => identical(route, origin));
+              _refreshAccount();
+            })));
+    if (!mounted) return;
+    _refreshAccount();
+  }
+
+  void _refreshAccount() {
+    setState(() {
+      _nameCtrl.text =
+          _auth.user?.userMetadata?['display_name'] as String? ?? '';
+      _error = null;
+    });
+  }
+
+  Future<void> _signOut() async {
+    if (_updating) return;
+    setState(() {
+      _updating = true;
+      _error = null;
+    });
+    try {
+      await _auth.signOut();
+      if (mounted) setState(() => _nameCtrl.clear());
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Could not sign out. Please try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _updating = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final user = AuthService.currentUser;
+    final user = _auth.user;
     final initial =
         user?.email?.isNotEmpty == true ? user!.email![0].toUpperCase() : '?';
-    final cloudAvailable = AuthService.isAvailable;
+    final cloudAvailable = _auth.available;
 
     return Scaffold(
       appBar: AppBar(
@@ -64,18 +106,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: cloudAvailable
-                ? () async {
-                    await AuthService().signOut();
-                    if (!mounted) return;
-                    unawaited(
-                      Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(builder: (_) => const SignInScreen()),
-                        (route) => false,
-                      ),
-                    );
-                  }
-                : null,
+            tooltip: 'Sign out of cloud account',
+            onPressed:
+                cloudAvailable && user != null && !_updating ? _signOut : null,
           ),
         ],
       ),
@@ -84,6 +117,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (user == null) ...[
+              const Text(
+                  'You can use Neura on this device without a cloud account.'),
+              const SizedBox(height: 12),
+              if (cloudAvailable)
+                FilledButton(
+                    onPressed: _signIn,
+                    child: const Text('Sign in to cloud account (optional)')),
+              const SizedBox(height: 16),
+            ],
             CircleAvatar(
               radius: 40,
               child: Text(initial, style: const TextStyle(fontSize: 32)),

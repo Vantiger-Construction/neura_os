@@ -11,9 +11,15 @@ import 'reset_password_screen.dart';
 import 'verify_email_screen.dart';
 
 class SignInScreen extends StatefulWidget {
-  const SignInScreen(
-      {super.key, this.destination = const EnhancedNavigation()});
+  const SignInScreen({
+    super.key,
+    this.destination = const EnhancedNavigation(),
+    this.onAuthenticated,
+    this.auth,
+  });
   final Widget destination;
+  final VoidCallback? onAuthenticated;
+  final AuthService? auth;
 
   @override
   _SignInScreenState createState() => _SignInScreenState();
@@ -24,6 +30,7 @@ class _SignInScreenState extends State<SignInScreen> {
   final _pass = TextEditingController();
   bool _loading = false;
   String? _error;
+  AuthService get _auth => widget.auth ?? AuthService();
 
   Future<void> _submit() async {
     if (_loading) return;
@@ -33,12 +40,17 @@ class _SignInScreenState extends State<SignInScreen> {
       _error = null;
     });
     try {
-      await AuthService().signIn(_email.text, _pass.text);
+      await _auth.signIn(_email.text, _pass.text);
       if (!mounted) return;
-      final verified = await AuthService().isEmailVerified();
+      final verified = await _auth.isEmailVerified();
       if (!mounted) return;
       TextInput.finishAutofillContext();
       if (verified) {
+        final onAuthenticated = widget.onAuthenticated;
+        if (onAuthenticated != null) {
+          onAuthenticated();
+          return;
+        }
         unawaited(Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => destination),
           (route) => false,
@@ -47,7 +59,10 @@ class _SignInScreenState extends State<SignInScreen> {
         unawaited(Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-                builder: (_) => VerifyEmailScreen(destination: destination))));
+                builder: (_) => VerifyEmailScreen(
+                    destination: destination,
+                    onAuthenticated: widget.onAuthenticated,
+                    auth: widget.auth))));
       }
     } catch (e) {
       if (!mounted) return;
@@ -104,8 +119,10 @@ class _SignInScreenState extends State<SignInScreen> {
                     : () => Navigator.push(
                         ctx,
                         MaterialPageRoute(
-                            builder: (_) =>
-                                SignUpScreen(destination: destination))),
+                            builder: (_) => SignUpScreen(
+                                destination: destination,
+                                onAuthenticated: widget.onAuthenticated,
+                                auth: widget.auth))),
                 child: const Text('Create account')),
             TextButton(
                 onPressed: _loading
