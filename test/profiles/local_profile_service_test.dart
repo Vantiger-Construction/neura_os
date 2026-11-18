@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -169,8 +170,13 @@ void main() {
         NeuraPersonaPreset.playful.profile.toMap());
     final raw =
         NeuraPrefsCache.prefs.getString(LocalProfileService.storageKey)!;
-    expect(raw, isNot(contains('Alex')));
-    expect(raw, isNot(contains('warmth')));
+    // Only the encrypted envelope is stored. Check for the JSON-quoted forms:
+    // base64 ciphertext can never contain a quote, so a bare substring like
+    // 'Alex' could match random ciphertext and make this test flaky.
+    expect((jsonDecode(raw) as Map<String, dynamic>).keys,
+        unorderedEquals(<String>['n', 'c', 'm']));
+    expect(raw, isNot(contains('"Alex"')));
+    expect(raw, isNot(contains('"warmth"')));
     final restarted = LocalProfileService.forTesting(stopSession: () async {});
     addTearDown(restarted.dispose);
     expect(await restarted.load(), isTrue);
