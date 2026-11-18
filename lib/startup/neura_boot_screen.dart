@@ -2,16 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../config/supabase_config.dart';
 import '../modules/navigation/enhanced_navigation.dart';
 import '../reliability/safe_boot.dart';
-import '../screens/sign_in_screen.dart';
-import '../screens/verify_email_screen.dart';
 import '../screens/owner_password_setup.dart';
 import '../services/local_owner_login.dart';
 import 'neura_prefs_cache.dart';
 import '../services/app_lock_prefs.dart';
-import '../services/auth_service.dart';
 import '../widgets/auth_guard.dart';
 import 'neura_startup_avatar.dart';
 import 'neura_boot_recovery_actions.dart';
@@ -20,23 +16,31 @@ import 'neura_startup_coordinator.dart';
 /// Animated splash screen shown while [NeuraStartupCoordinator] runs.
 ///
 /// Kicks off [NeuraStartupCoordinator.boot] after the first painted frame,
-/// then replaces itself with [EnhancedNavigation] once [ready] fires —
-/// or [SignInScreen] first, if Supabase is configured and no one is
-/// signed in yet.
+/// then opens the local owner workspace once startup is ready. Optional cloud
+/// account configuration never adds a second login to this path.
 ///
 /// The screen is intentionally lightweight — no heavy widgets, no async
 /// awaits of its own — so it appears on screen within a single frame of
 /// [runApp].
 class NeuraBootScreen extends StatefulWidget {
-  const NeuraBootScreen({super.key, this.hasOwnerPassword = false});
+  const NeuraBootScreen({
+    super.key,
+    this.hasOwnerPassword = false,
+    this.home = const EnhancedNavigation(),
+    this.coordinator,
+  });
   final bool hasOwnerPassword;
+  final Widget home;
+  @visibleForTesting
+  final NeuraStartupCoordinator? coordinator;
 
   @override
   State<NeuraBootScreen> createState() => _NeuraBootScreenState();
 }
 
 class _NeuraBootScreenState extends State<NeuraBootScreen> {
-  final _coordinator = NeuraStartupCoordinator.instance;
+  late final _coordinator =
+      widget.coordinator ?? NeuraStartupCoordinator.instance;
   bool _navigationScheduled = false;
 
   @override
@@ -69,20 +73,12 @@ class _NeuraBootScreenState extends State<NeuraBootScreen> {
     // a stale decision across a delayed callback.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_coordinator.ready.value) return;
-      // Only ask for sign-in once Supabase is actually configured — with
-      // placeholder keys, Supabase.initialize() was skipped, so touching
-      // Supabase.instance (AuthService included) would throw.
+      // The owner password was checked before this screen mounted. Retain the
+      // optional device lock and local setup without requiring a cloud account.
       final safeMode = SafeBoot.instance.safeMode.value;
-      final canInspectSession = shouldInspectSupabaseSession(
-        safeMode: safeMode,
-        configured: SupabaseConfig.isConfigured,
-        initialized: _coordinator.supabaseInitialized,
-      );
-      final user = canInspectSession ? AuthService.currentUser : null;
       final needsDeviceLock =
           !safeMode && AppLockPrefsController.instance.enabled.value;
       final offerSetup = !safeMode &&
-          (!SupabaseConfig.isConfigured || canInspectSession) &&
           !widget.hasOwnerPassword &&
           NeuraPrefsCache.prefsOrNull
                   ?.getBool(LocalOwnerLogin.setupDismissedKey) !=
@@ -91,16 +87,10 @@ class _NeuraBootScreenState extends State<NeuraBootScreen> {
         PageRouteBuilder<void>(
           pageBuilder: (_, __, ___) {
             final dashboard = offerSetup
-                ? const OwnerPasswordSetup(child: EnhancedNavigation())
-                : const EnhancedNavigation();
+                ? OwnerPasswordSetup(child: widget.home)
+                : widget.home;
             final destination =
                 needsDeviceLock ? AuthGuard(child: dashboard) : dashboard;
-            if (canInspectSession) {
-              if (user == null) return SignInScreen(destination: destination);
-              if (user.emailConfirmedAt == null) {
-                return VerifyEmailScreen(destination: destination);
-              }
-            }
             return destination;
           },
           transitionsBuilder: (_, animation, __, child) {
