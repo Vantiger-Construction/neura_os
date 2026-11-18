@@ -35,12 +35,16 @@ void main() {
       },
     )));
     await tester.pumpAndSettle();
-    for (final field in tester.widgetList<TextFormField>(
-        find.byType(TextFormField))) {
+    for (final field
+        in tester.widgetList<TextFormField>(find.byType(TextFormField))) {
       expect(field.enabled, false);
     }
-    expect(tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Prepare locally')).onPressed, isNull);
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'Prepare locally'))
+            .onPressed,
+        isNull);
     expect(reads, 0);
   });
 
@@ -58,8 +62,8 @@ void main() {
           same(NeuroCompanionApp.navigatorKey.currentState));
       await tester.tap(find.text('Doctor & clinic'));
       await tester.pumpAndSettle();
-      for (final field in tester.widgetList<TextFormField>(
-          find.byType(TextFormField))) {
+      for (final field
+          in tester.widgetList<TextFormField>(find.byType(TextFormField))) {
         expect(field.enabled, true);
       }
       for (final (index, value) in [
@@ -75,16 +79,19 @@ void main() {
       await tester.ensureVisible(find.text('Prepare locally'));
       await tester.tap(find.text('Prepare locally'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('No clinic has been contacted'), findsOneWidget);
+      expect(
+          find.textContaining('No clinic has been contacted'), findsOneWidget);
       final navigator = NeuroCompanionApp.navigatorKey.currentState!;
       final covered = navigator.push<void>(MaterialPageRoute<void>(
           builder: (_) => const Scaffold(body: Text('Synthetic cover'))));
       navigator.pop();
       await covered;
       await tester.pumpAndSettle();
-      expect(find.byWidgetPredicate((widget) =>
-          widget is TextField &&
-          widget.decoration?.labelText == 'Editable clinic report'), findsNothing);
+      expect(
+          find.byWidgetPredicate((widget) =>
+              widget is TextField &&
+              widget.decoration?.labelText == 'Editable clinic report'),
+          findsNothing);
       expect(find.textContaining('Temporary clinic details'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -102,10 +109,9 @@ class _ProductionNavigatorFixture extends NeuroCompanionApp {
   Widget build(BuildContext context) {
     final access = super.build(context) as StartupAccessGate;
     final owner = access.ownerBuilder(false) as StatelessWidget;
-    final root = owner.build(context)
-        as ValueListenableBuilder<HumanPrefs>;
-    final configured = root.builder(context, root.valueListenable.value, null)
-        as MaterialApp;
+    final root = owner.build(context) as ValueListenableBuilder<HumanPrefs>;
+    final configured =
+        root.builder(context, root.valueListenable.value, null) as MaterialApp;
     return MaterialApp(
       navigatorKey: configured.navigatorKey,
       navigatorObservers: configured.navigatorObservers,

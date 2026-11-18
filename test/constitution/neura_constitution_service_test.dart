@@ -144,6 +144,7 @@ void main() {
       notifications++;
       expect(service.current.allowExternalMessages, false);
     }
+
     service.revision.addListener(changed);
     try {
       service.resetAfterDataWipe();
@@ -153,9 +154,7 @@ void main() {
       service.revision.removeListener(changed);
     }
   });
-
 }
-
 
 class _DelayedPolicyStore extends SharedPreferencesStorePlatform {
   final entered = Completer<void>();

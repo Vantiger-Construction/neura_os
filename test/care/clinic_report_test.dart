@@ -78,11 +78,12 @@ void main() {
       home: ClinicContactScreen(
         loadCheckIns: load ?? () async => [],
         copyReport: copy ?? (text) async => copies.add(text),
-        saveReport: save ?? (bytes) async {
-          if (cancelSave) return null;
-          files.add(utf8.decode(bytes));
-          return Uri.file('/synthetic/neura-clinic-report.txt');
-        },
+        saveReport: save ??
+            (bytes) async {
+              if (cancelSave) return null;
+              files.add(utf8.decode(bytes));
+              return Uri.file('/synthetic/neura-clinic-report.txt');
+            },
       ),
     ));
     await tester.pumpAndSettle();
@@ -655,11 +656,12 @@ void main() {
   }
 
   for (final safeMode in [false, true]) {
-    testWidgets('standard editor clipboard controls are blocked in '
+    testWidgets(
+        'standard editor clipboard controls are blocked in '
         '${safeMode ? 'Safe Mode' : 'ordinary mode'}', (tester) async {
       final clipboardWrites = <String>[];
-      binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          SystemChannels.platform, (call) async {
+      binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
         if (call.method == 'Clipboard.setData') {
           clipboardWrites.add((call.arguments as Map)['text'] as String);
         }
@@ -697,14 +699,14 @@ void main() {
         await tester.scrollUntilVisible(field, 250,
             scrollable: find.byType(Scrollable).first);
         await tester.pumpAndSettle();
-        final editable = find.descendant(
-            of: field, matching: find.byType(EditableText));
+        final editable =
+            find.descendant(of: field, matching: find.byType(EditableText));
         final editor = tester.widget<EditableText>(editable);
         expect(editor.enableInteractiveSelection, false);
         await tester.tap(field);
         await tester.pump();
-        editor.controller.selection =
-            TextSelection(baseOffset: 0, extentOffset: editor.controller.text.length);
+        editor.controller.selection = TextSelection(
+            baseOffset: 0, extentOffset: editor.controller.text.length);
         await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
         await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
         await tester.sendKeyEvent(LogicalKeyboardKey.keyX);
@@ -787,5 +789,4 @@ void main() {
       });
     }
   }
-
 }
