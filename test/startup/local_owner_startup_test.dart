@@ -114,9 +114,13 @@ void main() {
             home: const Scaffold(body: Text('Synthetic local workspace')))));
     // No OS approval is supplied. Inspect the blocked route without waiting
     // for an animated pending native authentication prompt to settle.
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byType(AuthGuard), findsOneWidget);
+    for (var frame = 0;
+        frame < 10 && find.byType(AuthGuard).evaluate().isEmpty;
+        frame++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byType(AuthGuard), findsOneWidget,
+        reason: 'Boot must reach its device lock before local access.');
     expect(find.text('Synthetic local workspace'), findsNothing);
     expect(find.byType(LocalOwnerPasswordScreen), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
