@@ -27,6 +27,8 @@ void main() {
 
   testWidgets('an untracked navigator keeps clinic preparation disabled',
       (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1000, 1900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     var reads = 0;
     await tester.pumpWidget(MaterialApp(home: ClinicContactScreen(
       loadCheckIns: () async {
