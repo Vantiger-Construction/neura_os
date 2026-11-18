@@ -5,44 +5,21 @@ import 'package:flutter/material.dart';
 
 import '../models/neura_room.dart';
 
-class NeuraRoomBackdrop extends StatefulWidget {
+/// Room-tinted backdrop under the whole app.
+///
+/// Painted once, not animated. It sits under the Navigator, and every route
+/// paints an opaque background over it, so the old 60Hz drifting-spark
+/// repaint was never visible but cost a full-screen repaint every frame for
+/// as long as the app was open. The gradient still eases between rooms.
+class NeuraRoomBackdrop extends StatelessWidget {
   final NeuraRoom room;
 
   const NeuraRoomBackdrop({super.key, required this.room});
 
-  @override
-  State<NeuraRoomBackdrop> createState() => _NeuraRoomBackdropState();
-}
-
-class _NeuraRoomBackdropState extends State<NeuraRoomBackdrop>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _t;
-  late final List<_Spark> _sparks;
-
-  @override
-  void initState() {
-    super.initState();
-    _t = AnimationController(vsync: this, duration: const Duration(seconds: 18))
-      ..repeat();
-    _sparks = _SparkField.seeded(48, seed: 42);
-  }
-
-  @override
-  void didUpdateWidget(covariant NeuraRoomBackdrop oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Keep the same animation + spark field; only gradient changes.
-  }
-
-  @override
-  void dispose() {
-    _t.dispose();
-    super.dispose();
-  }
+  static final List<_Spark> _sparks = _SparkField.seeded(48, seed: 42);
 
   @override
   Widget build(BuildContext context) {
-    final colors = widget.room.gradient;
-
     return AnimatedContainer(
       duration: const Duration(milliseconds: 650),
       curve: Curves.easeInOut,
@@ -50,20 +27,15 @@ class _NeuraRoomBackdropState extends State<NeuraRoomBackdrop>
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: colors,
+          colors: room.gradient,
         ),
       ),
-      // Isolate the per-frame spark repaint from the gradient underneath so
-      // the gradient layer isn't re-recorded 60 times a second.
+      // Keep the sparks in their own cached layer so a room change only
+      // re-records the gradient underneath.
       child: RepaintBoundary(
-        child: AnimatedBuilder(
-          animation: _t,
-          builder: (context, _) {
-            return CustomPaint(
-              painter: _SparkFieldPainter(progress: _t.value, sparks: _sparks),
-              child: const SizedBox.expand(),
-            );
-          },
+        child: CustomPaint(
+          painter: _SparkFieldPainter(progress: 0, sparks: _sparks),
+          child: const SizedBox.expand(),
         ),
       ),
     );
