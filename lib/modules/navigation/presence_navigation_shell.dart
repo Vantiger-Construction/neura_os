@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -82,6 +83,9 @@ class PresenceNavigationShell extends StatefulWidget {
     required this.onOpenNeura,
     required this.onOpenDiagnostics,
     this.support,
+    this.onListen,
+    this.listenOnOpen,
+    this.onListenOnOpenChanged,
     this.room = NeuraRoom.penthouse,
     this.preferences = ShellPrefs.defaults,
   }) : assert(destinationPages.length == 5);
@@ -95,6 +99,15 @@ class PresenceNavigationShell extends StatefulWidget {
   final Widget? support;
   final VoidCallback onOpenNeura;
   final VoidCallback onOpenDiagnostics;
+
+  /// Opens a voice turn with the microphone already listening. Hidden when
+  /// null.
+  final VoidCallback? onListen;
+
+  /// The saved "listen when Neura opens" opt-in, shown as a switch in
+  /// Neura's corner when both this and [onListenOnOpenChanged] are given.
+  final ValueListenable<bool>? listenOnOpen;
+  final ValueChanged<bool>? onListenOnOpenChanged;
   final NeuraRoom room;
   final ShellPrefs preferences;
 
@@ -153,6 +166,9 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
     });
     command.onSelected();
   }
+
+  /// Null while voice is unavailable, which disables every mic control.
+  VoidCallback? get _listen => widget.status.safeMode ? null : widget.onListen;
 
   Future<void> _openCommandPalette() async {
     final command = await showDialog<PresenceCommand>(
@@ -233,6 +249,10 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
             commands: widget.commands,
             onRunCommand: _runCommand,
             onOpenNeura: widget.onOpenNeura,
+            onListen: _listen,
+            showListen: widget.onListen != null,
+            listenOnOpen: widget.listenOnOpen,
+            onListenOnOpenChanged: widget.onListenOnOpenChanged,
             onToggleCollapsed: () =>
                 setState(() => _stageCollapsed = !_stageCollapsed),
           ),
@@ -253,6 +273,8 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
             commands: widget.commands,
             onRunCommand: _runCommand,
             onOpenNeura: widget.onOpenNeura,
+            onListen: _listen,
+            showListen: widget.onListen != null,
           ),
         ),
         Expanded(child: _buildWorkspace(context, compact: true)),
@@ -297,6 +319,8 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
           _WorkspaceHeader(
             status: widget.status,
             onOpenPalette: _openCommandPalette,
+            onListen: _listen,
+            showListen: widget.onListen != null,
           ),
           const SizedBox(height: 10),
           Expanded(
@@ -416,6 +440,10 @@ class _NeuraStage extends StatelessWidget {
     required this.onRunCommand,
     required this.onOpenNeura,
     required this.onToggleCollapsed,
+    this.onListen,
+    this.showListen = false,
+    this.listenOnOpen,
+    this.onListenOnOpenChanged,
   });
 
   final bool collapsed;
@@ -426,6 +454,10 @@ class _NeuraStage extends StatelessWidget {
   final ValueChanged<PresenceCommand> onRunCommand;
   final VoidCallback onOpenNeura;
   final VoidCallback onToggleCollapsed;
+  final VoidCallback? onListen;
+  final bool showListen;
+  final ValueListenable<bool>? listenOnOpen;
+  final ValueChanged<bool>? onListenOnOpenChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -465,6 +497,14 @@ class _NeuraStage extends StatelessWidget {
                       compact: true,
                     ),
                   ),
+                  if (showListen) ...<Widget>[
+                    const SizedBox(height: 8),
+                    IconButton.filled(
+                      tooltip: _ListenButton.tooltipFor(status),
+                      onPressed: onListen,
+                      icon: const Icon(Icons.mic_rounded),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   RotatedBox(
                     quarterTurns: 3,
@@ -570,19 +610,54 @@ class _NeuraStage extends StatelessWidget {
                       ),
                     ],
                     const SizedBox(height: 10),
-                    FilledButton.icon(
-                      onPressed: onOpenNeura,
-                      icon: const Icon(Icons.chat_bubble_outline_rounded),
-                      label: const Text('Talk to Neura'),
-                    ),
+                    if (showListen) ...<Widget>[
+                      _ListenButton(onListen: onListen, status: status),
+                      const SizedBox(height: 6),
+                      OutlinedButton.icon(
+                        onPressed: onOpenNeura,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: stageForeground,
+                          side: BorderSide(
+                            color: stageForeground.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        icon: const Icon(Icons.keyboard_alt_outlined),
+                        label: const Text('Type to Neura'),
+                      ),
+                    ] else
+                      FilledButton.icon(
+                        onPressed: onOpenNeura,
+                        icon: const Icon(Icons.chat_bubble_outline_rounded),
+                        label: const Text('Talk to Neura'),
+                      ),
                     const SizedBox(height: 6),
-                    Text(
-                      status.voiceLabel,
-                      textAlign: TextAlign.center,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.labelMedium?.copyWith(color: stageMuted),
-                    ),
+                    _LiveVoiceLabel(status: status, color: stageMuted),
+                    if (listenOnOpen != null && onListenOnOpenChanged != null)
+                      ValueListenableBuilder<bool>(
+                        valueListenable: listenOnOpen!,
+                        builder: (context, enabled, _) => Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: Text(
+                                'Listen as soon as Neura opens',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelMedium
+                                    ?.copyWith(color: stageForeground),
+                              ),
+                            ),
+                            Switch(
+                              key: const ValueKey<String>(
+                                'listen-on-open-switch',
+                              ),
+                              value: enabled,
+                              onChanged: status.safeMode
+                                  ? null
+                                  : onListenOnOpenChanged,
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -599,6 +674,8 @@ class _CompactNeuraStage extends StatelessWidget {
     required this.commands,
     required this.onRunCommand,
     required this.onOpenNeura,
+    this.onListen,
+    this.showListen = false,
   });
 
   final PresenceShellStatus status;
@@ -607,6 +684,8 @@ class _CompactNeuraStage extends StatelessWidget {
   final List<PresenceCommand> commands;
   final ValueChanged<PresenceCommand> onRunCommand;
   final VoidCallback onOpenNeura;
+  final VoidCallback? onListen;
+  final bool showListen;
 
   @override
   Widget build(BuildContext context) {
@@ -678,8 +757,16 @@ class _CompactNeuraStage extends StatelessWidget {
                   icon: Icon(activities.first.icon),
                 ),
               const SizedBox(width: 8),
+              if (showListen) ...<Widget>[
+                IconButton.filled(
+                  tooltip: _ListenButton.tooltipFor(status),
+                  onPressed: onListen,
+                  icon: const Icon(Icons.mic_rounded),
+                ),
+                const SizedBox(width: 6),
+              ],
               IconButton.filledTonal(
-                tooltip: 'Talk to Neura',
+                tooltip: showListen ? 'Type to Neura' : 'Talk to Neura',
                 onPressed: onOpenNeura,
                 icon: const Icon(Icons.chat_bubble_outline_rounded),
               ),
@@ -687,6 +774,91 @@ class _CompactNeuraStage extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The main way to talk to Neura from the menu: one tap opens a voice turn
+/// that is already listening.
+class _ListenButton extends StatelessWidget {
+  const _ListenButton({required this.onListen, required this.status});
+
+  final VoidCallback? onListen;
+  final PresenceShellStatus status;
+
+  static String tooltipFor(PresenceShellStatus status) => status.safeMode
+      ? 'Voice is off in Safe Mode'
+      : 'Talk to Neura. She listens right away';
+
+  @override
+  Widget build(BuildContext context) {
+    final listening =
+        !status.safeMode && status.phase == NeuraPresencePhase.listening;
+    return Tooltip(
+      message: tooltipFor(status),
+      child: FilledButton.icon(
+        key: const ValueKey<String>('neura-listen-button'),
+        onPressed: onListen,
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(52),
+          textStyle: Theme.of(context)
+              .textTheme
+              .titleSmall
+              ?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        icon: Icon(listening ? Icons.graphic_eq_rounded : Icons.mic_rounded),
+        label: Text(
+          status.safeMode
+              ? 'Voice off'
+              : listening
+                  ? 'Listening…'
+                  : 'Talk to Neura',
+        ),
+      ),
+    );
+  }
+}
+
+/// Voice state with a live dot while Neura is listening or speaking.
+class _LiveVoiceLabel extends StatelessWidget {
+  const _LiveVoiceLabel({required this.status, required this.color});
+
+  final PresenceShellStatus status;
+  final Color color;
+
+  static const _liveColor = Color(0xFF5BE38C);
+
+  @override
+  Widget build(BuildContext context) {
+    final live = !status.safeMode &&
+        (status.phase == NeuraPresencePhase.listening ||
+            status.phase == NeuraPresencePhase.speaking);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        if (live) ...<Widget>[
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: _liveColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+        ],
+        Flexible(
+          child: Text(
+            status.voiceLabel,
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context)
+                .textTheme
+                .labelMedium
+                ?.copyWith(color: live ? _liveColor : color),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -766,10 +938,17 @@ List<PresenceCommand> _roomActivities(
 }
 
 class _WorkspaceHeader extends StatelessWidget {
-  const _WorkspaceHeader({required this.status, required this.onOpenPalette});
+  const _WorkspaceHeader({
+    required this.status,
+    required this.onOpenPalette,
+    this.onListen,
+    this.showListen = false,
+  });
 
   final PresenceShellStatus status;
   final VoidCallback onOpenPalette;
+  final VoidCallback? onListen;
+  final bool showListen;
 
   @override
   Widget build(BuildContext context) {
@@ -801,6 +980,15 @@ class _WorkspaceHeader extends StatelessWidget {
                   const Expanded(child: Text('Ask Neura or type a command…')),
                   if (MediaQuery.of(context).size.width >= 700)
                     const _KeyboardHint(),
+                  if (showListen) ...<Widget>[
+                    const SizedBox(width: 6),
+                    IconButton(
+                      key: const ValueKey<String>('palette-mic'),
+                      tooltip: _ListenButton.tooltipFor(status),
+                      onPressed: onListen,
+                      icon: const Icon(Icons.mic_none_rounded),
+                    ),
+                  ],
                 ],
               ),
             ),

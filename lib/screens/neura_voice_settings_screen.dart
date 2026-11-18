@@ -2,11 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 import '../services/neura_tts_service.dart';
-import '../services/neura_local_speech_input.dart';
 import '../services/neura_startup_voice_prefs.dart';
+import '../services/neura_startup_voice_setup.dart';
 import '../reliability/safe_boot.dart';
 import '../modules/chat/neura_chat_screen.dart';
 
@@ -33,28 +32,8 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
   Future<void> _setStartupVoice(bool value) async {
     setState(() => _savingStartup = true);
     try {
-      if (value) {
-        if (!await NeuraLocalSpeechInput.instance.isAvailable()) {
-          throw StateError('Install an on-device speech language pack first.');
-        }
-        if (defaultTargetPlatform == TargetPlatform.android &&
-            !(await Permission.microphone.request()).isGranted) {
-          throw StateError('Allow microphone access to use startup voice.');
-        }
-        if (!mounted ||
-            SafeBoot.instance.safeMode.value ||
-            SafeBoot.instance.restartRequired.value) {
-          return;
-        }
-        await NeuraTtsService.instance.prepareLocalStartupVoice();
-      }
-      await NeuraStartupVoicePrefs.instance.setEnabled(value);
-      if (value &&
-          NeuraTtsService.instance.replySpeechMode ==
-              NeuraReplySpeechMode.off) {
-        await NeuraTtsService.instance
-            .setReplySpeechMode(NeuraReplySpeechMode.afterComplete);
-      }
+      await NeuraStartupVoiceSetup.setEnabled(value,
+          stillWanted: () => mounted);
       if (mounted) {
         setState(
             () => _replySpeechMode = NeuraTtsService.instance.replySpeechMode);

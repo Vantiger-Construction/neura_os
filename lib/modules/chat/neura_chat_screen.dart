@@ -66,11 +66,18 @@ class NeuraChatScreen extends StatefulWidget {
     this.aiService,
     this.ttsService,
     this.startWithVoice = false,
+    this.listenNow = false,
     this.speechInput,
   });
 
   /// Requires the saved startup-voice opt-in; never uses online OS dictation.
   final bool startWithVoice;
+
+  /// The user tapped Neura's microphone: open the on-device microphone as
+  /// soon as the screen is up, with no greeting first. The tap itself is the
+  /// consent, so this does not need the startup opt-in. Safe Mode, a pending
+  /// restart and the usual foreground checks still apply.
+  final bool listenNow;
   final NeuraSpeechInput? speechInput;
 
   /// Optional test seam. The screen owns and disposes the supplied session.
@@ -187,6 +194,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_greetAndListen());
       });
+    } else if (widget.listenNow) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_listenNow());
+      });
     }
     _localSession = widget.localSession ?? LocalConversationSession();
     _localSession.addListener(_onLocalChanged);
@@ -277,6 +288,18 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     } finally {
       if (mounted) setState(() => _startupGreeting = false);
     }
+  }
+
+  Future<void> _listenNow() async {
+    if (!mounted ||
+        _localSelected ||
+        _continuousMode ||
+        SafeBoot.instance.safeMode.value ||
+        SafeBoot.instance.restartRequired.value) {
+      return;
+    }
+    _continuousMode = true;
+    await _startListeningTurn();
   }
 
   Future<void> _startLocalChat() async {

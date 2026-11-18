@@ -73,6 +73,10 @@ void main() {
       List<Widget>? destinationPages,
       Widget? support,
       NeuraRoom room = NeuraRoom.penthouse,
+      PresenceShellStatus shellStatus = status,
+      VoidCallback? onListen,
+      ValueNotifier<bool>? listenOnOpen,
+      ValueChanged<bool>? onListenOnOpenChanged,
     }) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = size;
@@ -94,8 +98,11 @@ void main() {
                     Center(child: Text('Controls surface')),
                   ],
               commands: commands,
-              status: status,
+              status: shellStatus,
               now: const Text('A quiet local moment'),
+              onListen: onListen,
+              listenOnOpen: listenOnOpen,
+              onListenOnOpenChanged: onListenOnOpenChanged,
               support: support,
               onOpenNeura: () {},
               onOpenDiagnostics: () {},
@@ -152,6 +159,93 @@ void main() {
       await pumpShell(tester, const Size(400, 860));
       expect(find.byKey(const ValueKey('neura-penthouse')), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+
+    const liveStatus = PresenceShellStatus(
+      safeMode: false,
+      cloudLabel: 'Cloud gated',
+      voiceLabel: 'Voice ready',
+      presenceLabel: 'Neura is nearby',
+    );
+
+    testWidgets('one tap on the mic starts listening from the menu', (
+      tester,
+    ) async {
+      var listens = 0;
+      await pumpShell(
+        tester,
+        const Size(1280, 800),
+        shellStatus: liveStatus,
+        onListen: () => listens++,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('neura-listen-button')));
+      await tester.tap(find.byKey(const ValueKey('palette-mic')));
+      expect(listens, 2);
+      expect(find.text('Type to Neura'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('phone layout has its own mic next to Neura', (tester) async {
+      var listens = 0;
+      await pumpShell(
+        tester,
+        const Size(400, 860),
+        shellStatus: liveStatus,
+        onListen: () => listens++,
+      );
+
+      await tester
+          .tap(find.byTooltip('Talk to Neura. She listens right away').first);
+      expect(listens, 1);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Safe Mode disables every mic control', (tester) async {
+      var listens = 0;
+      final listenOnOpen = ValueNotifier<bool>(false);
+      addTearDown(listenOnOpen.dispose);
+      await pumpShell(
+        tester,
+        const Size(1280, 800),
+        onListen: () => listens++,
+        listenOnOpen: listenOnOpen,
+        onListenOnOpenChanged: (value) => listenOnOpen.value = value,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('neura-listen-button')));
+      await tester.tap(find.byKey(const ValueKey('palette-mic')));
+      await tester.tap(find.byKey(const ValueKey('listen-on-open-switch')));
+      expect(listens, 0);
+      expect(listenOnOpen.value, isFalse);
+      expect(find.text('Voice off'), findsWidgets);
+    });
+
+    testWidgets('the listen-on-open switch reflects and changes the opt-in', (
+      tester,
+    ) async {
+      final listenOnOpen = ValueNotifier<bool>(false);
+      addTearDown(listenOnOpen.dispose);
+      final changes = <bool>[];
+      await pumpShell(
+        tester,
+        const Size(1280, 800),
+        shellStatus: liveStatus,
+        onListen: () {},
+        listenOnOpen: listenOnOpen,
+        onListenOnOpenChanged: changes.add,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('listen-on-open-switch')));
+      expect(changes, <bool>[true]);
+      listenOnOpen.value = true;
+      await tester.pump();
+      expect(
+        tester
+            .widget<Switch>(find.byKey(const ValueKey('listen-on-open-switch')))
+            .value,
+        isTrue,
+      );
     });
 
     testWidgets('uses a compact stage and bottom rail on phone screens', (
