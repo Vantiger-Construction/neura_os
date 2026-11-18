@@ -21,6 +21,9 @@ void main() {
     await tester.pumpWidget(_host(enabled: true));
     expect(_ambientPaint(), findsOneWidget);
     expect(tester.hasRunningAnimations, isFalse);
+    // MaterialApp schedules housekeeping frames on first mount. A repeating
+    // animation would never settle, so pumpAndSettle would time out here.
+    await tester.pumpAndSettle();
     expect(tester.binding.hasScheduledFrame, isFalse);
   });
 
