@@ -5,17 +5,17 @@ import 'package:neuro_companion/services/local_owner_login.dart';
 
 class _OwnerLogin extends Fake implements LocalOwnerLogin {
   int saves = 0;
-  bool? remembered;
+  bool? savedPreference;
 
   @override
   Future<void> create(String password, {required bool remember}) async {
     saves++;
-    remembered = remember;
+    savedPreference = remember;
   }
 
   @override
   Future<bool> unlock(String password, {required bool remember}) async {
-    remembered = remember;
+    savedPreference = remember;
     return password == 'synthetic owner passphrase';
   }
 }
@@ -77,7 +77,7 @@ void main() {
     await tester.tap(find.text('Save owner password'));
     await tester.pumpAndSettle();
     expect(login.saves, 1);
-    expect(login.remembered, isTrue);
+    expect(login.savedPreference, isTrue);
     expect(admissions, 1);
   }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 
@@ -109,6 +109,6 @@ void main() {
     await tester.tap(find.text('Unlock'));
     await tester.pumpAndSettle();
     expect(admissions, 1);
-    expect(login.remembered, isFalse);
+    expect(login.savedPreference, isFalse);
   }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 }
