@@ -203,10 +203,12 @@ void main() {
       final startEntered = platform.startEntered = Completer<String>();
       final starting = service.startRecording();
       try {
-        final id = await startEntered.future.timeout(const Duration(seconds: 3));
+        final id =
+            await startEntered.future.timeout(const Duration(seconds: 3));
         expect(platform.live.single, id);
         final requested = File(platform.paths[id]!);
-        final returned = await fixture.seed('${fixture.documents.path}/late.m4a');
+        final returned =
+            await fixture.seed('${fixture.documents.path}/late.m4a');
         platform.returnedPaths[id] = returned.path;
         final stopping = service.stopRecording();
         startGate.complete();
