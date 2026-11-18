@@ -199,21 +199,27 @@ void main() {
   test('late-start cleanup removes both paths after Stop revokes capture',
       () async {
     await fixture.run(() async {
-      platform.startGate = Completer<void>();
+      final startGate = platform.startGate = Completer<void>();
+      final startEntered = platform.startEntered = Completer<String>();
       final starting = service.startRecording();
-      await drainRecorderEvents();
-      final id = platform.live.single;
-      final requested = File(platform.paths[id]!);
-      final returned = await fixture.seed('${fixture.documents.path}/late.m4a');
-      platform.returnedPaths[id] = returned.path;
-      final stopping = service.stopRecording();
-      platform.startGate!.complete();
-      await starting;
-      await stopping;
-      expect(platform.live, isEmpty);
-      expect(await requested.exists(), isFalse);
-      expect(await returned.exists(), isFalse);
-      fixture.expectIsolation();
+      try {
+        final id = await startEntered.future.timeout(const Duration(seconds: 3));
+        expect(platform.live.single, id);
+        final requested = File(platform.paths[id]!);
+        final returned = await fixture.seed('${fixture.documents.path}/late.m4a');
+        platform.returnedPaths[id] = returned.path;
+        final stopping = service.stopRecording();
+        startGate.complete();
+        await starting;
+        await stopping;
+        expect(platform.live, isEmpty);
+        expect(await requested.exists(), isFalse);
+        expect(await returned.exists(), isFalse);
+        fixture.expectIsolation();
+      } finally {
+        // Do not leave teardown blocked if an assertion fails before release.
+        if (!startGate.isCompleted) startGate.complete();
+      }
     });
   });
 
