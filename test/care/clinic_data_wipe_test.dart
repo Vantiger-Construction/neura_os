@@ -152,7 +152,8 @@ void main() {
           );
           backupOutcome = service
               .exportToFile(pin: '1234', passphrase: 'synthetic passphrase')
-              .then<Object?>((value) => value, onError: (Object error) => error);
+              .then<Object?>((value) => value,
+                  onError: (Object error) => error);
           await entered.future.timeout(const Duration(seconds: 5));
           PortableVaultBackupService.wipeDrainTimeout =
               const Duration(milliseconds: 20);

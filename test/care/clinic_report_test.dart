@@ -743,8 +743,8 @@ void main() {
           AppLifecycleState.paused,
           AppLifecycleState.detached,
         ];
-        final backgroundIndex = backgroundStates
-            .indexWhere((state) => state.name == interruption);
+        final backgroundIndex =
+            backgroundStates.indexWhere((state) => state.name == interruption);
         final pending = Completer<Uri?>();
         final dispatched = <String>[];
         await mount(tester, save: (bytes) {
