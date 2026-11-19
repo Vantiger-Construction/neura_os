@@ -198,10 +198,14 @@ void main() {
   ) async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.windows) return;
     await pumpChat(tester);
-    await tester.tap(find.byTooltip('Approved cloud / basic local reply'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Offline Ollama'));
-    await tester.pumpAndSettle();
+    final cloud = find.byTooltip('Approved cloud / basic local reply');
+    if (cloud.evaluate().isNotEmpty) {
+      await tester.tap(cloud);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Offline Ollama'));
+      await tester.pumpAndSettle();
+    }
+    expect(find.byTooltip('Offline Ollama'), findsOneWidget);
 
     await chooseOffline(tester);
     final acceptedBySessionOnly = 'x' * 1600;
