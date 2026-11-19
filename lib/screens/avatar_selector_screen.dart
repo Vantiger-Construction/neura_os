@@ -52,6 +52,38 @@ class _AvatarSelectorScreenState extends State<AvatarSelectorScreen> {
     });
   }
 
+  Widget _preview(String id) {
+    if (id == AvatarRegistry.expressiveFaceId) {
+      return FlutterMouthAvatarView(
+        controller: AvatarGlobals.controller,
+        size: 48,
+        enabled: false,
+      );
+    }
+    if (id == AvatarRegistry.nebulaId) {
+      return NebulaAvatarView(
+        controller: AvatarGlobals.controller,
+        size: 48,
+        enabled: false,
+      );
+    }
+    return const Icon(Icons.person_outline);
+  }
+
+  String _subtitle(String id) {
+    if (id == AvatarRegistry.expressiveFaceId) {
+      return 'A simple face with live speech mouth movements. '
+          'Windows uses local speech timing.';
+    }
+    if (id == AvatarRegistry.nebulaId) {
+      return 'Flowing nebula energy, a heartbeat core and a mouth of light.';
+    }
+    if (id == AvatarRegistry.defaultAvatarId) {
+      return 'Original full-body artwork with gentle body motion.';
+    }
+    return 'Alternate identity; currently uses Neura’s fallback artwork.';
+  }
+
   @override
   Widget build(BuildContext ctx) {
     return Scaffold(
@@ -74,34 +106,12 @@ class _AvatarSelectorScreenState extends State<AvatarSelectorScreen> {
                 child: Text(_error!, semanticsLabel: _error),
               ),
             ..._avatars.map((a) {
-              final expressive = a.id == AvatarRegistry.expressiveFaceId;
-              final nebula = a.id == AvatarRegistry.nebulaId;
               final selected = a.id == selectedId;
               return ListTile(
                 key: ValueKey(a.id),
-                leading: expressive
-                    ? FlutterMouthAvatarView(
-                        controller: AvatarGlobals.controller,
-                        size: 48,
-                        enabled: false,
-                      )
-                    : nebula
-                        ? NebulaAvatarView(
-                            controller: AvatarGlobals.controller,
-                            size: 48,
-                            enabled: false,
-                          )
-                        : const Icon(Icons.person_outline),
+                leading: _preview(a.id),
                 title: Text(a.name),
-                subtitle: Text(expressive
-                    ? 'A simple face with live speech mouth movements. '
-                        'Windows uses local speech timing.'
-                    : nebula
-                        ? 'Flowing nebula energy with a heartbeat core and '
-                            'a mouth of light while she speaks.'
-                        : a.id == AvatarRegistry.defaultAvatarId
-                        ? 'Original full-body artwork with gentle body motion.'
-                        : 'Alternate identity; currently uses Neura’s fallback artwork.'),
+                subtitle: Text(_subtitle(a.id)),
                 selected: selected,
                 trailing: selected ? const Icon(Icons.check) : null,
                 onTap: _loading || _saving ? null : () => _onSelect(a.id),
