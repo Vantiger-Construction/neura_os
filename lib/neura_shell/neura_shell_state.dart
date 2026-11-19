@@ -14,12 +14,14 @@ import '../startup/neura_startup_coordinator.dart';
 import 'models/neura_room.dart';
 import 'services/neura_ambient_audio_service.dart';
 
+/// Neura appears only in the main menu's corner. The separate floating
+/// desktop window is retired on every platform.
 @visibleForTesting
 bool supportsNeuraMascot({
   required TargetPlatform platform,
   required bool isWeb,
 }) =>
-    !isWeb && platform == TargetPlatform.windows;
+    false;
 
 /// Concrete [InheritedNotifier] subclass so [NeuraShell.of] can look it up
 /// with `dependOnInheritedWidgetOfExactType`, which matches by exact runtime

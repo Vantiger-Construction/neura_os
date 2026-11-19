@@ -154,22 +154,20 @@ Future<void> _bootstrapWindowAndLaunch() async {
       return;
     }
 
-    // The primary app must not wait on this optional plugin. Its first Flutter
-    // frame is attached now; companion-window capability initializes in the
-    // background and is permanently disabled for this process if unavailable.
+    // Neura lives in the main menu's corner only. The separate floating
+    // always-on-top window is never created, so services that order their
+    // native startup after it (mic, wake word) do not wait for it either.
+    MascotWindowService.I.disableForProcess();
     _attachRoot(const NeuroCompanionApp());
-    final windowManagerReady = _initializePrimaryWindowManager(role.windowId);
-    MascotWindowService.I.deferCreationUntil(windowManagerReady);
-    unawaited(windowManagerReady);
+    unawaited(_initializePrimaryWindowManager(role.windowId));
     return;
   }
 
   // macOS has no Neura role channel or secondary mascot integration. The
   // primary app renders first and window_manager_plus remains best effort.
+  MascotWindowService.I.disableForProcess();
   _attachRoot(const NeuroCompanionApp());
-  final windowManagerReady = _initializePrimaryWindowManager(0);
-  MascotWindowService.I.deferCreationUntil(windowManagerReady);
-  unawaited(windowManagerReady);
+  unawaited(_initializePrimaryWindowManager(0));
 }
 
 Future<void> _initializePrimaryWindowManager(int windowId) async {
