@@ -96,13 +96,6 @@ class NeuraRoomSelectorSheet {
                 subtitle:
                     const Text('Neura changes rooms when you change tabs'),
               ),
-              SwitchListTile(
-                value: state.showAvatar,
-                onChanged: (v) => state.setShowAvatar(v),
-                title: const Text('Show Neura overlay'),
-                subtitle:
-                    const Text('Little floating Neura head on every screen'),
-              ),
               const SizedBox(height: 8),
             ],
           ),

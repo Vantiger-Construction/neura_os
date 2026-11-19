@@ -146,7 +146,7 @@ class MascotWindowService {
   }
 
   /// Best-effort, fire-and-forget message to the mascot window's own engine
-  /// (see [WindowListener.onEventFromWindow] in mascot_window_app.dart).
+  /// (the floating window it targeted is retired and never created now).
   /// Never throws -- this is purely a visual hint, so a delivery failure
   /// (window not created yet, window closed, IPC hiccup) should just mean
   /// "the mascot doesn't react this time", not a crash anywhere upstream.

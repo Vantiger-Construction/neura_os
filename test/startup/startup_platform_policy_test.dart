@@ -172,11 +172,11 @@ void main() {
       );
     });
 
-    test('mascot is advertised only for Windows', () {
+    test('no platform opens the separate floating Neura window', () {
       for (final platform in TargetPlatform.values) {
         expect(
           supportsNeuraMascot(platform: platform, isWeb: false),
-          platform == TargetPlatform.windows,
+          isFalse,
         );
         expect(
           supportsNeuraMascot(platform: platform, isWeb: true),
