@@ -9,6 +9,10 @@ enum AvatarFormat {
 
   /// Built-in mouth-compatible portrait; no external asset is required.
   flutterFace,
+
+  /// Built-in nebula-energy figure with a heartbeat core and energy channel;
+  /// no external asset is required.
+  nebula,
 }
 
 /// A small, stable set of signals we can drive across all avatar formats.
