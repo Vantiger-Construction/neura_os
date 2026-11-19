@@ -11,7 +11,6 @@ import 'package:neuro_companion/core/neura_events_extra.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/screens/avatar_selector_screen.dart';
 import 'package:neuro_companion/services/avatar_service.dart';
-import 'package:neuro_companion/services/neura_companion_presence.dart';
 import 'package:neuro_companion/src/shell/shell_prefs.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 import 'package:shared_preferences/shared_preferences.dart';
