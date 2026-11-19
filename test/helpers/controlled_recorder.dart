@@ -21,6 +21,9 @@ class ControlledRecorder extends Fake
   final failedDisposals = <String>{};
   Completer<bool>? permissionGate;
   Completer<void>? startGate;
+  // Signals native start admission after the synthetic file write, before
+  // startGate is released. Event-loop turns are not an I/O completion barrier.
+  Completer<String>? startEntered;
   Completer<void>? stopGate;
   Completer<void>? disposeGate;
   bool granted = true;
@@ -52,6 +55,8 @@ class ControlledRecorder extends Fake
   Future<void> _start(String recorderId) async {
     starts++;
     live.add(recorderId);
+    final entered = startEntered;
+    if (entered != null && !entered.isCompleted) entered.complete(recorderId);
     await startGate?.future;
     if (rejectStart) throw StateError('Synthetic capture startup denial.');
     states[recorderId]!.add(RecordState.record);
