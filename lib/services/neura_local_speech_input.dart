@@ -43,14 +43,32 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
   int? _nativeSession;
   String _text = '';
 
-  bool get _allowed =>
-      !LocalProfileService.instance.enabled &&
-      !_disposed &&
-      !_quarantined &&
-      !SafeBoot.instance.safeMode.value &&
-      !SafeBoot.instance.restartRequired.value &&
-      (_foreground?.call() ??
-          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed);
+  String? _lastFailure;
+
+  /// Why the most recent [startRecording] returned false, as a short fixed
+  /// code (never audio or transcript text). Null after a successful start.
+  String? get lastFailure => _lastFailure;
+
+  // Windows may not report a lifecycle state until focus first changes, so
+  // an unreported state counts as foreground, as it does everywhere else in
+  // the app. The native recognizer still refuses to start unless Neura's
+  // window really is the foreground window, and stops when it loses focus.
+  static bool _lifecycleForeground() {
+    final state = WidgetsBinding.instance.lifecycleState;
+    return state == null || state == AppLifecycleState.resumed;
+  }
+
+  bool get _allowed => _blockedReason == null;
+
+  String? get _blockedReason {
+    if (_disposed) return 'disposed';
+    if (_quarantined) return 'shutdown_unconfirmed';
+    if (LocalProfileService.instance.enabled) return 'profile_mode';
+    if (SafeBoot.instance.safeMode.value) return 'safe_mode';
+    if (SafeBoot.instance.restartRequired.value) return 'restart_required';
+    if (!(_foreground?.call() ?? _lifecycleForeground())) return 'background';
+    return null;
+  }
 
   @override
   Stream<String> get transcriptStream => _transcripts.stream;
@@ -72,7 +90,11 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
 
   @override
   Future<bool> startRecording() {
-    if (!_allowed) return Future.value(false);
+    final blocked = _blockedReason;
+    if (blocked != null) {
+      _lastFailure = blocked;
+      return Future.value(false);
+    }
     if (_listening) return Future.value(true);
     final existing = _starting;
     if (existing != null) return existing;
@@ -86,28 +108,44 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
   }
 
   Future<bool> _start(int generation) async {
-    bool current() => generation == _generation && _allowed;
+    bool current() {
+      if (generation != _generation) {
+        _lastFailure = 'superseded';
+        return false;
+      }
+      final blocked = _blockedReason;
+      if (blocked != null) _lastFailure = blocked;
+      return blocked == null;
+    }
+
     var nativeRequested = false;
+    _lastFailure = null;
     try {
       final stopping = _stopping;
       if (stopping != null) await stopping;
       if (!current()) return false;
-      if (await _channel.invokeMethod<bool>('isAvailable') != true ||
-          !current()) {
+      if (await _channel.invokeMethod<bool>('isAvailable') != true) {
+        _lastFailure = 'no_local_engine';
         return false;
       }
+      if (!current()) return false;
       final permission = _requestPermission;
       final granted = permission != null
           ? await permission()
           : (defaultTargetPlatform != TargetPlatform.android ||
               (await Permission.microphone.request()).isGranted);
-      if (!granted || !current()) return false;
+      if (!granted) {
+        _lastFailure = 'permission_denied';
+        return false;
+      }
+      if (!current()) return false;
       _text = '';
       nativeRequested = true;
       _nativeSession = generation;
       final started =
           await _channel.invokeMethod<bool>('start', {'session': generation}) ==
               true;
+      if (!started) _lastFailure = 'native_start_refused';
       if (!started || !current()) {
         await _stopNative(generation);
         return false;
@@ -118,11 +156,28 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
         unawaited(_poll(generation));
       });
       return true;
+    } on PlatformException catch (error) {
+      final details = error.details;
+      _lastFailure = details is String && _nativeReasons.contains(details)
+          ? 'native_$details'
+          : 'native_error';
+      if (nativeRequested) await _stopNative(generation);
+      return false;
     } catch (_) {
+      _lastFailure = 'native_error';
       if (nativeRequested) await _stopNative(generation);
       return false;
     }
   }
+
+  // Fixed codes the Windows host may report; anything else is generic.
+  static const _nativeReasons = <String>{
+    'not_foreground',
+    'no_local_engine',
+    'recognizer',
+    'microphone',
+    'dictation',
+  };
 
   Future<void> _poll(int generation) async {
     if (_polling || !_listening || generation != _generation) return;
