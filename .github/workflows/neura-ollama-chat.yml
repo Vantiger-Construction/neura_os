@@ -9,8 +9,6 @@ on:
       - 'lib/planning/**'
       - 'lib/reference/**'
       - 'lib/avatar/motion/**'
-      - 'lib/mascot/mascot_event_bridge.dart'
-      - 'lib/mascot/mascot_window_app.dart'
       - 'lib/services/neura_conversation_thread.dart'
       - 'lib/services/neura_tts_service.dart'
       - 'test/reference/**'
@@ -109,8 +107,8 @@ jobs:
           test/widgets/neura_activity_badge_test.dart test/widgets/neura_offline_controls_test.dart \
           test/services/neura_offline_budget_test.dart test/startup/neura_boot_recovery_actions_test.dart \
           test/neura_shell/neura_room_presence_motion_test.dart \
-          lib/reference lib/avatar/motion lib/mascot/mascot_event_bridge.dart \
-          lib/mascot/mascot_window_app.dart lib/services/neura_conversation_thread.dart \
+          lib/reference lib/avatar/motion \
+          lib/services/neura_conversation_thread.dart \
           lib/services/neura_tts_service.dart test/reference test/avatar \
           test/services/neura_conversation_thread_test.dart test/services/neura_tts_lifecycle_test.dart
       - name: Analyze integration
@@ -126,8 +124,8 @@ jobs:
           test/widgets/neura_activity_badge_test.dart test/widgets/neura_offline_controls_test.dart
           test/services/neura_offline_budget_test.dart test/startup/neura_boot_recovery_actions_test.dart
           test/neura_shell/neura_room_presence_motion_test.dart
-          lib/reference lib/avatar/motion lib/mascot/mascot_event_bridge.dart
-          lib/mascot/mascot_window_app.dart lib/services/neura_conversation_thread.dart
+          lib/reference lib/avatar/motion
+          lib/services/neura_conversation_thread.dart
           lib/services/neura_tts_service.dart test/reference test/avatar
           test/services/neura_conversation_thread_test.dart test/services/neura_tts_lifecycle_test.dart
       - name: Test adapter and existing lifecycle boundaries

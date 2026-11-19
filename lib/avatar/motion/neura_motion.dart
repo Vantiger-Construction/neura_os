@@ -12,9 +12,6 @@
 //   NeuraAvatarRuntimeBridge stance (room) for posture bias
 //   ShellPrefs               Still / Subtle / Expressive
 //   SafeBoot                 Safe Mode → frozen, neutral, no gestures
-//
-// The floating mascot runs in its own isolate and owns its own engine; it is
-// fed the same signals through MascotEventBridge.
 
 import 'dart:async';
 import '../../profiles/local_profile_service.dart';

@@ -12,7 +12,6 @@ on:
       - 'lib/reliability/safe_boot*'
       - 'lib/src/shell/shell_prefs.dart'
       - 'test/avatar/**'
-      - 'test/mascot/**'
       - 'test/neura_shell/**'
       - 'test/services/neura_tts_lifecycle_test.dart'
       - 'pubspec.yaml'
@@ -36,12 +35,9 @@ env:
     lib/avatar/motion/neura_animated_body.dart
     lib/avatar/motion/neura_motion.dart
     lib/avatar/motion/neura_motion_engine.dart
-    lib/mascot/mascot_event_bridge.dart
-    lib/mascot/mascot_window_app.dart
     lib/neura_shell/widgets/neura_room_presence_avatar.dart
     lib/services/neura_tts_service.dart
     test/avatar/neura_motion_lifecycle_test.dart
-    test/mascot/mascot_motion_lifecycle_test.dart
     test/neura_shell/neura_room_presence_motion_test.dart
     test/services/neura_tts_lifecycle_test.dart
 
@@ -73,7 +69,7 @@ jobs:
       - name: Run synthetic motion, route and speech regressions
         run: >-
           flutter test --no-pub --reporter expanded
-          test/avatar test/mascot test/neura_shell
+          test/avatar test/neura_shell
           test/services/neura_tts_lifecycle_test.dart
           test/startup/native_speech_safe_mode_test.dart
           test/neura_link/reply_speech_queue_test.dart
