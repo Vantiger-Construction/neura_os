@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager_plus/window_manager_plus.dart';
 
-import 'mascot/mascot_window_bootstrap.dart';
 import 'mascot/mascot_window_service.dart';
 import 'mascot/neura_window_role.dart';
 import 'reliability/safe_boot.dart';
@@ -45,11 +44,10 @@ bool launchSmokeTestRequested(List<String> arguments, {required bool isWeb}) {
 /// [NeuraStartupCoordinator], which is fired from [NeuraBootScreen] and runs
 /// concurrently with the first UI frame.
 ///
-/// window_manager_plus (used for the floating avatar window) re-enters this
-/// same entrypoint for every window it creates, running a fresh engine in
-/// the same process. Which window this is (main app vs. the floating
-/// mascot) and its real window id come from [NeuraWindowRole], not from
-/// `args` -- see that class for why.
+/// window_manager_plus re-enters this same entrypoint for every window it
+/// creates. Neura no longer creates a floating window, but the window id
+/// and role still come from [NeuraWindowRole], not from `args` -- see that
+/// class for why.
 void main(List<String> args) {
   if (neuraDemoBuild) {
     runNeuraDemo();
@@ -138,19 +136,10 @@ Future<void> _bootstrapWindowAndLaunch() async {
     }
 
     if (role.isMascot) {
-      // Select the secondary root before any optional plugin work. Its failure
-      // must neither build plugin-dependent controls nor start a primary app
-      // (and its services) inside this secondary engine.
-      _attachRoot(MascotWindowBootstrap(
-        windowId: role.windowId,
-        onInitializationError: (error, stackTrace) {
-          NeuraErrorPipeline.instance.captureBootstrapWarning(
-            error,
-            stackTrace,
-            source: 'mascot_window_manager',
-          );
-        },
-      ));
+      // The floating window is retired and never created. If a stale native
+      // request still opens a secondary engine, keep it empty rather than
+      // starting a second copy of the app and its services inside it.
+      _attachRoot(const SizedBox.shrink());
       return;
     }
 

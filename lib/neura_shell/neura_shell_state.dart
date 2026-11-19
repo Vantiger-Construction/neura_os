@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
-import '../mascot/mascot_event_bridge.dart';
 import '../mascot/mascot_window_service.dart';
 import '../neura_runtime/neura_bus.dart';
 import '../reliability/safe_boot.dart';
@@ -64,7 +63,6 @@ class NeuraShellState extends ChangeNotifier {
   bool _disposed = false;
   bool _optionalShellServicesActive = false;
   bool _mascotStarted = false;
-  bool _mascotBridgeStarted = false;
   Future<void>? _loadInFlight;
   Future<void>? _optionalActivationInFlight;
 
@@ -195,8 +193,6 @@ class NeuraShellState extends ChangeNotifier {
         await MascotWindowService.I.setVisible(false);
         return;
       }
-      MascotEventBridge.instance.start();
-      _mascotBridgeStarted = true;
     } catch (_) {
       // The companion window is optional; the main app remains usable.
     }
@@ -218,10 +214,6 @@ class NeuraShellState extends ChangeNotifier {
         await audio.setEnabled(false);
       } catch (_) {}
       _optionalShellServicesActive = false;
-    }
-    if (_mascotBridgeStarted) {
-      MascotEventBridge.instance.stop();
-      _mascotBridgeStarted = false;
     }
     if (_mascotStarted) {
       try {
@@ -387,7 +379,6 @@ class NeuraShellState extends ChangeNotifier {
     SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
     LocalProfileService.instance.removeListener(_onSafeModeChanged);
     NeuraStartupCoordinator.instance.ready.removeListener(_onStartupReady);
-    if (_mascotBridgeStarted) MascotEventBridge.instance.stop();
     final audio = _audio;
     if (audio != null) unawaited(audio.dispose());
     super.dispose();

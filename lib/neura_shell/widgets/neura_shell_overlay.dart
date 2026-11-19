@@ -6,8 +6,8 @@ import 'neura_room_selector_sheet.dart';
 
 /// Global background overlay.
 ///
-/// The avatar lives in its own floating always-on-top OS window — see
-/// lib/mascot/mascot_window_app.dart and NeuraShellState's showAvatar wiring.
+/// Neura herself is drawn in the main menu's corner
+/// (PresenceNavigationShell), not in a separate window.
 ///
 /// This wraps the Navigator via MaterialApp.builder so it affects all screens.
 class NeuraShellOverlay extends StatelessWidget {
