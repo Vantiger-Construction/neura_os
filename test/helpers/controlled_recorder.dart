@@ -117,3 +117,14 @@ Future<void> drainRecorderEvents() async {
     await Future<void>.delayed(Duration.zero);
   }
 }
+
+/// Waits up to five seconds until [recorder] has counted [count] starts.
+///
+/// [ControlledRecorder.start] writes a real file before counting the start,
+/// so a fixed number of event-loop turns can finish first on a slow disk.
+Future<void> untilRecorderStarts(ControlledRecorder recorder, int count) async {
+  final clock = Stopwatch()..start();
+  while (recorder.starts < count && clock.elapsed.inSeconds < 5) {
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+  }
+}
