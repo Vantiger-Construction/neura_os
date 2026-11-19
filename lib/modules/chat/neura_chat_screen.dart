@@ -199,6 +199,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         unawaited(_listenNow());
       });
     }
+    // Without an approved cloud provider the standard route can only give
+    // canned keyword replies. On Windows, start on the private Ollama model
+    // instead so spoken and typed questions get a real answer.
+    _localOllama = !kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.windows &&
+        !_ai.isConfigured;
     _localSession = widget.localSession ?? LocalConversationSession();
     _localSession.addListener(_onLocalChanged);
     SafeBoot.instance.safeMode.addListener(_stopForSafeMode);
