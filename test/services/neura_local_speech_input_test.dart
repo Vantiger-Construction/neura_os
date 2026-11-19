@@ -63,6 +63,67 @@ void main() {
     expect(calls.map((c) => c.method), ['isAvailable']);
   });
 
+  localTest('reports a content-free reason when the mic cannot start',
+      () async {
+    granted = false;
+    expect(await input.startRecording(), isFalse);
+    expect(input.lastFailure, 'permission_denied');
+
+    granted = true;
+    handler = (call) async => call.method == 'isAvailable' ? false : null;
+    expect(await input.startRecording(), isFalse);
+    expect(input.lastFailure, 'no_local_engine');
+
+    handler = (call) async {
+      if (call.method == 'start') {
+        throw PlatformException(
+            code: 'local_speech_unavailable', details: 'not_foreground');
+      }
+      return call.method == 'isAvailable' ? true : null;
+    };
+    expect(await input.startRecording(), isFalse);
+    expect(input.lastFailure, 'native_not_foreground');
+
+    handler = (call) async {
+      if (call.method == 'start') {
+        throw PlatformException(
+            code: 'local_speech_unavailable', details: 'C:/private/path');
+      }
+      return call.method == 'isAvailable' ? true : null;
+    };
+    expect(await input.startRecording(), isFalse);
+    expect(input.lastFailure, 'native_error',
+        reason: 'Unknown native details are never copied into the log.');
+
+    handler = null;
+    foreground = false;
+    expect(await input.startRecording(), isFalse);
+    expect(input.lastFailure, 'background');
+
+    foreground = true;
+    expect(await input.startRecording(), isTrue);
+    expect(input.lastFailure, isNull);
+  });
+
+  test('an unreported lifecycle state does not block the microphone', () async {
+    // Windows can leave the lifecycle unreported until focus first changes.
+    // Only an explicit non-resumed state counts as background here; the
+    // native host still enforces the real foreground window.
+    final plain = NeuraLocalSpeechInput(requestPermission: () async => true);
+    try {
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      expect(await plain.startRecording(), isTrue);
+      await plain.stopRecording();
+
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      expect(await plain.startRecording(), isFalse);
+      expect(plain.lastFailure, 'background');
+    } finally {
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await plain.dispose();
+    }
+  });
+
   localTest('focus loss during availability check cancels before mic start',
       () async {
     final gate = Completer<bool>();

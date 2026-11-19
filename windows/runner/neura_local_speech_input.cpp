@@ -10,6 +10,20 @@ using Map = flutter::EncodableMap;
 void Check(HRESULT hr) {
   if (FAILED(hr)) throw std::runtime_error("Local speech input unavailable");
 }
+// Fixed, content-free failure codes reported to Dart for diagnostics.
+struct SpeechFailure : std::runtime_error {
+  explicit SpeechFailure(const char* code) : std::runtime_error(code) {}
+};
+void Check(HRESULT hr, const char* code) {
+  if (FAILED(hr)) throw SpeechFailure(code);
+}
+bool IsNeuraForeground(HWND window) {
+  const HWND foreground = GetForegroundWindow();
+  if (!foreground || !window || IsIconic(window)) return false;
+  // Compare top-level roots so a focused child or owned popup of Neura's own
+  // window still counts, while any other application does not.
+  return GetAncestor(foreground, GA_ROOT) == GetAncestor(window, GA_ROOT);
+}
 int64_t Session(const Value* args) {
   const auto* map = args ? std::get_if<Map>(args) : nullptr;
   if (!map) throw std::invalid_argument("Missing speech session");
@@ -87,33 +101,39 @@ NeuraLocalSpeechInput::ComPtr<ISpObjectToken> NeuraLocalSpeechInput::FindEngine(
 
 void NeuraLocalSpeechInput::Start(int64_t session) {
   Background();
-  if (session <= 0 || GetForegroundWindow() != window_ || IsIconic(window_)) {
-    throw std::runtime_error("Speech input requires the foreground window");
+  if (session <= 0 || !IsNeuraForeground(window_)) {
+    throw SpeechFailure("not_foreground");
   }
-  auto token = FindEngine();
-  if (!token) throw std::runtime_error("No local Microsoft speech engine");
+  ComPtr<ISpObjectToken> token;
+  try {
+    token = FindEngine();
+  } catch (...) {
+    throw SpeechFailure("no_local_engine");
+  }
+  if (!token) throw SpeechFailure("no_local_engine");
   ISpRecognizer* raw_recognizer = nullptr;
   Check(CoCreateInstance(CLSID_SpInprocRecognizer, nullptr, CLSCTX_INPROC_SERVER,
-      IID_ISpRecognizer, reinterpret_cast<void**>(&raw_recognizer)));
+      IID_ISpRecognizer, reinterpret_cast<void**>(&raw_recognizer)), "recognizer");
   recognizer_.reset(raw_recognizer);
-  Check(recognizer_->SetRecognizer(token.get()));
-  Check(recognizer_->SetRecoState(SPRST_INACTIVE_WITH_PURGE));
+  Check(recognizer_->SetRecognizer(token.get()), "recognizer");
+  Check(recognizer_->SetRecoState(SPRST_INACTIVE_WITH_PURGE), "recognizer");
   ISpAudio* raw_audio = nullptr;
   Check(CoCreateInstance(CLSID_SpMMAudioIn, nullptr, CLSCTX_INPROC_SERVER,
-      IID_ISpAudio, reinterpret_cast<void**>(&raw_audio)));
+      IID_ISpAudio, reinterpret_cast<void**>(&raw_audio)), "microphone");
   audio_.reset(raw_audio);
-  Check(recognizer_->SetInput(audio_.get(), TRUE));
+  Check(recognizer_->SetInput(audio_.get(), TRUE), "microphone");
   ISpRecoContext* raw_context = nullptr;
-  Check(recognizer_->CreateRecoContext(&raw_context));
+  Check(recognizer_->CreateRecoContext(&raw_context), "recognizer");
   context_.reset(raw_context);
   const ULONGLONG events = SPFEI(SPEI_RECOGNITION) | SPFEI(SPEI_END_SR_STREAM);
-  Check(context_->SetInterest(events, events));
+  Check(context_->SetInterest(events, events), "recognizer");
   ISpRecoGrammar* raw_grammar = nullptr;
-  Check(context_->CreateGrammar(1, &raw_grammar));
+  Check(context_->CreateGrammar(1, &raw_grammar), "dictation");
   grammar_.reset(raw_grammar);
-  Check(grammar_->LoadDictation(nullptr, SPLO_STATIC));
-  Check(grammar_->SetDictationState(SPRS_ACTIVE));
-  Check(recognizer_->SetRecoState(SPRST_ACTIVE));
+  Check(grammar_->LoadDictation(nullptr, SPLO_STATIC), "dictation");
+  Check(grammar_->SetDictationState(SPRS_ACTIVE), "dictation");
+  // Opening the capture device happens on activation.
+  Check(recognizer_->SetRecoState(SPRST_ACTIVE), "microphone");
   session_ = session;
 }
 
@@ -169,7 +189,7 @@ void NeuraLocalSpeechInput::Handle(const flutter::MethodCall<Value>& call,
       result->Success();
     } else if (call.method_name() == "poll") {
       const auto session = Session(call.arguments());
-      if (GetForegroundWindow() != window_ || IsIconic(window_)) Background();
+      if (!IsNeuraForeground(window_)) Background();
       if (session != session_) {
         result->Success(Value(Map{{Value("session"), Value(session)},
                                   {Value("listening"), Value(false)}}));
@@ -179,6 +199,10 @@ void NeuraLocalSpeechInput::Handle(const flutter::MethodCall<Value>& call,
     } else {
       result->NotImplemented();
     }
+  } catch (const SpeechFailure& failure) {
+    Background();
+    result->Error("local_speech_unavailable", "Local speech input is unavailable.",
+                  Value(std::string(failure.what())));
   } catch (...) {
     Background();
     result->Error("local_speech_unavailable", "Local speech input is unavailable.");

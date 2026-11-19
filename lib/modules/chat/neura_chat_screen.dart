@@ -792,7 +792,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
           setState(() => _continuousMode = false);
           _showVoiceNotice('Voice input is unavailable on this device.');
         }
-        await AppLog.instance.info('voice_input_unavailable', {});
+        final input = _voiceInput;
+        await AppLog.instance.info('voice_input_unavailable', {
+          if (input is NeuraLocalSpeechInput)
+            'reason': input.lastFailure ?? 'unknown',
+        });
         return;
       }
       if (!_voiceSessionActive(session) || _turnEnding) {
