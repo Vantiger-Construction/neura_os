@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../avatar/avatar_globals.dart';
 import '../avatar/avatar_registry.dart';
 import '../avatar/renderers/flutter_mouth_avatar_view.dart';
+import '../avatar/renderers/nebula_avatar_view.dart';
 import '../models/ai_avatar.dart';
 import '../services/avatar_service.dart';
 import 'neura_speech_prototype_screen.dart';
@@ -74,6 +75,7 @@ class _AvatarSelectorScreenState extends State<AvatarSelectorScreen> {
               ),
             ..._avatars.map((a) {
               final expressive = a.id == AvatarRegistry.expressiveFaceId;
+              final nebula = a.id == AvatarRegistry.nebulaId;
               final selected = a.id == selectedId;
               return ListTile(
                 key: ValueKey(a.id),
@@ -83,12 +85,21 @@ class _AvatarSelectorScreenState extends State<AvatarSelectorScreen> {
                         size: 48,
                         enabled: false,
                       )
-                    : const Icon(Icons.person_outline),
+                    : nebula
+                        ? NebulaAvatarView(
+                            controller: AvatarGlobals.controller,
+                            size: 48,
+                            enabled: false,
+                          )
+                        : const Icon(Icons.person_outline),
                 title: Text(a.name),
                 subtitle: Text(expressive
                     ? 'A simple face with live speech mouth movements. '
                         'Windows uses local speech timing.'
-                    : a.id == AvatarRegistry.defaultAvatarId
+                    : nebula
+                        ? 'Flowing nebula energy with a heartbeat core and '
+                            'a mouth of light while she speaks.'
+                        : a.id == AvatarRegistry.defaultAvatarId
                         ? 'Original full-body artwork with gentle body motion.'
                         : 'Alternate identity; currently uses Neura’s fallback artwork.'),
                 selected: selected,

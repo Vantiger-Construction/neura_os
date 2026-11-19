@@ -50,6 +50,7 @@ class NeuraMouthLayer extends StatefulWidget {
     required this.child,
     required this.mouthBounds,
     this.enabled = true,
+    this.mouthPainter,
   }) : assert(mouthBounds.left >= 0 &&
             mouthBounds.top >= 0 &&
             mouthBounds.right <= 1 &&
@@ -61,6 +62,10 @@ class NeuraMouthLayer extends StatefulWidget {
   final Widget child;
   final Rect mouthBounds;
   final bool enabled;
+
+  /// Draws the mouth for a pose; defaults to [NeuraMouthPainter]. Lets other
+  /// built-in faces restyle the mouth while keeping this layer's gating.
+  final CustomPainter Function(NeuraMouthPose pose)? mouthPainter;
 
   @override
   State<NeuraMouthLayer> createState() => _NeuraMouthLayerState();
@@ -168,7 +173,10 @@ class _NeuraMouthLayerState extends State<NeuraMouthLayer>
               height: bounds.height * constraints.maxHeight,
               child: IgnorePointer(
                   child: RepaintBoundary(
-                child: CustomPaint(painter: NeuraMouthPainter(_pose)),
+                child: CustomPaint(
+                  painter: widget.mouthPainter?.call(_pose) ??
+                      NeuraMouthPainter(_pose),
+                ),
               )),
             ),
           ]);
