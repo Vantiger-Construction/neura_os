@@ -269,10 +269,9 @@ void main() {
     );
     await tester.pumpAndSettle();
     if (rustSession) return;
-    await tester.tap(find.byTooltip('Approved cloud / basic local reply'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Offline Ollama'));
-    await tester.pumpAndSettle();
+    // No cloud provider is configured, so Windows chat opens on Ollama.
+    expect(find.byTooltip('Offline Ollama'), findsOneWidget);
+    expect(find.byTooltip('Approved cloud / basic local reply'), findsNothing);
     events.clear();
   }
 
@@ -496,6 +495,32 @@ void main() {
       await close(tester);
     },
   );
+
+  conversationTest('a configured cloud provider keeps the standard route',
+      (tester) async {
+    final shell = NeuraShellState();
+    addTearDown(shell.dispose);
+    await tester.pumpWidget(
+      NeuraShellScope(
+        notifier: shell,
+        child: MaterialApp(
+          home: NeuraChatScreen(
+            aiService: NeuraAiService.forTesting(
+              modelRouter: NeuraSecureModelRouter(),
+              configuredReader: () => true,
+              ollama: ollama,
+            ),
+            ttsService: tts,
+            localSession: LocalConversationSession(supported: false),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+        find.byTooltip('Approved cloud / basic local reply'), findsOneWidget);
+    expect(find.byTooltip('Offline Ollama'), findsNothing);
+  });
 
   conversationTest('recognizer failure ends hands-free mode until a fresh tap',
       (tester) async {
