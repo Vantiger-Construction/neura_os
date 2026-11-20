@@ -150,7 +150,7 @@ void main() {
     await fixture.run(() async {
       platform.startGate = Completer<void>();
       final starting = service.startRecording();
-      await drainRecorderEvents();
+      await untilRecorderStarts(platform, 1);
       expect(platform.starts, 1);
       final stopping = service.stopRecording();
       platform.startGate!.complete();

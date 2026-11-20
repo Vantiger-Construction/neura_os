@@ -1970,9 +1970,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
             valueListenable: AvatarGlobals.service.selectedAvatarId,
             child: NeuraActivityBadge(offline: _localOllama || _localSelected),
             builder: (_, id, badge) {
-              if (id != AvatarRegistry.expressiveFaceId) return badge!;
-              // Chat covers the navigation stage. Keep the selected face
-              // visible beside its existing activity label on this route.
+              if (id != AvatarRegistry.expressiveFaceId &&
+                  id != AvatarRegistry.nebulaId) {
+                return badge!;
+              }
+              // Chat covers the navigation stage. Keep the selected speaking
+              // face visible beside its existing activity label on this route.
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Row(

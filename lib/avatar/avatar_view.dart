@@ -8,6 +8,7 @@ import 'motion/neura_animated_body.dart';
 import 'motion/neura_motion.dart';
 import 'renderers/flutter_mouth_avatar_view.dart';
 import 'renderers/lottie_avatar_view.dart';
+import 'renderers/nebula_avatar_view.dart';
 import 'renderers/rive_avatar_view.dart';
 import 'renderers/sprite_avatar_view.dart';
 
@@ -100,6 +101,9 @@ class _AvatarViewState extends State<AvatarView> {
     if (spec.format == AvatarFormat.flutterFace) {
       return const _Resolved(AvatarFormat.flutterFace, '');
     }
+    if (spec.format == AvatarFormat.nebula) {
+      return const _Resolved(AvatarFormat.nebula, '');
+    }
     // Primary
     if (await AssetGuard.exists(spec.assetPath)) {
       return _Resolved(spec.format, spec.assetPath);
@@ -178,6 +182,15 @@ class _AvatarViewState extends State<AvatarView> {
         return ValueListenableBuilder<bool>(
           valueListenable: NeuraMotion.instance.live,
           builder: (_, live, __) => FlutterMouthAvatarView(
+            controller: controller,
+            size: size,
+            enabled: live,
+          ),
+        );
+      case AvatarFormat.nebula:
+        return ValueListenableBuilder<bool>(
+          valueListenable: NeuraMotion.instance.live,
+          builder: (_, live, __) => NebulaAvatarView(
             controller: controller,
             size: size,
             enabled: live,
