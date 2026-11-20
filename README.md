@@ -39,6 +39,8 @@ are incomplete, and reflection and personal sources are not enabled.
 2. Run `Neura.bat` from the repository root. It repairs shortcuts, verifies or
    builds the payload, and starts Neura through `tools/Start-Neura.ps1`.
 
+For spoken replies on every launch, use the [Windows spoken replies launcher](tools/windows_spoken_replies/README.md).
+
 For configured packages, see [build configuration](docs/CONFIGURED_BUILDS.md).
 An Actions artifact is a development candidate until its identity and relevant
 platform/device checks have been verified.

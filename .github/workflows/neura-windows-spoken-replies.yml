@@ -1,0 +1,44 @@
+name: Windows spoken replies launcher
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths:
+      - 'tools/windows_spoken_replies/**'
+      - '.github/workflows/neura-windows-spoken-replies.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    env:
+      GOTOOLCHAIN: go1.27.4
+      CGO_ENABLED: '0'
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: tools/windows_spoken_replies
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test the launcher and Windows settings writer
+        run: go test -mod=readonly -v ./...
+      - name: Build the launcher
+        run: go build -mod=readonly -trimpath -buildvcs=false -ldflags='-s -w -H=windowsgui' -o "$env:RUNNER_TEMP/START_NEURA.exe" .
+      - name: Package the reviewed Windows app with the launcher
+        run: |
+          $release = 'https://github.com/Vantiger-Construction/neura_os/releases/download/neura-ci-pr-234-881da717d74b-4c74e6237c11'
+          $base = "$env:RUNNER_TEMP/neura-base.zip"
+          Invoke-WebRequest "$release/NeuraCompanion-Windows-881da717d74b-44522397866-1.zip" -OutFile $base
+          python package.py $base "$env:RUNNER_TEMP/START_NEURA.exe" "$env:RUNNER_TEMP/Neura-Windows-Spoken-Replies.zip"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Neura-Windows-Spoken-Replies
+          path: ${{ runner.temp }}/Neura-Windows-Spoken-Replies.zip
+          archive: false
+          if-no-files-found: error

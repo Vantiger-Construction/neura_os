@@ -1,0 +1,32 @@
+Neura for Windows · Spoken replies
+November 19, 2026
+
+1. Close any open Neura window. Right-click the ZIP and choose Extract All.
+2. Open START_NEURA.exe in the extracted folder. Use this launcher each time.
+3. In ordinary chat, type “Hello Neura” and send it. You should hear her reply.
+   You can hear a voice sample under Settings > Neura's Voice by pressing
+   the play button beside an installed voice.
+
+The launcher saves After reply on your Windows account. It keeps As it arrives
+if you already selected it. It keeps your existing audible voice volume and
+restores a previously muted Neura volume to 70%. You can mute Neura while you
+chat. Opening START_NEURA again turns spoken replies back on.
+
+Your usual Windows speaker or headphones must be selected and audible. If you
+hear nothing, check Neura's Voice > Volume and the Windows volume mixer.
+Safe Mode pauses speech. The isolated text-only chat stays text-only. Startup
+greetings and microphone listening have separate controls in Neura's Voice.
+
+To use the saved settings without re-enabling sound at launch, open
+Windows\neuro_companion.exe directly. You can then choose Off under
+Settings > Neura's Voice > Automatic reply speech.
+
+Build
+The Windows app comes from the release identified in the November 19 review.
+The original Windows ZIP SHA-256 is
+2aa6f979300f24a713747da1e370bf2b449b5a741b3a622073314f07f1201355.
+https://github.com/Vantiger-Construction/neura_os/releases/tag/neura-ci-pr-234-881da717d74b-4c74e6237c11
+
+The personal launcher is included with source in Launcher-source. It uses
+the current user's Windows application support folder. Its tests use synthetic
+settings. Audible playback on your own hardware still needs the check above.
