@@ -7,6 +7,7 @@ import 'package:neuro_companion/persona/models/persona_profile.dart';
 import 'package:neuro_companion/persona/services/neura_behavior_adapter.dart';
 import 'package:neuro_companion/persona/services/neura_conversation_mode.dart';
 import 'package:neuro_companion/teaching/neura_teaching_preferences.dart';
+import 'package:neuro_companion/services/emotion_analysis_service.dart';
 
 /// rust/src/ollama_conversation.rs rejects an offline request whose system
 /// prompt exceeds this many bytes, so an oversized prompt means no reply.
@@ -78,7 +79,10 @@ void main() {
                 room,
                 _childAudience,
               ].join('\n\n');
-              final bytes = utf8.encode('$prompt$_offlineSuffix').length;
+              // Plus the largest per-turn emotion cue and its separator.
+              final bytes = utf8.encode('$prompt$_offlineSuffix').length +
+                  2 +
+                  EmotionRead.maxCueBytes;
               if (bytes > largest) {
                 largest = bytes;
                 largestCase = '${agent.id}/${persona.toMap()}/'
