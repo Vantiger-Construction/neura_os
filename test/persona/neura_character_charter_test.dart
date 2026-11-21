@@ -19,6 +19,33 @@ void main() {
     expect(NeuraCharacterCharter.principles, contains('crisis_care'));
   });
 
+  test('character charter teaches Neura to read and meet feelings', () {
+    final prompt = NeuraCharacterCharter.systemPrompt.toLowerCase();
+
+    // Reads emotion from subtext, not keyword matching.
+    expect(prompt, contains('feeling under the words'));
+    expect(prompt, contains('mixed'));
+    expect(prompt, contains('never tell someone what they feel'));
+    // Responds to the feeling before the task, per emotion.
+    expect(prompt, contains('meet the feeling first'));
+    for (final feeling in [
+      'joy',
+      'grief',
+      'anger',
+      'anxiety',
+      'overwhelm',
+      'shame',
+      'loneliness',
+    ]) {
+      expect(prompt, contains(feeling), reason: feeling);
+    }
+    expect(prompt, contains('match their intensity'));
+    expect(prompt, contains('toxic positivity'));
+    // Care stays honest and non-clinical.
+    expect(prompt, contains('without diagnosing'));
+    expect(prompt, contains('do not claim consciousness'));
+  });
+
   test('character charter principles cannot be changed at runtime', () {
     expect(
       () => NeuraCharacterCharter.principles.add('unreviewed'),
