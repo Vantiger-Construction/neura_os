@@ -152,7 +152,7 @@ void main() {
             .buildSystemMessage(includeCurrentMood: false);
         expect(freshPrompt, isNot(contains('Default to brief answers')));
         if (!remove) {
-          expect(freshPrompt, contains('Default to a fuller explanation'));
+          expect(freshPrompt, contains('Default to fuller answers'));
         }
         fixture.disk.expectIsolation();
       });

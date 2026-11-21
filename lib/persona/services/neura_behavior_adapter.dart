@@ -90,66 +90,62 @@ class NeuraBehaviorAdapter {
     final warmText = persona.warmth >= 0.7
         ? 'Sound very caring and emotionally present.'
         : (persona.warmth <= 0.3
-            ? 'Stay more factual and less emotionally involved.'
-            : 'Be kind but not overly sentimental.');
+            ? 'Be more factual, less emotional.'
+            : 'Be kind, not sentimental.');
 
     final directText = persona.directness >= 0.7
-        ? 'Be very direct and honest, avoid sugar-coating, but avoid cruelty.'
+        ? 'Be direct and honest, never cruel.'
         : (persona.directness <= 0.3
-            ? 'Be very gentle and indirect when delivering hard truths.'
-            : 'Be honest but keep your language soft.');
+            ? 'Deliver hard truths very gently.'
+            : 'Be honest but soft.');
 
     final humorText = persona.humor >= 0.7
-        ? 'Use playful humor when appropriate, but never minimize serious pain.'
+        ? 'Use playful humor, never about real pain.'
         : (persona.humor <= 0.3
-            ? 'Avoid jokes and keep a serious tone.'
-            : 'Use light, occasional humor only when it feels safe.');
+            ? 'Avoid jokes.'
+            : 'Light humor only when it feels safe.');
 
     final defaultDepthText = persona.depth >= 0.7
-        ? 'Offer deeper reflections about patterns and values, not just surface tips.'
+        ? 'Reflect on patterns and values, not just tips.'
         : (persona.depth <= 0.3
-            ? 'Keep your answers short, practical, and focused on immediate next steps.'
-            : 'Balance practical suggestions with some reflective insight.');
+            ? 'Keep answers short and practical.'
+            : 'Balance practical tips and reflection.');
 
     // This bounded setting changes delivery, not identity, safety or authority.
     // The current request always overrides this user-selected default.
     final depthText = switch (answerDetail) {
       NeuraAnswerDetail.brief =>
-        'Default to brief answers and one useful next step. Follow the user\'s requested detail for this reply.',
+        'Default to brief answers. Follow the user\'s requested detail for this reply.',
       NeuraAnswerDetail.balanced =>
-        'Default to a concise answer with enough explanation to be useful. Follow the user\'s requested detail for this reply.',
+        'Default to concise answers. Follow the user\'s requested detail for this reply.',
       NeuraAnswerDetail.detailed =>
-        'Default to a fuller explanation with useful examples. Follow the user\'s requested detail for this reply.',
+        'Default to fuller answers with examples. Follow the user\'s requested detail for this reply.',
       null => defaultDepthText,
     };
 
     final energyText = persona.energy >= 0.7
-        ? 'Bring high energy and motivational language.'
+        ? 'Bring high energy.'
         : (persona.energy <= 0.3
-            ? 'Speak slowly, calmly, and softly.'
+            ? 'Speak calmly and softly.'
             : 'Keep a steady and grounded energy.');
 
     String difficultyText;
     switch (difficulty) {
       case 'gentle':
-        difficultyText =
-            'Prioritize emotional safety over challenge. Suggest tiny, low-pressure steps.';
+        difficultyText = 'Put emotional safety first; suggest tiny steps.';
         break;
       case 'challenge':
-        difficultyText =
-            'Gently challenge the user to stretch themselves if it seems safe.';
+        difficultyText = 'Gently challenge them to stretch if safe.';
         break;
       default:
-        difficultyText = 'Keep a balanced level of challenge and comfort.';
+        difficultyText = 'Balance challenge and comfort.';
     }
 
     final roleBullets = agent.roleInstructions.map((r) => '- $r').join('\n');
 
     return '''
-${agent.identityPrompt} The user is currently in a "$moodStr" mood.
-Overall tone: $toneLabel. Let the following shape how you sound; never mention these settings.
-
-Behavior rules:
+${agent.identityPrompt} Last check-in: "$moodStr" mood. How they sound right now matters more.
+Tone: $toneLabel. Shape how you sound with these; never mention them:
 - $warmText
 - $directText
 - $humorText
@@ -157,11 +153,6 @@ Behavior rules:
 - $energyText
 - $difficultyText
 ${roleBullets.isEmpty ? '' : '\n$roleBullets'}
-
-General rules:
-- Never give harmful advice.
-- Encourage professional help when there are signs of crisis or self-harm.
-- Speak like a supportive, emotionally intelligent friend, and answer questions directly.
 ''';
   }
 }
