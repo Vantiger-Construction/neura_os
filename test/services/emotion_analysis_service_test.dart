@@ -128,4 +128,75 @@ void main() {
     expect(await reader.analyzeEmotion('I am so happy'), 'joy');
     expect(await reader.analyzeEmotion('What is the weather?'), 'neutral');
   });
+
+  group('emotional continuity offline', () {
+    test('the newest feeling wins when it is clear', () {
+      final cue = reader.offlineCue(
+        newest: "I'm so stressed about tomorrow",
+        hiddenUserTurns: ['I feel really lonely lately'],
+      );
+      expect(cue, startsWith('They sound'));
+      expect(cue, contains('anxious'));
+    });
+
+    test('a feeling that scrolled out of view is gently recalled', () {
+      final cue = reader.offlineCue(
+        newest: 'Anyway, what should I cook tonight?',
+        hiddenUserTurns: [
+          'Can you help with an email?',
+          "I'm really dreading my exam tomorrow, so nervous",
+          'Thanks, that looks good',
+        ],
+      );
+      expect(cue, EmotionAnalysisService.earlierCue('anxious'));
+    });
+
+    test('the most recent earlier feeling is chosen', () {
+      final cue = reader.offlineCue(
+        newest: 'ok',
+        hiddenUserTurns: [
+          'I was so happy this morning!!',
+          'Now I feel really lonely, nobody to talk to',
+        ],
+      );
+      expect(cue, contains('lonely'));
+    });
+
+    test('faint or absent earlier feelings produce no cue', () {
+      expect(
+          reader.offlineCue(
+            newest: 'What time is it?',
+            hiddenUserTurns: ['Let me sit down', "I'm fine, thanks"],
+          ),
+          isEmpty);
+      expect(reader.offlineCue(newest: 'Hello'), isEmpty);
+    });
+
+    test('earlier cues fit the shared byte bound', () {
+      for (final feeling in EmotionRead.adjectives.values) {
+        expect(utf8.encode(EmotionAnalysisService.earlierCue(feeling)).length,
+            lessThanOrEqualTo(EmotionRead.maxCueBytes));
+      }
+    });
+
+    test('visible tail counts only turns the model still sees', () {
+      final history = [
+        {'role': 'user', 'content': 'a'},
+        {'role': 'assistant', 'content': 'b'},
+        {'role': 'user', 'content': 'c'},
+        {'role': 'assistant', 'content': 'd'},
+        {'role': 'user', 'content': 'e'},
+      ];
+      // Model sees a thread brief plus the last three turns.
+      final visible = [
+        {'role': 'user', 'content': 'brief'},
+        {'role': 'user', 'content': 'c'},
+        {'role': 'assistant', 'content': 'd'},
+        {'role': 'user', 'content': 'e'},
+      ];
+      expect(EmotionAnalysisService.visibleTailLength(history, visible), 3);
+      expect(EmotionAnalysisService.visibleTailLength(history, history), 5);
+      expect(EmotionAnalysisService.visibleTailLength(history, const []), 0);
+    });
+  });
 }

@@ -286,12 +286,28 @@ class NeuraAiService {
           localMessages,
           threadContext: threadContext,
         );
-        // The small local model reads subtext less reliably, so pass a
-        // tentative, locally computed read of the newest message. Nothing is
-        // stored; the cue is bounded by EmotionRead.maxCueBytes.
-        final emotionCue = history.isNotEmpty && history.last.isUser
-            ? const EmotionAnalysisService().read(history.last.text).promptCue
-            : '';
+        // The small local model reads subtext less reliably and only sees a
+        // few recent turns, so pass one tentative, locally computed line: how
+        // the newest message sounds, or else a clear feeling from an earlier
+        // turn that has scrolled out of its view. Nothing is stored; the cue
+        // is bounded by EmotionRead.maxCueBytes.
+        var emotionCue = '';
+        if (history.isNotEmpty && history.last.isUser) {
+          final visible = offlineReference == null
+              ? EmotionAnalysisService.visibleTailLength(localMessages, recent)
+              : 0;
+          final hidden = offlineReference == null
+              ? history
+                  .take(history.length - visible)
+                  .where((turn) => turn.isUser)
+                  .map((turn) => turn.text)
+                  .toList()
+              : const <String>[];
+          emotionCue = const EmotionAnalysisService().offlineCue(
+            newest: history.last.text,
+            hiddenUserTurns: hidden,
+          );
+        }
         final text = await (_ollama ??= NeuraOllamaChat()).reply(
           system:
               '$systemPrompt\n\nYou are running offline. Do not claim web access, '
