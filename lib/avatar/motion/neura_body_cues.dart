@@ -1,6 +1,6 @@
 // lib/avatar/motion/neura_body_cues.dart
 //
-// How Neura's *mind* reaches her *body* — three channels, all presentation-only
+// How Neura's *mind* reaches her *body* — four channels, all presentation-only
 // and content-free (no text ever leaves this file; only gesture enums and
 // mood/energy numbers are emitted onto the NeuraEventBus):
 //
@@ -11,6 +11,8 @@
 //  3. CUES      `avatar_cue` envelope from the brain for deliberate gestures:
 //               {"gesture":"nod","intensity":0.6,"mood":0.4,"energy":0.7}
 //               Validated against NeuraGesture.wireAllowed and rate-limited.
+//  4. EMPATHY   The user's message, read on-device into an EmotionRead
+//               (feeling labels and numbers only) → lean in, settle or hop.
 //
 // This keeps the repo invariant intact: the UI never treats model output as a
 // command. Unknown/oversized/malformed cues are dropped silently.
@@ -23,6 +25,7 @@ import 'package:flutter/foundation.dart';
 import '../../core/neura_event_bus.dart';
 import '../../core/neura_events.dart';
 import '../../neura_link/neura_tone.dart';
+import '../../services/emotion_analysis_service.dart';
 import 'neura_gesture.dart';
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -281,5 +284,46 @@ class NeuraAvatarCueGate {
     final d = v.toDouble();
     if (!d.isFinite) return null;
     return d.clamp(lo, hi);
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// 4. Empathy: how the user's message feels → her posture
+// ───────────────────────────────────────────────────────────────────────────
+
+/// Neura's body answers the feeling in the user's message before her words
+/// do: she leans in for sadness, settles for anxiety, hops for good news.
+/// Receives only an on-device [EmotionRead] (labels and numbers, never text)
+/// and emits only mood/energy numbers and an allow-listed gesture.
+class NeuraEmpathyMotion {
+  const NeuraEmpathyMotion._();
+
+  /// (mood −1..1, energy 0..1, gesture) for each feeling, or null for none.
+  static (double, double, NeuraGesture)? responseFor(EmotionRead read) {
+    if (read.primary == null) {
+      return read.masked ? (0.35, 0.4, NeuraGesture.leanIn) : null;
+    }
+    return switch (read.primary) {
+      'joy' => (0.75, 0.75, NeuraGesture.bounce),
+      'sadness' || 'grief' || 'loneliness' => (0.3, 0.3, NeuraGesture.leanIn),
+      'shame' => (0.4, 0.35, NeuraGesture.leanIn),
+      'anger' => (0.15, 0.45, NeuraGesture.leanIn),
+      'anxiety' || 'overwhelm' => (0.25, 0.3, NeuraGesture.settle),
+      'exhaustion' => (0.3, 0.2, NeuraGesture.settle),
+      _ => null,
+    };
+  }
+
+  /// Emits the response for [read], if any. Returns whether it did.
+  static bool respondTo(EmotionRead read, {NeuraEventBus? bus}) {
+    final response = responseFor(read);
+    if (response == null) return false;
+    final b = bus ?? NeuraEventBus.I;
+    final (mood, energy, gesture) = response;
+    b.emit(NeuraMoodEvent(mood: mood, energy: energy));
+    // Stronger feelings get a more visible, but never exaggerated, gesture.
+    final intensity = (0.35 + 0.3 * read.intensity).clamp(0.35, 0.65);
+    b.emit(NeuraGestureEvent(gesture, intensity: intensity.toDouble()));
+    return true;
   }
 }

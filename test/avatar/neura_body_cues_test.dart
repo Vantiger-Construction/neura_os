@@ -6,6 +6,7 @@ import 'package:neuro_companion/avatar/motion/neura_gesture.dart';
 import 'package:neuro_companion/core/neura_event_bus.dart';
 import 'package:neuro_companion/core/neura_events.dart';
 import 'package:neuro_companion/neura_link/neura_tone.dart';
+import 'package:neuro_companion/services/emotion_analysis_service.dart';
 
 Future<void> _flush() => Future<void>.delayed(Duration.zero);
 
@@ -169,5 +170,66 @@ void main() {
       expect(mood, inInclusiveRange(-1, 1));
       expect(energy, inInclusiveRange(0, 1));
     }
+  });
+
+  group('NeuraEmpathyMotion', () {
+    const reader = EmotionAnalysisService();
+    late List<NeuraEvent> seen;
+    late void Function() unsub;
+
+    setUp(() {
+      seen = [];
+      final a = NeuraEventBus.I.on<NeuraGestureEvent>(seen.add);
+      final b = NeuraEventBus.I.on<NeuraMoodEvent>(seen.add);
+      unsub = () {
+        a();
+        b();
+      };
+    });
+    tearDown(() => unsub());
+
+    NeuraGesture? gestureFor(String text) =>
+        NeuraEmpathyMotion.responseFor(reader.read(text))?.$3;
+
+    test('leans in for sadness, grief, loneliness and shame', () {
+      expect(gestureFor('I feel really sad today'), NeuraGesture.leanIn);
+      expect(gestureFor('My mum passed away'), NeuraGesture.leanIn);
+      expect(gestureFor('I feel so lonely'), NeuraGesture.leanIn);
+      expect(gestureFor("I'm so ashamed of myself"), NeuraGesture.leanIn);
+    });
+
+    test('settles for anxiety, overwhelm and exhaustion', () {
+      expect(gestureFor("I'm really anxious"), NeuraGesture.settle);
+      expect(gestureFor("I can't cope, it's too much"), NeuraGesture.settle);
+      expect(gestureFor("I'm completely burnt out"), NeuraGesture.settle);
+    });
+
+    test('hops for good news', () {
+      expect(gestureFor('I got the job!!'), NeuraGesture.bounce);
+    });
+
+    test('ordinary messages leave her body alone', () async {
+      expect(NeuraEmpathyMotion.respondTo(reader.read('What time is it?')),
+          isFalse);
+      await _flush();
+      expect(seen, isEmpty);
+    });
+
+    test('emits mood then an allow-listed, bounded gesture', () async {
+      expect(NeuraEmpathyMotion.respondTo(reader.read("I'm SO anxious!!")),
+          isTrue);
+      await _flush();
+      expect(seen.whereType<NeuraMoodEvent>(), hasLength(1));
+      final g = seen.whereType<NeuraGestureEvent>().single;
+      expect(NeuraGesture.wireAllowed, contains(g.gesture));
+      expect(g.intensity, inInclusiveRange(0.35, 0.65));
+    });
+
+    test('a soothing feeling lowers energy; joy raises it', () {
+      final calm = NeuraEmpathyMotion.responseFor(reader.read('so anxious'))!;
+      final joy = NeuraEmpathyMotion.responseFor(reader.read('so happy'))!;
+      expect(calm.$2, lessThan(0.5));
+      expect(joy.$2, greaterThan(0.5));
+    });
   });
 }
