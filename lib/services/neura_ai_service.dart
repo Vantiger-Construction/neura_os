@@ -22,6 +22,7 @@ import '../relationships/services/distress_detector.dart';
 import '../src/modules/focus/focus_controller.dart';
 import '../src/modules/focus/focus_mode.dart';
 import 'crisis_playbook_surface.dart';
+import 'emotion_analysis_service.dart';
 import 'neura_chat_policy.dart';
 import 'neura_generation_cancel.dart';
 import 'neura_llm_diagnostics.dart';
@@ -285,11 +286,18 @@ class NeuraAiService {
           localMessages,
           threadContext: threadContext,
         );
+        // The small local model reads subtext less reliably, so pass a
+        // tentative, locally computed read of the newest message. Nothing is
+        // stored; the cue is bounded by EmotionRead.maxCueBytes.
+        final emotionCue = history.isNotEmpty && history.last.isUser
+            ? const EmotionAnalysisService().read(history.last.text).promptCue
+            : '';
         final text = await (_ollama ??= NeuraOllamaChat()).reply(
           system:
               '$systemPrompt\n\nYou are running offline. Do not claim web access, '
               'saved memories or completed actions. Offer everyday support; do not '
-              'diagnose or advise medication changes. No tools are available.',
+              'diagnose or advise medication changes. No tools are available.'
+              '${emotionCue.isEmpty ? '' : '\n\n$emotionCue'}',
           messages: recent,
           cancel: cancel,
         );
