@@ -46,6 +46,10 @@ class EmotionRead {
   static int get maxCueBytes {
     var longest = 0;
     for (final a in adjectives.values) {
+      final earlier = EmotionAnalysisService.earlierCue(a).length;
+      if (earlier > longest) longest = earlier;
+    }
+    for (final a in adjectives.values) {
       for (final b in adjectives.values) {
         final n = 'They sound very $a, maybe also $b'
                 " though they say they're fine. Meet that first."
@@ -432,6 +436,46 @@ class EmotionAnalysisService {
       if (words.contains(tokens[j])) return true;
     }
     return false;
+  }
+
+  /// The one cue line for the offline model: the newest message's read, or,
+  /// when that is unclear, a gentle reminder of a clear feeling from an
+  /// earlier user turn the model can no longer see ([hiddenUserTurns], oldest
+  /// first). Returns '' when neither applies. Never over [EmotionRead.maxCueBytes].
+  String offlineCue({
+    required String newest,
+    List<String> hiddenUserTurns = const [],
+  }) {
+    final current = read(newest).promptCue;
+    if (current.isNotEmpty) return current;
+    final recentFirst = hiddenUserTurns.reversed.take(12);
+    for (final text in recentFirst) {
+      final earlier = read(text);
+      final feeling = EmotionRead.adjectives[earlier.primary];
+      if (feeling != null && earlier.intensity >= 0.55) {
+        return earlierCue(feeling);
+      }
+    }
+    return '';
+  }
+
+  static String earlierCue(String feeling) =>
+      'Earlier in this chat they sounded $feeling; check in gently if it fits.';
+
+  /// How many trailing [history] turns are still in [visible], the turns
+  /// actually sent to the model (which may start with an extra thread brief).
+  static int visibleTailLength(
+    List<Map<String, dynamic>> history,
+    List<Map<String, dynamic>> visible,
+  ) {
+    var n = 0;
+    while (n < history.length && n < visible.length) {
+      final h = history[history.length - 1 - n];
+      final v = visible[visible.length - 1 - n];
+      if (h['role'] != v['role'] || h['content'] != v['content']) break;
+      n++;
+    }
+    return n;
   }
 
   /// Back-compatible single-label API: the dominant feeling or 'neutral'.
