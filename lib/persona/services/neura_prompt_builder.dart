@@ -86,6 +86,7 @@ class NeuraPromptBuilder {
     CompanionMemoryPermission? memoryPermission,
     bool includeCurrentMood = true,
     NeuraConversationMode conversationMode = NeuraConversationMode.balanced,
+    bool includePersonality = false,
   }) async {
     final profiles = LocalProfileService.instance;
     final profileEpoch = profiles.epoch;
@@ -116,6 +117,8 @@ class NeuraPromptBuilder {
     }
     final parts = [
       NeuraCharacterCharter.systemPrompt,
+      // Cloud chat only: see NeuraCharacterCharter.personality.
+      if (includePersonality) NeuraCharacterCharter.personality,
       style.systemPromptSnippet,
       'Conversation style: ${conversationMode.prompt} Style only; all safety, consent, memory, and action rules still apply.',
       _moduleContextFor(module),

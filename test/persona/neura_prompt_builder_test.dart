@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:neuro_companion/persona/models/neura_audience.dart';
+import 'package:neuro_companion/persona/models/neura_character_charter.dart';
 import 'package:neuro_companion/persona/services/neura_audience_service.dart';
 import 'package:neuro_companion/persona/services/neura_prompt_builder.dart';
 import 'package:neuro_companion/services/neura_chat_policy.dart';
@@ -37,6 +38,23 @@ void main() {
     expect(prompts['reflection_bay'], contains('Reflection Bay'));
     expect(prompts['joy_lounge'], contains('Joy Lounge'));
     expect(prompts['legacy_vault'], contains('Legacy Vault'));
+  });
+
+  test('personality reaches the prompt only when asked for (cloud chat)',
+      () async {
+    final cloud = await NeuraPromptBuilder.instance.buildSystemMessage(
+      module: 'penthouse',
+      includePersonality: true,
+    );
+    final local = await NeuraPromptBuilder.instance.buildSystemMessage(
+      module: 'penthouse',
+      includeCurrentMood: false,
+    );
+    expect(cloud, contains(NeuraCharacterCharter.personality));
+    expect(local, isNot(contains('dry, playful wit')));
+    // The permanent charter still comes first and keeps precedence.
+    expect(cloud.indexOf('heart of gold'),
+        lessThan(cloud.indexOf('dry, playful wit')));
   });
 
   test('an unrecognized module hint does not throw and adds no module text',
