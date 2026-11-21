@@ -28,33 +28,50 @@ class EmotionRead {
 
   /// The short, tentative cue given to a small local model, or '' when the
   /// signal is unclear. Never longer than [maxCueBytes].
+  //
+  // Tuned against the real offline model (qwen3 4B): naming the feeling made
+  // it tell people what they feel ("it's okay that you're ashamed"), so the
+  // cue asks it not to; and it already meets good news well, while a joy cue
+  // made it gush, so joy alone gets no cue.
   String get promptCue {
-    if (primary == null) {
-      return masked
-          ? 'They may be less fine than they say; check in gently.'
-          : '';
+    if (primary == null) return masked ? maskedOnlyCue : '';
+    var feeling = primary!;
+    var also = secondary;
+    if (feeling == 'joy') {
+      // "Relieved but exhausted": the harder feeling still deserves care.
+      if (also == null || also == 'joy') return '';
+      feeling = also;
+      also = null;
     }
-    final strong = intensity >= 0.75 ? 'very ' : '';
-    final also =
-        secondary == null ? '' : ', maybe also ${adjectives[secondary]}';
-    final mask = masked ? " though they say they're fine" : '';
-    return 'They sound $strong${adjectives[primary]}'
-        '$also$mask. Meet that first.';
+    // "very grieving" reads oddly; grief is never graded.
+    final strong = intensity >= 0.75 && feeling == primary && feeling != 'grief'
+        ? 'very '
+        : '';
+    final extra = masked
+        ? ' despite saying fine'
+        : (also == null || also == 'joy' ? '' : ', also ${adjectives[also]}');
+    return _cue('$strong${adjectives[feeling]}$extra');
   }
 
-  /// Upper bound of [promptCue] in UTF-8 bytes (all cue text is ASCII).
+  static const maskedOnlyCue =
+      'They may be less fine than they say; check in gently.';
+
+  static String _cue(String mood) =>
+      'Likely mood: $mood. Respond to it without naming it.';
+
+  /// Upper bound of [promptCue] and every other offline cue line in UTF-8
+  /// bytes (all cue text is ASCII).
   static int get maxCueBytes {
-    var longest = 0;
-    for (final a in adjectives.values) {
-      final earlier = EmotionAnalysisService.earlierCue(a).length;
-      if (earlier > longest) longest = earlier;
+    var longest = maskedOnlyCue.length;
+    void consider(String s) {
+      if (s.length > longest) longest = s.length;
     }
+
     for (final a in adjectives.values) {
+      consider(EmotionAnalysisService.earlierCue(a));
+      consider(_cue('very $a despite saying fine'));
       for (final b in adjectives.values) {
-        final n = 'They sound very $a, maybe also $b'
-                " though they say they're fine. Meet that first."
-            .length;
-        if (n > longest) longest = n;
+        consider(_cue('very $a, also $b'));
       }
     }
     return longest;
@@ -200,6 +217,8 @@ class EmotionAnalysisService {
     'grief': {'passed away': 3},
     'anger': {
       'fed up': 2,
+      'yelled at me': 2,
+      'screamed at me': 2,
       'sick of': 2,
       'so done with': 2,
       'sick and tired': 2.5,
@@ -224,6 +243,8 @@ class EmotionAnalysisService {
     },
     'exhaustion': {
       'burnt out': 2.5,
+      'tired of everything': 2.5,
+      'sick of everything': 2.5,
       'burned out': 2.5,
       'running on empty': 3,
       "can't keep going": 2,
@@ -241,6 +262,8 @@ class EmotionAnalysisService {
     },
     'shame': {
       'my fault': 2,
+      'in front of everyone': 2,
+      'just sat there': 1.5,
       'hate myself': 3,
       'messed up': 1.5,
       'screwed up': 1.5,
@@ -249,6 +272,13 @@ class EmotionAnalysisService {
     },
     'joy': {
       'good news': 2.5,
+      'got into': 2.5,
+      'got accepted': 3,
+      'got promoted': 3,
+      'got engaged': 3,
+      'i passed': 2.5,
+      'we won': 2.5,
+      "can't believe it": 0.5,
       'got the job': 3,
       'so happy': 2.5,
       "can't wait": 2,
