@@ -12,6 +12,8 @@ import '../../avatar/conversation_presence_signal.dart';
 import '../../avatar/avatar_globals.dart';
 import '../../avatar/avatar_registry.dart';
 import '../../avatar/avatar_view.dart';
+import '../../avatar/motion/neura_body_cues.dart';
+import '../../services/emotion_analysis_service.dart';
 import '../../encrypted_memory/companion_memory_service.dart';
 import '../../modules/memory/memory_screen.dart';
 import '../../reference/neura_reference_shelf_screen.dart';
@@ -398,6 +400,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       _busy = true;
     });
     _scrollToEnd();
+    _reactToFeeling(text);
     // Preserve the existing explicit-crisis routing floor using only this
     // typed message and reviewed static resources. No mood/history lookup,
     // storm-event write, or model inference enters this support path.
@@ -1159,6 +1162,16 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     }
   }
 
+  /// Her body answers how the message feels before her words do. The read
+  /// is on-device and only feeling labels/numbers reach the avatar.
+  void _reactToFeeling(String text) {
+    if (text.isEmpty) return;
+    final read = const EmotionAnalysisService().read(text);
+    // Never a happy hop on a message that trips the crisis floor.
+    if (read.primary == 'joy' && CrisisTextScan.of(text).crisis) return;
+    NeuraEmpathyMotion.respondTo(read);
+  }
+
   void _scrollToEnd() {
     if (_scrollPending) return;
     _scrollPending = true;
@@ -1320,6 +1333,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       _activeReplyId = generationId;
     });
     _scrollToEnd();
+    _reactToFeeling(text);
     await AppLog.instance.info('chat_turn', {
       'character_count': displayText.runes.length,
       'has_image': hasImage,
