@@ -10,6 +10,7 @@ import '../integrations/tts/neura_windows_tts.dart';
 import '../avatar/motion/neura_motion.dart';
 import 'neura_audio_focus.dart';
 import 'neura_companion_presence.dart';
+import 'neura_spoken_text.dart';
 import '../reliability/safe_boot.dart';
 import '../startup/neura_prefs_cache.dart';
 
@@ -517,6 +518,8 @@ class NeuraTtsService with WidgetsBindingObserver {
   /// With [requireCompletion], skipped, rejected or cancelled speech fails
   /// instead of authorizing the startup microphone to open.
   Future<void> speak(String text, {bool requireCompletion = false}) {
+    // Say words, not markdown or emoji; the displayed reply is unchanged.
+    text = NeuraSpokenText.clean(text);
     if (!playbackAllowed || !enabled || text.trim().isEmpty) {
       if (requireCompletion) {
         return Future<void>.error(
