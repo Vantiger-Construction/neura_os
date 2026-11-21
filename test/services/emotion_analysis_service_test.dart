@@ -25,6 +25,9 @@ void main() {
       'I feel so lonely, nobody to talk to': 'loneliness',
       "I'm such an idiot, it was all my fault": 'shame',
       'I am so embarrassed about what I said': 'shame',
+      // Gaps found by running the real offline model on realistic messages.
+      "I got into the nursing program!!! I can't believe it": 'joy',
+      "I'm not even sad, I'm just tired of everything": 'exhaustion',
     };
     cases.forEach((text, expected) {
       test(text, () => expect(primary(text), expected));
@@ -40,6 +43,7 @@ void main() {
       'This stupid printer keeps jamming',
       'My phone died, can you remind me later?',
       'I lost my keys again',
+      "I can't believe it",
       "I'm tired of this song, play something else",
       "I'm not worried about it",
       'How do I make pasta for two?',
@@ -96,7 +100,7 @@ void main() {
           reader.read("I'm fine, just really tired and nobody cares anyway");
       expect(read.masked, isTrue);
       expect(read.primary, 'loneliness');
-      expect(read.promptCue, contains("though they say they're fine"));
+      expect(read.promptCue, contains('despite saying fine'));
     });
 
     test('a plain "I\'m fine, thanks" is not flagged', () {
@@ -106,10 +110,47 @@ void main() {
     });
   });
 
+  test('public humiliation reads as both frustration and shame', () {
+    final read = reader.read(
+        'ugh. my boss yelled at me in front of everyone today and I just sat there');
+    expect({read.primary, read.secondary}, {'anger', 'shame'});
+  });
+
+  test('grief is never graded as "very grieving"', () {
+    final cue =
+        reader.read('my dog died this morning, I miss him so much!!').promptCue;
+    expect(cue, contains('grieving'));
+    expect(cue, isNot(contains('very grieving')));
+  });
+
+  group('tuned against the real offline model', () {
+    test('good news alone gets no prompt cue (it made the model gush)', () {
+      final read = reader.read('I got into the nursing program!!!');
+      expect(read.primary, 'joy');
+      expect(read.promptCue, isEmpty);
+    });
+
+    test('relief mixed with a harder feeling still cares for the harder one',
+        () {
+      final read = reader.read("I'm so relieved but completely burnt out");
+      expect(
+          {read.primary, read.secondary}, containsAll(['joy', 'exhaustion']));
+      expect(read.promptCue, contains('exhausted'));
+      expect(read.promptCue, isNot(contains('happy')));
+    });
+
+    test('the cue asks the model not to name the feeling back at them', () {
+      final cue =
+          reader.read("I'm such an idiot, it was all my fault").promptCue;
+      expect(cue, contains('ashamed'));
+      expect(cue, endsWith('Respond to it without naming it.'));
+    });
+  });
+
   test('cue is tentative and phrased as a hint', () {
     final cue = reader.read('I feel really sad').promptCue;
-    expect(cue, startsWith('They sound'));
-    expect(cue, contains('Meet that first'));
+    expect(cue, startsWith('Likely mood:'));
+    expect(cue, contains('without naming it'));
   });
 
   test('every cue fits the declared byte bound', () {
@@ -135,7 +176,7 @@ void main() {
         newest: "I'm so stressed about tomorrow",
         hiddenUserTurns: ['I feel really lonely lately'],
       );
-      expect(cue, startsWith('They sound'));
+      expect(cue, startsWith('Likely mood:'));
       expect(cue, contains('anxious'));
     });
 

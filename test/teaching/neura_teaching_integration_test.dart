@@ -13,6 +13,7 @@ import 'package:neuro_companion/planning/neura_daily_plan.dart';
 import 'package:neuro_companion/planning/neura_daily_plan_screen.dart';
 import 'package:neuro_companion/planning/neura_starter_steps.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
+import 'package:neuro_companion/services/neura_offline_prompt.dart';
 import 'package:neuro_companion/profiles/local_profile_service.dart';
 import 'package:neuro_companion/src/core/data_wipe_service.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
@@ -83,10 +84,7 @@ void main() {
                 contains("Follow the user's requested detail for this reply"));
             expect(prompt, contains('fresh user approval'));
             expect(prompt, contains('Model output proposes actions'));
-            const suffix =
-                '\n\nYou are running offline. Do not claim web access, '
-                'saved memories or completed actions. Offer everyday support; do not '
-                'diagnose or advise medication changes. No tools are available.';
+            const suffix = kNeuraOfflineSystemSuffix;
             expect(
                 utf8.encode('$prompt$suffix').length, lessThanOrEqualTo(6500),
                 reason:
