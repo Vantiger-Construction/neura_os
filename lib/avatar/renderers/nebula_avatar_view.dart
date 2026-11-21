@@ -163,21 +163,20 @@ class NeuraNebulaPainter extends CustomPainter {
     [980, 700, 140, 110, 0.85],
     [960, 290, 90, 120, 0.75],
     [730, 660, 60, 160, 0.9],
-    [1190, 520, 60, 170, 0.9],
-    [1224, 400, 44, 80, 0.85],
+    [1190, 660, 60, 160, 0.9],
+    [1220, 840, 44, 70, 0.85],
     [700, 840, 40, 70, 0.8],
   ];
 
   // Silhouette ovals: center x, y, radius x, y, rotation in degrees.
-  // Head, neck, left arm and hand, right upper arm, forearm and raised hand.
+  // Head, neck, and matching arms and hands resting at her sides.
   static const List<List<double>> _limbs = [
     [960, 300, 100, 125, 0],
     [960, 430, 40, 55, 0],
     [748, 672, 36, 168, 18],
     [700, 848, 36, 58, 0],
-    [1140, 572, 38, 90, -24],
-    [1196, 520, 32, 122, 10],
-    [1222, 390, 38, 66, 15],
+    [1172, 672, 36, 168, -18],
+    [1220, 848, 36, 58, 0],
   ];
 
   // Seven energy points, root to crown.
@@ -205,9 +204,9 @@ class NeuraNebulaPainter extends CustomPainter {
     [688, 880, 2.6],
     [704, 892, 3.0],
     [720, 878, 2.4],
-    [1212, 338, 2.4],
-    [1230, 326, 3.0],
-    [1248, 342, 2.4],
+    [1232, 880, 2.6],
+    [1216, 892, 3.0],
+    [1200, 878, 2.4],
   ];
 
   static final Path _silhouette = _buildSilhouette();
