@@ -268,6 +268,9 @@ class NeuraAiService {
         includePersistentMemory: useMemory,
         memoryPermission: memoryPermission,
         includeCurrentMood: !localOllama && !profileSession,
+        // Wit and knowledge guidance needs the cloud model and room in its
+        // prompt; the on-device prompt is at its native byte limit.
+        includePersonality: !localOllama,
         conversationMode: conversationMode,
       );
       cancel.throwIfCancelled();

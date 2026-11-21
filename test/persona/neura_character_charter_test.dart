@@ -46,6 +46,23 @@ void main() {
     expect(prompt, contains('do not claim consciousness'));
   });
 
+  test('personality makes her witty, knowledgeable and attentive, honestly',
+      () {
+    final p = NeuraCharacterCharter.personality.toLowerCase();
+    expect(p, contains('dry, playful wit'));
+    expect(p, contains('never at their expense'));
+    expect(p, contains("never when they're hurting"));
+    expect(p, contains('humor setting'));
+    expect(p, contains('genuinely interesting detail'));
+    expect(p, contains('accuracy beats flair'));
+    expect(p, contains('never an invented life story'));
+    expect(p, contains('pay attention'));
+    expect(p, contains('the rules above always win'));
+    // It is a separate, cloud-only layer, not part of the native-budgeted
+    // charter that every on-device request carries.
+    expect(NeuraCharacterCharter.systemPrompt, isNot(contains('playful wit')));
+  });
+
   test('character charter principles cannot be changed at runtime', () {
     expect(
       () => NeuraCharacterCharter.principles.add('unreviewed'),
