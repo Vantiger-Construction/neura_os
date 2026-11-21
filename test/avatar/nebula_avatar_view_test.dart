@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/avatar/avatar_controller.dart';
@@ -68,6 +70,34 @@ void main() {
     expect(spec.id, nebula);
     expect(spec.format, AvatarFormat.nebula);
     expect(spec.assetPath, isEmpty);
+  });
+
+  test('the painted idle pose rests both hands at her sides', () async {
+    const size = 880;
+    final controller = AvatarController();
+    final seconds = ValueNotifier<double>(0);
+    addTearDown(controller.dispose);
+    addTearDown(seconds.dispose);
+
+    final recorder = ui.PictureRecorder();
+    NeuraNebulaPainter(seconds: seconds, controller: controller)
+        .paint(Canvas(recorder), const Size.square(880));
+    final picture = recorder.endRecording();
+    addTearDown(picture.dispose);
+    final image = picture.toImageSync(size, size);
+    addTearDown(image.dispose);
+    final pixels =
+        (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+
+    // Sample the painted body in design coordinates, away from anti-aliasing.
+    int alphaAt(int x, int y) =>
+        pixels.getUint8(((y - 80) * size + x - 520) * 4 + 3);
+
+    expect(alphaAt(700, 848), 255, reason: 'Left hand at her side');
+    expect(alphaAt(1220, 848), 255, reason: 'Right hand at her side');
+    expect(alphaAt(700, 550), 0, reason: 'No arm extended to her left');
+    expect(alphaAt(1220, 550), 0, reason: 'No arm extended to her right');
+    expect(alphaAt(1222, 390), 0, reason: 'The old raised hand is gone');
   });
 
   testWidgets('time holds still until motion is live, and again on Still',
