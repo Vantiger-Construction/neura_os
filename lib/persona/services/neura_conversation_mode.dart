@@ -10,7 +10,7 @@ enum NeuraConversationMode {
   ),
   companion(
     'Companion',
-    'Speak warmly and naturally. Acknowledge the person when appropriate, answer directly, and offer one helpful next step. Build on what was just said instead of restarting the conversation or repeating reassurance. Ask at most one useful follow-up; a question is optional.',
+    'Speak warmly and naturally. Acknowledge them when it fits, answer directly, and offer one helpful next step. Build on what was just said; don\'t restart or repeat reassurance. At most one optional follow-up.',
   ),
   coach(
     'Coach',
