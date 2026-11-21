@@ -8,16 +8,15 @@ import 'package:neuro_companion/persona/services/neura_behavior_adapter.dart';
 import 'package:neuro_companion/persona/services/neura_conversation_mode.dart';
 import 'package:neuro_companion/teaching/neura_teaching_preferences.dart';
 import 'package:neuro_companion/services/emotion_analysis_service.dart';
+import 'package:neuro_companion/services/neura_offline_prompt.dart';
 
 /// rust/src/ollama_conversation.rs rejects an offline request whose system
 /// prompt exceeds this many bytes, so an oversized prompt means no reply.
 const _nativeSystemLimit = 6500;
 
-// Mirrors NeuraAiService's offline suffix and the longest audience and room
-// texts in NeuraPromptBuilder (private there). Update these if those grow.
-const _offlineSuffix = '\n\nYou are running offline. Do not claim web access, '
-    'saved memories or completed actions. Offer everyday support; do not '
-    'diagnose or advise medication changes. No tools are available.';
+// Mirrors the longest audience and room texts in NeuraPromptBuilder (private
+// there). Update these if those grow.
+const _offlineSuffix = kNeuraOfflineSystemSuffix;
 const _childAudience = 'The person you are talking with is a CHILD. Use '
     'simple, warm, age-appropriate language. Never discuss romance, '
     'violence, self-harm, or other mature themes. If they mention '

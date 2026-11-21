@@ -15,6 +15,7 @@ import 'package:neuro_companion/persona/services/neura_conversation_mode.dart';
 import 'package:neuro_companion/persona/services/neura_persona_service.dart';
 import 'package:neuro_companion/persona/services/neura_prompt_builder.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
+import 'package:neuro_companion/services/neura_offline_prompt.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
@@ -68,10 +69,7 @@ void main() {
             conversationMode: mode,
             includeCurrentMood: false,
           );
-          const suffix =
-              '\n\nYou are running offline. Do not claim web access, '
-              'saved memories or completed actions. Offer everyday support; do not '
-              'diagnose or advise medication changes. No tools are available.';
+          const suffix = kNeuraOfflineSystemSuffix;
           expect(utf8.encode('$prompt$suffix').length, lessThanOrEqualTo(6500),
               reason: '${preset.name}/${mode.name}/${audience.name}');
           expect(prompt, contains('fresh user approval'));

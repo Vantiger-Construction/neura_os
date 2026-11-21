@@ -6,6 +6,7 @@ import 'package:neuro_companion/persona/services/neura_prompt_builder.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 import 'package:neuro_companion/persona/services/neura_conversation_mode.dart';
 import 'package:neuro_companion/persona/models/neura_audience.dart';
+import 'package:neuro_companion/services/neura_offline_prompt.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -39,9 +40,7 @@ void main() {
           includeCurrentMood: false,
           conversationMode: mode,
         );
-        const suffix = '\n\nYou are running offline. Do not claim web access, '
-            'saved memories or completed actions. Offer everyday support; do not '
-            'diagnose or advise medication changes. No tools are available.';
+        const suffix = kNeuraOfflineSystemSuffix;
         expect(utf8.encode('$prompt$suffix').length, lessThanOrEqualTo(6500),
             reason: '${mode.name}/${audience.name}');
         expect(prompt, contains('Safe Mode keeps the microphone off'));
