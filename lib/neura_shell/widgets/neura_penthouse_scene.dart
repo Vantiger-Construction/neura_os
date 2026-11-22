@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../avatar/motion/neura_motion.dart';
 import '../models/neura_room.dart';
 
 /// Neura's penthouse, painted in code so it needs no image assets.
@@ -14,7 +15,9 @@ import '../models/neura_room.dart';
 /// can see where she is.
 ///
 /// The scene is static (no animation ticker), so it costs nothing at idle and
-/// is safe for Safe Mode and reduced-motion users.
+/// is safe for Safe Mode and reduced-motion users. When the room changes
+/// while companion motion is live, the old room fades into the new one;
+/// otherwise the change is instant.
 ///
 /// [dim] lays the app background colour over the scene so it can sit behind
 /// menus and content without hurting readability (0 = full scene,
@@ -33,18 +36,30 @@ class NeuraPenthouseScene extends StatelessWidget {
   final Color? dimColor;
   final bool showFurniture;
 
+  /// How long one room takes to fade into the next.
+  static const Duration crossfade = Duration(milliseconds: 700);
+
   @override
   Widget build(BuildContext context) {
     final overlay = (dimColor ?? Theme.of(context).colorScheme.surface)
         .withValues(alpha: dim.clamp(0.0, 1.0));
-    return RepaintBoundary(
-      child: CustomPaint(
-        painter: NeuraPenthousePainter(
-          room: room,
-          overlay: overlay,
-          showFurniture: showFurniture,
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    final animate = NeuraMotion.instance.live.value && !reduceMotion;
+    final painter = NeuraPenthousePainter(
+      room: room,
+      overlay: overlay,
+      showFurniture: showFurniture,
+    );
+    return AnimatedSwitcher(
+      duration: animate ? crossfade : Duration.zero,
+      switchInCurve: Curves.easeInOut,
+      switchOutCurve: Curves.easeInOut,
+      child: RepaintBoundary(
+        key: ValueKey<String>(room.id),
+        child: CustomPaint(
+          painter: painter,
+          child: const SizedBox.expand(),
         ),
-        child: const SizedBox.expand(),
       ),
     );
   }
