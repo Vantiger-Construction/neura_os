@@ -304,6 +304,8 @@ class NeuraEmpathyMotion {
       return read.masked ? (0.35, 0.4, NeuraGesture.leanIn) : null;
     }
     return switch (read.primary) {
+      // Big news ("I GOT THE JOB!!!") earns her double hop.
+      'joy' when read.intensity >= 0.75 => (0.85, 0.85, NeuraGesture.celebrate),
       'joy' => (0.75, 0.75, NeuraGesture.bounce),
       'sadness' || 'grief' || 'loneliness' => (0.3, 0.3, NeuraGesture.leanIn),
       'shame' => (0.4, 0.35, NeuraGesture.leanIn),
@@ -324,6 +326,42 @@ class NeuraEmpathyMotion {
     // Stronger feelings get a more visible, but never exaggerated, gesture.
     final intensity = (0.35 + 0.3 * read.intensity).clamp(0.35, 0.65);
     b.emit(NeuraGestureEvent(gesture, intensity: intensity.toDouble()));
+    return true;
+  }
+
+  /// Her body matching her own reply as it lands: a small hop when she is
+  /// sharing good news, a gentle lean-in when she is comforting. Subtler
+  /// than [respondTo] (she already reacted to the message), and it never
+  /// changes mood/energy, so her posture stays the one she took for them.
+  ///
+  /// Her replies are read for comfort or celebration language, which the
+  /// user-feeling reader does not cover ("I'm so sorry" is not a feeling).
+  /// Only the resulting gesture enum leaves this file.
+  static NeuraGesture? replyGestureFor(String reply) {
+    final text = reply.toLowerCase().replaceAll('’', "'");
+    if (_celebrating.hasMatch(text)) return NeuraGesture.bounce;
+    if (_comforting.hasMatch(text)) return NeuraGesture.leanIn;
+    return null;
+  }
+
+  static final _celebrating = RegExp(
+    r"\b(congrat\w*|so happy for you|so proud of you|that's (amazing|"
+    r"wonderful|fantastic|incredible|brilliant|huge)|what great news|"
+    r"well done|you did it)\b",
+  );
+  static final _comforting = RegExp(
+    r"\b(i'm (so |really |truly )?sorry|so sorry|i'm here (for you|with you)|"
+    r"(that|it) sounds (really |so )?(hard|painful|rough|exhausting|lonely|"
+    r"overwhelming)|that's (really |so )?(hard|a lot)|you're not alone|"
+    r"must (hurt|be (so |really )?(hard|painful)))\b",
+  );
+
+  /// Emits [replyGestureFor] at a fixed, gentle intensity. Returns whether
+  /// it did.
+  static bool expressOwnReply(String reply, {NeuraEventBus? bus}) {
+    final gesture = replyGestureFor(reply);
+    if (gesture == null) return false;
+    (bus ?? NeuraEventBus.I).emit(NeuraGestureEvent(gesture, intensity: 0.35));
     return true;
   }
 }
