@@ -61,6 +61,11 @@ import '../support/guided_support_screen.dart';
 import 'neura_reply_text.dart';
 import 'neura_voice_destinations.dart';
 
+/// Shown in Neura's bubble while an on-device (Ollama) reply is being
+/// generated. Those replies are not streamed and can take a minute or more.
+const String kOfflineThinkingText =
+    'Thinking on this device… offline replies can take a minute or two.';
+
 class NeuraChatScreen extends StatefulWidget {
   const NeuraChatScreen({
     super.key,
@@ -2121,6 +2126,23 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                                       ),
                                     ),
                                   ],
+                                )
+                              else if (!line.isUser &&
+                                  line.text.isEmpty &&
+                                  !line.interrupted &&
+                                  _localOllama &&
+                                  _busy &&
+                                  identical(line, _activeBotLine))
+                                // On-device replies arrive whole after a
+                                // long wait; say so instead of a bare
+                                // ellipsis. Static text: no timer, no
+                                // frames while waiting.
+                                const Text(
+                                  kOfflineThinkingText,
+                                  style: TextStyle(
+                                    fontStyle: FontStyle.italic,
+                                    color: Colors.white70,
+                                  ),
                                 )
                               else if (line.isUser || line.text.isEmpty)
                                 Text(line.text.isEmpty ? '…' : line.text)

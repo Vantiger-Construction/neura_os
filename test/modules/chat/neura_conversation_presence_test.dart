@@ -399,7 +399,11 @@ void main() {
           .single
           .pose;
       await ask(tester);
+      // The pending on-device reply says it is working, then gives way.
+      expect(find.text(kOfflineThinkingText), findsOneWidget);
       await answer(tester);
+      expect(find.text(kOfflineThinkingText), findsNothing);
+      expect(find.text('Synthetic local answer.'), findsWidgets);
       expect(pose().viseme, NeuraViseme.MBP);
       expect(pose().open, 0);
       viseme = 3;
@@ -627,6 +631,7 @@ void main() {
       await tester.tap(find.byTooltip('Stop offline reply'));
       await tester.pump();
       expect(phases().last, 'think:false');
+      expect(find.text(kOfflineThinkingText), findsNothing);
       modelReply = 'Synthetic stale answer';
       await drain(tester);
       expect(nativeCalls, isNot(contains('sapi:speak')));
