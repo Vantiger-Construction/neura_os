@@ -140,31 +140,37 @@ class _KidsNeuraChatScreenState extends State<KidsNeuraChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(12),
-              itemCount: _lines.length,
-              itemBuilder: (context, i) {
-                final line = _lines[i];
-                final align =
-                    line.isUser ? Alignment.centerRight : Alignment.centerLeft;
-                final color = line.isUser
-                    ? Colors.blueGrey.shade700
-                    : Colors.grey.shade900;
-                return Align(
-                  alignment: align,
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    padding: const EdgeInsets.all(12),
-                    constraints: const BoxConstraints(maxWidth: 560),
-                    decoration: BoxDecoration(
-                        color: color, borderRadius: BorderRadius.circular(14)),
-                    child: line.isUser || line.text.isEmpty
-                        ? Text(line.text.isEmpty ? '…' : line.text)
-                        : NeuraReplyText.widget(line.text),
-                  ),
-                );
-              },
+            // Lets a reply (a plan, a recipe, a helpline number) be selected
+            // and copied: drag with a mouse, or long-press on touch screens.
+            child: SelectionArea(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(12),
+                itemCount: _lines.length,
+                itemBuilder: (context, i) {
+                  final line = _lines[i];
+                  final align = line.isUser
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft;
+                  final color = line.isUser
+                      ? Colors.blueGrey.shade700
+                      : Colors.grey.shade900;
+                  return Align(
+                    alignment: align,
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      padding: const EdgeInsets.all(12),
+                      constraints: const BoxConstraints(maxWidth: 560),
+                      decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(14)),
+                      child: line.isUser || line.text.isEmpty
+                          ? Text(line.text.isEmpty ? '…' : line.text)
+                          : NeuraReplyText.widget(line.text),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
           SafeArea(

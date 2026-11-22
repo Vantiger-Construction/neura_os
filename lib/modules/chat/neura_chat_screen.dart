@@ -2056,107 +2056,112 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
             ),
           ),
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(12),
-              itemCount: visibleLines.length,
-              itemBuilder: (context, i) {
-                final line = visibleLines[i];
-                final align =
-                    line.isUser ? Alignment.centerRight : Alignment.centerLeft;
-                final color = line.isUser
-                    ? Colors.blueGrey.shade700
-                    : Colors.grey.shade900;
+            // Lets a reply (a plan, a recipe, a helpline number) be selected
+            // and copied: drag with a mouse, or long-press on touch screens.
+            child: SelectionArea(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(12),
+                itemCount: visibleLines.length,
+                itemBuilder: (context, i) {
+                  final line = visibleLines[i];
+                  final align = line.isUser
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft;
+                  final color = line.isUser
+                      ? Colors.blueGrey.shade700
+                      : Colors.grey.shade900;
 
-                final agentCaption = line.agentCaption;
+                  final agentCaption = line.agentCaption;
 
-                return Align(
-                  alignment: align,
-                  child: Column(
-                    crossAxisAlignment: line.isUser
-                        ? CrossAxisAlignment.end
-                        : CrossAxisAlignment.start,
-                    children: [
-                      if (agentCaption != null)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 4, bottom: 2),
-                          child: Text(
-                            agentCaption,
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(color: Colors.white70),
+                  return Align(
+                    alignment: align,
+                    child: Column(
+                      crossAxisAlignment: line.isUser
+                          ? CrossAxisAlignment.end
+                          : CrossAxisAlignment.start,
+                      children: [
+                        if (agentCaption != null)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4, bottom: 2),
+                            child: Text(
+                              agentCaption,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(color: Colors.white70),
+                            ),
                           ),
-                        ),
-                      Container(
-                        margin: const EdgeInsets.symmetric(vertical: 6),
-                        padding: const EdgeInsets.all(12),
-                        constraints: const BoxConstraints(maxWidth: 560),
-                        decoration: BoxDecoration(
-                          color: color,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (line.imageBase64 != null)
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Icon(
-                                    Icons.image,
-                                    size: 16,
-                                    color: Colors.white70,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Flexible(
-                                    child: Text(
-                                      line.text.isEmpty ? '…' : line.text,
-                                    ),
-                                  ),
-                                ],
-                              )
-                            else if (line.isUser || line.text.isEmpty)
-                              Text(line.text.isEmpty ? '…' : line.text)
-                            else
-                              NeuraReplyText.widget(line.text),
-                            if (line.interrupted) ...[
-                              const SizedBox(height: 6),
-                              const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.stop_circle_outlined,
-                                    size: 14,
-                                    color: Colors.white70,
-                                  ),
-                                  SizedBox(width: 4),
-                                  Text(
-                                    'Interrupted',
-                                    style: TextStyle(
-                                      fontSize: 11,
+                        Container(
+                          margin: const EdgeInsets.symmetric(vertical: 6),
+                          padding: const EdgeInsets.all(12),
+                          constraints: const BoxConstraints(maxWidth: 560),
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (line.imageBase64 != null)
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Icon(
+                                      Icons.image,
+                                      size: 16,
                                       color: Colors.white70,
                                     ),
-                                  ),
-                                ],
-                              ),
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        line.text.isEmpty ? '…' : line.text,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              else if (line.isUser || line.text.isEmpty)
+                                Text(line.text.isEmpty ? '…' : line.text)
+                              else
+                                NeuraReplyText.widget(line.text),
+                              if (line.interrupted) ...[
+                                const SizedBox(height: 6),
+                                const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.stop_circle_outlined,
+                                      size: 14,
+                                      color: Colors.white70,
+                                    ),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Interrupted',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                              if (!line.isUser &&
+                                  line.contextReceipt != null) ...<Widget>[
+                                const SizedBox(height: 6),
+                                NeuraContextReceiptChip(
+                                  receipt: line.contextReceipt!,
+                                ),
+                              ],
                             ],
-                            if (!line.isUser &&
-                                line.contextReceipt != null) ...<Widget>[
-                              const SizedBox(height: 6),
-                              NeuraContextReceiptChip(
-                                receipt: line.contextReceipt!,
-                              ),
-                            ],
-                          ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                );
-              },
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
           ),
           if (_selectedContext != null)

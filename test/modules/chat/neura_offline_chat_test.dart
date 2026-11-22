@@ -164,6 +164,14 @@ void main() {
         find.text('Open room is plain model text, not an action.'),
         findsOneWidget,
       );
+      // Replies can be selected and copied.
+      expect(
+        find.ancestor(
+          of: find.text('Open room is plain model text, not an action.'),
+          matching: find.byType(SelectionArea),
+        ),
+        findsOneWidget,
+      );
       expect(
         calls.singleWhere((c) => c.method == 'send').arguments,
         'Help me plan dinner.',
