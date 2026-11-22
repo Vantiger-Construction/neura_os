@@ -197,7 +197,7 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[
-            // Neura's penthouse sits behind the whole menu, dimmed so the
+            // The room Neura is in sits behind the whole menu, dimmed so the
             // workspace stays readable.
             ColoredBox(color: background),
             NeuraPenthouseScene(
@@ -866,7 +866,7 @@ class _LiveVoiceLabel extends StatelessWidget {
   }
 }
 
-/// Frames Neura's corner with her penthouse painted behind her.
+/// Frames Neura's corner with the room she is in painted behind her.
 class _PenthouseFrame extends StatelessWidget {
   const _PenthouseFrame({
     required this.room,

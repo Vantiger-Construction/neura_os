@@ -164,6 +164,15 @@ void main() {
       for (final scene in scenes) {
         expect(scene.room.id, NeuraRoom.herSuite.id);
       }
+      final painters = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .whereType<NeuraPenthousePainter>()
+          .toList();
+      expect(painters, hasLength(2));
+      for (final painter in painters) {
+        expect(painter.room.id, NeuraRoom.herSuite.id);
+      }
       expect(tester.takeException(), isNull);
     });
 
