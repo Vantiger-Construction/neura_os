@@ -115,7 +115,79 @@ async fn timed_inference(
     if text.trim().is_empty() || text.len() > MAX_REPLY {
         return Err(());
     }
+    // num_predict stops a long reply mid-word. Show and speak whole sentences.
+    if response["done_reason"] == "length" {
+        return Ok(finish_at_sentence(text));
+    }
     Ok(text.to_owned())
+}
+
+/// Shortens a reply that hit the token cap to its last complete sentence or
+/// line. A sentence that only introduces what was cut ("Try these:") is
+/// dropped too. With no complete sentence, it ends at a word with an ellipsis.
+fn finish_at_sentence(text: &str) -> String {
+    const ABBREVIATIONS: [&str; 8] = ["e.g", "i.e", "dr", "mr", "mrs", "ms", "st", "vs"];
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+    let is_closer = |c: char| {
+        matches!(
+            c,
+            '"' | '\'' | '\u{201D}' | '\u{2019}' | ')' | ']' | '*' | '_'
+        )
+    };
+    let mut ends = Vec::new();
+    for (i, &(at, c)) in chars.iter().enumerate() {
+        if c == '\n' {
+            ends.push(at);
+            continue;
+        }
+        if !matches!(c, '.' | '!' | '?' | '\u{2026}') {
+            continue;
+        }
+        let mut j = i + 1;
+        while j < chars.len() && (matches!(chars[j].1, '.' | '!' | '?') || is_closer(chars[j].1)) {
+            j += 1;
+        }
+        // A boundary needs following whitespace; the cut tail is never one.
+        if j >= chars.len() || !chars[j].1.is_whitespace() {
+            continue;
+        }
+        let line_start = text[..at].rfind('\n').map_or(0, |n| n + 1);
+        let word_start = text[..at]
+            .rfind(|ch: char| ch.is_whitespace() || ch == '(')
+            .map_or(0, |n| n + 1);
+        let word = text[word_start..at].to_lowercase();
+        let list_marker = c == '.'
+            && !word.is_empty()
+            && word.chars().all(|ch| ch.is_ascii_digit())
+            && text[line_start..word_start].trim().is_empty();
+        if list_marker || (c == '.' && ABBREVIATIONS.contains(&word.as_str())) {
+            continue;
+        }
+        ends.push(chars.get(j).map_or(text.len(), |&(b, _)| b));
+    }
+    for &end in ends.iter().rev() {
+        let kept = text[..end].trim_end();
+        let bare = kept.trim_end_matches(['*', '_', '#', ' ']);
+        // A bare list marker or a heading is not a finished thought.
+        let marker_only = kept.rsplit('\n').next().is_some_and(|line| {
+            let line = line.trim();
+            line.starts_with('#')
+                || line.trim_end_matches(['.', ')']).chars().all(|ch| {
+                    ch.is_ascii_digit() || matches!(ch, '-' | '*' | '+' | '\u{2022}' | ' ')
+                })
+        });
+        if !bare.is_empty() && !bare.ends_with(':') && !marker_only {
+            return kept.to_owned();
+        }
+    }
+    let cut = text.trim_end();
+    let cut = cut
+        .rfind(char::is_whitespace)
+        .map_or(cut, |n| cut[..n].trim_end());
+    format!(
+        "{}\u{2026}",
+        cut.trim_end_matches([',', ';', ':', '-', ' '])
+    )
 }
 
 async fn cancellable_inference(
@@ -861,6 +933,56 @@ mod tests {
         assert_eq!(values[4], u64::MAX);
         assert_ne!(values[5], u64::MAX);
         server.abort();
+    }
+    #[test]
+    fn capped_reply_ends_at_its_last_complete_sentence() {
+        for (cut, want) in [
+            (
+                "That sounds really hard. Want to talk it thro",
+                "That sounds really hard.",
+            ),
+            ("I hear you! Is it work? Or some", "I hear you! Is it work?"),
+            (
+                "She said \"rest first.\" Then we can pla",
+                "She said \"rest first.\"",
+            ),
+            (
+                "Small steps help, e.g. a short walk. Dr. Lee and I agr",
+                "Small steps help, e.g. a short walk.",
+            ),
+            (
+                "Some ideas.\n\n1. Drink water\n2. Step outside\n3. Ca",
+                "Some ideas.\n\n1. Drink water\n2. Step outside",
+            ),
+            (
+                "That makes sense. Here are a few things to try:\n\n- Bre",
+                "That makes sense.",
+            ),
+            ("Okay. **Try these:**\n1. Slow", "Okay."),
+            (
+                "You did well.\n\n## Next steps\nRest a lit",
+                "You did well.",
+            ),
+            (
+                "It is okay to feel tired and want to rest for a whi",
+                "It is okay to feel tired and want to rest for a\u{2026}",
+            ),
+            ("Rest, then", "Rest\u{2026}"),
+            ("Great\u{2026} let me thi", "Great\u{2026}"),
+        ] {
+            assert_eq!(finish_at_sentence(cut), want, "{cut:?}");
+        }
+    }
+    #[tokio::test]
+    async fn only_a_capped_reply_is_shortened() {
+        let text = "That sounds hard. Want to tal";
+        for (reason, want) in [("length", "That sounds hard."), ("stop", text)] {
+            let answer = json!({"done":true,"done_reason":reason,
+                "message":{"role":"assistant","content":text}});
+            let (endpoint, _, task) = mock(local_info(), answer).await;
+            assert_eq!(inference(&endpoint, payload()).await.unwrap(), want);
+            task.abort();
+        }
     }
     #[tokio::test]
     async fn rejects_tool_calls_incomplete_and_oversized_replies() {
