@@ -58,6 +58,7 @@ import '../../widgets/neura_context_receipt_chip.dart';
 import '../core/ai_engine.dart';
 import '../core/app_log.dart';
 import '../support/guided_support_screen.dart';
+import 'neura_reply_text.dart';
 import 'neura_voice_destinations.dart';
 
 class NeuraChatScreen extends StatefulWidget {
@@ -2117,8 +2118,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                                   ),
                                 ],
                               )
+                            else if (line.isUser || line.text.isEmpty)
+                              Text(line.text.isEmpty ? '…' : line.text)
                             else
-                              Text(line.text.isEmpty ? '…' : line.text),
+                              NeuraReplyText.widget(line.text),
                             if (line.interrupted) ...[
                               const SizedBox(height: 6),
                               const Row(

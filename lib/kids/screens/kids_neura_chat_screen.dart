@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../modules/chat/neura_reply_text.dart';
 import '../../persona/agents/agent_persona_catalog.dart';
 import '../../persona/models/neura_audience.dart';
 import '../../persona/services/neura_audience_service.dart';
@@ -158,7 +159,9 @@ class _KidsNeuraChatScreenState extends State<KidsNeuraChatScreen> {
                     constraints: const BoxConstraints(maxWidth: 560),
                     decoration: BoxDecoration(
                         color: color, borderRadius: BorderRadius.circular(14)),
-                    child: Text(line.text.isEmpty ? '…' : line.text),
+                    child: line.isUser || line.text.isEmpty
+                        ? Text(line.text.isEmpty ? '…' : line.text)
+                        : NeuraReplyText.widget(line.text),
                   ),
                 );
               },
