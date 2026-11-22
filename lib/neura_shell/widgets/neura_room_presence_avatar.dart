@@ -2,9 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../avatar/avatar_controller.dart';
 import '../../avatar/avatar_globals.dart';
 import '../../avatar/avatar_registry.dart';
 import '../../avatar/avatar_view.dart';
+import '../../avatar/renderers/nebula_avatar_view.dart';
 import '../../services/neura_companion_presence.dart';
 import '../../src/shell/shell_prefs.dart';
 import '../models/neura_room.dart';
@@ -39,6 +41,8 @@ class NeuraRoomPresenceAvatar extends StatefulWidget {
 class _NeuraRoomPresenceAvatarState extends State<NeuraRoomPresenceAvatar>
     with WidgetsBindingObserver {
   bool _foreground = true;
+  AvatarController? _restingController;
+
   @override
   void initState() {
     super.initState();
@@ -57,6 +61,7 @@ class _NeuraRoomPresenceAvatarState extends State<NeuraRoomPresenceAvatar>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _restingController?.dispose();
     super.dispose();
   }
 
@@ -77,27 +82,34 @@ class _NeuraRoomPresenceAvatarState extends State<NeuraRoomPresenceAvatar>
             final size = math
                 .max(40.0, baseSize * profile.avatarScale * widget.scale.factor)
                 .toDouble();
-            final spec = AvatarRegistry.byId(id);
+            final Widget portrait;
+            if (widget.phase != NeuraPresencePhase.safeMode) {
+              portrait = AvatarView(
+                spec: AvatarRegistry.byId(id),
+                controller: AvatarGlobals.controller,
+                size: size,
+              );
+            } else if (id == AvatarRegistry.nebulaId) {
+              // A still portrait must also ignore live mood and speech inputs.
+              portrait = NebulaAvatarView(
+                controller: _restingController ??= AvatarController(),
+                size: size,
+                enabled: false,
+              );
+            } else {
+              portrait = Image.asset(
+                kNeuraBodyArt,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Icon(
+                  Icons.auto_awesome_rounded,
+                  size: widget.compact ? 32 : 80,
+                  color: accent,
+                ),
+              );
+            }
             return Align(
               alignment: profile.alignment,
-              child: SizedBox.square(
-                dimension: size,
-                child: widget.phase == NeuraPresencePhase.safeMode
-                    ? Image.asset(
-                        'assets/images/neura_fullbody.png',
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => Icon(
-                          Icons.auto_awesome_rounded,
-                          size: widget.compact ? 32 : 80,
-                          color: accent,
-                        ),
-                      )
-                    : AvatarView(
-                        spec: spec,
-                        controller: AvatarGlobals.controller,
-                        size: size,
-                      ),
-              ),
+              child: SizedBox.square(dimension: size, child: portrait),
             );
           },
         );
