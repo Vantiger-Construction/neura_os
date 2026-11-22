@@ -1,0 +1,87 @@
+/// Synthetic, hand-labelled messages for measuring the on-device emotion
+/// reader. Written to sound like real chat (casual, typos, understatement),
+/// never copied from real people. `null` means "no clear feeling: do not
+/// cue". A list means any of those feelings is an acceptable primary read.
+const emotionReaderCorpus = <(String, Object?)>[
+  // ── joy ──
+  ('omg i passed my driving test!!', 'joy'),
+  ('Finally got promoted today', 'joy'),
+  ("we're having a baby!!!", 'joy'),
+  ('best day ever, she said yes', 'joy'),
+  ('I feel really proud of myself today', 'joy'),
+  ('so grateful for my friends rn', 'joy'),
+  ('i actually finished the marathon, cannot believe it', 'joy'),
+  // ── sadness ──
+  ('feeling pretty down today tbh', 'sadness'),
+  ('I just feel empty lately', 'sadness'),
+  ('cried in the car again', 'sadness'),
+  ('my best friend moved away and I really miss her', 'sadness'),
+  ('nothing makes me happy anymore', 'sadness'),
+  ("we broke up last night. i'm heartbroken", 'sadness'),
+  ('i didnt get the job. gutted', 'sadness'),
+  // ── grief ──
+  ('my grandma passed away on sunday', 'grief'),
+  ('Lost my dad last year and today is his birthday', 'grief'),
+  ('the funeral is tomorrow', 'grief'),
+  ('we had to put our cat down this morning', 'grief'),
+  // ── anger ──
+  ('my roommate ate my food AGAIN, so annoyed', 'anger'),
+  ("I'm furious, they cancelled my flight with no notice", 'anger'),
+  ('honestly so sick of being ignored at work', 'anger'),
+  ('this is so unfair, I did all the work and he took credit', 'anger'),
+  ('ugh my landlord is driving me crazy', 'anger'),
+  // ── anxiety ──
+  ("i can't sleep, keep worrying about money", 'anxiety'),
+  ('job interview tomorrow and im so nervous', 'anxiety'),
+  ('what if I fail the exam', 'anxiety'),
+  ('my chest feels tight and I feel on edge all day', 'anxiety'),
+  ('I have a doctors appointment and I am dreading it', 'anxiety'),
+  ('kinda stressed about the move', 'anxiety'),
+  // ── overwhelm ──
+  ('too much going on, I cant cope', 'overwhelm'),
+  ("I'm drowning in assignments", 'overwhelm'),
+  ('work, kids, house, everything at once. I am in over my head', 'overwhelm'),
+  ("so much to do and I'm falling behind on all of it", 'overwhelm'),
+  // ── exhaustion ──
+  ('so tired. like bone tired', 'exhaustion'),
+  ("I'm running on empty this week", 'exhaustion'),
+  ('completely drained after that shift', 'exhaustion'),
+  ('burnt out from caring for my mum', 'exhaustion'),
+  ('no energy to do anything today', 'exhaustion'),
+  // ── loneliness ──
+  ('I feel so alone lately', 'loneliness'),
+  ('nobody ever texts me first', ['loneliness', 'sadness']),
+  ('I have no one to talk to', 'loneliness'),
+  ('everyone went out without me again, felt left out', 'loneliness'),
+  ('moved to a new city and I dont know anyone', 'loneliness'),
+  // ── shame ──
+  ("i'm such an idiot, i sent the email to the wrong person", 'shame'),
+  ("I'm so embarrassed about last night", 'shame'),
+  ('I feel like a failure', 'shame'),
+  ('it was all my fault, i let everyone down', 'shame'),
+  ('I hate myself for snapping at my kids', 'shame'),
+  // ── mixed / masked (primary may be either) ──
+  ("I'm happy for her but honestly a bit jealous and sad", ['sadness', 'joy']),
+  ('relieved it is over but so exhausted', ['exhaustion', 'joy']),
+  // ── no clear feeling: must not cue ──
+  ('what is the capital of australia', null),
+  ('can you set a timer for 10 minutes', null),
+  ('how do I make pancakes', null),
+  ('remind me to call the dentist', null),
+  ('tell me a fun fact', null),
+  ('what time is it in london', null),
+  ('I need to sit down and write my report', null),
+  ('my laptop died, how do I fix it', null),
+  ("lost my wallet, where's the nearest police station", null),
+  ('this stupid app keeps crashing', null),
+  ('that song is so sad lol', null),
+  ('what does the word melancholy mean', null),
+  ('I love pizza', null),
+  ("I'm tired of this weather, any indoor ideas?", null),
+  ("I'm not worried, just curious how it works", null),
+  ('great, thanks!', null),
+  ('ok', null),
+  ('my phone is dead lol', null),
+  ('the movie had a happy ending', null),
+  ('recommend a book about history', null),
+];
