@@ -12,8 +12,10 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import shutil
 import subprocess
 import tempfile
+import time
 import zipfile
 
 
@@ -62,6 +64,40 @@ def extract_checked(archive: Path, destination: Path) -> None:
                 with package.open(member) as source, target.open("wb") as output:
                     while chunk := source.read(1024 * 1024):
                         output.write(chunk)
+
+
+def check_batch_launcher(app: Path) -> None:
+    """Run the shipped batch file against a harmless stand-in for the GUI."""
+    launcher = app / "START_NEURA.bat"
+    if 'neuro_companion.exe%"' in launcher.read_text(encoding="ascii").lower():
+        raise ValueError("Stray percent sign after the portable executable name")
+
+    with tempfile.TemporaryDirectory(prefix="neura-launcher-") as temporary:
+        root = Path(temporary)
+        staged = root / "portable app"
+        staged.mkdir()
+        shutil.copyfile(launcher, staged / launcher.name)
+        # Record the working directory without opening Flutter or touching user data.
+        probe = """
+use std::{env, fs};
+fn main() {
+    let parent = env::current_exe().unwrap();
+    let pending = parent.with_extension("pending");
+    fs::write(&pending, env::current_dir().unwrap().to_str().unwrap()).unwrap();
+    fs::rename(pending, parent.with_extension("started")).unwrap();
+}
+"""
+        executable = staged / "neuro_companion.exe"
+        subprocess.run(["rustc", "--crate-name", "launcher_probe", "-", "-o", str(executable)],
+                       input=probe, text=True, check=True, timeout=60)
+        subprocess.run(r'cmd.exe /d /c call "portable app\START_NEURA.bat"',
+                       cwd=root, check=True, timeout=15)
+        marker = executable.with_suffix(".started")
+        deadline = time.monotonic() + 10
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        if not marker.is_file() or Path(marker.read_text(encoding="utf-8")).resolve() != staged.resolve():
+            raise RuntimeError("Portable launcher did not start the GUI in its app directory")
 
 
 def check_native_exports(dll: Path) -> None:
@@ -141,6 +177,7 @@ def verify(dist: Path, head: str, run_id: str) -> Path:
         ):
             if sha256(root / relative) != sha256(built):
                 raise ValueError(f"Packaged binary differs from this build: {relative}")
+        check_batch_launcher(root / "app")
         check_native_exports(root / "app/neura_swarm.dll")
         process = subprocess.Popen(
             [str(root / "app/neuro_companion.exe"), "--launch-smoke-test"],
@@ -165,6 +202,7 @@ def verify(dist: Path, head: str, run_id: str) -> Path:
         "preview_sha256": sha256(archive), "files": files,
         "checks": {"runtime_payload": "passed", "rust_ollama_exports": "passed",
                    "background_and_blocked_admission": "passed",
+                   "batch_launcher_probe": "passed",
                    "extracted_launch_sentinel_73": "passed"},
         "unverified": ["actual Ollama inference", "installed-app interaction",
                        "laptop peak RAM and response latency", "model conversation quality",
