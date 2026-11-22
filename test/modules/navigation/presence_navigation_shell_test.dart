@@ -149,6 +149,33 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('shows the room Neura is in behind her and the menu', (
+      tester,
+    ) async {
+      await pumpShell(
+        tester,
+        const Size(1280, 800),
+        room: NeuraRoom.herSuite,
+      );
+      final scenes = tester.widgetList<NeuraPenthouseScene>(
+        find.byType(NeuraPenthouseScene),
+      );
+      expect(scenes, hasLength(2));
+      for (final scene in scenes) {
+        expect(scene.room.id, NeuraRoom.herSuite.id);
+      }
+      final painters = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .whereType<NeuraPenthousePainter>()
+          .toList();
+      expect(painters, hasLength(2));
+      for (final painter in painters) {
+        expect(painter.room.id, NeuraRoom.herSuite.id);
+      }
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('paints the penthouse behind Neura and the whole menu', (
       tester,
     ) async {
