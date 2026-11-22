@@ -1,0 +1,36 @@
+/// A second synthetic set written AFTER the reader was tuned on
+/// [emotionReaderCorpus], and never used for tuning. It measures how the
+/// reader generalizes; keep it out of any future tuning so the number stays
+/// honest. Same label rules as the corpus.
+const emotionReaderHoldout = <(String, Object?)>[
+  ('YES got my visa approved!!', 'joy'),
+  ('my sister had her baby, im an auntie!', 'joy'),
+  ('so stoked about the trip next week', 'joy'),
+  ('i feel really low today', 'sadness'),
+  ('been crying all morning', 'sadness'),
+  ('just feeling kinda hopeless', 'sadness'),
+  ('my uncle died yesterday', 'grief'),
+  ('it is a year since my mum passed', 'grief'),
+  ('so frustrated with my team right now', 'anger'),
+  ('i am livid. they lied to me', 'anger'),
+  ('fed up with everything at work', 'anger'),
+  ('really anxious about the test results', 'anxiety'),
+  ("can't stop thinking about what she said", 'anxiety'),
+  ('kind of nervous about the date tonight', 'anxiety'),
+  ('there is just too much on my plate', 'overwhelm'),
+  ('so swamped I cannot think', 'overwhelm'),
+  ('exhausted from the night shift', 'exhaustion'),
+  ('honestly just burnt out', 'exhaustion'),
+  ('i feel isolated working from home', 'loneliness'),
+  ('nobody cares what i think', 'loneliness'),
+  ('i feel so stupid for trusting him', 'shame'),
+  ('mortified about what i said at dinner', 'shame'),
+  ('how many grams in a cup of flour', null),
+  ('play some jazz', null),
+  ('what is a good name for a dog', null),
+  ('the ending of that book was sad', null),
+  ('summarize this article for me', null),
+  ('when is the next full moon', null),
+  ('that was a happy accident haha', null),
+  ('i need new running shoes', null),
+];
