@@ -201,6 +201,7 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
             // workspace stays readable.
             ColoredBox(color: background),
             NeuraPenthouseScene(
+              room: widget.room,
               dim: scheme.brightness == Brightness.dark ? 0.62 : 0.82,
               dimColor: background,
             ),
@@ -471,6 +472,7 @@ class _NeuraStage extends StatelessWidget {
       container: true,
       label: 'Neura Stage. ${status.presenceLabel}',
       child: _PenthouseFrame(
+        room: room,
         borderRadius: 28,
         accent: accent,
         glow: true,
@@ -696,6 +698,7 @@ class _CompactNeuraStage extends StatelessWidget {
       container: true,
       label: 'Neura presence panel. ${status.presenceLabel}',
       child: _PenthouseFrame(
+        room: room,
         borderRadius: 22,
         accent: scheme.primary,
         showFurniture: false,
@@ -866,6 +869,7 @@ class _LiveVoiceLabel extends StatelessWidget {
 /// Frames Neura's corner with her penthouse painted behind her.
 class _PenthouseFrame extends StatelessWidget {
   const _PenthouseFrame({
+    required this.room,
     required this.borderRadius,
     required this.accent,
     required this.child,
@@ -873,6 +877,7 @@ class _PenthouseFrame extends StatelessWidget {
     this.showFurniture = true,
   });
 
+  final NeuraRoom room;
   final double borderRadius;
   final Color accent;
   final Widget child;
@@ -910,6 +915,7 @@ class _PenthouseFrame extends StatelessWidget {
               Positioned.fill(
                 child: NeuraPenthouseScene(
                   key: const ValueKey<String>('neura-penthouse'),
+                  room: room,
                   dim: 0.18,
                   dimColor: const Color(0xFF171023),
                   showFurniture: showFurniture,
