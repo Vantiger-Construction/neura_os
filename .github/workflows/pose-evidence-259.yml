@@ -1,0 +1,60 @@
+name: Neura Windows pose evidence
+on:
+  push:
+    branches: ['qa/nebula-windows-visual-259']
+permissions:
+  contents: read
+jobs:
+  capture:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: before
+            source: d929a3afaea455afb52ddf8ec92dc4cadc540560
+          - label: candidate
+            source: 24e111e5086bbd5c4eae9367354266d251bd0075
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          path: evidence
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ matrix.source }}
+          path: app
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          channel: stable
+          flutter-version: '3.47.9'
+          cache: true
+      - name: Build the isolated Windows host with the production navigation shell
+        working-directory: app
+        shell: pwsh
+        run: |
+          Copy-Item ../evidence/tools/pose_capture_main.dart lib/pose_capture_main.dart
+          flutter pub get --enforce-lockfile
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          flutter build windows --release --no-pub --dart-define=NEURA_DEMO=true --target=lib/pose_capture_main.dart
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Run the native preview and collect only its synthetic Flutter frames
+        working-directory: app
+        shell: pwsh
+        run: |
+          $env:NEURA_POSE_OUTPUT = (New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'pose-frames')).FullName
+          $app = Get-Item build/windows/x64/runner/Release/neuro_companion.exe
+          $process = Start-Process -FilePath $app.FullName -WorkingDirectory $app.DirectoryName -PassThru
+          if (-not $process.WaitForExit(120000)) { $process.Kill(); throw 'Timed out waiting for native preview' }
+          if ($process.ExitCode -ne 0) { throw "Native preview exited with code $($process.ExitCode)" }
+          foreach ($frame in @('idle-start','idle-after-30s','safe-mode')) {
+            if (-not (Test-Path (Join-Path $env:NEURA_POSE_OUTPUT "$frame.png"))) { throw "Missing frame: $frame" }
+          }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: pose-${{ matrix.label }}
+          path: ${{ runner.temp }}/pose-frames/*.png
+          if-no-files-found: error
+          retention-days: 7
