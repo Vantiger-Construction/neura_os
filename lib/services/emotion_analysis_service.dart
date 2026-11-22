@@ -368,6 +368,54 @@ class EmotionAnalysisService {
       RegExp(r'\b(oh great|just great|just perfect|oh wonderful|lovely)\b');
   static final _tokenPattern = RegExp(r"[a-z]+(?:'[a-z]+)?");
 
+  // Emoji people use to show a feeling, by code point. Ambiguous ones
+  // (😅 🤔 🙃 ❤️ 👍 ✨) are left out on purpose; 😂/🤣 are laughter, so joy.
+  static const _emoji = <int, String>{
+    0x1F600: 'joy',
+    0x1F603: 'joy',
+    0x1F604: 'joy',
+    0x1F601: 'joy',
+    0x1F606: 'joy',
+    0x1F602: 'joy',
+    0x1F923: 'joy',
+    0x1F60A: 'joy',
+    0x1F970: 'joy',
+    0x1F60D: 'joy',
+    0x1F973: 'joy',
+    0x1F389: 'joy',
+    0x1F64C: 'joy',
+    0x1F979: 'joy',
+    0x1F38A: 'joy',
+    0x1F62D: 'sadness',
+    0x1F622: 'sadness',
+    0x1F61E: 'sadness',
+    0x1F614: 'sadness',
+    0x2639: 'sadness',
+    0x1F641: 'sadness',
+    0x1F494: 'sadness',
+    0x1F97A: 'sadness',
+    0x1F63F: 'sadness',
+    0x1F620: 'anger',
+    0x1F621: 'anger',
+    0x1F92C: 'anger',
+    0x1F624: 'anger',
+    0x1F630: 'anxiety',
+    0x1F628: 'anxiety',
+    0x1F631: 'anxiety',
+    0x1F62C: 'anxiety',
+    0x1F625: 'anxiety',
+    0x1F61F: 'anxiety',
+    0x1F634: 'exhaustion',
+    0x1F971: 'exhaustion',
+    0x1F629: 'exhaustion',
+    0x1F62B: 'exhaustion',
+    0x1F633: 'shame',
+    0x1F648: 'shame',
+    0x1FAE3: 'shame',
+    0x1F613: 'shame',
+  };
+  static const _emojiWeight = 1.5;
+
   /// Reads the feeling in [text]. Returns [EmotionRead.none] when the signal
   /// is too weak to act on.
   EmotionRead read(String text) {
@@ -401,6 +449,20 @@ class EmotionAnalysisService {
       }
     }
     if (_griefPattern.hasMatch(lower)) add('grief', 3);
+
+    // Each distinct feeling emoji counts once; repeats ("😭😭😭") raise
+    // intensity instead of piling up score.
+    final emojiSeen = <int>{};
+    var emojiRepeats = 0;
+    for (final rune in raw.runes) {
+      final emotion = _emoji[rune];
+      if (emotion == null) continue;
+      if (emojiSeen.add(rune)) {
+        add(emotion, _emojiWeight);
+      } else {
+        emojiRepeats++;
+      }
+    }
 
     var softened = 0;
     for (var i = 0; i < tokens.length; i++) {
@@ -466,7 +528,9 @@ class EmotionAnalysisService {
     var intensity = 0.35 + 0.2 * top.value;
     final letters = raw.replaceAll(RegExp('[^A-Za-z]'), '');
     final shouting = letters.length >= 6 && letters == letters.toUpperCase();
-    if ('!'.allMatches(raw).length >= 2 || shouting) intensity += 0.2;
+    if ('!'.allMatches(raw).length >= 2 || shouting || emojiRepeats > 0) {
+      intensity += 0.2;
+    }
     intensity -= 0.15 * softened;
     final secondary = ranked.length > 1 && ranked[1].value >= top.value * 0.5
         ? ranked[1].key
