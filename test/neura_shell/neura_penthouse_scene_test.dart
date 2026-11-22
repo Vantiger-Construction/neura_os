@@ -3,11 +3,29 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:neuro_companion/avatar/motion/neura_motion.dart';
 import 'package:neuro_companion/neura_shell/models/neura_room.dart';
 import 'package:neuro_companion/neura_shell/widgets/neura_penthouse_scene.dart';
+import 'package:neuro_companion/reliability/safe_boot.dart';
+import 'package:neuro_companion/src/shell/shell_prefs.dart';
+import 'package:neuro_companion/startup/neura_prefs_cache.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
+  final binding = TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    await NeuraPrefsCache.init();
+  });
+  setUp(() {
+    NeuraMotion.instance.stop();
+    SafeBoot.instance.safeMode.value = false;
+    SafeBoot.instance.restartRequired.value = false;
+    ShellPrefsController.instance.prefs.value = ShellPrefs.defaults;
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  });
+  tearDown(NeuraMotion.instance.stop);
 
   ui.Picture record(NeuraRoom room, Size size, {bool furniture = true}) {
     final recorder = ui.PictureRecorder();
@@ -96,5 +114,52 @@ void main() {
     await tester.pump();
     expect(tester.binding.hasScheduledFrame, isFalse);
     expect(tester.takeException(), isNull);
+  });
+
+  Widget scene(NeuraRoom room, {bool reduceMotion = false}) {
+    return MaterialApp(
+      home: MediaQuery(
+        data: MediaQueryData(disableAnimations: reduceMotion),
+        child: NeuraPenthouseScene(room: room),
+      ),
+    );
+  }
+
+  List<String> paintedRooms(WidgetTester tester) {
+    return tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((paint) => paint.painter)
+        .whereType<NeuraPenthousePainter>()
+        .map((painter) => painter.room.id)
+        .toList();
+  }
+
+  testWidgets('with motion live, one room fades into the next', (
+    tester,
+  ) async {
+    NeuraMotion.instance.start();
+    await tester.pumpWidget(scene(NeuraRoom.penthouse));
+    await tester.pumpWidget(scene(NeuraRoom.moodDen));
+    await tester.pump(const Duration(milliseconds: 300));
+    final fading = paintedRooms(tester);
+    expect(fading, containsAll(<String>['penthouse', 'mood_den']));
+    await tester.pump(NeuraPenthouseScene.crossfade);
+    expect(paintedRooms(tester), <String>['mood_den']);
+  });
+
+  testWidgets('without live motion the room changes at once', (tester) async {
+    await tester.pumpWidget(scene(NeuraRoom.penthouse));
+    await tester.pumpWidget(scene(NeuraRoom.joyLounge));
+    await tester.pump();
+    expect(paintedRooms(tester), <String>['joy_lounge']);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+  });
+
+  testWidgets('reduced motion changes the room at once', (tester) async {
+    NeuraMotion.instance.start();
+    await tester.pumpWidget(scene(NeuraRoom.penthouse, reduceMotion: true));
+    await tester.pumpWidget(scene(NeuraRoom.herSuite, reduceMotion: true));
+    await tester.pump();
+    expect(paintedRooms(tester), <String>['her_suite']);
   });
 }
