@@ -542,7 +542,8 @@ class NeuraAiService {
           cancel.throwIfCancelled();
           return approved
               ? 'Moving to "$room" when this reply ends.'
-              : 'Could not move to "$room" right now.';
+              : 'Did not move to "$room": already there, or not possible '
+                  'right now.';
 
         case NeuraChatPolicy.setTone:
           final tone = input['tone']?.toString() ?? '';

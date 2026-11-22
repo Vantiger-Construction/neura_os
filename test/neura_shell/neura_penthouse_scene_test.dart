@@ -134,6 +134,16 @@ void main() {
         .toList();
   }
 
+  double opacityOf(WidgetTester tester, String roomId) {
+    final paint = find.byWidgetPredicate((widget) {
+      final painter = widget is CustomPaint ? widget.painter : null;
+      return painter is NeuraPenthousePainter && painter.room.id == roomId;
+    });
+    final fades = find.byType(FadeTransition);
+    final fade = find.ancestor(of: paint, matching: fades);
+    return tester.widget<FadeTransition>(fade.first).opacity.value;
+  }
+
   testWidgets('with motion live, one room fades into the next', (
     tester,
   ) async {
@@ -143,6 +153,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     final fading = paintedRooms(tester);
     expect(fading, containsAll(<String>['penthouse', 'mood_den']));
+    final leaving = opacityOf(tester, 'penthouse');
+    final arriving = opacityOf(tester, 'mood_den');
+    expect(leaving, inExclusiveRange(0, 1));
+    expect(arriving, inExclusiveRange(0, 1));
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(opacityOf(tester, 'penthouse'), lessThan(leaving));
+    expect(opacityOf(tester, 'mood_den'), greaterThan(arriving));
     await tester.pump(NeuraPenthouseScene.crossfade);
     expect(paintedRooms(tester), <String>['mood_den']);
   });

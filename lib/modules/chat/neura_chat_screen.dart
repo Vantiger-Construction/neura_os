@@ -139,9 +139,15 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   String? _activeReplyId;
   late final NeuraRoomMover _roomMover = NeuraRoomMover(
     currentRoom: () => NeuraShell.of(context).room,
-    setRoom: (room) => NeuraShell.of(context).setRoom(room),
+    // A trip to Her Suite is a visit, like every other route into it, so it
+    // never replaces the room the app reopens in.
+    setRoom: (room) => NeuraShell.of(context).setRoom(
+      room,
+      persist: room.id != NeuraRoom.herSuite.id,
+    ),
     safeMode: () => SafeBoot.instance.safeMode.value,
   );
+  NeuraShellState? _observedShell;
   _ChatLine? _activeBotLine;
   int _generationSerial = 0;
 
@@ -240,6 +246,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final shell = NeuraShell.of(context);
+    if (!identical(_observedShell, shell)) {
+      _observedShell?.removeListener(_onShellChanged);
+      _observedShell = shell;
+      shell.addListener(_onShellChanged);
+      _roomMover.observe(shell.room);
+    }
     // Opaque covering routes disable chat's tickers. Approval dialogs remain
     // part of the active turn and must not cancel the request they approve.
     final current = TickerMode.valuesOf(context).enabled;
@@ -510,6 +523,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   @override
   void dispose() {
     _disposed = true;
+    _observedShell?.removeListener(_onShellChanged);
     _presence.reset();
     _clearThread();
     _memoryOwner?.removeListener(_onPendingMemoryChanged);
@@ -861,9 +875,22 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     ]);
   }
 
+  void _onShellChanged() {
+    final shell = _observedShell;
+    if (shell != null) _roomMover.observe(shell.room);
+  }
+
   Future<void> _settleRoomMove(String generationId) async {
-    final move = await _roomMover.settle(generationId);
+    final NeuraSelfMove? move;
+    try {
+      move = await _roomMover.settle(generationId);
+    } catch (error, stack) {
+      // A failed move must not fail the reply that already finished.
+      await AppLog.instance.caught('dispatch_intent_failed', error, stack);
+      return;
+    }
     if (move == null || !mounted) return;
+    if (NeuraShell.of(context).room.id != move.to.id) return;
     setState(() {
       _activeAgent = AgentSelectionService.instance.resolveAgent(move.to);
     });
@@ -871,6 +898,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       'room': move.to.id,
       'from': move.from.id,
       'self_directed': true,
+      'setup_failed': move.error != null,
     });
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -890,7 +918,17 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
 
   Future<void> _undoRoomMove(NeuraSelfMove move) async {
     if (!mounted) return;
-    final undone = await _roomMover.undo(move);
+    final bool undone;
+    try {
+      undone = await _roomMover.undo(move);
+    } catch (error, stack) {
+      await AppLog.instance.caught(
+        'dispatch_intent_undo_failed',
+        error,
+        stack,
+      );
+      return;
+    }
     if (!undone || !mounted) return;
     setState(() {
       _activeAgent = AgentSelectionService.instance.resolveAgent(move.from);

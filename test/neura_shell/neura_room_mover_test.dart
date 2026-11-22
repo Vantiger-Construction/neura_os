@@ -6,21 +6,34 @@ void main() {
   late NeuraRoom room;
   late bool safeMode;
   late List<String> moves;
+  late Object? failure;
+  late bool failBeforeMoving;
   late NeuraRoomMover mover;
 
   setUp(() {
     room = NeuraRoom.penthouse;
     safeMode = false;
     moves = <String>[];
+    failure = null;
+    failBeforeMoving = false;
     mover = NeuraRoomMover(
       currentRoom: () => room,
       setRoom: (next) async {
+        final error = failure;
+        if (error != null && failBeforeMoving) throw error;
         moves.add(next.id);
         room = next;
+        if (error != null) throw error;
       },
       safeMode: () => safeMode,
     );
   });
+
+  /// Stands in for the user picking a room in the shell.
+  void userPicks(NeuraRoom next) {
+    room = next;
+    mover.observe(next);
+  }
 
   test('she moves only after the reply that asked has finished', () async {
     expect(mover.request('mood_den', owner: 'reply-1'), isTrue);
@@ -62,12 +75,48 @@ void main() {
     expect(mover.pending, isNull);
   });
 
-  test('asking for the current room is accepted without a move', () async {
-    mover.request('mood_den', owner: 'reply-1');
-    expect(mover.request('penthouse', owner: 'reply-1'), isTrue);
+  test('asking for the current room queues nothing and keeps a queued move',
+      () async {
+    expect(mover.request('penthouse', owner: 'reply-1'), isFalse);
     expect(mover.pending, isNull);
+    mover.request('mood_den', owner: 'reply-1');
+    expect(mover.request('penthouse', owner: 'reply-1'), isFalse);
+    expect(mover.pending?.id, 'mood_den');
+    expect((await mover.settle('reply-1'))?.to.id, 'mood_den');
+  });
+
+  test('a room the user picks while she is replying wins', () async {
+    mover.request('mood_den', owner: 'reply-1');
+    userPicks(NeuraRoom.joyLounge);
+    expect(await mover.settle('reply-1'), isNull);
+    expect(room.id, 'joy_lounge');
+    expect(moves, isEmpty);
+  });
+
+  test('a user change and return before settling still cancels', () async {
+    mover.request('mood_den', owner: 'reply-1');
+    userPicks(NeuraRoom.joyLounge);
+    userPicks(NeuraRoom.penthouse);
     expect(await mover.settle('reply-1'), isNull);
     expect(moves, isEmpty);
+  });
+
+  test('a room that was reached is still returned when setup fails',
+      () async {
+    failure = StateError('ambient audio failed');
+    mover.request('dream_atrium', owner: 'reply-1');
+    final move = await mover.settle('reply-1');
+    expect(move?.to.id, 'dream_atrium');
+    expect(move?.error, isA<StateError>());
+    expect(await mover.undo(move!), isTrue);
+  });
+
+  test('a move that never happened rethrows its error', () async {
+    failure = StateError('could not save the room');
+    failBeforeMoving = true;
+    mover.request('dream_atrium', owner: 'reply-1');
+    await expectLater(mover.settle('reply-1'), throwsStateError);
+    expect(room.id, 'penthouse');
   });
 
   test('no move is requested or made in Safe Mode', () async {
@@ -93,5 +142,14 @@ void main() {
     room = NeuraRoom.joyLounge;
     expect(await mover.undo(move), isFalse);
     expect(room.id, 'joy_lounge');
+  });
+
+  test('an undo is stale after leaving and returning', () async {
+    mover.request('legacy_vault', owner: 'reply-1');
+    final move = (await mover.settle('reply-1'))!;
+    userPicks(NeuraRoom.joyLounge);
+    userPicks(NeuraRoom.legacyVault);
+    expect(await mover.undo(move), isFalse);
+    expect(room.id, 'legacy_vault');
   });
 }
