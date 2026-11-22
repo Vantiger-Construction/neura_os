@@ -213,6 +213,11 @@ class EmotionAnalysisService {
       'miss them': 2,
       'feel like crying': 2.5,
       'nothing makes me happy': 3,
+      'feel down': 2,
+      'feeling down': 2,
+      'pretty down': 2,
+      'feel empty': 2,
+      'feeling empty': 2,
     },
     'grief': {'passed away': 3},
     'anger': {
@@ -223,6 +228,9 @@ class EmotionAnalysisService {
       'so done with': 2,
       'sick and tired': 2.5,
       'drives me crazy': 2,
+      'driving me crazy': 2,
+      'driving me nuts': 2,
+      'drives me nuts': 2,
     },
     'anxiety': {
       "can't stop thinking": 2,
@@ -259,6 +267,10 @@ class EmotionAnalysisService {
       'left out': 2,
       'nobody to talk to': 3,
       'all alone': 2.5,
+      'texts me first': 2,
+      'nobody ever': 0.8,
+      'no one ever': 0.8,
+      "don't know anyone here": 2.5,
     },
     'shame': {
       'my fault': 2,
@@ -279,6 +291,9 @@ class EmotionAnalysisService {
       'i passed': 2.5,
       'we won': 2.5,
       "can't believe it": 0.5,
+      'cannot believe it': 0.5,
+      'having a baby': 3,
+      'actually finished': 2,
       'got the job': 3,
       'so happy': 2.5,
       "can't wait": 2,
@@ -294,7 +309,8 @@ class EmotionAnalysisService {
     r"|\b(mom|mum|mother|dad|father|grandma|grandpa|nan|nana|wife|husband|"
     r"partner|friend|brother|sister|son|daughter|baby|aunt|uncle|dog|cat|"
     r"pet) (passed|died|is gone)\b"
-    r"|\bsince (she|he|they) (died|passed)\b",
+    r"|\bsince (she|he|they) (died|passed)\b"
+    r"|\b(put|putting) (my|our|the) (dog|cat|pet|puppy|kitten|horse) down\b",
   );
 
   static const _negators = {
@@ -329,6 +345,8 @@ class EmotionAnalysisService {
     'insanely',
     'freaking',
     'seriously',
+    'pretty',
+    'quite',
   };
 
   static const _softeners = {
@@ -384,6 +402,7 @@ class EmotionAnalysisService {
     }
     if (_griefPattern.hasMatch(lower)) add('grief', 3);
 
+    var softened = 0;
     for (var i = 0; i < tokens.length; i++) {
       if (consumed.contains(i)) continue;
       final token = tokens[i];
@@ -407,8 +426,15 @@ class EmotionAnalysisService {
         weight = 1.5;
       }
       if (emotion == null) continue;
+      // "That song is so sad", "the movie had a happy ending": a quality of
+      // something else, not how the person feels.
+      if ((emotion == 'joy' || emotion == 'sadness') &&
+          _describesSomethingElse(tokens, i)) {
+        continue;
+      }
       if (i > 0 && _intensifiers.contains(tokens[i - 1])) weight += 0.75;
-      if (i > 0 && _softeners.contains(tokens[i - 1])) weight -= 0.3;
+      // "Kinda stressed" is still stressed, just milder.
+      if (i > 0 && _softeners.contains(tokens[i - 1])) softened++;
       if (_isNegated(tokens, i)) {
         // "not happy" leans sad; "not worried" is simply not worried.
         if (emotion == 'joy') add('sadness', 1.0);
@@ -441,6 +467,7 @@ class EmotionAnalysisService {
     final letters = raw.replaceAll(RegExp('[^A-Za-z]'), '');
     final shouting = letters.length >= 6 && letters == letters.toUpperCase();
     if ('!'.allMatches(raw).length >= 2 || shouting) intensity += 0.2;
+    intensity -= 0.15 * softened;
     final secondary = ranked.length > 1 && ranked[1].value >= top.value * 0.5
         ? ranked[1].key
         : null;
@@ -450,6 +477,49 @@ class EmotionAnalysisService {
       intensity: intensity.clamp(0.0, 1.0).toDouble(),
       masked: masked && top.key != 'joy',
     );
+  }
+
+  static const _describingVerbs = {
+    'is',
+    'was',
+    'were',
+    'are',
+    'looks',
+    'sounds',
+    'seems',
+    'had',
+    'has',
+    'have',
+    'such',
+  };
+  static const _firstPerson = {
+    'i',
+    'im',
+    'ive',
+    'id',
+    'me',
+    'my',
+    'myself',
+    'feel',
+    'feeling',
+    'felt',
+    'am',
+    'we',
+    'were',
+    'us',
+  };
+
+  /// True when the word just before [index] (within four tokens) is a
+  /// describing verb about something other than the speaker, e.g. "the song
+  /// is so sad" or "had a happy ending", but not "I am so sad".
+  static bool _describesSomethingElse(List<String> tokens, int index) {
+    var describing = false;
+    for (var j = index - 1; j >= 0 && j >= index - 4; j--) {
+      final t = tokens[j];
+      if (_firstPerson.contains(t)) return false;
+      if (_describingVerbs.contains(t)) describing = true;
+    }
+    return describing;
   }
 
   static bool _isNegated(List<String> tokens, int index) {
