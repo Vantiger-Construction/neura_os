@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/avatar/avatar_controller.dart';
+import 'package:neuro_companion/avatar/avatar_globals.dart';
 import 'package:neuro_companion/avatar/avatar_registry.dart';
 import 'package:neuro_companion/avatar/avatar_types.dart';
 import 'package:neuro_companion/avatar/avatar_view.dart';
@@ -12,9 +13,12 @@ import 'package:neuro_companion/avatar/motion/neura_motion_engine.dart';
 import 'package:neuro_companion/avatar/renderers/nebula_avatar_view.dart';
 import 'package:neuro_companion/avatar/renderers/neura_mouth_layer.dart';
 import 'package:neuro_companion/core/neura_events_extra.dart';
+import 'package:neuro_companion/neura_shell/models/neura_room.dart';
+import 'package:neuro_companion/neura_shell/widgets/neura_room_presence_avatar.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/screens/avatar_selector_screen.dart';
 import 'package:neuro_companion/services/avatar_service.dart';
+import 'package:neuro_companion/services/neura_companion_presence.dart';
 import 'package:neuro_companion/src/shell/shell_prefs.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -370,6 +374,71 @@ void main() {
     start();
     await tester.pump();
     expect(pose().open, 0.6);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('room keeps selected Nebula at rest through Safe Mode',
+      (tester) async {
+    final controller = AvatarGlobals.controller;
+    addTearDown(() {
+      controller.setTalking(false);
+      controller.setNumberInput('mouthOpen', 0);
+      controller.setNumberInput('viseme', NeuraViseme.rest.index.toDouble());
+    });
+    expect(await AvatarService.instance.selectAvatar(nebula), isTrue);
+    NeuraMotion.instance.start();
+
+    Widget room(NeuraPresencePhase phase) => MaterialApp(
+          home: Center(
+            child: RepaintBoundary(
+              key: _captureKey,
+              child: SizedBox.square(
+                dimension: 168,
+                child: NeuraRoomPresenceAvatar(
+                  room: NeuraRoom.penthouse,
+                  phase: phase,
+                  motion: NeuraCompanionMotion.subtle,
+                  scale: NeuraCompanionScale.standard,
+                ),
+              ),
+            ),
+          ),
+        );
+    NeuraMouthPose mouth() => tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((w) => w.painter)
+        .whereType<NebulaMouthPainter>()
+        .single
+        .pose;
+
+    await tester.pumpWidget(room(NeuraPresencePhase.idle));
+    await tester.pump();
+    _setSignals(controller, 'talking');
+    await tester.pump();
+    expect(mouth().open, 0.6);
+
+    SafeBoot.instance.safeMode.value = true;
+    await tester.pumpWidget(room(NeuraPresencePhase.safeMode));
+    await tester.pumpAndSettle();
+    final portrait = find.byType(NebulaAvatarView);
+    expect(portrait, findsOneWidget);
+    expect(tester.widget<NebulaAvatarView>(portrait).enabled, isFalse);
+    expect(find.image(const AssetImage(kNeuraBodyArt)), findsNothing);
+    await _expectWidgetArms(tester, reason: 'main-menu Safe Mode');
+    final held = painter(tester).seconds.value;
+    controller.setNumberInput('mouthOpen', 0.8);
+    await tester.pump(const Duration(seconds: 1));
+    expect(painter(tester).seconds.value, held);
+    expect(mouth(), NeuraMouthPose.rest);
+    expect(tester.binding.hasScheduledFrame, isFalse);
+
+    SafeBoot.instance.safeMode.value = false;
+    await tester.pumpWidget(room(NeuraPresencePhase.idle));
+    await tester.pump();
+    expect(mouth(), NeuraMouthPose.rest);
+    _setSignals(controller, 'talking');
+    await tester.pump();
+    expect(mouth().open, 0.6);
     await tester.pumpWidget(const SizedBox());
   });
 
