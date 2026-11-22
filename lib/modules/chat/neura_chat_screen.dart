@@ -423,6 +423,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       _trimLocalLines();
     });
     _scrollToEnd();
+    if (reply != null) _expressOwnReply(reply, userText: text);
   }
 
   Future<String?> _replyLocalWithPresence(String text) async {
@@ -1172,6 +1173,14 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     NeuraEmpathyMotion.respondTo(read);
   }
 
+  /// A small gesture matching her own finished reply (hop when she shares
+  /// good news, lean-in when she comforts). Same on-device read; nothing
+  /// stored. Skipped entirely after a message that tripped the crisis floor.
+  void _expressOwnReply(String reply, {required String userText}) {
+    if (reply.trim().isEmpty || CrisisTextScan.of(userText).crisis) return;
+    NeuraEmpathyMotion.expressOwnReply(reply);
+  }
+
   void _scrollToEnd() {
     if (_scrollPending) return;
     _scrollPending = true;
@@ -1443,6 +1452,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         'context_receipt': cloudContextReceipt.toMetadata(),
       });
       if (!mounted || _activeReplyId != generationId) return;
+      _expressOwnReply(botLine.text, userText: text);
       if (useStreamSpeech) {
         await speech.finish(botLine.text);
       } else if (_speechEnabled &&
