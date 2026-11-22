@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/services/emotion_analysis_service.dart';
 
 import 'emotion_reader_corpus.dart';
+import 'emotion_reader_emoji_holdout.dart';
 import 'emotion_reader_holdout.dart';
 
 class _Score {
@@ -56,6 +57,14 @@ void main() {
     final s = _score(emotionReaderHoldout);
     // ignore: avoid_print
     print('held-out set: $s');
+    expect(s.falseCues, isEmpty);
+    expect(s.accuracy, greaterThanOrEqualTo(0.8));
+  });
+
+  test('reader understands emoji it was never tuned on', () {
+    final s = _score(emotionReaderEmojiHoldout);
+    // ignore: avoid_print
+    print('emoji held-out set: $s');
     expect(s.falseCues, isEmpty);
     expect(s.accuracy, greaterThanOrEqualTo(0.8));
   });
