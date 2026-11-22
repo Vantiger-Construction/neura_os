@@ -75,8 +75,7 @@ void main() {
     expect(mover.pending, isNull);
   });
 
-  test('asking for the current room queues nothing and keeps a queued move',
-      () async {
+  test('asking for her current room queues nothing', () async {
     expect(mover.request('penthouse', owner: 'reply-1'), isFalse);
     expect(mover.pending, isNull);
     mover.request('mood_den', owner: 'reply-1');
@@ -101,13 +100,13 @@ void main() {
     expect(moves, isEmpty);
   });
 
-  test('a room that was reached is still returned when setup fails',
-      () async {
+  test('a reached room is returned even if setup fails', () async {
     failure = StateError('ambient audio failed');
     mover.request('dream_atrium', owner: 'reply-1');
     final move = await mover.settle('reply-1');
     expect(move?.to.id, 'dream_atrium');
     expect(move?.error, isA<StateError>());
+    failure = null;
     expect(await mover.undo(move!), isTrue);
   });
 
