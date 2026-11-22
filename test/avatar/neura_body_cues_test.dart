@@ -204,8 +204,35 @@ void main() {
       expect(gestureFor("I'm completely burnt out"), NeuraGesture.settle);
     });
 
-    test('hops for good news', () {
-      expect(gestureFor('I got the job!!'), NeuraGesture.bounce);
+    test('hops for good news and celebrates big news', () {
+      expect(gestureFor("I'm glad it worked out"), NeuraGesture.bounce);
+      expect(gestureFor('I got the job!!'), NeuraGesture.celebrate);
+    });
+
+    group('her own reply', () {
+      NeuraGesture? replyGesture(String reply) =>
+          NeuraEmpathyMotion.replyGestureFor(reply);
+
+      test('hops when she shares good news, leans in when she comforts', () {
+        expect(replyGesture("That's wonderful, I'm so happy for you!"),
+            NeuraGesture.bounce);
+        expect(replyGesture("I'm so sorry. Losing him must hurt so much."),
+            NeuraGesture.leanIn);
+      });
+
+      test('a plain answer moves nothing', () {
+        expect(replyGesture('Boil it for about seven minutes.'), isNull);
+      });
+
+      test('is subtle, allow-listed and leaves mood alone', () async {
+        expect(NeuraEmpathyMotion.expressOwnReply("I'm so happy for you!"),
+            isTrue);
+        await _flush();
+        expect(seen.whereType<NeuraMoodEvent>(), isEmpty);
+        final g = seen.whereType<NeuraGestureEvent>().single;
+        expect(NeuraGesture.wireAllowed, contains(g.gesture));
+        expect(g.intensity, 0.35);
+      });
     });
 
     test('ordinary messages leave her body alone', () async {
