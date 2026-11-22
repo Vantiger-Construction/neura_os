@@ -1,0 +1,119 @@
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:neuro_companion/modules/core/app_log.dart';
+import 'package:neuro_companion/reliability/safe_boot.dart';
+import 'package:neuro_companion/services/emotion_analysis_service.dart';
+import 'package:neuro_companion/services/neura_ai_service.dart';
+import 'package:neuro_companion/services/neura_generation_cancel.dart';
+import 'package:neuro_companion/services/neura_model_router.dart';
+import 'package:neuro_companion/services/neura_offline_budget.dart';
+import 'package:neuro_companion/services/neura_offline_prompt.dart';
+import 'package:neuro_companion/services/neura_ollama_chat.dart';
+import 'package:neuro_companion/startup/neura_prefs_cache.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Records exactly what NeuraAiService hands the on-device model.
+class _CapturingOllama extends NeuraOllamaChat {
+  _CapturingOllama() : super(supported: true);
+  final systems = <String>[];
+  final sent = <List<Map<String, dynamic>>>[];
+
+  @override
+  Future<String> reply({
+    required String system,
+    required List<Map<String, dynamic>> messages,
+    required NeuraGenerationCancel cancel,
+  }) async {
+    systems.add(system);
+    sent.add(messages);
+    return 'Synthetic offline reply.';
+  }
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  late _CapturingOllama ollama;
+  late NeuraAiService ai;
+
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    await NeuraPrefsCache.init();
+    await AppLog.instance.resetAfterDataWipe();
+  });
+
+  setUp(() {
+    SafeBoot.instance.safeMode.value = false;
+    ollama = _CapturingOllama();
+    ai = NeuraAiService.forTesting(
+      modelRouter: NeuraSecureModelRouter(),
+      configuredReader: () => false,
+      ollama: ollama,
+    );
+  });
+
+  Future<String> send(
+    List<NeuraChatTurn> history, {
+    NeuraOfflineBudget budget = NeuraOfflineBudget.standard,
+  }) async {
+    await ai
+        .streamReply(history, localOllama: true, offlineBudget: budget)
+        .join();
+    expect(ollama.systems, hasLength(1));
+    return ollama.systems.single;
+  }
+
+  test('a clear feeling adds one tentative cue after the offline rules',
+      () async {
+    final system = await send(const [
+      NeuraChatTurn(
+          isUser: true,
+          text:
+              "I have three deadlines tomorrow and I don't know where to start"),
+    ]);
+    expect(system, contains(kNeuraOfflineSystemSuffix));
+    expect(
+        system,
+        endsWith('$kNeuraOfflineSystemSuffix\n\n'
+            'Likely mood: very overwhelmed. Respond to it without naming it.'));
+    expect(utf8.encode(system).length, lessThanOrEqualTo(6500));
+  });
+
+  test('an ordinary message sends no cue at all', () async {
+    final system = await send(const [
+      NeuraChatTurn(isUser: true, text: 'How long should I boil an egg?'),
+    ]);
+    expect(system, endsWith(kNeuraOfflineSystemSuffix));
+    expect(system, isNot(contains('Likely mood')));
+    expect(system, isNot(contains('Earlier in this chat')));
+  });
+
+  test('a feeling that scrolled out of the model view is gently recalled',
+      () async {
+    // Compact context keeps only the newest few short turns, so the first
+    // message is no longer visible to the model.
+    final history = <NeuraChatTurn>[
+      const NeuraChatTurn(
+          isUser: true,
+          text: "I'm really dreading my exam tomorrow, so nervous about it"),
+      for (var i = 0; i < 5; i++) ...[
+        NeuraChatTurn(isUser: false, text: 'Synthetic answer number $i. ' * 6),
+        NeuraChatTurn(isUser: true, text: 'Another everyday question $i?'),
+      ],
+    ];
+    final system = await send(history, budget: NeuraOfflineBudget.compact);
+    final visible = ollama.sent.single.map((m) => m['content']).toList();
+    expect(visible, isNot(contains(history.first.text)));
+    expect(system, endsWith(EmotionAnalysisService.earlierCue('anxious')));
+  });
+
+  test('a feeling still in view is left for the model to read itself',
+      () async {
+    final system = await send(const [
+      NeuraChatTurn(isUser: true, text: "I'm so nervous about my exam"),
+      NeuraChatTurn(isUser: false, text: 'Synthetic support.'),
+      NeuraChatTurn(isUser: true, text: 'Anyway, what should I cook?'),
+    ]);
+    expect(system, endsWith(kNeuraOfflineSystemSuffix));
+  });
+}
