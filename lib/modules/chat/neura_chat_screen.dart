@@ -30,6 +30,7 @@ import '../../modules/mood/mood_store.dart';
 import '../../neura_shell/models/neura_room.dart';
 import '../../neura_shell/neura_room_mover.dart';
 import '../../neura_shell/neura_shell.dart';
+import '../../neura_shell/neura_shell_state.dart';
 import '../../persona/agents/agent_persona_catalog.dart';
 import '../../persona/models/agent_persona.dart';
 import '../../persona/services/agent_selection_service.dart';
@@ -881,14 +882,15 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   }
 
   Future<void> _settleRoomMove(String generationId) async {
-    final NeuraSelfMove? move;
+    NeuraSelfMove? settled;
     try {
-      move = await _roomMover.settle(generationId);
+      settled = await _roomMover.settle(generationId);
     } catch (error, stack) {
       // A failed move must not fail the reply that already finished.
       await AppLog.instance.caught('dispatch_intent_failed', error, stack);
       return;
     }
+    final move = settled;
     if (move == null || !mounted) return;
     if (NeuraShell.of(context).room.id != move.to.id) return;
     setState(() {
