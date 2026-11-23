@@ -92,14 +92,14 @@ void main() {
 
   test('a feeling that scrolled out of the model view is gently recalled',
       () async {
-    // Compact context keeps only the newest few short turns, so the first
-    // message is no longer visible to the model.
+    // These exchanges exceed the compact byte budget, so the first message
+    // is no longer visible to the model.
     final history = <NeuraChatTurn>[
       const NeuraChatTurn(
           isUser: true,
           text: "I'm really dreading my exam tomorrow, so nervous about it"),
       for (var i = 0; i < 5; i++) ...[
-        NeuraChatTurn(isUser: false, text: 'Synthetic answer number $i. ' * 6),
+        NeuraChatTurn(isUser: false, text: 'Synthetic answer number $i. ' * 12),
         NeuraChatTurn(isUser: true, text: 'Another everyday question $i?'),
       ],
     ];
