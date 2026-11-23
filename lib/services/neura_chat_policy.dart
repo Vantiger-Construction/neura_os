@@ -66,13 +66,23 @@ class NeuraChatPolicy {
         return const NeuraChatRoomPolicy(
           roomId: 'reflection_bay',
           persistMemory: false,
-          allowedTools: {getMoodHistory, logMoodEntry, setTone},
+          allowedTools: {
+            getMoodHistory,
+            logMoodEntry,
+            dispatchIntent,
+            setTone,
+          },
         );
       case 'mood_den':
         return const NeuraChatRoomPolicy(
           roomId: 'mood_den',
           persistMemory: false,
-          allowedTools: {getMoodHistory, logMoodEntry, setTone},
+          allowedTools: {
+            getMoodHistory,
+            logMoodEntry,
+            dispatchIntent,
+            setTone,
+          },
         );
       case 'dream_atrium':
         return const NeuraChatRoomPolicy(
@@ -179,8 +189,11 @@ class NeuraChatPolicy {
         return {
           'name': dispatchIntent,
           'description':
-              'Request navigation to another Neura room when the user clearly '
-                  'asks to go there. The UI remains authoritative for room state.',
+              'Move to another room of your home when the user asks, or when '
+                  'a different room would suit the conversation better. You '
+                  'move once this reply ends, and the user can undo it. Say '
+                  'where you are going. The UI remains authoritative for room '
+                  'state.',
           'input_schema': {
             'type': 'object',
             'properties': {

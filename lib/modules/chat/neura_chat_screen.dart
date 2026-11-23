@@ -28,7 +28,9 @@ import '../../services/neura_selected_context.dart';
 import '../../modules/mood/mood_models.dart';
 import '../../modules/mood/mood_store.dart';
 import '../../neura_shell/models/neura_room.dart';
+import '../../neura_shell/neura_room_mover.dart';
 import '../../neura_shell/neura_shell.dart';
+import '../../neura_shell/neura_shell_state.dart';
 import '../../persona/agents/agent_persona_catalog.dart';
 import '../../persona/models/agent_persona.dart';
 import '../../persona/services/agent_selection_service.dart';
@@ -142,6 +144,17 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   NeuraReplyBatch? _replyUpdates;
   bool _scrollPending = false;
   String? _activeReplyId;
+  late final NeuraRoomMover _roomMover = NeuraRoomMover(
+    currentRoom: () => NeuraShell.of(context).room,
+    // A trip to Her Suite is a visit, like every other route into it, so it
+    // never replaces the room the app reopens in.
+    setRoom: (room) => NeuraShell.of(context).setRoom(
+      room,
+      persist: room.id != NeuraRoom.herSuite.id,
+    ),
+    safeMode: () => SafeBoot.instance.safeMode.value,
+  );
+  NeuraShellState? _observedShell;
   _ChatLine? _activeBotLine;
   int _generationSerial = 0;
 
@@ -240,6 +253,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final shell = NeuraShell.of(context);
+    if (!identical(_observedShell, shell)) {
+      _observedShell?.removeListener(_onShellChanged);
+      _observedShell = shell;
+      shell.addListener(_onShellChanged);
+      _roomMover.observe(shell.room);
+    }
     // Opaque covering routes disable chat's tickers. Approval dialogs remain
     // part of the active turn and must not cancel the request they approve.
     final current = TickerMode.valuesOf(context).enabled;
@@ -511,6 +531,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   @override
   void dispose() {
     _disposed = true;
+    _observedShell?.removeListener(_onShellChanged);
     _presence.reset();
     _clearThread();
     _memoryOwner?.removeListener(_onPendingMemoryChanged);
@@ -860,6 +881,71 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       _voiceInput.stopRecording().then<void>((_) {}),
       speechStop,
     ]);
+  }
+
+  void _onShellChanged() {
+    final shell = _observedShell;
+    if (shell != null) _roomMover.observe(shell.room);
+  }
+
+  Future<void> _settleRoomMove(String generationId) async {
+    NeuraSelfMove? settled;
+    try {
+      settled = await _roomMover.settle(generationId);
+    } catch (error, stack) {
+      // A failed move must not fail the reply that already finished.
+      await AppLog.instance.caught('dispatch_intent_failed', error, stack);
+      return;
+    }
+    final move = settled;
+    if (move == null || !mounted) return;
+    if (NeuraShell.of(context).room.id != move.to.id) return;
+    setState(() {
+      _activeAgent = AgentSelectionService.instance.resolveAgent(move.to);
+    });
+    await AppLog.instance.info('dispatch_intent', {
+      'room': move.to.id,
+      'from': move.from.id,
+      'self_directed': true,
+      'setup_failed': move.error != null,
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('Neura moved to ${move.to.title}.'),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () => unawaited(_undoRoomMove(move)),
+          ),
+        ),
+      );
+  }
+
+  Future<void> _undoRoomMove(NeuraSelfMove move) async {
+    if (!mounted) return;
+    final bool undone;
+    try {
+      undone = await _roomMover.undo(move);
+    } catch (error, stack) {
+      await AppLog.instance.caught(
+        'dispatch_intent_undo_failed',
+        error,
+        stack,
+      );
+      return;
+    }
+    if (!undone || !mounted) return;
+    setState(() {
+      _activeAgent = AgentSelectionService.instance.resolveAgent(move.from);
+    });
+    await AppLog.instance.info('dispatch_intent_undone', {
+      'room': move.from.id,
+      'from': move.to.id,
+    });
   }
 
   void _showVoiceNotice(String message) {
@@ -1466,6 +1552,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
           botLine.text.trim().isNotEmpty) {
         await _tts.speak(botLine.text);
       }
+      if (!mounted || _activeReplyId != generationId) return;
+      await _settleRoomMove(generationId);
     } on NeuraGenerationCancelled catch (e) {
       if (!mounted || _activeReplyId != generationId) return;
       updates.flush();
@@ -1516,6 +1604,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       }
       return;
     } finally {
+      _roomMover.drop(generationId);
       updates.dispose();
       if (identical(_replyUpdates, updates)) _replyUpdates = null;
       speech.cancel();
@@ -1691,25 +1780,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         );
         return true;
       case NeuraChatPolicy.dispatchIntent:
+        // Neura moves on her own once this reply has finished.
         final roomId = command.arguments['room']?.toString() ?? '';
-        if (!NeuraChatPolicy.knownRoomIds.contains(roomId)) return false;
-        final target = NeuraRoom.fromId(roomId);
-        if (target.id != roomId) return false;
-        final approved = await _confirmToolAction(
-          title: 'Open ${target.title}?',
-          message: 'Neura suggested changing rooms. The app will navigate '
-              'only if you approve this request.',
-          approveLabel: 'Open room',
-        );
-        if (!approved || !mounted) return false;
-        await NeuraShell.of(context).setRoom(target);
-        if (!mounted) return false;
-        setState(() {
-          _activeAgent = AgentSelectionService.instance.resolveAgent(target);
-        });
-        _ai.cancelActiveGeneration();
-        await AppLog.instance.info('dispatch_intent', {'room': roomId});
-        return true;
+        final owner = _activeReplyId;
+        if (owner == null || !mounted) return false;
+        return _roomMover.request(roomId, owner: owner);
       case NeuraChatPolicy.setTone:
         final tone = command.arguments['tone']?.toString() ?? '';
         if (!NeuraChatPolicy.knownTones.contains(tone)) return false;
