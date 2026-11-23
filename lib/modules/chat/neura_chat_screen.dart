@@ -60,7 +60,13 @@ import '../../widgets/neura_context_receipt_chip.dart';
 import '../core/ai_engine.dart';
 import '../core/app_log.dart';
 import '../support/guided_support_screen.dart';
+import 'neura_reply_text.dart';
 import 'neura_voice_destinations.dart';
+
+/// Shown in Neura's bubble while an on-device (Ollama) reply is being
+/// generated. Those replies are not streamed and can take a minute or more.
+const String kOfflineThinkingText =
+    'Thinking on this device… offline replies can take a minute or two.';
 
 class NeuraChatScreen extends StatefulWidget {
   const NeuraChatScreen({
@@ -443,6 +449,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       _trimLocalLines();
     });
     _scrollToEnd();
+    if (reply != null) _expressOwnReply(reply, userText: text);
   }
 
   Future<String?> _replyLocalWithPresence(String text) async {
@@ -1258,6 +1265,14 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     NeuraEmpathyMotion.respondTo(read);
   }
 
+  /// A small gesture matching her own finished reply (hop when she shares
+  /// good news, lean-in when she comforts). Same on-device read; nothing
+  /// stored. Skipped entirely after a message that tripped the crisis floor.
+  void _expressOwnReply(String reply, {required String userText}) {
+    if (reply.trim().isEmpty || CrisisTextScan.of(userText).crisis) return;
+    NeuraEmpathyMotion.expressOwnReply(reply);
+  }
+
   void _scrollToEnd() {
     if (_scrollPending) return;
     _scrollPending = true;
@@ -1529,6 +1544,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         'context_receipt': cloudContextReceipt.toMetadata(),
       });
       if (!mounted || _activeReplyId != generationId) return;
+      _expressOwnReply(botLine.text, userText: text);
       if (useStreamSpeech) {
         await speech.finish(botLine.text);
       } else if (_speechEnabled &&
@@ -2120,105 +2136,129 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
             ),
           ),
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(12),
-              itemCount: visibleLines.length,
-              itemBuilder: (context, i) {
-                final line = visibleLines[i];
-                final align =
-                    line.isUser ? Alignment.centerRight : Alignment.centerLeft;
-                final color = line.isUser
-                    ? Colors.blueGrey.shade700
-                    : Colors.grey.shade900;
+            // Lets a reply (a plan, a recipe, a helpline number) be selected
+            // and copied: drag with a mouse, or long-press on touch screens.
+            child: SelectionArea(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(12),
+                itemCount: visibleLines.length,
+                itemBuilder: (context, i) {
+                  final line = visibleLines[i];
+                  final align = line.isUser
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft;
+                  final color = line.isUser
+                      ? Colors.blueGrey.shade700
+                      : Colors.grey.shade900;
 
-                final agentCaption = line.agentCaption;
+                  final agentCaption = line.agentCaption;
 
-                return Align(
-                  alignment: align,
-                  child: Column(
-                    crossAxisAlignment: line.isUser
-                        ? CrossAxisAlignment.end
-                        : CrossAxisAlignment.start,
-                    children: [
-                      if (agentCaption != null)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 4, bottom: 2),
-                          child: Text(
-                            agentCaption,
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(color: Colors.white70),
+                  return Align(
+                    alignment: align,
+                    child: Column(
+                      crossAxisAlignment: line.isUser
+                          ? CrossAxisAlignment.end
+                          : CrossAxisAlignment.start,
+                      children: [
+                        if (agentCaption != null)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4, bottom: 2),
+                            child: Text(
+                              agentCaption,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(color: Colors.white70),
+                            ),
                           ),
-                        ),
-                      Container(
-                        margin: const EdgeInsets.symmetric(vertical: 6),
-                        padding: const EdgeInsets.all(12),
-                        constraints: const BoxConstraints(maxWidth: 560),
-                        decoration: BoxDecoration(
-                          color: color,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (line.imageBase64 != null)
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Icon(
-                                    Icons.image,
-                                    size: 16,
-                                    color: Colors.white70,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Flexible(
-                                    child: Text(
-                                      line.text.isEmpty ? '…' : line.text,
-                                    ),
-                                  ),
-                                ],
-                              )
-                            else
-                              Text(line.text.isEmpty ? '…' : line.text),
-                            if (line.interrupted) ...[
-                              const SizedBox(height: 6),
-                              const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.stop_circle_outlined,
-                                    size: 14,
-                                    color: Colors.white70,
-                                  ),
-                                  SizedBox(width: 4),
-                                  Text(
-                                    'Interrupted',
-                                    style: TextStyle(
-                                      fontSize: 11,
+                        Container(
+                          margin: const EdgeInsets.symmetric(vertical: 6),
+                          padding: const EdgeInsets.all(12),
+                          constraints: const BoxConstraints(maxWidth: 560),
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (line.imageBase64 != null)
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Icon(
+                                      Icons.image,
+                                      size: 16,
                                       color: Colors.white70,
                                     ),
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        line.text.isEmpty ? '…' : line.text,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              else if (!line.isUser &&
+                                  line.text.isEmpty &&
+                                  !line.interrupted &&
+                                  _localOllama &&
+                                  _busy &&
+                                  identical(line, _activeBotLine))
+                                // On-device replies arrive whole after a
+                                // long wait; say so instead of a bare
+                                // ellipsis. Static text: no timer, no
+                                // frames while waiting.
+                                const Text(
+                                  kOfflineThinkingText,
+                                  style: TextStyle(
+                                    fontStyle: FontStyle.italic,
+                                    color: Colors.white70,
                                   ),
-                                ],
-                              ),
+                                )
+                              else if (line.isUser || line.text.isEmpty)
+                                Text(line.text.isEmpty ? '…' : line.text)
+                              else
+                                NeuraReplyText.widget(line.text),
+                              if (line.interrupted) ...[
+                                const SizedBox(height: 6),
+                                const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.stop_circle_outlined,
+                                      size: 14,
+                                      color: Colors.white70,
+                                    ),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Interrupted',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                              if (!line.isUser &&
+                                  line.contextReceipt != null) ...<Widget>[
+                                const SizedBox(height: 6),
+                                NeuraContextReceiptChip(
+                                  receipt: line.contextReceipt!,
+                                ),
+                              ],
                             ],
-                            if (!line.isUser &&
-                                line.contextReceipt != null) ...<Widget>[
-                              const SizedBox(height: 6),
-                              NeuraContextReceiptChip(
-                                receipt: line.contextReceipt!,
-                              ),
-                            ],
-                          ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                );
-              },
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
           ),
           if (_selectedContext != null)

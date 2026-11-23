@@ -63,7 +63,18 @@ const emotionReaderCorpus = <(String, Object?)>[
   // ── mixed / masked (primary may be either) ──
   ("I'm happy for her but honestly a bit jealous and sad", ['sadness', 'joy']),
   ('relieved it is over but so exhausted', ['exhaustion', 'joy']),
+  // ── emoji carry the feeling ──
+  ('my flight got cancelled 😡', 'anger'),
+  // Sleeplessness is fairly read as either.
+  ('cant sleep again 😩', ['exhaustion', 'anxiety']),
+  ('first day at the new job tomorrow 😬', 'anxiety'),
+  ('she said no 💔😢', 'sadness'),
+  ('passed my exam 🥳', 'joy'),
+  ('tripped in front of my whole class 🙈', 'shame'),
   // ── no clear feeling: must not cue ──
+  ('see you at 5 👋', null),
+  ('can you check my spelling 🙏', null),
+  ('sounds good 👌', null),
   ('what is the capital of australia', null),
   ('can you set a timer for 10 minutes', null),
   ('how do I make pancakes', null),

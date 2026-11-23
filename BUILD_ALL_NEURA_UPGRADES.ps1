@@ -298,7 +298,7 @@ setlocal
 set "HERE=%~dp0"
 pushd "%HERE%" >nul 2>&1 || exit /b 1
 rem Neura owns engine credentials, startup, and lifecycle teardown.
-start "Neura Companion" "%HERE%__NEURA_EXECUTABLE__%"
+start "Neura Companion" "%HERE%__NEURA_EXECUTABLE__"
 popd
 endlocal
 '@
