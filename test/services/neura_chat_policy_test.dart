@@ -7,7 +7,18 @@ void main() {
       final policy = NeuraChatPolicy.forRoom('reflection_bay');
       expect(policy.persistMemory, isFalse);
       expect(policy.allowsTool(NeuraChatPolicy.getMoodHistory), isTrue);
-      expect(policy.allowsTool(NeuraChatPolicy.dispatchIntent), isFalse);
+      expect(policy.allowsTool(NeuraChatPolicy.dispatchIntent), isTrue);
+    });
+
+    test('Neura can choose to move from every room', () {
+      for (final roomId in NeuraChatPolicy.knownRoomIds) {
+        final policy = NeuraChatPolicy.forRoom(roomId);
+        expect(
+          policy.allowsTool(NeuraChatPolicy.dispatchIntent),
+          isTrue,
+          reason: roomId,
+        );
+      }
     });
 
     test('legacy vault remains persistent', () {
