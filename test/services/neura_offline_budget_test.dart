@@ -11,9 +11,9 @@ void main() {
   test('compact preserves newest user text without orphan assistant context',
       () {
     final messages = [
-      turn('user', 'a' * 500),
+      turn('user', 'a' * 800),
       turn('assistant', 'b' * 300),
-      turn('user', 'c' * 450)
+      turn('user', 'c' * 900)
     ];
     final retained = NeuraOfflineBudget.compact.retain(messages);
     expect(retained, [messages.last]);
@@ -33,12 +33,12 @@ void main() {
   });
 
   test('UTF-8 cap rejects newest turn rather than truncating it', () {
-    expect(() => NeuraOfflineBudget.compact.retain([turn('user', '🙂' * 188)]),
+    expect(() => NeuraOfflineBudget.compact.retain([turn('user', '🙂' * 376)]),
         throwsStateError);
     expect(
         NeuraOfflineBudget.standard
-            .retain([turn('user', '🙂' * 188)]).single['content'],
-        '🙂' * 188);
+            .retain([turn('user', '🙂' * 376)]).single['content'],
+        '🙂' * 376);
   });
 
   test('history count stays bounded with first user and last user', () {
@@ -46,7 +46,8 @@ void main() {
       for (var i = 0; i < 25; i++) turn(i.isEven ? 'user' : 'assistant', '$i')
     ];
     final retained = NeuraOfflineBudget.standard.retain(messages);
-    expect(retained.length, 7);
+    // 16 newest turns, minus the leading orphaned assistant reply.
+    expect(retained.length, 15);
     expect(retained.first['role'], 'user');
     expect(retained.last['content'], '24');
   });

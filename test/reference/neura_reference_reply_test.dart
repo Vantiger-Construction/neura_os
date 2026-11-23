@@ -236,7 +236,7 @@ void main() {
           }));
 
   test(
-      'ordinary offline chat still rejects files and persistent-memory authority',
+      'ordinary offline chat rejects files and notes without a recall grant',
       () => fixture.run(() async {
             await expectLater(
                 ai.streamReply(
