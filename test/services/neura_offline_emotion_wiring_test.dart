@@ -24,6 +24,8 @@ class _CapturingOllama extends NeuraOllamaChat {
     required String system,
     required List<Map<String, dynamic>> messages,
     required NeuraGenerationCancel cancel,
+    void Function(String textSoFar)? onPartial,
+    List<Map<String, dynamic>> tools = const [],
   }) async {
     systems.add(system);
     sent.add(messages);
