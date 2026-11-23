@@ -232,6 +232,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     SafeBoot.instance.restartRequired.addListener(_stopForSafeMode);
     unawaited(_initAgent());
     WakeWordListenerService.instance.pause();
+    // Start the system voice now so the first spoken reply does not also pay
+    // for engine start-up and voice selection.
+    if (_tts.replySpeechMode != NeuraReplySpeechMode.off) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_tts.warmUp().catchError((_) {}));
+      });
+    }
   }
 
   void _onLocalChanged() {
@@ -1359,7 +1366,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       await _sendLocalText(text, hasImage: hasImage);
       return;
     }
-    if ((_selectedContext != null || _includeMemory) && !_ai.isConfigured) {
+    if ((_selectedContext != null || (_includeMemory && !_localOllama)) &&
+        !_ai.isConfigured) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -1692,10 +1700,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     try {
       final memory =
           widget.memoryService ?? await CompanionMemoryService.local();
+      // Offline Ollama may use approved notes: they stay on this computer.
       if (!mounted ||
           _busy ||
           _localSelected ||
-          _localOllama ||
           SafeBoot.instance.safeMode.value ||
           !NeuraChatPolicy.forRoom(NeuraShell.of(context).room.id)
               .persistMemory) {
@@ -1749,9 +1757,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       case NeuraChatPolicy.getMoodHistory:
         final approved = await _confirmToolAction(
           title: 'Share mood scores once?',
-          message: 'Neura wants to send recent mood dates and 0–10 scores to '
-              'the configured AI provider for this reply. Your mood notes '
-              'will not be shared.',
+          message: _localOllama
+              ? 'Neura wants to read recent mood dates and 0–10 scores for '
+                  'this reply. They stay on this computer, and your mood '
+                  'notes will not be shared.'
+              : 'Neura wants to send recent mood dates and 0–10 scores to '
+                  'the configured AI provider for this reply. Your mood notes '
+                  'will not be shared.',
           approveLabel: 'Share once',
         );
         if (approved) {
@@ -2270,12 +2282,13 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
           CheckboxListTile(
             dense: true,
             title: const Text('Use saved companion notes for the next reply'),
-            subtitle: const Text(
-              'Use only notes you explicitly saved. Expires in 5 minutes. Review the cloud preview before sending.',
+            subtitle: Text(
+              _localOllama
+                  ? 'Use only notes you explicitly saved. Expires in 5 minutes. Notes stay on this computer.'
+                  : 'Use only notes you explicitly saved. Expires in 5 minutes. Review the cloud preview before sending.',
             ),
             value: _includeMemory,
             onChanged: _localSelected ||
-                    _localOllama ||
                     _busy ||
                     _preparingMemory ||
                     !NeuraChatPolicy.forRoom(NeuraShell.of(context).room.id)

@@ -119,6 +119,68 @@ class _LatencyTurn {
   NeuraOllamaLatencyOutcome outcome = NeuraOllamaLatencyOutcome.running;
 }
 
+/// One tool call the local model requested. Running it still requires the
+/// room policy check and the user's confirmation in the AI service.
+class NeuraOllamaToolCall {
+  const NeuraOllamaToolCall(this.name, this.arguments);
+  final String name;
+  final Map<String, dynamic> arguments;
+
+  Map<String, dynamic> toJson() => {'name': name, 'arguments': arguments};
+}
+
+/// A reply to a request that advertised tools: text plus any tool calls.
+class NeuraOllamaTurn {
+  const NeuraOllamaTurn(this.text, this.toolCalls);
+  final String text;
+  final List<NeuraOllamaToolCall> toolCalls;
+
+  static final _toolName = RegExp(r'^[a-z_]{1,40}$');
+
+  /// Tool results enter the small offline context: keep the newest whole
+  /// lines within [maxBytes] (mood history lists oldest first).
+  static String boundToolResult(String result, {int maxBytes = 1500}) {
+    if (utf8.encode(result).length <= maxBytes) return result;
+    final kept = <String>[];
+    var bytes = 0;
+    for (final line in result.split('\n').reversed) {
+      final size = utf8.encode(line).length + 1;
+      if (bytes + size > maxBytes) break;
+      bytes += size;
+      kept.insert(0, line);
+    }
+    return kept.isEmpty
+        ? 'Tool result was too long to share.'
+        : kept.join('\n');
+  }
+
+  /// Strict schema; anything unexpected is a failed reply, never guessed.
+  static NeuraOllamaTurn parse(String envelope) {
+    final value = jsonDecode(envelope);
+    if (value is! Map ||
+        value.length != 2 ||
+        value['text'] is! String ||
+        value['tool_calls'] is! List) {
+      throw const FormatException('Invalid offline tool reply.');
+    }
+    final calls = <NeuraOllamaToolCall>[];
+    for (final call in value['tool_calls'] as List) {
+      if (call is! Map ||
+          call.length != 2 ||
+          call['name'] is! String ||
+          !_toolName.hasMatch(call['name'] as String) ||
+          call['arguments'] is! Map) {
+        throw const FormatException('Invalid offline tool call.');
+      }
+      calls.add(NeuraOllamaToolCall(
+        call['name'] as String,
+        Map<String, dynamic>.from(call['arguments'] as Map),
+      ));
+    }
+    return NeuraOllamaTurn(value['text'] as String, calls);
+  }
+}
+
 /// Reject an oversized paste before it enters the offline editor/undo history.
 class NeuraOllamaTextInputFormatter extends TextInputFormatter {
   const NeuraOllamaTextInputFormatter();
@@ -136,8 +198,18 @@ class NeuraOllamaTextInputFormatter extends TextInputFormatter {
 /// Windows native owner forwards text to Rust; no Dart HTTP or cloud fallback.
 class NeuraOllamaChat with WidgetsBindingObserver {
   static const maxInputBytes = 1500;
-  static const maxVisibleMessages = 8;
+
+  /// Offline history is drawn from the visible transcript, so this matches
+  /// NeuraOfflineBudget.maxTurns.
+  static const maxVisibleMessages = 16;
   static const maxVisibleBytes = 16384;
+
+  /// Largest request accepted natively (charter, history, tools).
+  static const maxRequestBytes = 24576;
+
+  /// Poll cadence for the native worker. Short enough that streamed text and
+  /// the final reply reach Dart promptly; each poll is a cheap in-process copy.
+  static const pollInterval = Duration(milliseconds: 20);
 
   /// Drop whole oldest messages; keep the newest bounded reply visible.
   /// The model's separate 1500-byte context limit remains enforced in Rust.
@@ -335,16 +407,26 @@ class NeuraOllamaChat with WidgetsBindingObserver {
     }
   }
 
+  /// Returns the complete, natively verified reply. With [onPartial], the text
+  /// streamed so far is also reported as it grows (each call a longer prefix),
+  /// so callers can display and speak a reply before generation finishes.
+  /// Partial text is unverified until this future completes.
   Future<String> reply({
     required String system,
     required List<Map<String, dynamic>> messages,
     required NeuraGenerationCancel cancel,
+    void Function(String textSoFar)? onPartial,
+    List<Map<String, dynamic>> tools = const [],
   }) async {
     if (!_allowed) throw StateError('Offline chat is unavailable.');
     cancel.throwIfCancelled();
     final started = _now;
-    final payload = jsonEncode({'system': system, 'messages': messages});
-    if (utf8.encode(payload).length > 16384) {
+    final payload = jsonEncode({
+      'system': system,
+      'messages': messages,
+      if (tools.isNotEmpty) 'tools': tools,
+    });
+    if (utf8.encode(payload).length > maxRequestBytes) {
       throw StateError('This conversation is too large for offline chat.');
     }
     _active?.cancel();
@@ -375,7 +457,11 @@ class NeuraOllamaChat with WidgetsBindingObserver {
       );
       cancel.throwIfCancelled();
       final clock = Stopwatch()..start();
-      while (clock.elapsed < const Duration(seconds: 95)) {
+      var peeking = onPartial != null;
+      var reported = 0;
+      // Slightly longer than the native 300 s reply deadline, so the native
+      // owner reports the outcome. Replies stream throughout this time.
+      while (clock.elapsed < const Duration(seconds: 305)) {
         if (!_allowed) cancel.cancel();
         cancel.throwIfCancelled();
         final text = await _channel.invokeMethod<String>('pollOllama', id);
@@ -385,7 +471,21 @@ class NeuraOllamaChat with WidgetsBindingObserver {
           delivered = true;
           return text;
         }
-        await cancel.delay(const Duration(milliseconds: 100));
+        if (peeking) {
+          String? partial;
+          try {
+            partial = await _channel.invokeMethod<String>('peekOllama', id);
+          } on MissingPluginException {
+            peeking = false; // Older runner: complete replies only.
+          }
+          cancel.throwIfCancelled();
+          if (!_allowed) throw NeuraGenerationCancelled(cancel.generationId);
+          if (partial != null && partial.length > reported) {
+            reported = partial.length;
+            onPartial!(partial);
+          }
+        }
+        await cancel.delay(pollInterval);
       }
       throw StateError('Offline reply timed out.');
     } on NeuraGenerationCancelled {

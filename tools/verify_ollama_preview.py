@@ -20,7 +20,8 @@ import zipfile
 
 
 EXPORTS = (
-    "neura_ollama_begin", "neura_ollama_poll", "neura_ollama_cancel",
+    "neura_ollama_begin", "neura_ollama_poll", "neura_ollama_peek",
+    "neura_ollama_cancel",
     "neura_ollama_foreground", "neura_ollama_block", "neura_ollama_shutdown",
     "neura_ollama_timing", "neura_ollama_clear_timing",
     "neura_ollama_readiness_begin", "neura_ollama_readiness_poll",

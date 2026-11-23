@@ -48,9 +48,9 @@ const kNeuraOpenAiGpt61SolProfile = NeuraModelProfile(
 
 const kNeuraAnthropicDefaultProfile = NeuraModelProfile(
   provider: NeuraModelProvider.anthropic,
-  model: 'claude-opus-5',
-  reasoningEffort: 'medium',
-  displayName: 'Claude Opus 5',
+  model: kNeuraAnthropicModel,
+  reasoningEffort: kNeuraAnthropicEffort,
+  displayName: 'Claude Opus 5.5',
   defaultForProvider: true,
 );
 
@@ -82,11 +82,17 @@ abstract final class NeuraModelProfiles {
 
 /// The one place the Anthropic model is chosen, shared by the streaming and
 /// non-streaming transports.
-const String kNeuraAnthropicModel = 'claude-opus-5';
+const String kNeuraAnthropicModel = 'claude-opus-5-5';
 
-/// Opus 5 thinks adaptively by default. Chat is spoken aloud, so keep the
-/// wait before the first word short; raise this for deeper replies.
+/// Opus 5.5 always thinks adaptively; effort is the only depth control (it
+/// defaults to `medium` on this model, but is set explicitly). Chat is spoken
+/// aloud, so keep the wait before the first word short.
 const String kNeuraAnthropicEffort = 'medium';
+
+/// If a safety classifier declines a request, the API re-runs it server-side
+/// on Anthropic's recommended fallback model instead of returning a refusal.
+const String kNeuraAnthropicFallbackBeta = 'server-side-fallback-2026-07-01';
+const String kNeuraAnthropicFallbacks = 'default';
 
 extension NeuraModelProviderLabel on NeuraModelProvider {
   String get label {

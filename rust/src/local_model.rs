@@ -25,6 +25,40 @@ pub const QUANTIZATION: &str = "Q4_K_M";
 /// and family/size/quantization metadata do not identify the selected weights.
 pub const MANIFEST_DIGEST: &str =
     "sha256:0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0";
+/// One reviewed model identity: the tag, its explicit `:local` request form,
+/// the published manifest digest and the metadata it must report.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ModelPin {
+    pub tag: &'static str,
+    pub local_tag: &'static str,
+    pub family: &'static str,
+    pub parameter_size: &'static str,
+    pub quantization: &'static str,
+    pub manifest_digest: &'static str,
+}
+
+/// The default 4B instruction model every admitted Windows host can run.
+pub const STANDARD_PIN: ModelPin = ModelPin {
+    tag: MODEL,
+    local_tag: LOCAL_MODEL,
+    family: FAMILY,
+    parameter_size: PARAMETER_SIZE,
+    quantization: QUANTIZATION,
+    manifest_digest: MANIFEST_DIGEST,
+};
+
+/// Optional larger model, used only when the operator has installed it and
+/// the host has RAM for it. Manifest from registry.ollama.ai, reviewed
+/// 2026-11-23: qwen3 family, 8.2B, Q4_K_M, 5.2 GB weights. Thinking stays off.
+pub const LARGE_PIN: ModelPin = ModelPin {
+    tag: "qwen3:8b",
+    local_tag: "qwen3:8b:local",
+    family: "qwen3",
+    parameter_size: "8.2B",
+    quantization: "Q4_K_M",
+    manifest_digest: "sha256:500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+};
+
 /// Conservative source-checked floor for the explicit :local routing contract.
 /// Only stable numeric releases are admitted; unknown/dev versions fail closed.
 pub const MIN_OLLAMA_VERSION: &str = "0.18.0";
@@ -106,6 +140,18 @@ impl LoopbackClient {
     /// path, query, fragment or credentials. No DNS names, LAN or public hosts.
     #[allow(clippy::result_unit_err)]
     pub fn new(endpoint: &str, timeout: Duration) -> Result<Self, ()> {
+        Self::build(endpoint, timeout, None)
+    }
+
+    /// For a streamed reply: `timeout` bounds the whole request and `idle`
+    /// bounds each wait for the next bytes, so a stalled daemon fails early
+    /// while a long, steadily streaming reply on a slow CPU still completes.
+    #[allow(clippy::result_unit_err)]
+    pub fn streaming(endpoint: &str, timeout: Duration, idle: Duration) -> Result<Self, ()> {
+        Self::build(endpoint, timeout, Some(idle))
+    }
+
+    fn build(endpoint: &str, timeout: Duration, idle: Option<Duration>) -> Result<Self, ()> {
         let url = reqwest::Url::parse(endpoint).map_err(|_| ())?;
         // Numeric literals only: a DNS name is never resolved or trusted.
         let loopback = url
@@ -124,13 +170,15 @@ impl LoopbackClient {
         {
             return Err(());
         }
-        let inner = crate::http_client::builder()
+        let mut builder = crate::http_client::builder()
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(2))
-            .timeout(timeout)
-            .build()
-            .map_err(|_| ())?;
+            .timeout(timeout);
+        if let Some(idle) = idle {
+            builder = builder.read_timeout(idle);
+        }
+        let inner = builder.build().map_err(|_| ())?;
         Ok(Self {
             inner,
             endpoint: endpoint.trim_end_matches('/').to_owned(),
@@ -193,7 +241,12 @@ fn supported_version(version: &str) -> bool {
 /// Confirm a compatible daemon reports the reviewed manifest installed locally.
 /// Sends only the model name; never any conversation or fixture text.
 pub async fn verify_pinned_model(client: &LoopbackClient) -> Result<(), ModelUnavailable> {
-    verify_model(client, &mut ModelReadiness::default()).await
+    verify_pin(client, &STANDARD_PIN).await
+}
+
+/// Same verification for an explicit pin, e.g. the optional larger model.
+pub async fn verify_pin(client: &LoopbackClient, pin: &ModelPin) -> Result<(), ModelUnavailable> {
+    verify_model_pin(client, pin, &mut ModelReadiness::default()).await
 }
 
 /// Fixed numeric stages for metadata-only inspection. No daemon text escapes.
@@ -229,6 +282,14 @@ async fn verify_model(
     client: &LoopbackClient,
     report: &mut ModelReadiness,
 ) -> Result<(), ModelUnavailable> {
+    verify_model_pin(client, &STANDARD_PIN, report).await
+}
+
+async fn verify_model_pin(
+    client: &LoopbackClient,
+    pin: &ModelPin,
+    report: &mut ModelReadiness,
+) -> Result<(), ModelUnavailable> {
     let response = client.get("/api/version").send().await.map_err(|_| {
         report.daemon = 2;
         ModelUnavailable::Unreachable
@@ -256,7 +317,7 @@ async fn verify_model(
         .ok_or(ModelUnavailable::Malformed)?;
     let mut matches = models
         .iter()
-        .filter(|model| model["name"] == MODEL || model["model"] == MODEL);
+        .filter(|model| model["name"] == pin.tag || model["model"] == pin.tag);
     let installed = matches.next().ok_or(ModelUnavailable::NotInstalled)?;
     if matches.next().is_some() {
         return Err(ModelUnavailable::Malformed);
@@ -267,12 +328,12 @@ async fn verify_model(
     // Ollama /api/tags normally returns bare hex; registry identities use
     // sha256:<hex>. Accept only those two representations of the reviewed hash.
     if !installed["digest"].as_str().is_some_and(|digest| {
-        digest == MANIFEST_DIGEST || digest == &MANIFEST_DIGEST["sha256:".len()..]
+        digest == pin.manifest_digest || digest == &pin.manifest_digest["sha256:".len()..]
     }) {
         return Err(ModelUnavailable::Mismatch);
     }
     let response = client
-        .post_json("/api/show", &json!({"model": LOCAL_MODEL}))
+        .post_json("/api/show", &json!({"model": pin.local_tag}))
         .send()
         .await
         .map_err(|_| ModelUnavailable::Unreachable)?;
@@ -290,9 +351,9 @@ async fn verify_model(
         return Err(ModelUnavailable::Remote);
     }
     let details = &info["details"];
-    if details["family"] != FAMILY
-        || details["parameter_size"] != PARAMETER_SIZE
-        || details["quantization_level"] != QUANTIZATION
+    if details["family"] != pin.family
+        || details["parameter_size"] != pin.parameter_size
+        || details["quantization_level"] != pin.quantization
     {
         return Err(ModelUnavailable::Mismatch);
     }
@@ -324,25 +385,61 @@ pub enum StreamError {
     Stopped,
 }
 
-/// Inspect one streamed line, returning its text delta and whether it is final.
-fn stream_line(line: &[u8]) -> Result<(String, bool), StreamError> {
+/// Most tool calls accepted in one streamed reply.
+pub const MAX_TOOL_CALLS: usize = 4;
+
+/// Tool names are short lowercase identifiers chosen by the app, never paths.
+pub fn valid_tool_name(name: &str) -> bool {
+    (1..=40).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
+}
+
+/// Inspect one streamed line: its text delta, whether it is final, whether it
+/// stopped at the token cap and any tool calls (each `{"name", "arguments"}`). Tool calls are a
+/// protocol error unless the caller advertised tools.
+fn stream_line(line: &[u8], allow_tools: bool) -> Result<StreamLine, StreamError> {
     let value: Value = serde_json::from_slice(line).map_err(|_| StreamError::Protocol)?;
     let message = &value["message"];
     if value.get("error").is_some()
         || value.get("remote_host").is_some()
         || value.get("remote_model").is_some()
         || message["role"] != "assistant"
-        || message
-            .get("tool_calls")
-            .is_some_and(|v| !v.as_array().is_some_and(|a| a.is_empty()))
     {
         return Err(StreamError::Protocol);
+    }
+    let mut calls = Vec::new();
+    match message.get("tool_calls") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(items)) if items.is_empty() => {}
+        Some(Value::Array(items)) if allow_tools => {
+            for item in items {
+                let function = &item["function"];
+                let name = function["name"].as_str().ok_or(StreamError::Protocol)?;
+                let arguments = &function["arguments"];
+                if !valid_tool_name(name) || !arguments.is_object() {
+                    return Err(StreamError::Protocol);
+                }
+                calls.push(serde_json::json!({"name": name, "arguments": arguments}));
+            }
+        }
+        _ => return Err(StreamError::Protocol),
     }
     let delta = message["content"]
         .as_str()
         .ok_or(StreamError::Protocol)?
         .to_owned();
-    Ok((delta, value["done"] == true))
+    Ok(StreamLine {
+        delta,
+        done: value["done"] == true,
+        length_capped: value["done_reason"] == "length",
+        calls,
+    })
+}
+
+struct StreamLine {
+    delta: String,
+    done: bool,
+    length_capped: bool,
+    calls: Vec<Value>,
 }
 
 /// Submit a streaming chat request and hand each text delta to `on_delta`.
@@ -355,8 +452,49 @@ pub async fn stream_chat<F>(
     client: &LoopbackClient,
     payload: &Value,
     limits: StreamLimits,
-    mut on_delta: F,
+    on_delta: F,
 ) -> Result<Zeroizing<String>, StreamError>
+where
+    F: FnMut(&str) -> bool,
+{
+    stream_chat_inner(client, payload, limits, on_delta, false)
+        .await
+        .map(|reply| reply.text)
+}
+
+/// A finished streamed reply.
+pub struct StreamedReply {
+    pub text: Zeroizing<String>,
+    /// Validated tool calls, each `{"name", "arguments"}`.
+    pub tool_calls: Vec<Value>,
+    /// The daemon stopped at the token cap (`done_reason` "length").
+    pub length_capped: bool,
+}
+
+/// Like [stream_chat], also reporting whether the reply hit the token cap.
+/// With `allow_tools` it returns the validated tool calls (at most
+/// [MAX_TOOL_CALLS]) and the text may then be empty. The caller still decides
+/// whether any call is permitted to run.
+pub async fn stream_chat_reply<F>(
+    client: &LoopbackClient,
+    payload: &Value,
+    limits: StreamLimits,
+    on_delta: F,
+    allow_tools: bool,
+) -> Result<StreamedReply, StreamError>
+where
+    F: FnMut(&str) -> bool,
+{
+    stream_chat_inner(client, payload, limits, on_delta, allow_tools).await
+}
+
+async fn stream_chat_inner<F>(
+    client: &LoopbackClient,
+    payload: &Value,
+    limits: StreamLimits,
+    mut on_delta: F,
+    allow_tools: bool,
+) -> Result<StreamedReply, StreamError>
 where
     F: FnMut(&str) -> bool,
 {
@@ -370,6 +508,7 @@ where
     }
     let mut pending = Zeroizing::new(Vec::new());
     let mut text = Zeroizing::new(String::new());
+    let mut tool_calls: Vec<Value> = Vec::new();
     let mut received = 0usize;
     loop {
         let Some(chunk) = response.chunk().await.map_err(|_| StreamError::Transport)? else {
@@ -390,8 +529,17 @@ where
             if line.iter().all(u8::is_ascii_whitespace) {
                 continue;
             }
-            let (delta, done) = stream_line(line)?;
+            let StreamLine {
+                delta,
+                done,
+                length_capped,
+                calls,
+            } = stream_line(line, allow_tools)?;
             if text.len() + delta.len() > limits.max_output {
+                return Err(StreamError::Exhausted);
+            }
+            tool_calls.extend(calls);
+            if tool_calls.len() > MAX_TOOL_CALLS {
                 return Err(StreamError::Exhausted);
             }
             if !delta.is_empty() {
@@ -401,10 +549,14 @@ where
                 }
             }
             if done {
-                if text.trim().is_empty() {
+                if text.trim().is_empty() && tool_calls.is_empty() {
                     return Err(StreamError::Protocol);
                 }
-                return Ok(text);
+                return Ok(StreamedReply {
+                    text,
+                    tool_calls,
+                    length_capped,
+                });
             }
         }
         if pending.len() > limits.max_line {

@@ -2,6 +2,7 @@ import 'dart:async';
 import '../profiles/local_profile_service.dart';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:uuid/uuid.dart';
 
 import '../encrypted_memory/companion_memory_service.dart';
@@ -183,13 +184,16 @@ class NeuraAiService {
             threadContext.isNotEmpty)) {
       throw StateError('References require a dedicated local question.');
     }
+    // Approved companion notes and earlier private-context replies may reach
+    // the on-device model: nothing leaves the computer. Selected files and
+    // images remain cloud-only features.
     if (localOllama &&
         (selectedContext != null ||
-            includePermittedMemory ||
-            historyIncludesPrivateContext ||
+            (offlineReference != null &&
+                (includePermittedMemory || historyIncludesPrivateContext)) ||
             history.any((t) => t.imageBase64 != null))) {
       throw StateError(
-        'Offline Ollama currently supports visible text chat only.',
+        'Offline Ollama currently supports text chat and approved notes only.',
       );
     }
 
@@ -272,6 +276,8 @@ class NeuraAiService {
         // prompt; the on-device prompt is at its native byte limit.
         includePersonality: !localOllama,
         conversationMode: conversationMode,
+        // The on-device model has a much smaller context window.
+        maxMemoryBytes: localOllama ? 1500 : null,
       );
       cancel.throwIfCancelled();
       if (localOllama) {
@@ -312,9 +318,85 @@ class NeuraAiService {
             hiddenUserTurns: hidden,
           );
         }
+        final offlineSystem = '$systemPrompt$kNeuraOfflineSystemSuffix'
+            '${emotionCue.isEmpty ? '' : '\n\n$emotionCue'}';
+        if (offlineReference == null) {
+          // Ordinary chat streams whole sentences, each screened before it is
+          // shown or spoken, so speech starts after the first sentence.
+          // The room's tools are offered too; every call is re-checked against
+          // the room policy and confirmed by the user before it runs.
+          final offlineTools = !profileSession && onToolCommand != null
+              ? [
+                  for (final tool in advertisedTools)
+                    {
+                      'name': tool['name'],
+                      'description': tool['description'],
+                      'parameters': tool['input_schema'],
+                    },
+                ]
+              : const <Map<String, dynamic>>[];
+          final system = offlineTools.isEmpty
+              ? offlineSystem
+              : offlineSystem.replaceFirst(
+                  'No tools are available.',
+                  'Use a tool only when the user clearly asks for that action; '
+                      'the user must confirm each one.',
+                );
+          var messages = recent;
+          var actions = 0;
+          for (var round = 0;; round++) {
+            NeuraOllamaTurn? turn;
+            yield* _streamOfflineSentences(
+              system: system,
+              messages: messages,
+              cancel: cancel,
+              tools: offlineTools,
+              onTurn: (value) => turn = value,
+            );
+            final calls = turn?.toolCalls ?? const <NeuraOllamaToolCall>[];
+            if (calls.isEmpty) return;
+            if (round >= _maxToolRounds) {
+              yield '\nI reached the action limit for this turn. Please review '
+                  'the result before continuing.';
+              return;
+            }
+            final results = <Map<String, dynamic>>[];
+            for (final call in calls) {
+              cancel.throwIfCancelled();
+              if (++actions > 8) {
+                throw const NeuraStreamFailure(
+                  'The action limit was reached.',
+                );
+              }
+              final result = await _executeTool(
+                call.name,
+                call.arguments,
+                policy: policy,
+                cancel: cancel,
+                onToolCommand: onToolCommand,
+              );
+              results.add({
+                'role': 'tool',
+                'content': NeuraOllamaTurn.boundToolResult(result),
+                'tool_name': call.name,
+              });
+            }
+            cancel.throwIfCancelled();
+            if (turn!.text.trim().isNotEmpty) yield '\n\n';
+            messages = [
+              ...messages,
+              {
+                'role': 'assistant',
+                'content': turn!.text,
+                'tool_calls': [for (final call in calls) call.toJson()],
+              },
+              ...results,
+            ];
+          }
+        }
+        // Reference answers are verified as a whole before any prose is shown.
         final text = await (_ollama ??= NeuraOllamaChat()).reply(
-          system: '$systemPrompt$kNeuraOfflineSystemSuffix'
-              '${emotionCue.isEmpty ? '' : '\n\n$emotionCue'}',
+          system: offlineSystem,
           messages: recent,
           cancel: cancel,
         );
@@ -324,7 +406,7 @@ class NeuraAiService {
         // Validate and decode reference evidence before screening the complete
         // display text, including JSON-escaped source characters. No model
         // prose is released; quotation matching proves identity, not truth.
-        final displayText = offlineReference?.formatVerifiedReply(text) ?? text;
+        final displayText = offlineReference.formatVerifiedReply(text);
         final postBlocked = await _checkGuardrails([
           NeuraChatTurn(isUser: true, text: displayText),
         ]);
@@ -627,6 +709,109 @@ class NeuraAiService {
       throw StateError(
         'Cloud AI is unavailable while Neura is running in Safe Mode.',
       );
+    }
+  }
+
+  /// Index just past the last complete sentence in [text] at or after [from],
+  /// or [from] when none has completed. Sentence punctuation counts only once
+  /// whitespace follows it, so "3.5" or a still-arriving "..." does not split.
+  @visibleForTesting
+  static int sentenceReleaseEnd(String text, int from) {
+    for (var i = text.length - 1; i >= from; i--) {
+      final char = text.codeUnitAt(i);
+      if (char == 0x0A) return i + 1;
+      if ((char == 0x2E || char == 0x21 || char == 0x3F) &&
+          i + 1 < text.length &&
+          (text.codeUnitAt(i + 1) == 0x20 || text.codeUnitAt(i + 1) == 0x0A)) {
+        return i + 1;
+      }
+    }
+    return from;
+  }
+
+  /// Offline reply released sentence by sentence. Each release is screened
+  /// together with everything already shown, and the verified final reply is
+  /// screened again, so no unscreened model prose reaches the screen or voice.
+  /// A mid-reply block stops generation and shows the safe alternative.
+  Stream<String> _streamOfflineSentences({
+    required String system,
+    required List<Map<String, dynamic>> messages,
+    required NeuraGenerationCancel cancel,
+    List<Map<String, dynamic>> tools = const [],
+    void Function(NeuraOllamaTurn turn)? onTurn,
+  }) async* {
+    // A child token lets a guardrail block stop native generation without
+    // reporting the turn as a user cancellation.
+    final generation = NeuraGenerationCancel(cancel.generationId);
+    unawaited(cancel.whenCancelled.then((_) => generation.cancel()));
+    final partials = StreamController<String>();
+    final reply = (_ollama ??= NeuraOllamaChat())
+        .reply(
+          system: system,
+          messages: messages,
+          cancel: generation,
+          onPartial: partials.add,
+          tools: tools,
+        )
+        .whenComplete(partials.close);
+    reply.ignore(); // Awaited below; avoid an unhandled-error report meanwhile.
+    var released = '';
+    var finished = false;
+    try {
+      String? blocked;
+      await for (final soFar in partials.stream) {
+        final end = sentenceReleaseEnd(soFar, released.length);
+        if (end <= released.length) continue;
+        final candidate = soFar.substring(0, end);
+        blocked = await _checkGuardrails([
+          NeuraChatTurn(isUser: true, text: candidate),
+        ]);
+        cancel.throwIfCancelled();
+        if (blocked != null) break;
+        yield candidate.substring(released.length);
+        released = candidate;
+      }
+      if (blocked != null) {
+        generation.cancel();
+        try {
+          await reply;
+        } catch (_) {
+          // The stopped request's outcome is irrelevant to the safe reply.
+        }
+        cancel.throwIfCancelled();
+        finished = true;
+        yield released.isEmpty ? blocked : '\n\n$blocked';
+        return;
+      }
+      final raw = await reply;
+      cancel.throwIfCancelled();
+      // With tools the native reply is an envelope; partials were its text.
+      final turn = tools.isEmpty
+          ? NeuraOllamaTurn(raw, const [])
+          : NeuraOllamaTurn.parse(raw);
+      final text = turn.text;
+      // A reply cut at the token cap ends at its last complete sentence, and
+      // may drop a cut-off lead-in line that was already released.
+      if (!text.startsWith(released) && !released.startsWith(text)) {
+        throw StateError('Offline reply changed while streaming.');
+      }
+      final postBlocked = await _checkGuardrails([
+        NeuraChatTurn(isUser: true, text: text),
+      ]);
+      cancel.throwIfCancelled();
+      finished = true;
+      if (postBlocked != null) {
+        // A blocked reply never hands its tool calls to the caller.
+        yield released.isEmpty ? postBlocked : '\n\n$postBlocked';
+      } else {
+        if (text.length > released.length) {
+          yield text.substring(released.length);
+        }
+        onTurn?.call(turn);
+      }
+    } finally {
+      // A listener that stops early must not leave native generation running.
+      if (!finished) generation.cancel();
     }
   }
 

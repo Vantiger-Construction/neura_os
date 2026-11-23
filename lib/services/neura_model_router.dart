@@ -411,6 +411,7 @@ class NeuraAnthropicTransport implements NeuraModelTransport {
           headers: {
             'x-api-key': apiKey,
             'anthropic-version': '2023-06-01',
+            'anthropic-beta': kNeuraAnthropicFallbackBeta,
             'content-type': 'application/json',
             ...transaction.requestHeaders(),
           },
@@ -420,6 +421,7 @@ class NeuraAnthropicTransport implements NeuraModelTransport {
             'system': request.systemPrompt,
             'messages': request.messages,
             'output_config': {'effort': kNeuraAnthropicEffort},
+            'fallbacks': kNeuraAnthropicFallbacks,
           }),
         )
         .timeout(const Duration(seconds: 30));
