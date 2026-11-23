@@ -207,7 +207,9 @@ void main() {
       }
       if (call.method == 'pollOllama') {
         if (failModel) throw PlatformException(code: 'synthetic-model-failure');
-        return modelReply;
+        final reply = modelReply;
+        if (reply == null || payloads.last['tools'] == null) return reply;
+        return jsonEncode({'text': reply, 'tool_calls': []});
       }
       return null;
     });
