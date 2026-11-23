@@ -207,7 +207,9 @@ void main() {
       }
       if (call.method == 'pollOllama') {
         if (failModel) throw PlatformException(code: 'synthetic-model-failure');
-        return modelReply;
+        final reply = modelReply;
+        if (reply == null || payloads.last['tools'] == null) return reply;
+        return jsonEncode({'text': reply, 'tool_calls': []});
       }
       return null;
     });
@@ -491,7 +493,8 @@ void main() {
           ),
         );
       }
-      expect(payloads.single.keys.toSet(), {'system', 'messages'});
+      expect(payloads.single.keys.toSet(), {'system', 'messages', 'tools'});
+      expect(payloads.single['tools'], isNotEmpty);
       expect((payloads.single['messages'] as List).last, {
         'role': 'user',
         'content': 'Synthetic private question',

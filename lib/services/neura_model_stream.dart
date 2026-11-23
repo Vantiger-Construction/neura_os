@@ -162,8 +162,30 @@ class NeuraModelStreamTransport {
           .toList(),
       'max_tokens': maxTokens,
       'stream': true,
+      'fallbacks': kNeuraAnthropicFallbacks,
       if (tools.isNotEmpty) 'tools': tools,
     };
+  }
+
+  /// After a mid-reply fallback, thinking and tool-call blocks produced
+  /// before the final `fallback` block must not be echoed back on the next
+  /// tool round. Text, the `fallback` block itself (kept in place) and
+  /// everything after it are echoed normally.
+  static List<Map<String, dynamic>> echoableAnthropicBlocks(
+    List<Map<String, dynamic>> blocks,
+  ) {
+    final boundary = blocks.lastIndexWhere((b) => b['type'] == 'fallback');
+    if (boundary < 0) return blocks;
+    const dropped = {
+      'thinking',
+      'redacted_thinking',
+      'tool_use',
+      'server_tool_use',
+    };
+    return [
+      for (var i = 0; i < blocks.length; i++)
+        if (i >= boundary || !dropped.contains(blocks[i]['type'])) blocks[i],
+    ];
   }
 
   static List<Map<String, dynamic>> openAiInput(
@@ -260,6 +282,7 @@ class NeuraModelStreamTransport {
           if (openAi) 'authorization': 'Bearer $apiKey',
           if (!openAi) 'x-api-key': apiKey,
           if (!openAi) 'anthropic-version': '2023-06-01',
+          if (!openAi) 'anthropic-beta': kNeuraAnthropicFallbackBeta,
           ...transaction.requestHeaders(),
         })
         ..body = jsonEncode(body);
@@ -400,7 +423,7 @@ class NeuraModelStreamTransport {
             final indices = blocks.keys.toList()..sort();
             yield NeuraTurnComplete(
               provider,
-              indices.map((i) => blocks[i]!).toList(),
+              echoableAnthropicBlocks(indices.map((i) => blocks[i]!).toList()),
             );
             return;
           case 'error':

@@ -41,6 +41,7 @@ class NeuraEngineSession {
   bool blocked_ = false;
   OllamaBegin ollama_begin_ = nullptr;
   OllamaPoll ollama_poll_ = nullptr;
+  OllamaPoll ollama_peek_ = nullptr;
   OllamaCancel ollama_cancel_ = nullptr;
   OllamaTiming ollama_timing_ = nullptr;
   OllamaReadinessBegin ollama_readiness_begin_ = nullptr;

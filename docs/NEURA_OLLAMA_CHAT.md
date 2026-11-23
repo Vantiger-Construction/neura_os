@@ -49,6 +49,13 @@ ollama pull qwen3:4b-instruct
 [Environment]::SetEnvironmentVariable('OLLAMA_NO_CLOUD', '1', 'User')
 ```
 
+**Optional smarter model.** On a PC with at least 14 GiB of RAM you can also run
+`ollama pull qwen3:8b` (about 5.2 GB). Neura then uses it automatically for any
+reply where at least 6.5 GiB is free (or it is still loaded from the previous
+turn), and otherwise falls back to the 4B model. It reasons noticeably better
+but generates roughly half as fast on a CPU-only laptop. It is pinned to its own
+reviewed manifest digest (qwen3, 8.2B, Q4_K_M) and verified the same way.
+
 Quit Ollama from its tray icon and reopen it so the local-only setting takes
 effect. Keep its default loopback listener; do not expose port 11434 on the LAN.
 Do not run another model chat concurrently on an 8 GB machine. Close memory-heavy
@@ -61,7 +68,13 @@ In Neura's main chat, select the computer/cloud menu in the top bar and choose
 for today.” The conversation uses Neura's charter, persona, room framing and
 audience instructions. API keys are not required. Existing reply speech settings
 still control the Windows system voice; voice recognition is not installed by
-this change. This version returns the complete reply rather than token deltas.
+this change. Ordinary replies stream: Rust reads Ollama's NDJSON stream, Dart
+polls the text so far (`peekOllama`, every 20 ms) and releases it one complete
+sentence at a time. Each release is screened by the reply guardrails together
+with everything already shown, and the verified final reply is screened again;
+a block stops generation and shows the safe alternative. With reply speech set
+to **As it arrives**, Neura starts speaking after her first sentence. Offline
+reference-shelf answers are still verified and released as a whole.
 While it is working, **Stop offline reply** cancels the current request and keeps
 Offline Ollama selected.
 
@@ -104,8 +117,8 @@ Follow the displayed manual setup steps when a prerequisite is missing. Neura
 never runs `ollama pull` for you. A successful result means the prerequisites
 were met at that moment. It does not prove successful inference, low latency,
 actual weight integrity, conversation quality, local speech availability or
-physical microphone/speaker behavior. Select **Companion**, choose **After
-reply** in voice preferences, then start **Talk freely (hands-free)** yourself.
+physical microphone/speaker behavior. Select **Companion**, choose **As it
+arrives** (lowest latency) or **After reply** in voice preferences, then start **Talk freely (hands-free)** yourself.
 Restricted local-profile mode remains text-only and has no readiness/voice
 controls added by this change.
 
@@ -120,8 +133,18 @@ the synthetic metadata, lifecycle and UI regressions.
 - Only `http://127.0.0.1:11434` endpoints `/api/version`, `/api/tags`,
   `/api/show` and `/api/chat` are used. Rust disables
   HTTP proxies and redirects. No model download, authentication, cloud fallback,
-  browser, web search or tool execution is implemented in this adapter.
-- The model is fixed to `qwen3:4b-instruct`. A preflight requires stable Ollama
+  browser or web search is implemented in this adapter.
+- **Offline tools.** Ordinary offline chat offers the current room's existing
+  tools (mood history, mood check-in, room navigation, tone). Rust accepts at
+  most six definitions (3 KiB, lowercase names) and at most four calls per reply,
+  validates their shape, and returns `{text, tool_calls}` only to a request that
+  advertised tools. Rust runs nothing: Dart re-checks each call against the room
+  policy, and every call shows the same confirmation dialog as cloud chat before
+  any effect. At most four tool rounds and eight actions per reply; results are
+  trimmed to 1,500 bytes of the newest whole lines. Reference-shelf answers and
+  profile sessions offer no tools.
+- The model is `qwen3:4b-instruct`, or the optional pinned `qwen3:8b` when it is
+  installed and RAM admits it. A preflight requires stable Ollama
   >=0.18.0 and the reviewed manifest digest in
   [the shared model contract](NEURA_ENGINE_MODEL_ADAPTER_M2.md#the-pinned-model), then rejects remote
   model tags and non-Qwen3/4.0B/Q4_K_M models before conversation submission.
@@ -130,24 +153,31 @@ the synthetic metadata, lifecycle and UI regressions.
   this adapter does not fall back to an unspecified model source.
   The separately installed daemon and its model files must be trusted. Metadata
   checks are not cryptographic model verification or an OS security sandbox.
-- Ordinary chat rejects files, images, recalled personal memories and earlier
-  private-source replies. The separate **Offline reference shelf** can send only
-  displayed passages for one explicitly approved local answer; see
-  [the companion upgrade guide](COMPANION_NEXT_STAGE_2026_10.md). Start a fresh chat if previous turns used such sources. Ollama
+- Ordinary chat rejects files and images. With **Use saved companion notes for
+  the next reply** switched on, up to 1,500 UTF-8 bytes of whole approved notes
+  (the same five-minute, per-reply grant as cloud chat) are added to the local
+  system prompt; they never leave the computer. Earlier replies that used notes
+  may stay in local history. The separate **Offline reference shelf** can send only
+  displayed passages for one explicitly approved local answer and still rejects
+  notes; see
+  [the companion upgrade guide](COMPANION_NEXT_STAGE_2026_10.md). Ollama
   turns are not automatically written to Neura's long-term memory. Stored mood
   is excluded from the model prompt; local safety screening may still use it.
 - Input and reply guardrails remain in the main chat path. Prompt rules do not
   prove clinical suitability; no diagnosis or medication advice is intended.
-- Retention is at most eight recent turns and 1,500 UTF-8 content bytes, trimming
+- Retention is at most 16 recent turns and 4,000 UTF-8 content bytes (Compact:
+  1,500), trimming
   whole older turns. Oversized newest messages or system instructions fail
   closed. The complete system prompt is preserved in Neura's request.
 - The offline editor rejects pastes above 1,500 UTF-8 bytes before retention;
   submission independently checks this cap. Visible history drops whole oldest
-  messages above eight messages or 16 KiB of text (plus the initial greeting).
+  messages above 16 messages or 16 KiB of text (plus the initial greeting).
   This display budget lets a bounded reply remain readable; it is separate from
   the smaller model-context budget. Selecting offline clears the current draft.
-- Inference uses 2 CPU threads, 2,048 context tokens, 256 output tokens and a
-  90-second deadline. Ollama tokenizes and may truncate to its context limit;
+- Inference uses physical CPU cores minus one (at least 2, at most 8) threads,
+  4,096 context tokens, 512 output tokens, a 300-second whole-reply deadline and
+  a 120-second stall timeout. System instructions (charter plus notes) are capped
+  at 8 KiB. Ollama tokenizes and may truncate to its context limit;
   byte limits are not exact token budgeting. Long/multilingual conversation
   quality and system-prompt retention require device validation.
 - Barge-in, chat closure, backgrounding, window deactivation, Safe Mode and
@@ -155,7 +185,11 @@ the synthetic metadata, lifecycle and UI regressions.
   is latched until app restart. The DLL owner joins its worker on destruction.
   Cancellation closes Neura's HTTP request; Neura does not kill the separately
   managed Ollama process or guarantee instantaneous backend compute cessation.
-  `keep_alive: 0` requests model unloading after completion.
+  `keep_alive: "5m"` keeps the model loaded for five idle minutes so follow-up
+  turns skip the cold load; Ollama then unloads it. For four minutes after a
+  delivered reply the 3.5 GiB available-RAM floor is not applied (the resident
+  model already occupies that RAM); the 7 GiB installed floor always applies,
+  and Safe Mode or shutdown end that window.
 - Rust retains no conversation history between requests and deliberately writes
   no prompts/replies to disk or logs. Sensitive buffers are not all guaranteed
   to be erased from allocator memory. Ollama/Windows have their own diagnostics
@@ -186,8 +220,8 @@ running the complete portable package.
 | Trial | Evidence to record using synthetic text |
 | --- | --- |
 | Installation and selection | Windows version/CPU, exact preview SHA and hash, Ollama version, `ollama list`, loopback-only listener, cloud-disabled configuration, and the Offline Ollama menu visible in this preview. |
-| First and repeated reply | Disconnect internet after manual setup. Record submit-to-complete-visible milliseconds for five short turns; this adapter does not stream first-token deltas. Confirm Neura's identity, tone, room and audience framing. |
-| Memory and unload | Record total/available RAM before admission and during replies; combined Neura/Ollama/runner peak working set, paging and responsiveness; use `ollama ps` to confirm unloading after completion. |
+| First and repeated reply | Disconnect internet after manual setup. Record submit-to-complete-visible milliseconds for five short turns; also record submit-to-first-sentence and submit-to-first-speech milliseconds. Confirm Neura's identity, tone, room and audience framing. |
+| Memory and unload | Record total/available RAM before admission and during replies; combined Neura/Ollama/runner peak working set, paging and responsiveness; use `ollama ps` to confirm the model unloads about five minutes after the last reply. |
 | Negative cases | Ollama closed, model missing/wrong/remote, incompatible daemon and insufficient available RAM: fixed local failure, offline remains selected, no cloud request or automatic download. |
 | Cancellation | During a slow reply test Stop/barge-in, focus loss, minimize, suspend, chat closure/navigation, Safe Mode, recovery and app exit. No stale reply or automatic restart; Safe Mode keeps microphone off and latches until restart. Separately observe how quickly the user-owned daemon stops computing. |
 | Privacy and support | No model access to selected sources/images/remembered personal context or automatic long-term chat-content writes. Existing local guardrails may read stored mood and save fixed support-event metadata; inspect those stores separately. Check offline bounds on ASCII/multibyte input and long sessions, and review uncertainty, unsupported beliefs, dependency pressure and crisis language with synthetic examples. |

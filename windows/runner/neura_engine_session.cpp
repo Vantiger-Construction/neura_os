@@ -86,7 +86,8 @@ NeuraEngineSession::NeuraEngineSession(flutter::BinaryMessenger* messenger,
     if (method == "beginOllama") {
       const auto* input = call.arguments() == nullptr ? nullptr :
           std::get_if<std::string>(call.arguments());
-      if (!input || input->empty() || input->size() > 16384 || blocked_ || !Load()) {
+      // Matches MAX_REQUEST in rust/src/ollama_conversation.rs.
+      if (!input || input->empty() || input->size() > 24576 || blocked_ || !Load()) {
         result->Error("local_unavailable", "Offline chat is unavailable.");
         return;
       }
@@ -109,8 +110,9 @@ NeuraEngineSession::NeuraEngineSession(flutter::BinaryMessenger* messenger,
       result->Success();
       return;
     }
-    if (method == "pollOllama" || method == "cancelOllama" ||
-        method == "readOllamaTiming" || method == "pollOllamaReadiness") {
+    if (method == "pollOllama" || method == "peekOllama" ||
+        method == "cancelOllama" || method == "readOllamaTiming" ||
+        method == "pollOllamaReadiness") {
       const auto* id = call.arguments() == nullptr ? nullptr :
           std::get_if<int64_t>(call.arguments());
       // StandardMethodCodec encodes small Dart ints as int32_t.
@@ -176,6 +178,22 @@ NeuraEngineSession::NeuraEngineSession(flutter::BinaryMessenger* messenger,
       if (method == "cancelOllama") {
         ollama_cancel_(generation);
         result->Success();
+        return;
+      }
+      if (method == "peekOllama") {
+        // Streamed text so far; null before the first token or on an older DLL.
+        if (!ollama_peek_) {
+          result->Success();
+          return;
+        }
+        unsigned char partial[8192];
+        const auto count = ollama_peek_(generation, partial, sizeof(partial));
+        if (count > 0 && count <= static_cast<int>(sizeof(partial))) {
+          const std::string text(reinterpret_cast<const char*>(partial), count);
+          SecureZeroMemory(partial, sizeof(partial));
+          result->Success(flutter::EncodableValue(text));
+        } else if (count >= 0) result->Success();
+        else result->Error("local_unavailable", "Offline request stopped or failed. Check Ollama and the installed model.");
         return;
       }
       unsigned char buffer[8192];
@@ -256,6 +274,8 @@ bool NeuraEngineSession::Load() {
   foreground_ = Lookup<ForegroundFunction>(library_, "neura_engine_synthetic_foreground");
   ollama_begin_ = Lookup<OllamaBegin>(library_, "neura_ollama_begin");
   ollama_poll_ = Lookup<OllamaPoll>(library_, "neura_ollama_poll");
+  // Optional: streaming falls back to the complete reply without it.
+  ollama_peek_ = Lookup<OllamaPoll>(library_, "neura_ollama_peek");
   ollama_cancel_ = Lookup<OllamaCancel>(library_, "neura_ollama_cancel");
   // Optional for compatibility with an older packaged Rust DLL.
   ollama_timing_ = Lookup<OllamaTiming>(library_, "neura_ollama_timing");
@@ -279,6 +299,7 @@ bool NeuraEngineSession::Load() {
   foreground_ = nullptr;
   ollama_begin_ = nullptr;
   ollama_poll_ = nullptr;
+  ollama_peek_ = nullptr;
   ollama_cancel_ = nullptr;
   ollama_timing_ = nullptr;
   ollama_readiness_begin_ = nullptr;

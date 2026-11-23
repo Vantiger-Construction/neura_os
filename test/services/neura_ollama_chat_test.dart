@@ -25,7 +25,7 @@ void main() {
   test(
     'visible offline transcript evicts old text by count and UTF-8 bytes',
     () {
-      final messages = List.generate(12, (index) => 'turn $index');
+      final messages = List.generate(20, (index) => 'turn $index');
       expect(NeuraOllamaChat.firstRetainedVisibleMessage(messages), 4);
       final multibyte = [
         '🧠' * 2000,
@@ -105,6 +105,73 @@ void main() {
       'pollOllama',
       'cancelOllama',
     ]);
+  });
+
+  testWidgets('streamed partials are reported as growing prefixes', (
+    tester,
+  ) async {
+    final snapshots = ['', 'Hi', 'Hi', "Hi, I'm"];
+    var polls = 0;
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      calls.add(call);
+      switch (call.method) {
+        case 'beginOllama':
+          return 3;
+        case 'pollOllama':
+          return polls++ < snapshots.length ? null : "Hi, I'm Neura.";
+        case 'peekOllama':
+          expect(call.arguments, 3);
+          final text = snapshots[polls - 1];
+          return text.isEmpty ? null : text;
+      }
+      return null;
+    });
+    final seen = <String>[];
+    final text = await tester.runAsync(
+      () => chat.reply(
+        system: 'Neura charter',
+        messages: [
+          {'role': 'user', 'content': 'Hello'},
+        ],
+        cancel: NeuraGenerationCancel('stream'),
+        onPartial: seen.add,
+      ),
+    );
+    expect(text, "Hi, I'm Neura.");
+    // Unchanged snapshots are not re-reported.
+    expect(seen, ['Hi', "Hi, I'm"]);
+    expect(calls.last.method, 'cancelOllama');
+  });
+
+  testWidgets('older runner without peek still returns the full reply', (
+    tester,
+  ) async {
+    var polls = 0;
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      calls.add(call);
+      if (call.method == 'beginOllama') return 4;
+      if (call.method == 'pollOllama') return polls++ < 2 ? null : 'Done.';
+      if (call.method == 'peekOllama') throw MissingPluginException();
+      return null;
+    });
+    final seen = <String>[];
+    final text = await tester.runAsync(
+      () => chat.reply(
+        system: 'Neura charter',
+        messages: [
+          {'role': 'user', 'content': 'Hello'},
+        ],
+        cancel: NeuraGenerationCancel('legacy'),
+        onPartial: seen.add,
+      ),
+    );
+    expect(text, 'Done.');
+    expect(seen, isEmpty);
+    expect(calls.where((c) => c.method == 'peekOllama'), hasLength(1));
   });
 
   Map<String, dynamic> nativeTiming({int outcome = 1}) => {

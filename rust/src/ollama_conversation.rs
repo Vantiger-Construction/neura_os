@@ -6,120 +6,335 @@ use serde_json::{json, Value};
 use std::{
     sync::{Arc, Mutex, OnceLock},
     thread::JoinHandle,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::sync::watch;
 use zeroize::Zeroizing;
 
-use crate::local_model::{bounded_json, memory_admitted, ENDPOINT, LOCAL_MODEL};
-const MAX_REQUEST: usize = 16_384;
-const MAX_RESPONSE: usize = 32_768;
+use crate::local_model::{
+    memory_admitted, memory_snapshot, stream_chat_reply, verify_pin, ModelPin, StreamLimits,
+    ENDPOINT, LARGE_PIN, LOCAL_MODEL, STANDARD_PIN,
+};
+/// System (8 KiB) + history (4 KB, plus a tool round) + tools (3 KiB) + JSON.
+const MAX_REQUEST: usize = 24_576;
 const MAX_REPLY: usize = 8_192;
+/// Context window. 4,096 tokens holds the charter (~1.6k tokens), several
+/// recent exchanges and a full reply; its KV cache costs ~0.6 GB on the 4B
+/// model, versus ~1.1 GB more for 8,192, which an 8 GB laptop cannot spare.
+const NUM_CTX: u32 = 4_096;
+/// Longest reply in tokens (about 350 words).
+const NUM_PREDICT: u32 = 512;
+/// Recent turns and their combined UTF-8 bytes retained per request; matches
+/// the Dart `NeuraOfflineBudget.standard` cap.
+const MAX_TURNS: usize = 16;
+const MAX_HISTORY_BYTES: usize = 4_000;
+/// Charter, room and audience framing plus up to 1,500 bytes of approved notes.
+const MAX_SYSTEM_BYTES: usize = 8_192;
+/// Whole-reply deadline. A 512-token reply on a 4-core laptop CPU takes about
+/// 100 s on the 4B model and about 200 s on the 8B, streaming throughout.
+const REPLY_DEADLINE: Duration = Duration::from_secs(300);
+/// Longest silence from the daemon, including a cold model load, before the
+/// request fails as stalled.
+const STREAM_IDLE: Duration = Duration::from_secs(120);
+/// The larger model needs ~6 GB for weights plus its 4,096-token cache.
+const LARGE_MIN_TOTAL_MIB: u64 = 14_336;
+const LARGE_MIN_AVAILABLE_MIB: u64 = 6_656;
+
+/// Whether this host can hold the larger model right now. A model already
+/// resident from the previous turn does not count against available RAM.
+fn large_admitted(resident_large: bool) -> bool {
+    memory_snapshot().is_some_and(|(total, available)| {
+        total >= LARGE_MIN_TOTAL_MIB
+            && available <= total
+            && (resident_large || available >= LARGE_MIN_AVAILABLE_MIB)
+    })
+}
 const READINESS_FIELDS: usize = 7;
+/// Streamed NDJSON carries per-token framing, so the body budget is larger
+/// than the reply budget; the assistant text itself stays bounded by MAX_REPLY.
+const STREAM_LIMITS: StreamLimits = StreamLimits {
+    max_line: 4_096,
+    max_output: MAX_REPLY,
+    max_response: 262_144,
+};
+/// Ollama keeps the model loaded this long after a reply, so follow-up turns
+/// in a conversation skip the multi-second cold load. Ollama unloads it after
+/// this idle window; Neura never pins it indefinitely.
+const KEEP_ALIVE: &str = "5m";
+/// Trust that the model is still resident for slightly less than KEEP_ALIVE.
+/// A resident model already occupies RAM, so the available-memory floor would
+/// otherwise reject the very follow-up turn residency is meant to speed up.
+const RESIDENCY_TRUST: Duration = Duration::from_secs(240);
+const MIN_TOTAL_MIB: u64 = 7_168;
+
+/// Physical cores minus one (keeps a core for the UI and speech), within 2..=8.
+fn inference_threads() -> usize {
+    static THREADS: OnceLock<usize> = OnceLock::new();
+    *THREADS.get_or_init(|| {
+        physical_cores()
+            .map_or(2, |cores| cores.saturating_sub(1))
+            .clamp(2, 8)
+    })
+}
+
+#[cfg(windows)]
+fn physical_cores() -> Option<usize> {
+    use windows_sys::Win32::System::SystemInformation::{
+        GetLogicalProcessorInformation, RelationProcessorCore, SYSTEM_LOGICAL_PROCESSOR_INFORMATION,
+    };
+    let entry = std::mem::size_of::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION>();
+    let mut bytes = 0u32;
+    // SAFETY: a null buffer with zero length only queries the required size.
+    unsafe { GetLogicalProcessorInformation(std::ptr::null_mut(), &mut bytes) };
+    if bytes == 0 {
+        return None;
+    }
+    let mut info: Vec<SYSTEM_LOGICAL_PROCESSOR_INFORMATION> = (0..(bytes as usize).div_ceil(entry))
+        .map(|_| Default::default())
+        .collect();
+    let mut length = (info.len() * entry) as u32;
+    // SAFETY: `info` is a live, aligned buffer of `length` bytes.
+    if unsafe { GetLogicalProcessorInformation(info.as_mut_ptr(), &mut length) } == 0 {
+        return None;
+    }
+    let cores = info
+        .iter()
+        .take(length as usize / entry)
+        .filter(|item| item.Relationship == RelationProcessorCore)
+        .count();
+    (cores > 0).then_some(cores)
+}
+
+#[cfg(not(windows))]
+fn physical_cores() -> Option<usize> {
+    std::thread::available_parallelism()
+        .ok()
+        .map(|logical| (logical.get() / 2).max(1))
+}
+
+/// Most tool definitions accepted per request, and their combined JSON size.
+const MAX_TOOLS: usize = 6;
+const MAX_TOOLS_BYTES: usize = 3_072;
+const MAX_TOOL_DESCRIPTION: usize = 600;
 
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ToolCall {
+    name: String,
+    arguments: serde_json::Map<String, Value>,
+}
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Turn {
     role: String,
     content: String,
+    /// Calls an earlier assistant turn requested (tool rounds only).
+    #[serde(default)]
+    tool_calls: Vec<ToolCall>,
+    /// The tool a `tool` turn answers.
+    #[serde(default)]
+    tool_name: Option<String>,
+}
+impl Turn {
+    fn budget_bytes(&self) -> usize {
+        self.content.len()
+            + self
+                .tool_calls
+                .iter()
+                .map(|c| c.name.len() + Value::Object(c.arguments.clone()).to_string().len())
+                .sum::<usize>()
+    }
+    fn to_ollama(&self) -> Value {
+        match self.role.as_str() {
+            "tool" => json!({"role": "tool", "content": self.content,
+                "tool_name": self.tool_name}),
+            "assistant" if !self.tool_calls.is_empty() => json!({
+                "role": "assistant", "content": self.content,
+                "tool_calls": self.tool_calls.iter().map(|c| json!({
+                    "function": {"name": c.name, "arguments": c.arguments}
+                })).collect::<Vec<_>>(),
+            }),
+            role => json!({"role": role, "content": self.content}),
+        }
+    }
+}
+/// A tool the app may run after its own policy check and user confirmation.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Tool {
+    name: String,
+    description: String,
+    parameters: Value,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Request {
     system: String,
     messages: Vec<Turn>,
+    #[serde(default)]
+    tools: Vec<Tool>,
+}
+
+fn valid_tools(tools: &[Tool]) -> bool {
+    let bytes: usize = tools
+        .iter()
+        .map(|t| t.name.len() + t.description.len() + t.parameters.to_string().len())
+        .sum();
+    tools.len() <= MAX_TOOLS
+        && bytes <= MAX_TOOLS_BYTES
+        && tools.iter().all(|t| {
+            crate::local_model::valid_tool_name(&t.name)
+                && t.description.len() <= MAX_TOOL_DESCRIPTION
+                && t.parameters.is_object()
+        })
+}
+
+fn valid_turn(turn: &Turn, tools: &[Tool]) -> bool {
+    let advertised = |name: &str| tools.iter().any(|t| t.name == name);
+    match turn.role.as_str() {
+        "user" => turn.tool_calls.is_empty() && turn.tool_name.is_none(),
+        "assistant" => {
+            turn.tool_name.is_none()
+                && turn.tool_calls.len() <= crate::local_model::MAX_TOOL_CALLS
+                && turn.tool_calls.iter().all(|c| advertised(&c.name))
+        }
+        "tool" => turn.tool_calls.is_empty() && turn.tool_name.as_deref().is_some_and(advertised),
+        _ => false,
+    }
 }
 
 fn prepare(raw: &[u8]) -> Result<Value, ()> {
     let request: Request = serde_json::from_slice(raw).map_err(|_| ())?;
     if request.system.is_empty()
-        || request.system.len() > 6_500
+        || request.system.len() > MAX_SYSTEM_BYTES
         || request.messages.is_empty()
         || request.messages.len() > 64
-        || request.messages.last().map(|t| t.role.as_str()) != Some("user")
+        || !matches!(
+            request.messages.last().map(|t| t.role.as_str()),
+            Some("user" | "tool")
+        )
+        || !valid_tools(&request.tools)
         || request
             .messages
             .iter()
-            .any(|t| !matches!(t.role.as_str(), "user" | "assistant"))
+            .any(|t| !valid_turn(t, &request.tools))
     {
         return Err(());
     }
     // Retain whole recent turns, never truncate the charter or newest message.
-    // A short byte budget complements Ollama's hard 2048-token context limit.
+    // The byte budget keeps charter + history + reply inside NUM_CTX tokens.
     let mut retained = Vec::new();
     let mut bytes = 0;
-    for turn in request.messages.into_iter().rev().take(8) {
-        if bytes + turn.content.len() > 1_500 {
+    for turn in request.messages.into_iter().rev().take(MAX_TURNS) {
+        let size = turn.budget_bytes();
+        if bytes + size > MAX_HISTORY_BYTES {
             if retained.is_empty() {
                 return Err(());
             }
             break;
         }
-        bytes += turn.content.len();
+        bytes += size;
         retained.push(turn);
     }
     retained.reverse();
     while retained.first().is_some_and(|t| t.role != "user") {
         retained.remove(0);
     }
+    // A tool round whose originating user turn no longer fits is unusable.
+    if retained.is_empty() {
+        return Err(());
+    }
     let mut messages = vec![json!({"role":"system", "content": request.system})];
-    messages.extend(retained.into_iter().map(|t| json!(t)));
-    Ok(
-        json!({"model": LOCAL_MODEL, "messages": messages, "stream": false, "think": false,
-        "keep_alive": 0, "options": {"num_ctx":2048,"num_predict":256,
-        "num_thread":2,"temperature":0.6}}),
-    )
+    messages.extend(retained.iter().map(Turn::to_ollama));
+    let mut payload = json!({"model": LOCAL_MODEL, "messages": messages, "stream": true,
+        "think": false, "keep_alive": KEEP_ALIVE, "options": {"num_ctx":NUM_CTX,
+        "num_predict":NUM_PREDICT, "num_thread":inference_threads(),"temperature":0.6}});
+    if !request.tools.is_empty() {
+        payload["tools"] = request
+            .tools
+            .iter()
+            .map(|t| {
+                json!({"type": "function", "function": {
+                    "name": t.name, "description": t.description, "parameters": t.parameters,
+                }})
+            })
+            .collect();
+    }
+    Ok(payload)
 }
 
 #[cfg(test)]
 async fn inference(endpoint: &str, payload: Value) -> Result<String, ()> {
-    timed_inference(endpoint, payload, &Mutex::new(RequestTiming::default())).await
+    timed_inference(
+        endpoint,
+        payload,
+        &Mutex::new(RequestTiming::default()),
+        |_| true,
+        false,
+    )
+    .await
+    .map(|(text, _)| text)
 }
 
+/// Picks the model: the larger pin when requested and verified, otherwise the
+/// standard pin. Every candidate passes the same identity checks first.
+async fn select_pin(
+    client: &crate::local_model::LoopbackClient,
+    try_large: bool,
+) -> Result<&'static ModelPin, ()> {
+    if try_large && verify_pin(client, &LARGE_PIN).await.is_ok() {
+        return Ok(&LARGE_PIN);
+    }
+    verify_pin(client, &STANDARD_PIN).await.map_err(|_| ())?;
+    Ok(&STANDARD_PIN)
+}
+
+/// Streams the reply, handing each text delta to `publish` so the UI and
+/// speech can start before generation ends. `publish` returning false stops
+/// the request (superseded, cancelled, backgrounded or blocked). Returns the
+/// text and whether the larger model produced it.
 async fn timed_inference(
     endpoint: &str,
-    payload: Value,
+    mut payload: Value,
     timing: &Mutex<RequestTiming>,
-) -> Result<String, ()> {
-    let client = crate::local_model::LoopbackClient::new(endpoint, Duration::from_secs(90))?;
+    publish: impl FnMut(&str) -> bool,
+    try_large: bool,
+) -> Result<(String, bool), ()> {
+    let client =
+        crate::local_model::LoopbackClient::streaming(endpoint, REPLY_DEADLINE, STREAM_IDLE)?;
     // Fail before submitting conversation text if this tag is a remote model
     // or has been replaced with a different family/size/quantization.
-    crate::local_model::verify_pinned_model(&client)
-        .await
-        .map_err(|_| ())?;
+    let pin = select_pin(&client, try_large).await?;
+    payload["model"] = json!(pin.local_tag);
     timing
         .lock()
         .unwrap_or_else(|p| p.into_inner())
         .preflight_done();
-    let response = bounded_json(
-        client
-            .post_json("/api/chat", &payload)
-            .send()
-            .await
-            .map_err(|_| ())?,
-        MAX_RESPONSE,
-    )
-    .await?;
-    let message = &response["message"];
-    if response.get("remote_host").is_some()
-        || response.get("remote_model").is_some()
-        || response["done"] != true
-        || message["role"] != "assistant"
-        || message
-            .get("tool_calls")
-            .is_some_and(|v| !v.as_array().is_some_and(|a| a.is_empty()))
-    {
-        return Err(());
-    }
-    let text = message["content"].as_str().ok_or(())?;
-    if text.trim().is_empty() || text.len() > MAX_REPLY {
-        return Err(());
-    }
+    let large = std::ptr::eq(pin, &LARGE_PIN);
+    let tools = payload.get("tools").is_some();
+    // Rejects remote models, unadvertised tool calls, error lines, oversize
+    // output and a body that ends without the final `done` line.
+    let reply = stream_chat_reply(&client, &payload, STREAM_LIMITS, publish, tools)
+        .await
+        .map_err(|_| ())?;
     // num_predict stops a long reply mid-word. Show and speak whole sentences.
-    if response["done_reason"] == "length" {
-        return Ok(finish_at_sentence(text));
+    // Only whole sentences were released while streaming, so this never
+    // contradicts what the app already showed.
+    let text = if reply.length_capped {
+        finish_at_sentence(&reply.text)
+    } else {
+        reply.text.as_str().to_owned()
+    };
+    if !tools {
+        return Ok((text, large));
     }
-    Ok(text.to_owned())
+    // With advertised tools the reply is a JSON envelope; the app re-checks
+    // every call against its room policy and asks the user before running it.
+    let envelope = json!({"text": text, "tool_calls": reply.tool_calls}).to_string();
+    if envelope.len() > MAX_REPLY {
+        return Err(());
+    }
+    Ok((envelope, large))
 }
 
 /// Shortens a reply that hit the token cap to its last complete sentence or
@@ -195,10 +410,12 @@ async fn cancellable_inference(
     payload: Value,
     timing: &Mutex<RequestTiming>,
     receiver: &mut watch::Receiver<bool>,
-) -> Result<String, ()> {
+    publish: impl FnMut(&str) -> bool,
+    try_large: bool,
+) -> Result<(String, bool), ()> {
     tokio::select! { biased;
         _ = receiver.changed() => Err(()),
-        result = tokio::time::timeout(Duration::from_secs(90), timed_inference(endpoint, payload, timing)) => result.map_err(|_| ())?,
+        result = tokio::time::timeout(REPLY_DEADLINE, timed_inference(endpoint, payload, timing, publish, try_large)) => result.map_err(|_| ())?,
     }
 }
 
@@ -242,7 +459,8 @@ async fn cancellable_readiness(
 }
 
 enum Completion {
-    Reply(String),
+    /// Reply text and whether the larger model produced it.
+    Reply(String, bool),
     Readiness([u64; READINESS_FIELDS]),
 }
 
@@ -253,8 +471,14 @@ struct State {
     blocked: bool,
     status: i32,
     reply: Option<Zeroizing<Vec<u8>>>,
+    /// Text streamed so far for the current generation, for `neura_ollama_peek`.
+    partial: Option<Zeroizing<Vec<u8>>>,
     readiness: Option<[u64; READINESS_FIELDS]>,
     timing: Option<(i64, Arc<Mutex<RequestTiming>>)>,
+    /// Until when the model is presumed still loaded after a delivered reply.
+    resident_until: Option<Instant>,
+    /// Whether that resident model is the larger pin.
+    resident_large: bool,
 }
 struct Active {
     cancel: watch::Sender<bool>,
@@ -273,6 +497,7 @@ impl Session {
         }
         state.generation += 1;
         state.reply = None;
+        state.partial = None;
         state.readiness = None;
         state.status = -2;
         if let Some(active) = &self.active {
@@ -280,7 +505,20 @@ impl Session {
         }
     }
     fn begin(&mut self, payload: Value) -> i64 {
-        self.begin_checked(payload, memory_admitted)
+        let resident = self.resident_now();
+        self.begin_checked(payload, || {
+            memory_admitted() || (resident && total_memory_admitted())
+        })
+    }
+    /// A recently delivered reply means Ollama is still holding the model, so
+    /// the RAM it occupies must not count against the next turn's admission.
+    /// The installed-RAM floor still applies.
+    fn resident_now(&self) -> bool {
+        self.state
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .resident_until
+            .is_some_and(|until| Instant::now() < until)
     }
     fn begin_checked(&mut self, payload: Value, admit_memory: impl FnOnce() -> bool) -> i64 {
         self.begin_work(Some(payload), admit_memory)
@@ -323,9 +561,36 @@ impl Session {
         };
         let (cancel, mut receiver) = watch::channel(false);
         let state = self.state.clone();
+        let stream_state = self.state.clone();
         let worker = std::thread::Builder::new()
             .name("neura-ollama".into())
             .spawn(move || {
+                // Append each delta for this generation only; a superseded,
+                // cancelled, backgrounded or blocked request stops streaming.
+                let publish = move |delta: &str| {
+                    let mut state = stream_state.lock().unwrap_or_else(|p| p.into_inner());
+                    if generation != state.generation || state.blocked || !state.foreground {
+                        return false;
+                    }
+                    let partial = state
+                        .partial
+                        .get_or_insert_with(|| Zeroizing::new(Vec::new()));
+                    if partial.len() + delta.len() > MAX_REPLY {
+                        return false;
+                    }
+                    partial.extend_from_slice(delta.as_bytes());
+                    true
+                };
+                // Prefer the larger model only when it fits now; keep using
+                // whichever model is still resident to avoid loading both.
+                let resident_large = {
+                    let state = state.lock().unwrap_or_else(|p| p.into_inner());
+                    state.resident_large
+                        && state
+                            .resident_until
+                            .is_some_and(|until| Instant::now() < until)
+                };
+                let try_large = payload.is_some() && large_admitted(resident_large);
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let runtime = tokio::runtime::Builder::new_current_thread()
                         .enable_all()
@@ -341,9 +606,11 @@ impl Session {
                                         payload,
                                         timing.as_ref().ok_or(())?,
                                         &mut receiver,
+                                        publish,
+                                        try_large,
                                     )
                                     .await
-                                    .map(Completion::Reply),
+                                    .map(|(text, large)| Completion::Reply(text, large)),
                                     None => cancellable_readiness(ENDPOINT, &mut receiver)
                                         .await
                                         .map(Completion::Readiness),
@@ -363,9 +630,11 @@ impl Session {
                     return;
                 }
                 match result {
-                    Ok(Ok(Completion::Reply(text))) => {
+                    Ok(Ok(Completion::Reply(text, large))) => {
                         state.reply = Some(Zeroizing::new(text.into_bytes()));
                         state.status = 1;
+                        state.resident_until = Some(Instant::now() + RESIDENCY_TRUST);
+                        state.resident_large = large;
                     }
                     Ok(Ok(Completion::Readiness(snapshot))) => {
                         state.readiness = Some(snapshot);
@@ -393,6 +662,10 @@ impl Session {
         }
     }
 }
+fn total_memory_admitted() -> bool {
+    memory_snapshot().is_some_and(|(total, _)| total >= MIN_TOTAL_MIB)
+}
+
 fn session() -> &'static Mutex<Session> {
     static SESSION: OnceLock<Mutex<Session>> = OnceLock::new();
     SESSION.get_or_init(|| Mutex::new(Session::default()))
@@ -485,6 +758,35 @@ pub unsafe extern "C" fn neura_ollama_poll(id: i64, buffer: *mut u8, capacity: u
     state.status = -2;
     len as i32
 }
+/// Copy the text streamed so far for `id` without consuming it. Returns its
+/// byte length (0 before the first token), or the request's negative status.
+/// The text grows by appending whole UTF-8 deltas, so every copy is valid UTF-8
+/// and a prefix of the next. The verified final reply still comes from poll.
+/// # Safety
+/// `buffer` must point to `capacity` writable bytes for this synchronous call.
+#[no_mangle]
+pub unsafe extern "C" fn neura_ollama_peek(id: i64, buffer: *mut u8, capacity: usize) -> i32 {
+    let session = session().lock().unwrap_or_else(|p| p.into_inner());
+    let state = session.state.lock().unwrap_or_else(|p| p.into_inner());
+    if id != state.generation || state.blocked || !state.foreground {
+        return -2;
+    }
+    if state.status < 0 {
+        return state.status;
+    }
+    let Some(partial) = state.partial.as_ref() else {
+        return 0;
+    };
+    if buffer.is_null() || capacity < partial.len() {
+        return -1;
+    }
+    // SAFETY: caller provides a separate, sufficiently sized output buffer.
+    unsafe {
+        std::ptr::copy_nonoverlapping(partial.as_ptr(), buffer, partial.len());
+    }
+    partial.len() as i32
+}
+
 #[no_mangle]
 pub extern "C" fn neura_ollama_cancel(id: i64) {
     let mut session = session().lock().unwrap_or_else(|p| p.into_inner());
@@ -556,11 +858,11 @@ pub extern "C" fn neura_ollama_foreground(value: i32) {
 #[no_mangle]
 pub extern "C" fn neura_ollama_block() {
     let mut session = session().lock().unwrap_or_else(|p| p.into_inner());
-    session
-        .state
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .blocked = true;
+    {
+        let mut state = session.state.lock().unwrap_or_else(|p| p.into_inner());
+        state.blocked = true;
+        state.resident_until = None;
+    }
     session.cancel();
     session
         .state
@@ -573,11 +875,11 @@ pub extern "C" fn neura_ollama_block() {
 #[no_mangle]
 pub extern "C" fn neura_ollama_shutdown() {
     let mut session = session().lock().unwrap_or_else(|p| p.into_inner());
-    session
-        .state
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .blocked = true;
+    {
+        let mut state = session.state.lock().unwrap_or_else(|p| p.into_inner());
+        state.blocked = true;
+        state.resident_until = None;
+    }
     session.cancel();
     session
         .state
@@ -592,6 +894,8 @@ pub extern "C" fn neura_ollama_shutdown() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Serializes tests that replace the process-wide native session.
+    static GLOBAL_SESSION: Mutex<()> = Mutex::new(());
     #[test]
     fn fixes_model_and_resource_limits_and_preserves_system() {
         let payload = prepare(
@@ -600,10 +904,160 @@ mod tests {
         .unwrap();
         assert_eq!(payload["model"], LOCAL_MODEL);
         assert_eq!(payload["messages"][0]["content"], "Neura charter");
-        assert_eq!(payload["options"]["num_ctx"], 2048);
-        assert_eq!(payload["keep_alive"], 0);
+        assert_eq!(payload["options"]["num_ctx"], 4096);
+        assert_eq!(payload["options"]["num_predict"], 512);
+        assert_eq!(payload["keep_alive"], KEEP_ALIVE);
+        assert_eq!(payload["stream"], true);
         assert_eq!(payload["think"], false);
+        let threads = payload["options"]["num_thread"].as_u64().unwrap();
+        assert!((2..=8).contains(&threads), "{threads}");
         assert!(payload.get("tools").is_none());
+    }
+
+    fn tool_request(messages: Value) -> Vec<u8> {
+        json!({"system": "Neura charter", "messages": messages, "tools": [{
+            "name": "log_mood_entry", "description": "Save a mood check-in.",
+            "parameters": {"type":"object","properties":{"mood0to10":{"type":"integer"}}}
+        }]})
+        .to_string()
+        .into_bytes()
+    }
+
+    #[test]
+    fn tools_and_a_tool_round_are_forwarded_in_ollama_form() {
+        let payload = prepare(&tool_request(json!([
+            {"role":"user","content":"Log my mood as 7"},
+            {"role":"assistant","content":"","tool_calls":[
+                {"name":"log_mood_entry","arguments":{"mood0to10":7}}]},
+            {"role":"tool","content":"Saved 7/10.","tool_name":"log_mood_entry"},
+        ])))
+        .unwrap();
+        assert_eq!(payload["tools"][0]["type"], "function");
+        assert_eq!(payload["tools"][0]["function"]["name"], "log_mood_entry");
+        let messages = payload["messages"].as_array().unwrap();
+        assert_eq!(
+            messages[2]["tool_calls"][0]["function"]["arguments"]["mood0to10"],
+            7
+        );
+        assert_eq!(messages[3]["role"], "tool");
+        assert_eq!(messages[3]["tool_name"], "log_mood_entry");
+    }
+
+    #[test]
+    fn unadvertised_or_malformed_tool_use_is_rejected() {
+        for messages in [
+            // A call to a tool the request did not advertise.
+            json!([{"role":"user","content":"x"},
+                {"role":"assistant","content":"","tool_calls":[
+                    {"name":"delete_files","arguments":{}}]},
+                {"role":"tool","content":"x","tool_name":"delete_files"}]),
+            // A tool result without a tool name, or on a user turn.
+            json!([{"role":"user","content":"x"},{"role":"tool","content":"x"}]),
+            json!([{"role":"user","content":"x","tool_name":"log_mood_entry"}]),
+            // The conversation must end on a user or tool turn.
+            json!([{"role":"user","content":"x"},{"role":"assistant","content":"y"}]),
+        ] {
+            assert!(prepare(&tool_request(messages)).is_err());
+        }
+        // Path-like or oversized tool definitions are refused outright.
+        for tool in [
+            json!({"name":"../x","description":"d","parameters":{}}),
+            json!({"name":"ok","description":"d".repeat(601),"parameters":{}}),
+            json!({"name":"ok","description":"d","parameters":"not an object"}),
+        ] {
+            let raw = json!({"system":"s","messages":[{"role":"user","content":"x"}],
+                "tools":[tool]});
+            assert!(prepare(raw.to_string().as_bytes()).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn streamed_tool_call_returns_an_envelope() {
+        use axum::{routing::post, Json};
+        let router = crate::local_model::tests::metadata_router()
+            .route("/api/show", post(|| async { Json(local_info()) }))
+            .route(
+                "/api/chat",
+                post(|Json(request): Json<Value>| async move {
+                    assert!(request["tools"].is_array());
+                    axum::body::Body::from(ndjson(json!({"done": true, "message": {
+                        "role": "assistant", "content": "",
+                        "tool_calls": [{"function": {"name": "log_mood_entry",
+                            "arguments": {"mood0to10": 7}}}]}})))
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let payload = prepare(&tool_request(json!([{"role":"user","content":"Log 7"}]))).unwrap();
+        let (envelope, _) = timed_inference(
+            &endpoint,
+            payload,
+            &Mutex::new(RequestTiming::default()),
+            |_| true,
+            false,
+        )
+        .await
+        .unwrap();
+        let envelope: Value = serde_json::from_str(&envelope).unwrap();
+        assert_eq!(envelope["text"], "");
+        assert_eq!(envelope["tool_calls"][0]["name"], "log_mood_entry");
+        assert_eq!(envelope["tool_calls"][0]["arguments"]["mood0to10"], 7);
+        server.abort();
+    }
+
+    #[test]
+    fn residency_relaxes_only_the_available_memory_floor() {
+        let mut s = Session::default();
+        s.state.lock().unwrap().foreground = true;
+        assert!(!s.resident_now());
+        s.state.lock().unwrap().resident_until = Some(Instant::now() + RESIDENCY_TRUST);
+        assert!(s.resident_now());
+        s.state.lock().unwrap().resident_until = Some(Instant::now() - Duration::from_secs(1));
+        assert!(!s.resident_now());
+        // A memory rejection still creates no worker, resident or not.
+        assert_eq!(s.begin_checked(json!({}), || false), -4);
+        assert!(s.active.is_none());
+    }
+
+    #[test]
+    fn peek_returns_streamed_text_only_for_the_current_generation() {
+        let _global = GLOBAL_SESSION.lock().unwrap_or_else(|p| p.into_inner());
+        let mut s = Session::default();
+        {
+            let mut state = s.state.lock().unwrap();
+            state.generation = 5;
+            state.foreground = true;
+            state.status = 0;
+            state.partial = Some(Zeroizing::new(b"Hello th".to_vec()));
+        }
+        *session().lock().unwrap() = std::mem::take(&mut s);
+        let mut buffer = [0u8; 16];
+        // SAFETY: each call advertises this live buffer's real size.
+        unsafe {
+            assert_eq!(neura_ollama_peek(5, buffer.as_mut_ptr(), buffer.len()), 8);
+            assert_eq!(&buffer[..8], b"Hello th");
+            assert_eq!(neura_ollama_peek(4, buffer.as_mut_ptr(), buffer.len()), -2);
+            assert_eq!(neura_ollama_peek(5, buffer.as_mut_ptr(), 4), -1);
+            assert_eq!(neura_ollama_peek(5, std::ptr::null_mut(), 16), -1);
+        }
+        neura_ollama_cancel(5);
+        // SAFETY: same live buffer; cancellation revoked the generation.
+        assert_eq!(
+            unsafe { neura_ollama_peek(5, buffer.as_mut_ptr(), buffer.len()) },
+            -2
+        );
+        assert!(session()
+            .lock()
+            .unwrap()
+            .state
+            .lock()
+            .unwrap()
+            .partial
+            .is_none());
+        *session().lock().unwrap() = Session::default();
     }
     #[test]
     fn rejects_tools_images_endpoints_and_large_current_turn() {
@@ -615,7 +1069,7 @@ mod tests {
             assert!(prepare(raw.as_bytes()).is_err());
         }
         assert!(prepare(
-            json!({"system":"x","messages":[{"role":"user","content":"x".repeat(1501)}]})
+            json!({"system":"x","messages":[{"role":"user","content":"x".repeat(MAX_HISTORY_BYTES + 1)}]})
                 .to_string()
                 .as_bytes()
         )
@@ -724,6 +1178,7 @@ mod tests {
 
     #[test]
     fn stale_cancel_cannot_wipe_a_replacement_and_revoked_reply_cannot_be_read() {
+        let _global = GLOBAL_SESSION.lock().unwrap_or_else(|p| p.into_inner());
         {
             let s = session().lock().unwrap();
             let mut state = s.state.lock().unwrap();
@@ -836,9 +1291,16 @@ mod tests {
         prepare(br#"{"system":"Neura charter","messages":[{"role":"user","content":"Hello"}]}"#)
             .unwrap()
     }
+    /// One Ollama NDJSON stream line.
+    fn ndjson(value: Value) -> String {
+        format!("{value}\n")
+    }
+    fn chunk(content: &str, done: bool) -> String {
+        ndjson(json!({"message":{"role":"assistant","content":content},"done":done}))
+    }
     async fn mock(
         info: Value,
-        answer: Value,
+        answer: String,
     ) -> (
         String,
         std::sync::Arc<std::sync::atomic::AtomicUsize>,
@@ -855,10 +1317,11 @@ mod tests {
                 post(move |Json(request): Json<Value>| async move {
                     counter.fetch_add(1, Ordering::SeqCst);
                     assert_eq!(request["model"], LOCAL_MODEL);
-                    assert_eq!(request["keep_alive"], 0);
+                    assert_eq!(request["keep_alive"], KEEP_ALIVE);
+                    assert_eq!(request["stream"], true);
                     assert_eq!(request["think"], false);
                     assert!(request.get("tools").is_none());
-                    Json(answer)
+                    axum::body::Body::from(answer)
                 }),
             );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -871,12 +1334,31 @@ mod tests {
     #[tokio::test]
     async fn local_http_conversation_and_remote_model_rejection() {
         use std::sync::atomic::Ordering;
-        let answer = json!({"done":true,"message":{"role":"assistant","content":"Hi, I'm Neura."}});
+        let answer = [
+            chunk("Hi, ", false),
+            chunk("I'm Neura.", false),
+            chunk("", true),
+        ]
+        .concat();
         let (endpoint, calls, task) = mock(local_info(), answer.clone()).await;
-        assert_eq!(
-            inference(&endpoint, payload()).await.unwrap(),
-            "Hi, I'm Neura."
-        );
+        let mut deltas = Vec::new();
+        // The larger model is requested but not installed: the standard pin
+        // serves the reply (the mock asserts the request names LOCAL_MODEL).
+        let (text, large) = timed_inference(
+            &endpoint,
+            payload(),
+            &Mutex::new(RequestTiming::default()),
+            |delta| {
+                deltas.push(delta.to_owned());
+                true
+            },
+            true,
+        )
+        .await
+        .unwrap();
+        assert!(!large);
+        assert_eq!(text, "Hi, I'm Neura.");
+        assert_eq!(deltas, ["Hi, ", "I'm Neura."]);
         assert_eq!(calls.load(Ordering::SeqCst), 1);
         task.abort();
         let mut info = local_info();
@@ -885,6 +1367,78 @@ mod tests {
         assert!(inference(&endpoint, payload()).await.is_err());
         assert_eq!(calls.load(Ordering::SeqCst), 0);
         task.abort();
+    }
+
+    #[tokio::test]
+    async fn installed_large_model_is_verified_and_used() {
+        use axum::{routing::get, routing::post, Json, Router};
+        let tags = json!({"models":[
+            {"name": STANDARD_PIN.tag, "digest": &STANDARD_PIN.manifest_digest[7..]},
+            {"name": LARGE_PIN.tag, "digest": &LARGE_PIN.manifest_digest[7..]},
+        ]});
+        let router = Router::new()
+            .route(
+                "/api/version",
+                get(|| async { Json(json!({"version":"0.18.0"})) }),
+            )
+            .route("/api/tags", get(move || async move { Json(tags) }))
+            .route(
+                "/api/show",
+                post(|Json(request): Json<Value>| async move {
+                    let pin = if request["model"] == LARGE_PIN.local_tag {
+                        LARGE_PIN
+                    } else {
+                        STANDARD_PIN
+                    };
+                    Json(json!({"details":{"family":pin.family,
+                        "parameter_size":pin.parameter_size,
+                        "quantization_level":pin.quantization}}))
+                }),
+            )
+            .route(
+                "/api/chat",
+                post(|Json(request): Json<Value>| async move {
+                    assert_eq!(request["model"], LARGE_PIN.local_tag);
+                    axum::body::Body::from(
+                        [chunk("Bigger ", false), chunk("answer.", true)].concat(),
+                    )
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let (text, large) = timed_inference(
+            &endpoint,
+            payload(),
+            &Mutex::new(RequestTiming::default()),
+            |_| true,
+            true,
+        )
+        .await
+        .unwrap();
+        assert!(large);
+        assert_eq!(text, "Bigger answer.");
+        server.abort();
+    }
+
+    #[test]
+    fn large_pin_is_the_reviewed_manifest() {
+        assert_eq!(LARGE_PIN.tag, "qwen3:8b");
+        assert_eq!(LARGE_PIN.local_tag, "qwen3:8b:local");
+        assert_eq!(
+            LARGE_PIN.manifest_digest,
+            "sha256:500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41"
+        );
+        assert_eq!(
+            (
+                LARGE_PIN.family,
+                LARGE_PIN.parameter_size,
+                LARGE_PIN.quantization
+            ),
+            ("qwen3", "8.2B", "Q4_K_M")
+        );
     }
 
     #[tokio::test]
@@ -909,8 +1463,15 @@ mod tests {
         let worker_timing = timing.clone();
         let (cancel, mut receiver) = watch::channel(false);
         let request = tokio::spawn(async move {
-            let result =
-                cancellable_inference(&endpoint, payload(), &worker_timing, &mut receiver).await;
+            let result = cancellable_inference(
+                &endpoint,
+                payload(),
+                &worker_timing,
+                &mut receiver,
+                |_| true,
+                false,
+            )
+            .await;
             worker_timing.lock().unwrap().worker_done(result.is_ok());
             result
         });
@@ -977,8 +1538,10 @@ mod tests {
     async fn only_a_capped_reply_is_shortened() {
         let text = "That sounds hard. Want to tal";
         for (reason, want) in [("length", "That sounds hard."), ("stop", text)] {
-            let answer = json!({"done":true,"done_reason":reason,
-                "message":{"role":"assistant","content":text}});
+            let (first, rest) = text.split_at(10);
+            let answer = chunk(first, false)
+                + &ndjson(json!({"done":true,"done_reason":reason,
+                    "message":{"role":"assistant","content":rest}}));
             let (endpoint, _, task) = mock(local_info(), answer).await;
             assert_eq!(inference(&endpoint, payload()).await.unwrap(), want);
             task.abort();
@@ -987,10 +1550,17 @@ mod tests {
     #[tokio::test]
     async fn rejects_tool_calls_incomplete_and_oversized_replies() {
         for answer in [
-            json!({"done":true,"message":{"role":"assistant","content":"x","tool_calls":[{}]}}),
-            json!({"done":false,"message":{"role":"assistant","content":"x"}}),
-            json!({"done":true,"message":{"role":"assistant","content":"x".repeat(MAX_REPLY+1)}}),
-            json!({"done":true,"message":{"role":"assistant","content":"x".repeat(MAX_RESPONSE+1)}}),
+            ndjson(
+                json!({"done":true,"message":{"role":"assistant","content":"x","tool_calls":[{}]}}),
+            ),
+            chunk("x", false),
+            [chunk("x", false), ndjson(json!({"error":"boom"}))].concat(),
+            ndjson(json!({"done":true,"remote_host":"https://ollama.com",
+                "message":{"role":"assistant","content":"x"}})),
+            (0..=MAX_REPLY / 1_000)
+                .map(|_| chunk(&"x".repeat(1_000), false))
+                .collect::<String>(),
+            chunk(&"x".repeat(STREAM_LIMITS.max_line), true),
         ] {
             let (endpoint, _, task) = mock(local_info(), answer).await;
             assert!(inference(&endpoint, payload()).await.is_err());
@@ -1025,9 +1595,11 @@ mod tests {
             .send()
             .await
             .unwrap();
-        let result =
-            tokio::time::timeout(Duration::from_secs(2), bounded_json(response, MAX_RESPONSE))
-                .await;
+        let result = tokio::time::timeout(
+            Duration::from_secs(2),
+            crate::local_model::bounded_json(response, 32_768),
+        )
+        .await;
         task.abort();
         assert!(result.unwrap().is_err());
     }
