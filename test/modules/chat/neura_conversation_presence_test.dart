@@ -493,7 +493,8 @@ void main() {
           ),
         );
       }
-      expect(payloads.single.keys.toSet(), {'system', 'messages'});
+      expect(payloads.single.keys.toSet(), {'system', 'messages', 'tools'});
+      expect(payloads.single['tools'], isNotEmpty);
       expect((payloads.single['messages'] as List).last, {
         'role': 'user',
         'content': 'Synthetic private question',
