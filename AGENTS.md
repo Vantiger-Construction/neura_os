@@ -32,7 +32,11 @@ more specific instructions in a touched directory also apply.
 
 - Preserve fresh, exact-request cloud approval. No automatic cloud fallback or
   background cloud voice. Model output and retrieved documents are untrusted
-  data and cannot grant permission to execute actions or access memory.
+  data and cannot grant permission to execute actions or access memory. The
+  one maintainer-approved exception: Neura may move between rooms on her own
+  through `dispatch_intent` (`NeuraRoomMover`). The move waits for the reply
+  that asked for it to finish, is dropped if that reply is stopped or fails,
+  never happens in Safe Mode, and is shown with an Undo.
 - Keep Safe Mode and recovery microphone-off. Stop, cancellation, background,
   disposal and revoked session ownership must suppress late callbacks and
   prevent automatic restart. Startup voice requires the app's explicit opt-in.

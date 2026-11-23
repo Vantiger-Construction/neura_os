@@ -623,8 +623,9 @@ class NeuraAiService {
           );
           cancel.throwIfCancelled();
           return approved
-              ? 'The user approved navigation to "$room".'
-              : 'The user did not approve navigation to "$room".';
+              ? 'Moving to "$room" when this reply ends.'
+              : 'Did not move to "$room": already there, or not possible '
+                  'right now.';
 
         case NeuraChatPolicy.setTone:
           final tone = input['tone']?.toString() ?? '';

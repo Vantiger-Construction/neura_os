@@ -85,9 +85,14 @@ that policy again at execution time. Neura then displays a concrete
 confirmation before each request to:
 
 - share recent mood history;
-- save a mood check-in locally;
-- navigate to another room; or
+- save a mood check-in locally; or
 - change the presentation tone.
+
+Moving to another room (`dispatch_intent`) is the one exception, chosen by
+the maintainer: Neura moves on her own once the reply that asked has
+finished. The move is dropped if that reply is stopped or fails, or if the
+room changed in the meantime; it never happens in Safe Mode; and the chat
+shows it with an Undo.
 
 A confirmed history share contains dates and 0–10 mood scores only. Existing
 mood notes are never included. Saving a check-in happens in the local UI
