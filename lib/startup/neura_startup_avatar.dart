@@ -132,9 +132,12 @@ class _NeuraStartupAvatarState extends State<NeuraStartupAvatar>
                 final elapsed = _breath.lastElapsedDuration ?? Duration.zero;
                 if (widget.turnOnEntry &&
                     _firstRun &&
+                    elapsed > Duration.zero &&
                     elapsed < _turnDuration) {
                   final progress =
                       elapsed.inMicroseconds / _turnDuration.inMicroseconds;
+                  // A little perspective brings the nearer shoulder forward.
+                  pose.setEntry(3, 2, 0.25 / widget.width);
                   pose.rotateY(
                     2 * math.pi * Curves.easeInOut.transform(progress),
                   );
