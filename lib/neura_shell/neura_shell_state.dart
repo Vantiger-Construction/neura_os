@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
+import '../day_companion/day_companion_cues.dart';
 import '../mascot/mascot_window_service.dart';
 import '../neura_runtime/neura_bus.dart';
 import '../reliability/safe_boot.dart';
@@ -68,6 +69,46 @@ class NeuraShellState extends ChangeNotifier {
 
   bool get _suppressed =>
       SafeBoot.instance.safeMode.value || LocalProfileService.instance.enabled;
+
+  // Visual state belongs to this shell session. Only the penthouse uses it.
+  ({bool lampOn, bool curtainsClosed}) _penthouse =
+      (lampOn: true, curtainsClosed: false);
+  ({bool lampOn, bool curtainsClosed}) get penthouse => _penthouse;
+
+  void arrangePenthouse(PenthouseCue cue) {
+    final next = switch (cue) {
+      PenthouseCue.lightOn => (
+          lampOn: true,
+          curtainsClosed: _penthouse.curtainsClosed
+        ),
+      PenthouseCue.lightOff => (
+          lampOn: false,
+          curtainsClosed: _penthouse.curtainsClosed
+        ),
+      PenthouseCue.openCurtains => (
+          lampOn: _penthouse.lampOn,
+          curtainsClosed: false
+        ),
+      PenthouseCue.closeCurtains => (
+          lampOn: _penthouse.lampOn,
+          curtainsClosed: true
+        ),
+      PenthouseCue.windDown => (lampOn: false, curtainsClosed: true),
+      PenthouseCue.focus => (lampOn: true, curtainsClosed: true),
+    };
+    setPenthouse(next);
+  }
+
+  void setPenthouse(({bool lampOn, bool curtainsClosed}) next) {
+    if (_disposed ||
+        _suppressed ||
+        SafeBoot.instance.restartRequired.value ||
+        next == _penthouse) {
+      return;
+    }
+    _penthouse = next;
+    notifyListeners();
+  }
 
   bool get isLoaded => _loaded;
   NeuraRoom get room => _room;

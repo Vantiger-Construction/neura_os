@@ -1,0 +1,24 @@
+blueprint:
+  name: Neura Day Companion home action
+  description: Run a fixed action when Neura calls its private LAN webhook. Make one automation for each device action and give each a different random secret.
+  domain: automation
+  input:
+    webhook_secret:
+      name: Secret webhook ID
+      description: Generate a new random ID of at least 32 letters, numbers, hyphens or underscores for this action.
+      selector:
+        text:
+          type: password
+    device_action:
+      name: Device action
+      description: Choose the exact device, operation and any values that the Neura action name will describe.
+      selector:
+        action: {}
+triggers:
+  - trigger: webhook
+    webhook_id: !input webhook_secret
+    allowed_methods:
+      - PUT
+    local_only: true
+actions: !input device_action
+mode: single

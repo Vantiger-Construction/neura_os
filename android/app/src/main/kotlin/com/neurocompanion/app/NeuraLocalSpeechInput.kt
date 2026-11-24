@@ -19,6 +19,7 @@ class NeuraLocalSpeechInput(private val activity: Activity, messenger: BinaryMes
     private var session = 0L
     private var listening = false
     private var text = ""
+    private var silenceEnded = false
     private var finalResult = false
 
     init {
@@ -43,7 +44,8 @@ class NeuraLocalSpeechInput(private val activity: Activity, messenger: BinaryMes
                         result.success(mapOf("session" to id,
                             "listening" to (current && listening),
                             "text" to if (current) text else "",
-                            "final" to (current && finalResult)))
+                            "final" to (current && finalResult),
+                            "silenceEnded" to (current && silenceEnded)))
                         if (current) { text = ""; finalResult = false }
                     }
                     else -> result.notImplemented()
@@ -77,7 +79,13 @@ class NeuraLocalSpeechInput(private val activity: Activity, messenger: BinaryMes
             override fun onEndOfSpeech() {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
             override fun onError(error: Int) {
-                if (current()) { listening = false; text = ""; finalResult = false }
+                if (current()) {
+                    silenceEnded = error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
+                        error == SpeechRecognizer.ERROR_NO_MATCH
+                    listening = false
+                    text = ""
+                    finalResult = false
+                }
             }
             override fun onPartialResults(partialResults: Bundle?) {
                 if (current()) text = words(partialResults)
@@ -103,6 +111,7 @@ class NeuraLocalSpeechInput(private val activity: Activity, messenger: BinaryMes
     fun stop() {
         listening = false
         session = 0
+        silenceEnded = false
         text = ""
         finalResult = false
         val engine = recognizer
