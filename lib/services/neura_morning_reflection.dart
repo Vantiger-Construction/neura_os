@@ -11,6 +11,7 @@ import '../profiles/local_profile_service.dart';
 import '../relationships/services/crisis_text_scan.dart';
 import '../startup/neura_prefs_cache.dart';
 import 'local_journal_store.dart';
+import 'neura_future_notes.dart';
 
 /// Writes the local model's prompt and returns its screened reply, or null.
 typedef NeuraReflectionWriter = Future<String?> Function(
@@ -34,6 +35,7 @@ class NeuraMorningReflection {
     Future<Map<String, dynamic>> Function(String)? decrypt,
     Future<List<MoodEntry>> Function()? moods,
     Future<List<JournalEntry>> Function()? journal,
+    Future<List<String>> Function(DateTime day)? brightSpots,
     DateTime Function()? now,
   })  : _encrypt = encrypt ??
             ((json) async => (await MemoryCrypto.demo()).encryptJson(json)),
@@ -41,6 +43,7 @@ class NeuraMorningReflection {
             ((blob) async => (await MemoryCrypto.demo()).decryptJson(blob)),
         _moods = moods ?? MoodStore.instance.getAll,
         _journal = journal ?? LocalJournalStore().loadEntries,
+        _brightSpots = brightSpots ?? NeuraFutureNotes.instance.brightSpotsOn,
         _now = now ?? DateTime.now;
 
   static final NeuraMorningReflection instance = NeuraMorningReflection();
@@ -64,6 +67,7 @@ class NeuraMorningReflection {
   final Future<Map<String, dynamic>> Function(String) _decrypt;
   final Future<List<MoodEntry>> Function() _moods;
   final Future<List<JournalEntry>> Function() _journal;
+  final Future<List<String>> Function(DateTime day) _brightSpots;
   final DateTime Function() _now;
   Future<String?>? _preparing;
 
@@ -90,8 +94,9 @@ class NeuraMorningReflection {
   static String? promptFor(
     DateTime day,
     List<MoodEntry> moods,
-    List<JournalEntry> journal,
-  ) {
+    List<JournalEntry> journal, {
+    List<String> brightSpots = const [],
+  }) {
     bool sameDay(DateTime time) =>
         time.year == day.year && time.month == day.month && time.day == day.day;
     final lines = <String>[];
@@ -108,6 +113,10 @@ class NeuraMorningReflection {
     for (final entry in journal.where((j) => sameDay(j.timestamp))) {
       final text = entry.content.trim();
       if (text.isNotEmpty) lines.add('Journal: $text');
+    }
+    for (final spot in brightSpots) {
+      final text = spot.trim();
+      if (text.isNotEmpty) lines.add('A bright spot they kept: $text');
     }
     if (lines.isEmpty) return null;
     if (lines.any((line) => CrisisTextScan.of(line).crisis)) return null;
@@ -173,10 +182,18 @@ class NeuraMorningReflection {
       storageKey,
       await _encrypt({'date': today, 'text': '', 'dismissed': false}),
     );
+    final day = yesterdayOf(now);
+    List<String> spots;
+    try {
+      spots = await _brightSpots(day);
+    } catch (_) {
+      spots = const [];
+    }
     final prompt = promptFor(
-      yesterdayOf(now),
+      day,
       await _moods(),
       await _journal(),
+      brightSpots: spots,
     );
     if (prompt == null) return null;
     String? text;

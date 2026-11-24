@@ -7,18 +7,29 @@ import '../core/memory/memory_crypto.dart';
 import '../startup/neura_prefs_cache.dart';
 import 'emotion_analysis_service.dart';
 
-/// One note the user wrote to their future self.
+/// What a saved note is.
+enum FutureNoteKind {
+  /// Written on purpose: "note to future me: ...".
+  note,
+
+  /// A happy moment the user chose to keep when Neura offered.
+  brightSpot,
+}
+
+/// One note the user wrote to their future self, or a bright spot they kept.
 class FutureNote {
   final String id;
   final String text;
   final DateTime createdAt;
   final DateTime? lastOfferedAt;
+  final FutureNoteKind kind;
 
   const FutureNote({
     required this.id,
     required this.text,
     required this.createdAt,
     this.lastOfferedAt,
+    this.kind = FutureNoteKind.note,
   });
 
   FutureNote offered(DateTime at) => FutureNote(
@@ -26,6 +37,7 @@ class FutureNote {
         text: text,
         createdAt: createdAt,
         lastOfferedAt: at,
+        kind: kind,
       );
 
   Map<String, dynamic> toJson() => {
@@ -33,6 +45,7 @@ class FutureNote {
         'text': text,
         'created': createdAt.toIso8601String(),
         if (lastOfferedAt != null) 'offered': lastOfferedAt!.toIso8601String(),
+        if (kind != FutureNoteKind.note) 'kind': kind.name,
       };
 
   static FutureNote? fromJson(Object? value) {
@@ -45,11 +58,15 @@ class FutureNote {
       return null;
     }
     final offered = value['offered'];
+    final kind = FutureNoteKind.values
+        .where((kind) => kind.name == value['kind'])
+        .firstOrNull;
     return FutureNote(
       id: id,
       text: text,
       createdAt: created,
       lastOfferedAt: offered is String ? DateTime.tryParse(offered) : null,
+      kind: kind ?? FutureNoteKind.note,
     );
   }
 }
@@ -75,7 +92,7 @@ class NeuraFutureNotes {
 
   @visibleForTesting
   static const storageKey = 'neura.future_notes.v1';
-  static const maxNotes = 20;
+  static const maxNotes = 30;
   static const maxNoteLength = 600;
 
   /// At most one offer in this window, so notes stay special.
@@ -144,7 +161,11 @@ class NeuraFutureNotes {
   Future<List<FutureNote>> list() => _serial(_read);
 
   /// Saves a note. The oldest note is dropped past [maxNotes].
-  Future<FutureNote> add(String text) => _serial(() async {
+  Future<FutureNote> add(
+    String text, {
+    FutureNoteKind kind = FutureNoteKind.note,
+  }) =>
+      _serial(() async {
         final clean = text.trim();
         if (clean.isEmpty) throw ArgumentError('The note is empty.');
         if (clean.length > maxNoteLength) {
@@ -156,6 +177,7 @@ class NeuraFutureNotes {
           id: _uuid.v4(),
           text: clean,
           createdAt: _now(),
+          kind: kind,
         );
         final notes = [...await _read(), note];
         while (notes.length > maxNotes) {
@@ -191,7 +213,10 @@ class NeuraFutureNotes {
           final at = a.lastOfferedAt ?? DateTime(0);
           final bt = b.lastOfferedAt ?? DateTime(0);
           final byOffer = at.compareTo(bt);
-          return byOffer != 0 ? byOffer : a.createdAt.compareTo(b.createdAt);
+          if (byOffer != 0) return byOffer;
+          // A note written on purpose comes before a saved bright spot.
+          final byKind = a.kind.index.compareTo(b.kind.index);
+          return byKind != 0 ? byKind : a.createdAt.compareTo(b.createdAt);
         });
       if (ready.isEmpty) return null;
       final chosen = ready.first.offered(now);
@@ -201,4 +226,20 @@ class NeuraFutureNotes {
       return chosen;
     });
   }
+
+  /// Bright spots saved on [day], for the morning note.
+  Future<List<String>> brightSpotsOn(DateTime day) async {
+    final notes = await _read();
+    return [
+      for (final note in notes)
+        if (note.kind == FutureNoteKind.brightSpot &&
+            note.createdAt.year == day.year &&
+            note.createdAt.month == day.month &&
+            note.createdAt.day == day.day)
+          note.text,
+    ];
+  }
+
+  /// Whether a bright spot was already offered to save today.
+  static const brightSpotOfferKey = 'neura.bright_spot_offered.v1';
 }

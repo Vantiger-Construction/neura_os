@@ -109,3 +109,77 @@ automatically: its passages reach the model only through a grant the user
 gives with a direct tap. The offline instructions are unchanged: they were
 tuned against the real model and sit at their 6500-byte budget, so the
 caveat is added in code instead of asking the model.
+
+# Third set: everyday help and gentle creativity
+
+The chat menu's **Companion tools…** sheet gathers the screens below (and
+Rehearse a hard talk), plus the On this day switch.
+
+## Worry parking and worry time
+
+"Park it: ..." (or "park this worry: ...") sets a worry aside instead of
+sending it: `NeuraWorryParking` encrypts it with the device memory key, keeps
+up to 30, and never puts them in a model prompt. At the worry time the user
+picks (6 p.m. by default), chat offers once a day to look at the worries
+parked before it. **Worry time** sorts each one: a small step, let it go
+(deleted), or keep for later (back at the next worry time).
+
+Crisis language is never parked or filed as a note to future you: it goes
+through the normal reply and its guardrails instead.
+
+## Before you send
+
+Paste a message before sending it. `NeuraToneCheck` notes, on this device,
+how it might land (a hard feeling, blame like "you never", insults, sarcasm,
+capitals, exclamation marks). **Suggest a calmer version** asks the model to
+keep the meaning and voice without blame or invented apologies (offline, or
+cloud with approval; guardrails on both sides; a guardrail answer is never
+shown as a rewrite). The user copies whichever version they choose. Nothing
+is saved.
+
+## Gratitude moments (bright spots)
+
+When a message reads clearly happy (joy at 0.6+ intensity and no harder
+second feeling), chat offers once a day: "That sounds like a bright spot.
+Keep it for a harder day?" Bright spots are stored with the notes to future
+you (a `brightSpot` kind), come back on hard days after any written notes,
+and appear in the next morning's note.
+
+## On this day
+
+Off until switched on in Companion tools. Once a day at most, a memory from
+a year ago today (or a month ago): a journal line, a check-in note or the
+day's best check-in. A day with any check-in under 5/10, a hard feeling in
+its notes, an "I'm fine" that reads otherwise or crisis language never comes
+back uninvited.
+
+## Weather-matched sound
+
+The bundled ambient sounds were text placeholders, so the Ambient sound
+switch played nothing. `tools/generate_ambient_sounds.py` now builds real,
+seamless 30-second loops from shaped noise (room tone, ocean, wind, slow
+breathing, and new rain); no recordings or third-party audio. When the mood
+weather is rain, the room's ambient loop becomes soft rain.
+
+## Focus together (body doubling)
+
+Pick a task and 15 to 60 minutes. Neura's room stays behind a calm timer,
+she says one line at the start, checks in at halfway, and celebrates the
+finish (her avatar hops). Only a count of finished sessions is kept, never
+the task.
+
+## Mood gallery
+
+Each week of check-ins becomes a small abstract painting
+(`NeuraMoodPainting`): the background from the week's average mood, one
+brushstroke per check-in placed by day and mood, as thick as that day's
+energy and as long as the sleep. Deterministic for each week. The gallery
+shows up to 26 weeks; **Save image** exports a PNG only when asked.
+
+## Bedtime stories
+
+Pick a setting (forest, sea, stars, cabin, garden) and optionally something
+to include. The model writes a calm 250-word story with nothing frightening
+or exciting; Neura reads it paragraph by paragraph in a slow, soft bedtime
+tone (each chunk stays well under the speech timeout), with a sleep timer of
+10, 20 or 30 minutes. Nothing is saved.
