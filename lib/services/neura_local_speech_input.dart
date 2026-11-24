@@ -48,6 +48,9 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
   /// Why the most recent [startRecording] returned false, as a short fixed
   /// code (never audio or transcript text). Null after a successful start.
   String? get lastFailure => _lastFailure;
+  bool get shutdownUnconfirmed => _quarantined;
+  static const silenceEnded =
+      'No speech detected. The local recognition window ended.';
 
   // Windows may not report a lifecycle state until focus first changes, so
   // an unreported state counts as foreground, as it does everywhere else in
@@ -205,9 +208,10 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
       }
       if (packet['listening'] != true && packet['final'] != true) {
         await stopRecording();
-        if (!_disposed) {
-          _statuses
-              .add('Local listening stopped. Tap the microphone to resume.');
+        if (_allowed && _generation == generation + 1) {
+          _statuses.add(packet['silenceEnded'] == true
+              ? silenceEnded
+              : 'Local listening stopped. Tap the microphone to resume.');
         }
       }
     } catch (_) {

@@ -3,13 +3,18 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 
 /// User-selected context caps; neither profile changes model or permissions.
+/// Standard fits several recent exchanges inside the native 4,096-token
+/// window alongside the charter and a 512-token reply.
 enum NeuraOfflineBudget {
-  compact('Compact', 750),
-  standard('Standard', 1500);
+  compact('Compact', 1500),
+  standard('Standard', 4000);
 
   const NeuraOfflineBudget(this.label, this.contextBytes);
   final String label;
   final int contextBytes;
+
+  /// Most recent turns considered before the byte cap applies (Rust matches).
+  static const maxTurns = 16;
 
   /// Preserve the newest user turn and whole older turns within the byte cap.
   /// Never truncate user text or include an orphaned assistant response.
@@ -28,7 +33,8 @@ enum NeuraOfflineBudget {
         threadBytes + utf8.encode(newest).length <= contextBytes;
     var bytes = useThread ? threadBytes : 0;
     final retained = <Map<String, dynamic>>[];
-    for (final message in messages.reversed.take(useThread ? 7 : 8)) {
+    for (final message
+        in messages.reversed.take(useThread ? maxTurns - 1 : maxTurns)) {
       final text = message['content'];
       if (text is! String ||
           (message['role'] != 'user' && message['role'] != 'assistant')) {

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'avatar_rive_inputs.dart' as inputs;
 import 'avatar_types.dart';
 
 class AvatarController extends ChangeNotifier {
@@ -10,7 +11,13 @@ class AvatarController extends ChangeNotifier {
 
   double numberInput(String key) => _numberInputs[key] ?? 0.0;
 
-  void setNumberInput(String key, double value) {
+  bool _hasSpeechCue = false;
+  bool get hasSpeechCue => _hasSpeechCue;
+
+  void setNumberInput(String key, double value, {bool isStartHint = false}) {
+    if (key == inputs.AvatarRiveInputs.viseme) {
+      _hasSpeechCue = _signals.isTalking && !isStartHint;
+    }
     _numberInputs[key] = value;
     notifyListeners();
   }
@@ -21,6 +28,7 @@ class AvatarController extends ChangeNotifier {
   }
 
   void setTalking(bool value) {
+    if (value != _signals.isTalking) _hasSpeechCue = false;
     _signals = _signals.copyWith(isTalking: value);
     notifyListeners();
   }

@@ -45,7 +45,7 @@ void main() {
       final retained = budget.retain(messages, threadContext: thread.context);
       expect(retained.first['content'], contains('Friday'));
       expect(retained.last['content'], messages.last['content']);
-      expect(retained.length, lessThanOrEqualTo(8));
+      expect(retained.length, lessThanOrEqualTo(NeuraOfflineBudget.maxTurns));
       expect(
           retained.fold<int>(
               0, (n, m) => n + utf8.encode(m['content'] as String).length),
@@ -54,8 +54,8 @@ void main() {
   });
   test('newest message wins when there is no space for a brief', () {
     final retained = NeuraOfflineBudget.compact.retain([
-      {'role': 'user', 'content': 'x' * 750}
+      {'role': 'user', 'content': 'x' * 1500}
     ], threadContext: 'earlier detail');
-    expect(retained.single['content'], 'x' * 750);
+    expect(retained.single['content'], 'x' * 1500);
   });
 }
