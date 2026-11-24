@@ -25,7 +25,7 @@ class AvatarVisemeWiring {
       _active = this;
     }
     _unsubViseme ??= bus.on<NeuraVisemeEvent>((e) {
-      controller.setVisemeIndex(e.viseme.index);
+      controller.setVisemeIndex(e.viseme.index, isStartHint: e.isStartHint);
     });
     _unsubMouth ??= bus.on<NeuraMouthOpenEvent>((e) {
       controller.setMouthOpen(e.open);
