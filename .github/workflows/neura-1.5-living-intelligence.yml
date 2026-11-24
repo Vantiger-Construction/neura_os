@@ -157,7 +157,9 @@ jobs:
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
-          flutter test --no-pub --reporter expanded *>&1 |
+          # Match coverage CI's bounded full-suite budget. Backup recovery
+          # exercises real key derivation and can exceed the 30s runner default.
+          flutter test --no-pub --concurrency 2 --timeout 2m --reporter expanded *>&1 |
             Tee-Object -FilePath complete-tests.log |
             Out-Host
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
