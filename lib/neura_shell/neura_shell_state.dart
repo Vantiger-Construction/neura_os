@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import '../mascot/mascot_window_service.dart';
+import '../mood/services/neura_mood_weather.dart';
 import '../neura_runtime/neura_bus.dart';
 import '../reliability/safe_boot.dart';
 import '../startup/neura_prefs_cache.dart';
@@ -45,6 +46,33 @@ class NeuraShellState extends ChangeNotifier {
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
     LocalProfileService.instance.addListener(_onSafeModeChanged);
     NeuraStartupCoordinator.instance.ready.addListener(_onStartupReady);
+    NeuraMoodWeatherService.instance.weather.addListener(_onWeatherChanged);
+  }
+
+  /// Soft rain in place of the room's own sound when the week's mood
+  /// weather is rain; otherwise the room's sound.
+  static const rainSoundAsset = 'assets/sounds/rain.mp3';
+
+  static String? ambientAssetFor(NeuraRoom room, NeuraMoodWeather weather) =>
+      weather == NeuraMoodWeather.rain && room.ambientSoundAsset != null
+          ? rainSoundAsset
+          : room.ambientSoundAsset;
+
+  String? get _ambientAsset => ambientAssetFor(
+        _room,
+        NeuraMoodWeatherService.instance.weather.value,
+      );
+
+  void _onWeatherChanged() {
+    final asset = _ambientAsset;
+    if (_disposed ||
+        !_ambientEnabled ||
+        !_optionalShellServicesActive ||
+        _suppressed ||
+        asset == null) {
+      return;
+    }
+    unawaited(_audio?.playLoop(asset).catchError((_) {}));
   }
 
   NeuraRoom _room = NeuraRoom.penthouse;
@@ -164,7 +192,7 @@ class NeuraShellState extends ChangeNotifier {
         await audio.setEnabled(false);
         return;
       }
-      final asset = _room.ambientSoundAsset;
+      final asset = _ambientAsset;
       if (_ambientEnabled && asset != null) {
         await audio.playLoop(asset);
       }
@@ -234,7 +262,10 @@ class NeuraShellState extends ChangeNotifier {
       await prefs.setString(_kRoomId, room.id);
     }
 
-    final asset = room.ambientSoundAsset;
+    final asset = ambientAssetFor(
+      room,
+      NeuraMoodWeatherService.instance.weather.value,
+    );
     if (_ambientEnabled &&
         _optionalShellServicesActive &&
         !_suppressed &&
@@ -348,7 +379,7 @@ class NeuraShellState extends ChangeNotifier {
       return;
     }
     _optionalShellServicesActive = true;
-    final asset = _room.ambientSoundAsset;
+    final asset = _ambientAsset;
     if (enabled && asset != null) {
       await audio.playLoop(asset);
     }
@@ -379,6 +410,7 @@ class NeuraShellState extends ChangeNotifier {
     SafeBoot.instance.safeMode.removeListener(_onSafeModeChanged);
     LocalProfileService.instance.removeListener(_onSafeModeChanged);
     NeuraStartupCoordinator.instance.ready.removeListener(_onStartupReady);
+    NeuraMoodWeatherService.instance.weather.removeListener(_onWeatherChanged);
     final audio = _audio;
     if (audio != null) unawaited(audio.dispose());
     super.dispose();

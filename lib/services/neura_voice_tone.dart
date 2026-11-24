@@ -18,6 +18,9 @@ class NeuraVoiceTone {
   /// Calm and steady: used after crisis language, whatever else was read.
   static const steady = NeuraVoiceTone._(0.88, 0.96);
 
+  /// Slow and soft, for bedtime stories.
+  static const bedtime = NeuraVoiceTone._(0.8, 0.95);
+
   static const _heavy = {'sadness', 'grief', 'loneliness', 'shame'};
   static const _tense = {'anxiety', 'overwhelm', 'anger'};
 
