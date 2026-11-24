@@ -28,7 +28,10 @@ enum NeuraViseme {
 
 class NeuraVisemeEvent extends NeuraEvent {
   final NeuraViseme viseme;
-  const NeuraVisemeEvent(this.viseme);
+
+  /// A start acknowledgement can provide a default face before speech progress.
+  final bool isStartHint;
+  const NeuraVisemeEvent(this.viseme, {this.isStartHint = false});
 
   @override
   String toString() => 'NeuraVisemeEvent($viseme)';

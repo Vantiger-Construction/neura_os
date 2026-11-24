@@ -7,6 +7,7 @@ import '../../avatar/avatar_globals.dart';
 import '../../avatar/avatar_registry.dart';
 import '../../avatar/avatar_view.dart';
 import '../../avatar/renderers/nebula_avatar_view.dart';
+import '../../avatar/renderers/realistic_nebula_view.dart';
 import '../../services/neura_companion_presence.dart';
 import '../../src/shell/shell_prefs.dart';
 import '../models/neura_room.dart';
@@ -88,6 +89,12 @@ class _NeuraRoomPresenceAvatarState extends State<NeuraRoomPresenceAvatar>
                 spec: AvatarRegistry.byId(id),
                 controller: AvatarGlobals.controller,
                 size: size,
+              );
+            } else if (id == AvatarRegistry.realisticNebulaId) {
+              portrait = RealisticNebulaView(
+                controller: _restingController ??= AvatarController(),
+                size: size,
+                enabled: false,
               );
             } else if (id == AvatarRegistry.nebulaId) {
               // A still portrait must also ignore live mood and speech inputs.

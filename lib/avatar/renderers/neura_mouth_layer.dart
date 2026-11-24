@@ -51,6 +51,7 @@ class NeuraMouthLayer extends StatefulWidget {
     required this.mouthBounds,
     this.enabled = true,
     this.mouthPainter,
+    this.waitForSpeechCue = false,
   }) : assert(mouthBounds.left >= 0 &&
             mouthBounds.top >= 0 &&
             mouthBounds.right <= 1 &&
@@ -62,6 +63,10 @@ class NeuraMouthLayer extends StatefulWidget {
   final Widget child;
   final Rect mouthBounds;
   final bool enabled;
+
+  /// A portrait can wait for the first viseme or word-progress callback in
+  /// each utterance, even on engines that publish a default starting pose.
+  final bool waitForSpeechCue;
 
   /// Draws the mouth for a pose; defaults to [NeuraMouthPainter]. Lets other
   /// built-in faces restyle the mouth while keeping this layer's gating.
@@ -143,7 +148,10 @@ class _NeuraMouthLayerState extends State<NeuraMouthLayer>
   }
 
   void _updatePose() {
-    final next = _allowed && _armed && widget.controller.signals.isTalking
+    final next = _allowed &&
+            _armed &&
+            widget.controller.signals.isTalking &&
+            (!widget.waitForSpeechCue || widget.controller.hasSpeechCue)
         ? NeuraMouthPose.fromInputs(
             widget.controller.numberInput(AvatarRiveInputs.viseme),
             widget.controller.numberInput(AvatarRiveInputs.mouthOpen),
