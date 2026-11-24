@@ -15,7 +15,8 @@ extension AvatarControllerVisemeExt on AvatarController {
 
   /// Drive a numeric input like `viseme` if it exists.
   /// Map enum index (0..N) on the asset side.
-  void setVisemeIndex(int index) {
-    setNumberInput(AvatarRiveInputs.viseme, index.toDouble());
+  void setVisemeIndex(int index, {bool isStartHint = false}) {
+    setNumberInput(AvatarRiveInputs.viseme, index.toDouble(),
+        isStartHint: isStartHint);
   }
 }

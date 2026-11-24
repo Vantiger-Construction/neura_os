@@ -7,6 +7,7 @@ import 'avatar_types.dart';
 class AvatarRegistry {
   static const String defaultAvatarId = 'neura';
   static const String expressiveFaceId = 'neura_expressive';
+  static const String realisticNebulaId = 'neura_realistic_nebula';
   static const String nebulaId = 'neura_nebula';
 
   static final List<AvatarSpec> _avatars = [
@@ -79,6 +80,12 @@ class AvatarRegistry {
       name: 'Neura nebula',
       format: AvatarFormat.nebula,
       assetPath: '', // This renderer paints her nebula form itself.
+    ),
+    const AvatarSpec(
+      id: realisticNebulaId,
+      name: 'Realistic Nebula',
+      format: AvatarFormat.realisticNebula,
+      assetPath: '',
     ),
   ];
 

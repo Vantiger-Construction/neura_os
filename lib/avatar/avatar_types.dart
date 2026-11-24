@@ -13,6 +13,9 @@ enum AvatarFormat {
   /// Built-in nebula-energy figure with a heartbeat core and energy channel;
   /// no external asset is required.
   nebula,
+
+  /// Bundled realistic portrait with an aligned facial atlas.
+  realisticNebula,
 }
 
 /// A small, stable set of signals we can drive across all avatar formats.

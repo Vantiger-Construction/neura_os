@@ -3,6 +3,7 @@ import '../avatar/avatar_globals.dart';
 import '../avatar/avatar_registry.dart';
 import '../avatar/renderers/flutter_mouth_avatar_view.dart';
 import '../avatar/renderers/nebula_avatar_view.dart';
+import '../avatar/renderers/realistic_nebula_view.dart';
 import '../models/ai_avatar.dart';
 import '../services/avatar_service.dart';
 import 'neura_speech_prototype_screen.dart';
@@ -67,6 +68,13 @@ class _AvatarSelectorScreenState extends State<AvatarSelectorScreen> {
         enabled: false,
       );
     }
+    if (id == AvatarRegistry.realisticNebulaId) {
+      return RealisticNebulaView(
+        controller: AvatarGlobals.controller,
+        size: 48,
+        enabled: false,
+      );
+    }
     return const Icon(Icons.person_outline);
   }
 
@@ -77,6 +85,9 @@ class _AvatarSelectorScreenState extends State<AvatarSelectorScreen> {
     }
     if (id == AvatarRegistry.nebulaId) {
       return 'Flowing nebula energy, a heartbeat core and a mouth of light.';
+    }
+    if (id == AvatarRegistry.realisticNebulaId) {
+      return 'A local portrait with a starlit cape and speech-shaped lips.';
     }
     if (id == AvatarRegistry.defaultAvatarId) {
       return 'Original full-body artwork with gentle body motion.';

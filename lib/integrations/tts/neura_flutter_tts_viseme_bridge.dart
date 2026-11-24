@@ -58,8 +58,8 @@ class NeuraFlutterTtsVisemeBridge {
       // stays closed until its first SAPI viseme (including silence) arrives.
       final native = tts is NeuraWindowsTts;
       eventBus.emit(NeuraMouthOpenEvent(native ? 0 : 0.25));
-      eventBus
-          .emit(NeuraVisemeEvent(native ? NeuraViseme.rest : NeuraViseme.AI));
+      eventBus.emit(NeuraVisemeEvent(native ? NeuraViseme.rest : NeuraViseme.AI,
+          isStartHint: true));
     });
 
     tts.setCompletionHandler(() {
