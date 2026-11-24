@@ -17,6 +17,8 @@ import '../../services/emotion_analysis_service.dart';
 import '../../services/neura_voice_tone.dart';
 import '../../services/neura_turn_patience.dart';
 import '../../services/neura_future_notes.dart';
+import '../../services/neura_style_memory.dart';
+import '../../services/neura_morning_reflection.dart';
 import 'neura_rehearsal_screen.dart';
 import '../../encrypted_memory/companion_memory_service.dart';
 import '../../modules/memory/memory_screen.dart';
@@ -254,6 +256,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     _voiceInput = widget.speechInput ?? NeuraLocalSpeechInput.instance;
+    if (NeuraMorningReflection.instance.enabled) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => unawaited(_offerMorningReflection()),
+      );
+    }
     _voiceStatusSub = _voiceInput.statusStream.listen((message) {
       if (!mounted || !_continuousMode) return;
       unawaited(_endConversation().catchError((_) {}));
@@ -591,6 +598,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     _disposed = true;
     _observedShell?.removeListener(_onShellChanged);
     _patienceTimer?.cancel();
+    // The banner lives on the app-wide messenger; it belongs to this screen.
+    _reflectionBanner?.hideCurrentMaterialBanner();
     _presence.reset();
     _clearThread();
     _memoryOwner?.removeListener(_onPendingMemoryChanged);
@@ -1704,6 +1713,159 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     }
   }
 
+  bool _canRate(_ChatLine line) =>
+      !line.isUser &&
+      line.text.trim().isNotEmpty &&
+      !line.interrupted &&
+      !identical(line, _activeBotLine) &&
+      !LocalProfileService.instance.enabled;
+
+  Widget _ratingRow(_ChatLine line) {
+    Widget thumb(bool liked) {
+      final chosen = line.rating == liked;
+      return IconButton(
+        visualDensity: VisualDensity.compact,
+        iconSize: 16,
+        color: chosen ? Colors.white : Colors.white54,
+        tooltip: liked ? 'I like this reply' : 'Not like this',
+        onPressed: () => _rate(line, liked),
+        icon: Icon(
+          liked
+              ? (chosen ? Icons.thumb_up : Icons.thumb_up_outlined)
+              : (chosen ? Icons.thumb_down : Icons.thumb_down_outlined),
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [thumb(true), thumb(false)],
+    );
+  }
+
+  /// Teaches Neura's offline replies this person's taste. Stored encrypted
+  /// on this device; shapes only the on-device model's prompt.
+  Future<void> _rate(_ChatLine line, bool liked) async {
+    final index = _lines.indexOf(line);
+    var prompt = '';
+    for (var i = index - 1; i >= 0; i--) {
+      if (_lines[i].isUser) {
+        prompt = _lines[i].text;
+        break;
+      }
+    }
+    setState(() => line.rating = liked);
+    try {
+      await NeuraStyleMemory.instance.rate(
+        prompt: prompt,
+        reply: line.text,
+        liked: liked,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => line.rating = null);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Your rating could not be saved on this device.'),
+      ));
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      duration: const Duration(seconds: 3),
+      content: Text(liked
+          ? "Noted. I'll lean toward replies like this."
+          : "Noted. I'll steer away from replies like this."),
+    ));
+  }
+
+  Future<void> _forgetStyle() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Forget what I've learned?"),
+        content: const Text(
+          'This clears your thumbs up and down and the replies you liked. '
+          'They are stored only on this device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Forget'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await NeuraStyleMemory.instance.forget();
+    if (!mounted) return;
+    setState(() {
+      for (final line in _lines) {
+        line.rating = null;
+      }
+    });
+  }
+
+  ScaffoldMessengerState? _reflectionBanner;
+
+  /// Shows today's morning note (written once a day on this computer from
+  /// yesterday's check-ins and journal) as a dismissible banner.
+  Future<void> _offerMorningReflection() async {
+    final reflection = NeuraMorningReflection.instance;
+    String? note;
+    try {
+      note = await reflection.todayNote() ??
+          await reflection.prepareIfDue(_ai.offlineNote);
+    } catch (_) {
+      return;
+    }
+    if (note == null || !mounted || SafeBoot.instance.safeMode.value) return;
+    final messenger = ScaffoldMessenger.of(context);
+    _reflectionBanner = messenger;
+    messenger.showMaterialBanner(MaterialBanner(
+      leading: const Icon(Icons.wb_twilight),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'A note about yesterday',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Text(note),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            messenger.hideCurrentMaterialBanner();
+            unawaited(reflection.dismiss().catchError((_) {}));
+          },
+          child: const Text('Thank you'),
+        ),
+      ],
+    ));
+  }
+
+  Future<void> _toggleMorningReflection() async {
+    final reflection = NeuraMorningReflection.instance;
+    final next = !reflection.enabled;
+    await reflection.setEnabled(next);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(next
+          ? "Morning notes are on. Each new day I'll write a short note about "
+              'yesterday from your check-ins and journal, on this computer '
+              'with Ollama.'
+          : 'Morning notes are off, and the current note is deleted.'),
+    ));
+    if (next) unawaited(_offerMorningReflection());
+  }
+
   bool get _futureNotesAllowed =>
       !LocalProfileService.instance.enabled &&
       !SafeBoot.instance.safeMode.value;
@@ -2178,6 +2340,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                 unawaited(_openOfflineControls());
               } else if (option == 'thread') {
                 unawaited(_editThread());
+              } else if (option == 'morning_reflection') {
+                unawaited(_toggleMorningReflection());
+              } else if (option == 'forget_style') {
+                unawaited(_forgetStyle());
               } else if (option == 'rehearse') {
                 unawaited(_openCompanionTool(NeuraRehearsalScreen(
                   localOllama: _localOllama,
@@ -2209,6 +2375,18 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                 const PopupMenuItem(
                   value: 'rehearse',
                   child: Text('Rehearse a hard talk'),
+                ),
+              if (!LocalProfileService.instance.enabled)
+                PopupMenuItem(
+                  value: 'morning_reflection',
+                  child: Text(NeuraMorningReflection.instance.enabled
+                      ? 'Morning notes: on'
+                      : 'Morning notes: off'),
+                ),
+              if (!LocalProfileService.instance.enabled)
+                const PopupMenuItem(
+                  value: 'forget_style',
+                  child: Text("Forget what I've learned from ratings"),
                 ),
               const PopupMenuItem(
                   value: 'teach_preferences',
@@ -2450,6 +2628,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                                   receipt: line.contextReceipt!,
                                 ),
                               ],
+                              if (_canRate(line)) _ratingRow(line),
                             ],
                           ),
                         ),
@@ -2587,6 +2766,9 @@ class _ChatLine {
   final NeuraContextReceipt? contextReceipt;
   int seq = 0;
   bool interrupted = false;
+
+  /// The user's thumbs up (true) or down (false) for this reply, if any.
+  bool? rating;
 
   /// The "switched to a different agent" label shown above this bubble, or
   /// null if the previous bot line was from the same agent. Computed once

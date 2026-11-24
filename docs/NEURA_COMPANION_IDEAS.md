@@ -62,3 +62,50 @@ the chat guardrails; a block shows the safe alternative and ends the
 practice. Offline it uses Ollama; with a cloud provider each request shows
 the usual approval preview. Practice transcripts are bounded (3.5 KB) and
 never saved.
+
+# Second set: style, weather, morning notes, honest facts
+
+## Learns your style
+
+Each finished reply has a thumbs up and down. `NeuraStyleMemory` keeps up
+to 10 liked exchanges and the word counts of the last 40 ratings, encrypted
+with the device memory key. For the on-device model only, the system prompt
+gains up to two liked exchanges closest to the new message ("match their
+tone and length, not their content") and a length hint learned from ratings
+("They prefer short replies."), within 900 bytes. Nothing is retrained and
+nothing reaches a cloud prompt; profile sessions and reference answers never
+use it. Chat menu → **Forget what I've learned from ratings** clears it.
+
+## Mood weather room
+
+`NeuraMoodWeather` reads the last 7 days of mood check-ins: an average of 7+
+is a warm clear glow, under 5 a soft haze, under 3.5 light rain on the
+glass; fewer than 3 check-ins leaves the room as it is. The layer is static
+(no animation) and subtle. It refreshes on launch and after each check-in,
+resets on a data wipe, and profile sessions never read mood history.
+
+## Morning notes
+
+Off until the user turns on chat menu → **Morning notes**. On the first open
+of a new day (after 4 a.m.), the on-device model writes two or three gentle
+sentences about yesterday from the user's own mood check-ins and journal
+entries (chat conversations are not stored, so they are not used). It shows
+as a dismissible banner in chat.
+
+- Offline only (`NeuraAiService.offlineNote`), with guardrails on the prompt
+  and the reply; any crisis language in yesterday's notes means no note.
+- One attempt per day, even if the model fails. Only today's note is kept,
+  encrypted; turning the feature off deletes it.
+
+## Honest offline facts
+
+After a screened offline answer, `NeuraFactCheck` adds one line when a
+factual question ("when", "how many", "what is", prices, doses...) got an
+answer with specifics (numbers, years, months, amounts): Neura says she is
+answering from memory and points to the offline reference shelf for a
+source-checked answer. Any dose or medicine amount gets "check with a
+pharmacist or doctor" instead. The reference shelf itself is not searched
+automatically: its passages reach the model only through a grant the user
+gives with a direct tap. The offline instructions are unchanged: they were
+tuned against the real model and sit at their 6500-byte budget, so the
+caveat is added in code instead of asking the model.
