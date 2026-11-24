@@ -172,6 +172,10 @@ class NeuraTtsService with WidgetsBindingObserver {
 
   NeuraVoiceTone get replyTone => _tone;
 
+  /// A tone chosen by a feature itself (a bedtime story), regardless of
+  /// [matchMood]. The next user message's mood read replaces it.
+  void useTone(NeuraVoiceTone tone) => _tone = tone;
+
   /// Tells the engine the user's rate and pitch leaned by the current tone.
   Future<void> _applyTone() async {
     final tts = _tts;
