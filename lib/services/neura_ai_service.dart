@@ -25,6 +25,8 @@ import '../src/modules/focus/focus_mode.dart';
 import 'crisis_playbook_surface.dart';
 import 'emotion_analysis_service.dart';
 import 'neura_offline_prompt.dart';
+import 'neura_style_memory.dart';
+import 'neura_fact_check.dart';
 import 'neura_chat_policy.dart';
 import 'neura_generation_cancel.dart';
 import 'neura_llm_diagnostics.dart';
@@ -318,7 +320,16 @@ class NeuraAiService {
             hiddenUserTurns: hidden,
           );
         }
+        // Tone and length examples from the user's own ratings: on-device
+        // only, never in profile sessions or reference answers.
+        final style = offlineReference == null &&
+                !profileSession &&
+                history.isNotEmpty &&
+                history.last.isUser
+            ? await NeuraStyleMemory.instance.promptSection(history.last.text)
+            : '';
         final offlineSystem = '$systemPrompt$kNeuraOfflineSystemSuffix'
+            '${style.isEmpty ? '' : '\n\n$style'}'
             '${emotionCue.isEmpty ? '' : '\n\n$emotionCue'}';
         if (offlineReference == null) {
           // Ordinary chat streams whole sentences, each screened before it is
@@ -354,7 +365,14 @@ class NeuraAiService {
               onTurn: (value) => turn = value,
             );
             final calls = turn?.toolCalls ?? const <NeuraOllamaToolCall>[];
-            if (calls.isEmpty) return;
+            if (calls.isEmpty) {
+              // A screened answer with unverified specifics says so.
+              final caveat = turn == null || !history.last.isUser
+                  ? null
+                  : NeuraFactCheck.caveatFor(history.last.text, turn!.text);
+              if (caveat != null) yield '\n\n$caveat';
+              return;
+            }
             if (round >= _maxToolRounds) {
               yield '\nI reached the action limit for this turn. Please review '
                   'the result before continuing.';
@@ -654,6 +672,92 @@ class NeuraAiService {
     }
   }
 
+  /// A private note from the on-device model only (never the cloud), such as
+  /// the morning reflection. Both the prompt and the reply pass the chat
+  /// guardrails; a block or any failure returns null so nothing is shown.
+  /// It does not interrupt a chat reply in progress.
+  Future<String?> offlineNote(String system, String prompt) async {
+    if (LocalProfileService.instance.enabled ||
+        SafeBoot.instance.safeMode.value) {
+      return null;
+    }
+    final turn = NeuraChatTurn(isUser: true, text: prompt);
+    if (await _checkGuardrails([turn]) != null) return null;
+    try {
+      final reply = (await (_ollama ??= NeuraOllamaChat()).reply(
+        system: system,
+        messages: [turn.toJson()],
+        cancel: NeuraGenerationCancel(const Uuid().v4()),
+      ))
+          .trim();
+      if (reply.isEmpty) return null;
+      final blocked = await _checkGuardrails([
+        NeuraChatTurn(isUser: true, text: reply),
+      ]);
+      return blocked == null ? reply : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// One turn of a practice conversation (see NeuraRehearsal): [system] sets
+  /// the role, [messages] is the practice so far. The latest user line and
+  /// the reply pass the same guardrails as chat; a block returns the safe
+  /// alternative with [NeuraRehearsalTurn.blocked] set so the practice stops.
+  /// Offline it stays on this computer; the cloud needs per-request approval.
+  Future<NeuraRehearsalTurn> rehearsalTurn({
+    required String system,
+    required List<Map<String, String>> messages,
+    required bool localOllama,
+    NeuraCloudApprovalHandler? requestCloudApproval,
+  }) async {
+    if (LocalProfileService.instance.enabled) {
+      throw StateError('Practice conversations are unavailable in profiles.');
+    }
+    if (messages.isEmpty || messages.last['role'] != 'user') {
+      throw ArgumentError('A practice turn needs a user line.');
+    }
+    final blocked = await _checkGuardrails([
+      NeuraChatTurn(isUser: true, text: messages.last['content']!),
+    ]);
+    if (blocked != null) return NeuraRehearsalTurn(blocked, blocked: true);
+    final cancel = NeuraGenerationCancel(const Uuid().v4());
+    cancelActiveGeneration();
+    _activeCancel = cancel;
+    if (localOllama) {
+      final reply = StringBuffer();
+      await for (final part in _streamOfflineSentences(
+        system: system,
+        messages: messages,
+        cancel: cancel,
+      )) {
+        reply.write(part);
+      }
+      return NeuraRehearsalTurn(reply.toString().trim());
+    }
+    _throwIfCloudBlocked();
+    if (!isConfigured) {
+      throw StateError('Configure the AI provider key in Settings.');
+    }
+    final response = await _modelRouter.complete(
+      NeuraModelRequest(
+        systemPrompt: system,
+        messages: messages,
+        purpose: 'practice conversation',
+        includesPrivateContext: true,
+      ),
+      requestApproval: requestCloudApproval ?? _denyCloudRequest,
+    );
+    cancel.throwIfCancelled();
+    final postBlocked = await _checkGuardrails([
+      NeuraChatTurn(isUser: true, text: response.text),
+    ]);
+    if (postBlocked != null) {
+      return NeuraRehearsalTurn(postBlocked, blocked: true);
+    }
+    return NeuraRehearsalTurn(response.text.trim());
+  }
+
   /// Generated summaries use the same constitution and per-request approval.
   /// A background caller without a visible approval handler remains blocked.
   Future<String> completeOnce(
@@ -944,4 +1048,13 @@ class NeuraGuardrailBlocked implements Exception {
   NeuraGuardrailBlocked(this.guardrailMessage);
   @override
   String toString() => 'NeuraGuardrailBlocked: $guardrailMessage';
+}
+
+/// A practice-conversation reply. [blocked] means a guardrail answered
+/// instead, and the practice should stop.
+class NeuraRehearsalTurn {
+  final String text;
+  final bool blocked;
+
+  const NeuraRehearsalTurn(this.text, {this.blocked = false});
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -5,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../neura_shell/models/neura_room.dart';
 import '../../neura_shell/models/neura_room_presence_profile.dart';
 import '../../neura_shell/widgets/neura_penthouse_scene.dart';
+import '../../mood/services/neura_mood_weather.dart';
 import '../../neura_shell/widgets/neura_room_presence_avatar.dart';
 import '../../services/neura_companion_presence.dart';
 import '../../src/shell/shell_prefs.dart';
@@ -137,6 +140,8 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
     super.initState();
     _mountedDestinationIndexes.add(widget.currentIndex);
     _indexCommands();
+    // The room's weather reflects the week's mood check-ins.
+    unawaited(NeuraMoodWeatherService.instance.refresh());
   }
 
   @override
