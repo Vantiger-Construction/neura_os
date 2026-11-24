@@ -1,5 +1,38 @@
 # Voice on startup
 
+## Sound and Safe Mode
+
+**Settings → Neura's Voice → Spoken replies on startup** is on by default.
+Each normal launch changes automatic reply speech from **Off** to **After reply**
+and restores a muted Neura voice volume to 70%. An existing **After reply** or
+**As it arrives** selection and an audible volume are preserved. Switch this
+startup option off to keep a saved silent configuration across launches. The
+chat mute control still works during the session. Windows speaker selection and
+the Windows volume mixer remain separate controls.
+
+Startup sound changes only local output preferences. It does not initialize
+native audio during boot, speak a greeting, start listening, change microphone
+permission or authorize a cloud request. The restricted local-profile route is
+unchanged. Startup greeting and listening still use the explicit opt-in below.
+
+A **Safe Mode** switch is visible at the top of Settings and Neura's Voice.
+Turning it on immediately pauses the microphone, speech and cloud services.
+Turning it off saves a normal next launch; the switch shows off with an explicit
+restart message while the current process remains in Safe Mode. Restart Neura
+to return to normal mode. A failed save keeps Safe Mode active and does not
+promise that restarting will restore normal operation. Automatic recovery after
+repeated incomplete startups remains available. Safe Mode and a pending recovery
+restart do not restore reply sound or reactivate the microphone.
+
+For physical acceptance, start with synthetic settings and verify an ordinary
+launch restores muted output, an audible volume/streaming choice survives, and
+disabling startup sound preserves silence. Toggle Safe Mode on during speech,
+then off: audio and microphone must stay off until the next normal launch.
+These preference and UI changes do not establish recognition accuracy or audible
+playback on the target laptop.
+
+## Greeting and listening
+
 Enable **Settings → Neura's Voice → Voice on startup** once on each device.
 The setting requires microphone permission and an available on-device speech
 engine and voice. **Start voice now** opens the same experience immediately.

@@ -27,6 +27,7 @@ import '../../../modules/feedback/feedback_screen.dart';
 import '../../../intelligence/intelligence_center_screen.dart';
 import '../../../notifications/notifications_settings_screen.dart';
 import '../../../reliability/safe_boot.dart';
+import '../../../widgets/neura_safe_mode_switch.dart';
 
 @visibleForTesting
 bool cloudSettingsRoutesAllowed({
@@ -45,6 +46,8 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
+          const NeuraSafeModeSwitch(),
+          const Divider(),
           ListTile(
             leading: const Icon(Icons.api),
             title: const Text('Local app API'),
