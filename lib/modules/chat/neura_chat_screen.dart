@@ -1,3 +1,4 @@
+import '../../day_companion/day_companion_screen.dart';
 import '../../teaching/teach_neura_screen.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -1997,6 +1998,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
             onSelected: (option) {
               if (option == 'daily_plan') {
                 unawaited(_openDailyPlan());
+              } else if (option == 'day_companion') {
+                unawaited(_openCompanionTool(const DayCompanionScreen()));
               } else if (option == 'offline_controls') {
                 unawaited(_openOfflineControls());
               } else if (option == 'thread') {
@@ -2019,6 +2022,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
               }
             },
             itemBuilder: (_) => [
+              const PopupMenuItem(
+                  value: 'day_companion', child: Text('Day Companion')),
               const PopupMenuItem(
                 value: 'daily_plan',
                 child: Text('Plan my day'),
