@@ -72,14 +72,20 @@ class SafeBoot {
   }
 
   Future<void> clearSafeMode() async {
+    final previousFailures = _consecutiveFailures;
     _consecutiveFailures = 0;
+    try {
+      await _write(completed: true, persistedSafeMode: false);
+    } catch (_) {
+      _consecutiveFailures = previousFailures;
+      rethrow;
+    }
     if (safeMode.value) {
       // Native/audio services are intentionally not reactivated inside the
       // current process. Persist a clean next launch while keeping this
       // session safely latched.
       restartRequired.value = true;
     }
-    await _write(completed: true, persistedSafeMode: false);
   }
 
   /// Drops the cached health-file path after the app-support tree is wiped.

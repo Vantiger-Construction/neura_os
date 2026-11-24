@@ -8,6 +8,7 @@ import '../services/neura_startup_voice_prefs.dart';
 import '../services/neura_startup_voice_setup.dart';
 import '../reliability/safe_boot.dart';
 import '../modules/chat/neura_chat_screen.dart';
+import '../widgets/neura_safe_mode_switch.dart';
 
 const _sampleText = "Hi, I'm Neura. This is what I sound like.";
 
@@ -28,6 +29,20 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
   double _volume = 1.0;
   NeuraReplySpeechMode _replySpeechMode = NeuraReplySpeechMode.off;
   bool _savingStartup = false;
+  bool _replySoundOnStartup = true;
+
+  Future<void> _setReplySoundOnStartup(bool value) async {
+    try {
+      await NeuraTtsService.instance.setReplySoundOnStartup(value);
+      if (mounted) setState(() => _replySoundOnStartup = value);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Startup sound preference could not be saved.'),
+        ));
+      }
+    }
+  }
 
   Future<void> _setStartupVoice(bool value) async {
     setState(() => _savingStartup = true);
@@ -51,45 +66,52 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
     }
   }
 
-  Widget _startupVoiceControls() => ValueListenableBuilder<bool>(
-        valueListenable: NeuraStartupVoicePrefs.instance.enabled,
-        builder: (context, enabled, _) => Column(children: [
-          SwitchListTile(
-            key: const Key('startup-voice-switch'),
-            title: const Text('Voice on startup'),
-            subtitle: const Text(
-                'Open voice chat, greet you, then listen on this device. '
-                'Stops when Neura leaves the foreground. Cloud replies still need approval.'),
-            value: enabled,
-            onChanged: _savingStartup ||
-                    kIsWeb ||
-                    SafeBoot.instance.safeMode.value ||
-                    SafeBoot.instance.restartRequired.value ||
-                    (defaultTargetPlatform != TargetPlatform.windows &&
-                        defaultTargetPlatform != TargetPlatform.android)
-                ? null
-                : _setStartupVoice,
-          ),
-          if (enabled)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OutlinedButton.icon(
-                onPressed: _savingStartup ||
-                        SafeBoot.instance.safeMode.value ||
-                        SafeBoot.instance.restartRequired.value
-                    ? null
-                    : () {
-                        Navigator.of(context).push(MaterialPageRoute<void>(
-                          builder: (_) =>
-                              const NeuraChatScreen(startWithVoice: true),
-                        ));
-                      },
-                icon: const Icon(Icons.mic),
-                label: const Text('Start voice now'),
-              ),
-            ),
-          const Divider(),
+  Widget _startupVoiceControls() => AnimatedBuilder(
+        animation: Listenable.merge([
+          NeuraStartupVoicePrefs.instance.enabled,
+          SafeBoot.instance.safeMode,
+          SafeBoot.instance.restartRequired,
         ]),
+        builder: (context, _) {
+          final enabled = NeuraStartupVoicePrefs.instance.enabled.value;
+          return Column(children: [
+            SwitchListTile(
+              key: const Key('startup-voice-switch'),
+              title: const Text('Voice on startup'),
+              subtitle: const Text(
+                  'Open voice chat, greet you, then listen on this device. '
+                  'Stops when Neura leaves the foreground. Cloud replies still need approval.'),
+              value: enabled,
+              onChanged: _savingStartup ||
+                      kIsWeb ||
+                      SafeBoot.instance.safeMode.value ||
+                      SafeBoot.instance.restartRequired.value ||
+                      (defaultTargetPlatform != TargetPlatform.windows &&
+                          defaultTargetPlatform != TargetPlatform.android)
+                  ? null
+                  : _setStartupVoice,
+            ),
+            if (enabled)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: OutlinedButton.icon(
+                  onPressed: _savingStartup ||
+                          SafeBoot.instance.safeMode.value ||
+                          SafeBoot.instance.restartRequired.value
+                      ? null
+                      : () {
+                          Navigator.of(context).push(MaterialPageRoute<void>(
+                            builder: (_) =>
+                                const NeuraChatScreen(startWithVoice: true),
+                          ));
+                        },
+                  icon: const Icon(Icons.mic),
+                  label: const Text('Start voice now'),
+                ),
+              ),
+            const Divider(),
+          ]);
+        },
       );
 
   @override
@@ -119,6 +141,7 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
       _pitch = service.pitch;
       _volume = service.volume;
       _replySpeechMode = service.replySpeechMode;
+      _replySoundOnStartup = service.replySoundOnStartup;
       _loading = false;
     });
   }
@@ -177,6 +200,17 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               children: [
+                const NeuraSafeModeSwitch(),
+                const Divider(),
+                SwitchListTile(
+                  key: const Key('reply-sound-on-startup-switch'),
+                  title: const Text('Spoken replies on startup'),
+                  subtitle: const Text(
+                      'Turn reply speech on when Neura opens. '
+                      'Restore muted voice volume to 70%.'),
+                  value: _replySoundOnStartup,
+                  onChanged: _setReplySoundOnStartup,
+                ),
                 _startupVoiceControls(),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
