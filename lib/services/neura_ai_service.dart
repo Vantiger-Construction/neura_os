@@ -654,6 +654,64 @@ class NeuraAiService {
     }
   }
 
+  /// One turn of a practice conversation (see NeuraRehearsal): [system] sets
+  /// the role, [messages] is the practice so far. The latest user line and
+  /// the reply pass the same guardrails as chat; a block returns the safe
+  /// alternative with [NeuraRehearsalTurn.blocked] set so the practice stops.
+  /// Offline it stays on this computer; the cloud needs per-request approval.
+  Future<NeuraRehearsalTurn> rehearsalTurn({
+    required String system,
+    required List<Map<String, String>> messages,
+    required bool localOllama,
+    NeuraCloudApprovalHandler? requestCloudApproval,
+  }) async {
+    if (LocalProfileService.instance.enabled) {
+      throw StateError('Practice conversations are unavailable in profiles.');
+    }
+    if (messages.isEmpty || messages.last['role'] != 'user') {
+      throw ArgumentError('A practice turn needs a user line.');
+    }
+    final blocked = await _checkGuardrails([
+      NeuraChatTurn(isUser: true, text: messages.last['content']!),
+    ]);
+    if (blocked != null) return NeuraRehearsalTurn(blocked, blocked: true);
+    final cancel = NeuraGenerationCancel(const Uuid().v4());
+    cancelActiveGeneration();
+    _activeCancel = cancel;
+    if (localOllama) {
+      final reply = StringBuffer();
+      await for (final part in _streamOfflineSentences(
+        system: system,
+        messages: messages,
+        cancel: cancel,
+      )) {
+        reply.write(part);
+      }
+      return NeuraRehearsalTurn(reply.toString().trim());
+    }
+    _throwIfCloudBlocked();
+    if (!isConfigured) {
+      throw StateError('Configure the AI provider key in Settings.');
+    }
+    final response = await _modelRouter.complete(
+      NeuraModelRequest(
+        systemPrompt: system,
+        messages: messages,
+        purpose: 'practice conversation',
+        includesPrivateContext: true,
+      ),
+      requestApproval: requestCloudApproval ?? _denyCloudRequest,
+    );
+    cancel.throwIfCancelled();
+    final postBlocked = await _checkGuardrails([
+      NeuraChatTurn(isUser: true, text: response.text),
+    ]);
+    if (postBlocked != null) {
+      return NeuraRehearsalTurn(postBlocked, blocked: true);
+    }
+    return NeuraRehearsalTurn(response.text.trim());
+  }
+
   /// Generated summaries use the same constitution and per-request approval.
   /// A background caller without a visible approval handler remains blocked.
   Future<String> completeOnce(
@@ -944,4 +1002,13 @@ class NeuraGuardrailBlocked implements Exception {
   NeuraGuardrailBlocked(this.guardrailMessage);
   @override
   String toString() => 'NeuraGuardrailBlocked: $guardrailMessage';
+}
+
+/// A practice-conversation reply. [blocked] means a guardrail answered
+/// instead, and the practice should stop.
+class NeuraRehearsalTurn {
+  final String text;
+  final bool blocked;
+
+  const NeuraRehearsalTurn(this.text, {this.blocked = false});
 }
