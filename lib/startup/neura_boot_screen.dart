@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../avatar/motion/neura_motion.dart';
 import '../modules/navigation/enhanced_navigation.dart';
 import '../reliability/safe_boot.dart';
 import '../screens/owner_password_setup.dart';
@@ -130,12 +131,13 @@ class _NeuraBootScreenState extends State<NeuraBootScreen> {
                     children: [
                       const SizedBox(height: 36),
                       ValueListenableBuilder<bool>(
-                        valueListenable: SafeBoot.instance.safeMode,
-                        builder: (context, safeMode, _) =>
+                        valueListenable: NeuraMotion.instance.live,
+                        builder: (context, motionAllowed, _) =>
                             ValueListenableBuilder<bool>(
                           valueListenable: _coordinator.booting,
                           builder: (_, booting, __) => NeuraStartupAvatar(
-                            animate: booting && !safeMode,
+                            animate: booting && motionAllowed,
+                            turnOnEntry: true,
                             height: 180,
                           ),
                         ),
