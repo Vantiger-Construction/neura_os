@@ -1,3 +1,4 @@
+import '../../day_companion/day_companion_screen.dart';
 import '../../planning/neura_daily_plan_screen.dart';
 
 import 'dart:async';
@@ -380,6 +381,24 @@ class _EnhancedNavigationState extends State<EnhancedNavigation> {
           keywords: const <String>['camera', 'security', 'hawk', 'nvr'],
           onSelected: () =>
               _openRoute('/camera-hawk', (_) => const CameraHawkScreen()),
+        ),
+        PresenceCommand(
+          id: 'day-companion',
+          title: 'Day Companion',
+          subtitle:
+              'Listen for useful notes and control the penthouse and connected devices.',
+          icon: Icons.hearing,
+          keywords: const [
+            'listening',
+            'notes',
+            'penthouse',
+            'smart home',
+            'Hue',
+            'Alexa',
+            'thermostat'
+          ],
+          onSelected: () =>
+              _openRoute('/day-companion', (_) => const DayCompanionScreen()),
         ),
         PresenceCommand(
           id: 'talk',

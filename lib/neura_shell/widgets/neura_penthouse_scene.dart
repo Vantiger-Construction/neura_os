@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../avatar/motion/neura_motion.dart';
 import '../models/neura_room.dart';
+import '../neura_shell_state.dart';
 
 /// Neura's penthouse, painted in code so it needs no image assets.
 ///
@@ -45,9 +46,17 @@ class NeuraPenthouseScene extends StatelessWidget {
         .withValues(alpha: dim.clamp(0.0, 1.0));
     final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     final animate = NeuraMotion.instance.live.value && !reduceMotion;
+    final penthouse = room.id == NeuraRoom.penthouse.id
+        ? context
+            .dependOnInheritedWidgetOfExactType<NeuraShellScope>()
+            ?.notifier
+            ?.penthouse
+        : null;
     final painter = NeuraPenthousePainter(
       room: room,
       overlay: overlay,
+      lampOn: penthouse?.lampOn ?? true,
+      curtainsClosed: penthouse?.curtainsClosed ?? false,
       showFurniture: showFurniture,
     );
     return AnimatedSwitcher(
@@ -68,11 +77,15 @@ class NeuraPenthouseScene extends StatelessWidget {
 class NeuraPenthousePainter extends CustomPainter {
   NeuraPenthousePainter({
     this.room = NeuraRoom.penthouse,
+    this.lampOn = true,
+    this.curtainsClosed = false,
     required this.overlay,
     required this.showFurniture,
   });
 
   final NeuraRoom room;
+  final bool lampOn;
+  final bool curtainsClosed;
   final Color overlay;
   final bool showFurniture;
 
@@ -734,12 +747,15 @@ class NeuraPenthousePainter extends CustomPainter {
     canvas.drawRect(hills, Paint()..color = const Color(0xFF2A1A2A));
   }
 
-  void _paintCurtains(Canvas canvas, double w, double floorY) {
-    final width = w * 0.12;
+  void _paintCurtains(Canvas canvas, double w, double floorY,
+      {bool closed = false}) {
+    final width = w * (closed ? 0.5 : 0.12);
     const sheer = <Color>[Color(0x55F2DCE8), Color(0x22F2DCE8)];
     for (final left in <double>[0, w - width]) {
       final rect = Rect.fromLTWH(left, 0, width, floorY);
-      const gradient = LinearGradient(colors: sheer);
+      final gradient = LinearGradient(
+          colors:
+              closed ? const [Color(0xFF292135), Color(0xFF48364E)] : sheer);
       canvas.drawRect(rect, Paint()..shader = gradient.createShader(rect));
       final fold = Paint()..color = const Color(0x22FFFFFF);
       for (var x = left + width / 5; x < left + width; x += width / 5) {
@@ -855,20 +871,10 @@ class NeuraPenthousePainter extends CustomPainter {
     // Warm lamp glow on the left.
     final lampX = w * 0.12;
     final lampTop = floorY - unit * 0.36;
-    final glowCenter = Offset(lampX, lampTop + unit * 0.04);
-    canvas.drawCircle(
-      glowCenter,
-      unit * 0.32,
-      Paint()
-        ..shader = RadialGradient(
-          colors: <Color>[
-            const Color(0xFFFFC27A).withValues(alpha: 0.30),
-            Colors.transparent,
-          ],
-        ).createShader(
-          Rect.fromCircle(center: glowCenter, radius: unit * 0.32),
-        ),
-    );
+    if (lampOn) {
+      _drawGlow(canvas, Offset(lampX, lampTop + unit * 0.04), unit * 0.32,
+          const Color(0xFFFFC27A).withValues(alpha: 0.30));
+    }
     final lampPaint = Paint()..color = const Color(0xFF1A1424);
     canvas.drawRect(
       Rect.fromLTWH(lampX - 1.5, lampTop + unit * 0.06, 3, floorY - lampTop),
@@ -880,7 +886,10 @@ class NeuraPenthousePainter extends CustomPainter {
       ..lineTo(lampX + unit * 0.03, lampTop)
       ..lineTo(lampX - unit * 0.03, lampTop)
       ..close();
-    canvas.drawPath(shade, Paint()..color = const Color(0xFFFFD9A0));
+    canvas.drawPath(
+        shade,
+        Paint()
+          ..color = lampOn ? const Color(0xFFFFD9A0) : const Color(0xFF695A51));
 
     // Low lounge sofa, centred, as a soft silhouette.
     final sofaW = math.min(w * 0.7, unit * 1.1);
@@ -918,6 +927,8 @@ class NeuraPenthousePainter extends CustomPainter {
   bool shouldRepaint(covariant NeuraPenthousePainter oldDelegate) {
     return oldDelegate.room.id != room.id ||
         oldDelegate.overlay != overlay ||
+        oldDelegate.lampOn != lampOn ||
+        oldDelegate.curtainsClosed != curtainsClosed ||
         oldDelegate.showFurniture != showFurniture;
   }
 }

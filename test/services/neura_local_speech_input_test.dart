@@ -211,6 +211,23 @@ void main() {
     expect(calls.any((c) => c.method == 'stop'), isTrue);
   });
 
+  localTest('only a clean silence end emits the on-device renewal signal',
+      () async {
+    handler = (call) async => call.method == 'poll'
+        ? {
+            'session': (call.arguments as Map)['session'],
+            'listening': false,
+            'silenceEnded': true,
+          }
+        : true;
+    final status = input.statusStream.first;
+    expect(await input.startRecording(), isTrue);
+    expect(await status.timeout(const Duration(seconds: 5)),
+        NeuraLocalSpeechInput.silenceEnded);
+    expect(input.isListening, isFalse);
+    expect(calls.last.method, 'stop');
+  });
+
   localTest('unconfirmed native stop withholds text and blocks another capture',
       () async {
     handler = (call) async {
