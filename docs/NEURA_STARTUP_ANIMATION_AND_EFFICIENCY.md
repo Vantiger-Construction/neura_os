@@ -1,16 +1,16 @@
 # Startup animation and avatar efficiency
 
-Neura's packaged full-body artwork now appears in both the early bootstrap
-frame and the service-startup screen. A small breathing/floating transform
-animates the existing image; it is not a new skeletal Unity animation or a
-speaking greeting. The startup widget does not start a microphone, speech,
-model, avatar-runtime, or cloud service.
+Neura's arms-down startup portrait appears in both the early bootstrap frame
+and the service-startup screen. The bootstrap frame stays still until motion
+preferences are available. The startup widget does not start a microphone,
+speech, model, avatar-runtime, cloud service or runtime 3D renderer.
 
 During service startup, once Neura's motion preferences are active, the
-portrait turns once around its vertical axis over 900 ms. It faces forward
-again if motion stops or the window is backgrounded. A fast startup can open
-the dashboard before the turn finishes. The early bootstrap frame keeps its
-original breathing animation.
+portrait turns once over 900 ms using 32 views rendered from the existing
+rigged Lumen avatar. Its real profile and rear views replace PR #271's mirrored
+flat-image transform. It faces forward again if motion stops or the window is
+backgrounded. A fast startup can open the dashboard before the turn finishes.
+See [turntable provenance and acceptance](NEURA_STARTUP_TURNTABLE.md).
 
 ## Efficiency changes
 
@@ -18,10 +18,11 @@ original breathing animation.
   controller updates. A changed primary path, format, fallback path or idle
   variant creates a new resolution attempt. Each attempt captures its own spec,
   and an older completion cannot replace a newly selected avatar.
-- The startup image is outside the animation-frame builder and has its own
-  repaint boundary. Only small transforms change on each animation frame.
-  Image decode height is bounded at 1024 physical pixels; both startup surfaces
-  use the same default size so Flutter can reuse the decoded image.
+- The portrait is outside the breathing-frame builder and has its own repaint
+  boundary. A 160 x 240 front PNG serves static/loading/failure states. An
+  active turn loads one fixed 1280 x 960 atlas, at most 4,915,200 decoded RGBA
+  bytes (4.69 MiB), independent of display pixel density. Frame changes paint
+  a different source rectangle; they never decode another image or mirror it.
 - Startup motion has one owned ticker. Reduced motion, a disabled `TickerMode`,
   Safe Mode, a paused boot attempt, and background lifecycle states stop motion.
   Leaving startup disposes its ticker and lifecycle observer.
