@@ -6,6 +6,12 @@ animates the existing image; it is not a new skeletal Unity animation or a
 speaking greeting. The startup widget does not start a microphone, speech,
 model, avatar-runtime, or cloud service.
 
+During service startup, once Neura's motion preferences are active, the
+portrait turns once around its vertical axis over 900 ms. It faces forward
+again if motion stops or the window is backgrounded. A fast startup can open
+the dashboard before the turn finishes. The early bootstrap frame keeps its
+original breathing animation.
+
 ## Efficiency changes
 
 - `AvatarView` retains its asset-resolution future through parent, size and

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// Local artwork with a small breathing motion; no avatar, audio or AI service
@@ -7,12 +9,16 @@ class NeuraStartupAvatar extends StatefulWidget {
   const NeuraStartupAvatar({
     super.key,
     this.animate = true,
+    this.turnOnEntry = false,
     this.width = 180,
     this.height = 180,
   })  : assert(width > 0),
         assert(height > 0);
 
   final bool animate;
+
+  /// Turn once around the vertical axis during the first active animation.
+  final bool turnOnEntry;
   final double width;
   final double height;
 
@@ -26,6 +32,9 @@ class _NeuraStartupAvatarState extends State<NeuraStartupAvatar>
   bool _foreground = true;
   bool _reduceMotion = false;
   bool _tickerEnabled = true;
+  bool _firstRun = true;
+
+  static const _turnDuration = Duration(milliseconds: 900);
 
   @override
   void initState() {
@@ -63,6 +72,7 @@ class _NeuraStartupAvatarState extends State<NeuraStartupAvatar>
     if (widget.animate && _foreground && !_reduceMotion && _tickerEnabled) {
       if (!_breath.isAnimating) _breath.repeat(reverse: true);
     } else {
+      if (_breath.isAnimating) _firstRun = false;
       _breath
         ..stop()
         ..value = 0;
@@ -117,10 +127,25 @@ class _NeuraStartupAvatarState extends State<NeuraStartupAvatar>
               animation: _breath,
               builder: (context, child) {
                 final breath = Curves.easeInOutSine.transform(_breath.value);
+                final scale = 1 + 0.018 * breath;
+                final pose = Matrix4.diagonal3Values(scale, scale, 1);
+                final elapsed = _breath.lastElapsedDuration ?? Duration.zero;
+                if (widget.turnOnEntry &&
+                    _firstRun &&
+                    elapsed > Duration.zero &&
+                    elapsed < _turnDuration) {
+                  final progress =
+                      elapsed.inMicroseconds / _turnDuration.inMicroseconds;
+                  // A little perspective brings the nearer shoulder forward.
+                  pose.setEntry(3, 2, 0.25 / widget.width);
+                  pose.rotateY(
+                    2 * math.pi * Curves.easeInOut.transform(progress),
+                  );
+                }
                 return Transform.translate(
                   offset: Offset(0, -5 * breath),
-                  child: Transform.scale(
-                    scale: 1 + 0.018 * breath,
+                  child: Transform(
+                    transform: pose,
                     alignment: Alignment.bottomCenter,
                     child: child,
                   ),
