@@ -117,7 +117,7 @@ class _NeuraStartupAvatarState extends State<NeuraStartupAvatar>
     _turnFrame.value =
         (Curves.easeInOut.transform(progress) * kNeuraStartupTurntableFrames)
                 .round() %
-        kNeuraStartupTurntableFrames;
+            kNeuraStartupTurntableFrames;
   }
 
   @override

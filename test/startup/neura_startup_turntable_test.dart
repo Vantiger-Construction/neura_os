@@ -48,39 +48,41 @@ Widget _host(
   bool reduceMotion = false,
   bool tickerEnabled = true,
   double pixelRatio = 1,
-}) => MaterialApp(
-  home: DefaultAssetBundle(
-    bundle: bundle,
-    child: MediaQuery(
-      data: MediaQueryData(
-        disableAnimations: reduceMotion,
-        devicePixelRatio: pixelRatio,
-      ),
-      child: TickerMode(
-        enabled: tickerEnabled,
-        child: Center(
-          child: NeuraStartupAvatar(animate: animate, turnOnEntry: true),
+}) =>
+    MaterialApp(
+      home: DefaultAssetBundle(
+        bundle: bundle,
+        child: MediaQuery(
+          data: MediaQueryData(
+            disableAnimations: reduceMotion,
+            devicePixelRatio: pixelRatio,
+          ),
+          child: TickerMode(
+            enabled: tickerEnabled,
+            child: Center(
+              child: NeuraStartupAvatar(animate: animate, turnOnEntry: true),
+            ),
+          ),
         ),
       ),
-    ),
-  ),
-);
+    );
 
-int _frame(WidgetTester tester) =>
-    tester.widget<NeuraStartupPortrait>(find.byType(NeuraStartupPortrait))
-        .frame.value;
+int _frame(WidgetTester tester) => tester
+    .widget<NeuraStartupPortrait>(find.byType(NeuraStartupPortrait))
+    .frame
+    .value;
 
-NeuraStartupTurntablePainter _painter(WidgetTester tester) =>
-    tester.widgetList<CustomPaint>(find.byType(CustomPaint))
-        .map((widget) => widget.painter)
-        .whereType<NeuraStartupTurntablePainter>()
-        .single;
+NeuraStartupTurntablePainter _painter(WidgetTester tester) => tester
+    .widgetList<CustomPaint>(find.byType(CustomPaint))
+    .map((widget) => widget.painter)
+    .whereType<NeuraStartupTurntablePainter>()
+    .single;
 
 Future<void> _decodeAtlas(WidgetTester tester, _ObservedBundle bundle) async {
   await tester.runAsync(() => precacheImage(
-    ExactAssetImage(kNeuraStartupTurntableAsset, bundle: bundle),
-    tester.element(find.byType(NeuraStartupAvatar)),
-  ));
+        ExactAssetImage(kNeuraStartupTurntableAsset, bundle: bundle),
+        tester.element(find.byType(NeuraStartupAvatar)),
+      ));
   await tester.pump();
   await tester.pump();
 }
@@ -106,9 +108,8 @@ void main() {
     );
     final bytes = data!.buffer.asUint8List();
     int channel(int frame, int x, int y, int c) => bytes[
-      (((frame ~/ 8) * 240 + y) * atlas.width +
-        (frame % 8) * 160 + x) * 4 + c
-    ];
+        (((frame ~/ 8) * 240 + y) * atlas.width + (frame % 8) * 160 + x) * 4 +
+            c];
     var rearDifferences = 0;
     var sidePixels = 0;
     for (var y = 0; y < 240; y++) {
@@ -120,8 +121,10 @@ void main() {
         }
       }
     }
-    expect(sidePixels, greaterThan(1500), reason: 'A profile must retain body thickness.');
-    expect(rearDifferences, greaterThan(1500), reason: 'The rear must not be the mirrored front.');
+    expect(sidePixels, greaterThan(1500),
+        reason: 'A profile must retain body thickness.');
+    expect(rearDifferences, greaterThan(1500),
+        reason: 'The rear must not be the mirrored front.');
     await tester.pumpWidget(_host(bundle, pixelRatio: 12));
     expect(_painter(tester).atlas.width, 1280);
     expect(bundle.loads[kNeuraStartupTurntableAsset], 1);
@@ -130,22 +133,32 @@ void main() {
   testWidgets('one 900 ms turn shows the rear halfway and then keeps breathing',
       (tester) async {
     final bundle = await _start(tester);
-    final portrait = tester.widget<NeuraStartupPortrait>(find.byType(NeuraStartupPortrait));
+    final portrait =
+        tester.widget<NeuraStartupPortrait>(find.byType(NeuraStartupPortrait));
     await tester.pump(const Duration(milliseconds: 225));
     expect(_frame(tester), inInclusiveRange(3, 5));
     await tester.pump(const Duration(milliseconds: 225));
     expect(_frame(tester), 16);
-    final transform = tester.widget<Transform>(find.ancestor(
-      of: find.byType(NeuraStartupPortrait),
-      matching: find.byType(Transform),
-    ).first).transform;
+    final transform = tester
+        .widget<Transform>(find
+            .ancestor(
+              of: find.byType(NeuraStartupPortrait),
+              matching: find.byType(Transform),
+            )
+            .first)
+        .transform;
     expect(transform.entry(0, 0), greaterThan(0));
     expect(transform.entry(2, 0), 0);
     await tester.pump(const Duration(milliseconds: 450));
     expect(_frame(tester), 0);
     await tester.pump(const Duration(seconds: 6));
     expect(_frame(tester), 0);
-    expect(identical(tester.widget<NeuraStartupPortrait>(find.byType(NeuraStartupPortrait)), portrait), isTrue);
+    expect(
+        identical(
+            tester.widget<NeuraStartupPortrait>(
+                find.byType(NeuraStartupPortrait)),
+            portrait),
+        isTrue);
     expect(bundle.loads[kNeuraStartupTurntableAsset], 1);
   });
 
@@ -172,7 +185,8 @@ void main() {
     });
   }
 
-  testWidgets('reduced motion and covered routes reset without replay', (tester) async {
+  testWidgets('reduced motion and covered routes reset without replay',
+      (tester) async {
     final bundle = await _start(tester);
     await tester.pump(const Duration(milliseconds: 450));
     await tester.pumpWidget(_host(bundle, reduceMotion: true));
@@ -196,19 +210,22 @@ void main() {
     expect(tester.binding.transientCallbackCount, 0);
   });
 
-  testWidgets('a missing atlas leaves the arms-down front visible', (tester) async {
+  testWidgets('a missing atlas leaves the arms-down front visible',
+      (tester) async {
     final bundle = _ObservedBundle(missingAtlas: true);
     await tester.pumpWidget(_host(bundle));
     await tester.runAsync(() => precacheImage(
-      ExactAssetImage(kNeuraStartupTurntableAsset, bundle: bundle),
-      tester.element(find.byType(NeuraStartupAvatar)),
-      onError: (_, __) {},
-    ));
+          ExactAssetImage(kNeuraStartupTurntableAsset, bundle: bundle),
+          tester.element(find.byType(NeuraStartupAvatar)),
+          onError: (_, __) {},
+        ));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 450));
     expect(_frame(tester), 0);
-    final provider = tester.widget<Image>(find.byType(Image)).image as ResizeImage;
-    expect((provider.imageProvider as AssetImage).assetName, kNeuraStartupFrontAsset);
+    final provider =
+        tester.widget<Image>(find.byType(Image)).image as ResizeImage;
+    expect((provider.imageProvider as AssetImage).assetName,
+        kNeuraStartupFrontAsset);
     expect(tester.takeException(), isNull);
   });
 
@@ -232,7 +249,8 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('production Safe Mode cancels the startup turn and cannot replay it',
+  testWidgets(
+      'production Safe Mode cancels the startup turn and cannot replay it',
       (tester) async {
     final safeMode = SafeBoot.instance.safeMode;
     final originalSafe = safeMode.value;
@@ -250,11 +268,16 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: DefaultAssetBundle(
         bundle: bundle,
-        child: NeuraBootScreen(coordinator: coordinator, hasOwnerPassword: true),
+        child:
+            NeuraBootScreen(coordinator: coordinator, hasOwnerPassword: true),
       ),
     ));
     await tester.pump();
-    expect(tester.widget<NeuraStartupAvatar>(find.byType(NeuraStartupAvatar)).animate, isFalse);
+    expect(
+        tester
+            .widget<NeuraStartupAvatar>(find.byType(NeuraStartupAvatar))
+            .animate,
+        isFalse);
     expect(bundle.loads[kNeuraStartupTurntableAsset], isNull);
     safeMode.value = false;
     await tester.pump();

@@ -144,7 +144,8 @@ class NeuraStartupTurntablePainter extends CustomPainter {
   final ValueListenable<int> frame;
 
   Rect get sourceRect {
-    final index = frame.value.clamp(0, kNeuraStartupTurntableFrames - 1).toInt();
+    final index =
+        frame.value.clamp(0, kNeuraStartupTurntableFrames - 1).toInt();
     return Rect.fromLTWH(
       (index % kNeuraStartupTurntableColumns) *
           kNeuraStartupTurntableFrameSize.width,
