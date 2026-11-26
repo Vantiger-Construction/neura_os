@@ -419,6 +419,13 @@ class NeuraOllamaChat with WidgetsBindingObserver {
   /// the newest turn rather than inside [system], so the charter and earlier
   /// turns stay identical between turns and Ollama reuses their cached prompt
   /// evaluation instead of re-reading the whole conversation every turn.
+  ///
+  /// [maxTokens] caps a reply below the native 512-token default (Rust accepts
+  /// 32 to 512); spoken replies use [spokenMaxTokens].
+  ///
+  /// A reply requested while [warm] is still running waits for it: the warm-up
+  /// is already doing the load and charter evaluation this reply needs, and
+  /// cancelling it would waste that work.
   Future<String> reply({
     required String system,
     required List<Map<String, dynamic>> messages,
@@ -426,15 +433,76 @@ class NeuraOllamaChat with WidgetsBindingObserver {
     void Function(String textSoFar)? onPartial,
     List<Map<String, dynamic>> tools = const [],
     String cue = '',
+    int? maxTokens,
+  }) async {
+    final warming = _warming;
+    if (warming != null) {
+      await Future.any<Object?>([warming, cancel.whenCancelled]);
+      cancel.throwIfCancelled();
+    }
+    return _run(
+      system: system,
+      messages: messages,
+      cancel: cancel,
+      onPartial: onPartial,
+      tools: tools,
+      cue: cue,
+      maxTokens: maxTokens,
+    );
+  }
+
+  /// Reply cap for replies that will be spoken. At ~2 tokens/s on a laptop
+  /// CPU, the 512-token default can keep generating for four minutes.
+  static const spokenMaxTokens = 200;
+
+  Future<void>? _warming;
+
+  /// Loads the local model and pre-evaluates [system] and [tools] without any
+  /// conversation text (one output token, discarded). The next [reply] with
+  /// the same system prompt and tools skips the cold load and the charter's
+  /// prompt evaluation: measured on a 4-core laptop, the first reply drops
+  /// from about 190 s to about 20 s. Uses the same native admission checks,
+  /// foreground/Safe Mode gates and cancellation as a reply. Never throws.
+  Future<void> warm({
+    required String system,
+    List<Map<String, dynamic>> tools = const [],
+  }) {
+    final running = _warming;
+    if (running != null) return running;
+    if (!_allowed || _active != null) return Future.value();
+    final cancel = NeuraGenerationCancel('offline-warm');
+    final future = _run(
+      system: system,
+      messages: const [],
+      cancel: cancel,
+      tools: tools,
+      warm: true,
+    ).then<void>((_) {}, onError: (Object _) {});
+    _warming = future;
+    return future.whenComplete(() {
+      if (identical(_warming, future)) _warming = null;
+    });
+  }
+
+  Future<String> _run({
+    required String system,
+    required List<Map<String, dynamic>> messages,
+    required NeuraGenerationCancel cancel,
+    void Function(String textSoFar)? onPartial,
+    List<Map<String, dynamic>> tools = const [],
+    String cue = '',
+    int? maxTokens,
+    bool warm = false,
   }) async {
     if (!_allowed) throw StateError('Offline chat is unavailable.');
     cancel.throwIfCancelled();
     final started = _now;
     final payload = jsonEncode({
       'system': system,
-      'messages': messages,
+      if (warm) 'warm': true else 'messages': messages,
       if (tools.isNotEmpty) 'tools': tools,
       if (cue.trim().isNotEmpty) 'cue': cue,
+      if (maxTokens != null) 'max_tokens': maxTokens,
     });
     if (utf8.encode(payload).length > maxRequestBytes) {
       throw StateError('This conversation is too large for offline chat.');
@@ -442,7 +510,8 @@ class NeuraOllamaChat with WidgetsBindingObserver {
     _active?.cancel();
     _active = cancel;
     final timing = _LatencyTurn(started);
-    _latestLatency = timing;
+    // The latency readout describes the last conversational reply only.
+    if (!warm) _latestLatency = timing;
     int? nativeId;
     var finished = false;
     var delivered = false;

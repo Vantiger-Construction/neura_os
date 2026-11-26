@@ -702,4 +702,117 @@ void main() {
       },
     );
   }
+
+  testWidgets('a warm-up sends only the charter and tools, never turns', (
+    tester,
+  ) async {
+    await tester.runAsync(() => chat.warm(
+          system: 'Neura charter',
+          tools: [
+            {'name': 'log_mood_entry', 'description': 'd', 'parameters': {}},
+          ],
+        ));
+    final request =
+        jsonDecode(calls.first.arguments as String) as Map<String, dynamic>;
+    expect(request.keys.toSet(), {'system', 'warm', 'tools'});
+    expect(request['warm'], true);
+    expect(request['system'], 'Neura charter');
+    // The latency readout keeps describing conversational replies only.
+    expect(await chat.readLatency(), isNull);
+  });
+
+  testWidgets('a failing warm-up is silent', (tester) async {
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      calls.add(call);
+      throw PlatformException(code: 'local_unavailable');
+    });
+    await tester.runAsync(() => chat.warm(system: 'Neura charter'));
+    expect(calls.map((c) => c.method), contains('beginOllama'));
+  });
+
+  testWidgets('a warm-up is skipped in Safe Mode', (tester) async {
+    safe.value = true;
+    await tester.runAsync(() => chat.warm(system: 'Neura charter'));
+    expect(calls.where((c) => c.method == 'beginOllama'), isEmpty);
+  });
+
+  testWidgets('a spoken reply forwards its shorter token cap', (tester) async {
+    await chat.reply(
+      system: 'Neura charter',
+      messages: [
+        {'role': 'user', 'content': 'Hello'},
+      ],
+      cancel: NeuraGenerationCancel('spoken'),
+      maxTokens: NeuraOllamaChat.spokenMaxTokens,
+    );
+    final request =
+        jsonDecode(calls.first.arguments as String) as Map<String, dynamic>;
+    expect(request['max_tokens'], NeuraOllamaChat.spokenMaxTokens);
+    expect(request.containsKey('warm'), isFalse);
+  });
+
+  testWidgets('a reply sent during a warm-up waits instead of cancelling it', (
+    tester,
+  ) async {
+    var nextId = 0;
+    var warmDone = false;
+    final begins = <Map<String, dynamic>>[];
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      calls.add(call);
+      switch (call.method) {
+        case 'beginOllama':
+          begins.add(
+            jsonDecode(call.arguments as String) as Map<String, dynamic>,
+          );
+          return ++nextId;
+        case 'pollOllama':
+          if (call.arguments == 1) return warmDone ? 'Hi' : null;
+          return 'Real reply.';
+      }
+      return null;
+    });
+    await tester.runAsync(() async {
+      final warming = chat.warm(system: 'Neura charter');
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      final answer = reply(NeuraGenerationCancel('real'));
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      // The reply has not started a second native request or cancelled the
+      // warm-up while it is still loading.
+      expect(begins, hasLength(1));
+      expect(
+        calls.where((c) => c.method == 'cancelOllama' && c.arguments == 1),
+        isEmpty,
+      );
+      warmDone = true;
+      await warming;
+      expect(await answer, 'Real reply.');
+    });
+    expect(begins, hasLength(2));
+    expect(begins.first['warm'], true);
+    expect(begins.last['messages'], isNotEmpty);
+  });
+
+  testWidgets('cancelling a reply that waits on a warm-up stops waiting', (
+    tester,
+  ) async {
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      calls.add(call);
+      return call.method == 'beginOllama' ? 1 : null;
+    });
+    await tester.runAsync(() async {
+      unawaited(chat.warm(system: 'Neura charter'));
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      final cancel = NeuraGenerationCancel('stopped');
+      final answer = reply(cancel);
+      cancel.cancel();
+      await expectLater(answer, throwsA(isA<NeuraGenerationCancelled>()));
+      chat.dispose();
+    });
+  });
 }
