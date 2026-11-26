@@ -8,6 +8,7 @@ import 'package:neuro_companion/src/modules/legacy/legacy_vault_service.dart';
 import 'package:neuro_companion/src/modules/legacy/legacy_vault_transaction.dart';
 import 'package:neuro_companion/src/modules/legacy/legacy_vault_zip_codec.dart'
     show LegacyVaultZipCodec;
+import 'package:path/path.dart' as p;
 
 import 'legacy_zip_fixture.dart';
 
@@ -30,7 +31,8 @@ class FailingZipFiles extends LegacyVaultFileOperations {
 
   @override
   Future<void> write(File file, List<int> bytes) async {
-    if (file.path.endsWith('/committed')) {
+    final name = p.basename(file.path);
+    if (name == 'committed') {
       if (corruptCommit) {
         await super.write(file, List.filled(bytes.length, 0));
         return;
@@ -40,7 +42,7 @@ class FailingZipFiles extends LegacyVaultFileOperations {
         throw const FileSystemException('Synthetic error after durable commit');
       }
     }
-    if ((corruptStageWrite && file.path.contains('/payload/')) ||
+    if ((corruptStageWrite && p.split(file.path).contains('payload')) ||
         (corruptExportWrite && file.path.endsWith('.partial'))) {
       final changed = <int>[...bytes];
       if (changed.isEmpty) {
@@ -56,11 +58,11 @@ class FailingZipFiles extends LegacyVaultFileOperations {
       throw const FileSystemException('Synthetic export write failure');
     }
     if (failStageWrite &&
-        file.path.contains('/payload/') &&
-        file.path.endsWith('notes.txt')) {
+        p.split(file.path).contains('payload') &&
+        name == 'notes.txt') {
       throw const FileSystemException('Synthetic stage write failure');
     }
-    if (failCommitWrite && file.path.endsWith('/committed')) {
+    if (failCommitWrite && name == 'committed') {
       await super.write(file, []);
       throw const FileSystemException('Synthetic incomplete commit marker');
     }
@@ -72,7 +74,7 @@ class FailingZipFiles extends LegacyVaultFileOperations {
     if (failExportRename && file.path.endsWith('.partial')) {
       throw const FileSystemException('Synthetic export promotion failure');
     }
-    if (file.path.contains('/payload/') && file.path.endsWith('.json')) {
+    if (p.split(file.path).contains('payload') && file.path.endsWith('.json')) {
       jsonRenames++;
       if (pauseRename && !renameReached.isCompleted) {
         renameReached.complete();
@@ -87,11 +89,11 @@ class FailingZipFiles extends LegacyVaultFileOperations {
 
   @override
   Future<void> deleteDirectory(Directory directory) async {
-    final normalized = directory.path.replaceAll('\\', '/');
-    if (blockRollback && RegExp(r'/capsule_[^/]+$').hasMatch(normalized)) {
+    final name = p.basename(directory.path);
+    if (blockRollback && name.startsWith('capsule_')) {
       throw const FileSystemException('Synthetic rollback failure');
     }
-    if (failCleanupOnce && normalized.contains('/.neura-import-')) {
+    if (failCleanupOnce && name.startsWith('.neura-import-')) {
       failCleanupOnce = false;
       throw const FileSystemException('Synthetic cleanup failure');
     }
@@ -199,9 +201,10 @@ void main() {
         ..blockRollback = true;
       await expectLater(f.service(files: operations).importVaultZip(zip),
           throwsA(isA<LegacyVaultZipException>()));
+      expect(operations.jsonRenames, 2);
       final dir = (await f.vault.list().toList())
           .whereType<Directory>()
-          .firstWhere((d) => d.path.split('/').last.startsWith('capsule_'));
+          .firstWhere((d) => p.basename(d.path).startsWith('capsule_'));
       await File('${dir.path}/unexpected.txt')
           .writeAsString('Fictional new data');
       final before = await fictionalSnapshot(f.vault);
@@ -360,7 +363,7 @@ void main() {
           service.importVaultZip(zip), throwsA(isA<LegacyVaultZipException>()));
       expect(
           (await f.vault.list().toList())
-              .any((e) => e.path.contains('.neura-import-')),
+              .any((e) => p.basename(e.path).startsWith('.neura-import-')),
           isTrue);
       final restarted = f.service();
       expect((await restarted.listCapsules()).map((c) => c.id), ['existing']);
@@ -380,7 +383,7 @@ void main() {
       expect((await f.service().listCapsules()).length, 2);
       expect(
           (await f.vault.list().toList())
-              .any((e) => e.path.contains('.neura-import-')),
+              .any((e) => p.basename(e.path).startsWith('.neura-import-')),
           isFalse);
     });
   });
