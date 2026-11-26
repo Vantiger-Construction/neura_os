@@ -207,6 +207,9 @@ class NeuraOllamaChat with WidgetsBindingObserver {
   /// Largest request accepted natively (charter, history, tools).
   static const maxRequestBytes = 24576;
 
+  /// Largest per-turn cue accepted natively.
+  static const maxCueBytes = 512;
+
   /// Poll cadence for the native worker. Short enough that streamed text and
   /// the final reply reach Dart promptly; each poll is a cheap in-process copy.
   static const pollInterval = Duration(milliseconds: 20);
@@ -411,12 +414,18 @@ class NeuraOllamaChat with WidgetsBindingObserver {
   /// streamed so far is also reported as it grows (each call a longer prefix),
   /// so callers can display and speak a reply before generation finishes.
   /// Partial text is unverified until this future completes.
+  ///
+  /// [cue] is a short per-turn note (at most [maxCueBytes]). It is sent after
+  /// the newest turn rather than inside [system], so the charter and earlier
+  /// turns stay identical between turns and Ollama reuses their cached prompt
+  /// evaluation instead of re-reading the whole conversation every turn.
   Future<String> reply({
     required String system,
     required List<Map<String, dynamic>> messages,
     required NeuraGenerationCancel cancel,
     void Function(String textSoFar)? onPartial,
     List<Map<String, dynamic>> tools = const [],
+    String cue = '',
   }) async {
     if (!_allowed) throw StateError('Offline chat is unavailable.');
     cancel.throwIfCancelled();
@@ -425,6 +434,7 @@ class NeuraOllamaChat with WidgetsBindingObserver {
       'system': system,
       'messages': messages,
       if (tools.isNotEmpty) 'tools': tools,
+      if (cue.trim().isNotEmpty) 'cue': cue,
     });
     if (utf8.encode(payload).length > maxRequestBytes) {
       throw StateError('This conversation is too large for offline chat.');
