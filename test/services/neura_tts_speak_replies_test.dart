@@ -59,7 +59,8 @@ void main() {
       SafeBoot.instance.safeMode.value = false;
       SafeBoot.instance.restartRequired.value = false;
       await NeuraPrefsCache.prefs.clear();
-      await NeuraTtsService.instance.setReplySpeechMode(NeuraReplySpeechMode.off);
+      await NeuraTtsService.instance
+          .setReplySpeechMode(NeuraReplySpeechMode.off);
       await NeuraPrefsCache.prefs.setDouble('neura.tts.volume', 0.0);
       await NeuraPrefsCache.prefs.setBool(NeuraStartupVoicePrefs.key, false);
       await NeuraPrefsCache.prefs.setString('synthetic.unrelated', 'keep');
@@ -90,7 +91,8 @@ void main() {
       expect(service.replySpeechMode, NeuraReplySpeechMode.afterComplete);
       expect(NeuraPrefsCache.prefs.getDouble('neura.tts.volume'), 0.7);
       expect(service.volume, 0.7);
-      expect(NeuraPrefsCache.prefs.getBool(NeuraStartupVoicePrefs.key), isFalse);
+      expect(
+          NeuraPrefsCache.prefs.getBool(NeuraStartupVoicePrefs.key), isFalse);
       expect(NeuraPrefsCache.prefs.getString('synthetic.unrelated'), 'keep');
       expect(nativeCalls, isEmpty);
     });
@@ -123,7 +125,8 @@ void main() {
 
         expect(service.replySpeechMode, NeuraReplySpeechMode.off);
         expect(NeuraPrefsCache.prefs.getDouble('neura.tts.volume'), 0.0);
-        expect(NeuraPrefsCache.prefs.getBool(NeuraStartupVoicePrefs.key), isFalse);
+        expect(
+            NeuraPrefsCache.prefs.getBool(NeuraStartupVoicePrefs.key), isFalse);
         expect(nativeCalls, isEmpty);
       });
     }

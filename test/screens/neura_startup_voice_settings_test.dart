@@ -119,14 +119,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  settingsTest('entering Safe Mode updates startup-listening controls immediately',
+  settingsTest(
+      'entering Safe Mode updates startup-listening controls immediately',
       (tester) async {
     await tester.tap(find.byKey(const Key('safe-mode-switch')));
     await tester.pumpAndSettle();
     expect(SafeBoot.instance.safeMode.value, isTrue);
     expect(
         tester
-            .widget<SwitchListTile>(find.byKey(const Key('startup-voice-switch')))
+            .widget<SwitchListTile>(
+                find.byKey(const Key('startup-voice-switch')))
             .onChanged,
         isNull);
     expect(spoken, isEmpty);

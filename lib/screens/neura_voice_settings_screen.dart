@@ -205,8 +205,7 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
                 SwitchListTile(
                   key: const Key('reply-sound-on-startup-switch'),
                   title: const Text('Spoken replies on startup'),
-                  subtitle: const Text(
-                      'Turn reply speech on when Neura opens. '
+                  subtitle: const Text('Turn reply speech on when Neura opens. '
                       'Restore muted voice volume to 70%.'),
                   value: _replySoundOnStartup,
                   onChanged: _setReplySoundOnStartup,

@@ -15,7 +15,8 @@ void main() {
     SafeBoot.instance.restartRequired.value = false;
   });
 
-  testWidgets('Settings exposes Safe Mode and explains the restart when cleared',
+  testWidgets(
+      'Settings exposes Safe Mode and explains the restart when cleared',
       (tester) async {
     await tester.pumpWidget(const MaterialApp(home: SettingsScreen()));
     final finder = find.byKey(const Key('safe-mode-switch'));
@@ -49,7 +50,8 @@ void main() {
             .widget<SwitchListTile>(find.byKey(const Key('safe-mode-switch')))
             .value,
         isTrue);
-    expect(find.textContaining('Microphone, speech and cloud services are paused'),
+    expect(
+        find.textContaining('Microphone, speech and cloud services are paused'),
         findsOneWidget);
   });
 }

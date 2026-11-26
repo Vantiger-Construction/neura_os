@@ -28,7 +28,8 @@ void main() {
       await state.delete();
       await Directory(state.path).create();
 
-      await expectLater(boot.clearSafeMode(), throwsA(isA<FileSystemException>()));
+      await expectLater(
+          boot.clearSafeMode(), throwsA(isA<FileSystemException>()));
       expect(boot.safeMode.value, isTrue);
       expect(boot.restartRequired.value, isFalse);
       expect(boot.consecutiveFailures, 2);
