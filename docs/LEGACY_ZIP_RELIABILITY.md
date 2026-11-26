@@ -123,7 +123,9 @@ flutter test --no-pub --concurrency 2 --timeout 2m
 
 The matrix resolves exact archive 4.6.0 and 4.7.1 package archives into a fresh
 temporary cache, verifies their known SHA-256 hashes, substitutes only archive
-in copies of package_config, and leaves the application lockfile unchanged.
+in temporary package_config copies beside the active configuration. It checks
+that archive has the same dependency-graph edges and leaves the active config,
+application graph and lockfile unchanged.
 It runs the regression suite under each reader version, produces fresh raw,
 decrypted and fallback exports under each version, then performs all four
 producer/reader combinations. Original and new evidence remain separate.
