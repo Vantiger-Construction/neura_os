@@ -318,8 +318,10 @@ class NeuraAiService {
             hiddenUserTurns: hidden,
           );
         }
-        final offlineSystem = '$systemPrompt$kNeuraOfflineSystemSuffix'
-            '${emotionCue.isEmpty ? '' : '\n\n$emotionCue'}';
+        // The cue goes after the newest turn, not into the system prompt: a
+        // system prompt that changes every turn forces the local model to
+        // re-read the whole conversation (minutes on a laptop CPU).
+        final offlineSystem = '$systemPrompt$kNeuraOfflineSystemSuffix';
         if (offlineReference == null) {
           // Ordinary chat streams whole sentences, each screened before it is
           // shown or spoken, so speech starts after the first sentence.
@@ -351,6 +353,7 @@ class NeuraAiService {
               messages: messages,
               cancel: cancel,
               tools: offlineTools,
+              cue: emotionCue,
               onTurn: (value) => turn = value,
             );
             final calls = turn?.toolCalls ?? const <NeuraOllamaToolCall>[];
@@ -399,6 +402,7 @@ class NeuraAiService {
           system: offlineSystem,
           messages: recent,
           cancel: cancel,
+          cue: emotionCue,
         );
         cancel.throwIfCancelled();
         checkReference();
@@ -738,6 +742,7 @@ class NeuraAiService {
     required List<Map<String, dynamic>> messages,
     required NeuraGenerationCancel cancel,
     List<Map<String, dynamic>> tools = const [],
+    String cue = '',
     void Function(NeuraOllamaTurn turn)? onTurn,
   }) async* {
     // A child token lets a guardrail block stop native generation without
@@ -752,6 +757,7 @@ class NeuraAiService {
           cancel: generation,
           onPartial: partials.add,
           tools: tools,
+          cue: cue,
         )
         .whenComplete(partials.close);
     reply.ignore(); // Awaited below; avoid an unhandled-error report meanwhile.
