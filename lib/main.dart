@@ -235,11 +235,8 @@ class _NeuraBootstrapFrame extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ValueListenableBuilder<bool>(
-                valueListenable: SafeBoot.instance.safeMode,
-                builder: (_, safeMode, __) =>
-                    NeuraStartupAvatar(animate: !safeMode),
-              ),
+              // Motion preferences have not loaded in this early frame.
+              const NeuraStartupAvatar(animate: false),
               const SizedBox(height: 18),
               const Text(
                 'Starting Neura safely…',

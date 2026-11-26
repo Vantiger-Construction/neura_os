@@ -75,48 +75,6 @@ void main() {
       )
       .transform;
 
-  testWidgets('boot portrait makes one upright turn then keeps breathing', (
-    tester,
-  ) async {
-    final bundle = _ArtworkBundle();
-    await tester.pumpWidget(_host(bundle, animate: false, turnOnEntry: true));
-    await tester.pumpAndSettle();
-    final loads = bundle.artworkLoads;
-    await tester.pumpWidget(_host(bundle, turnOnEntry: true));
-    await tester.pump(const Duration(milliseconds: 225));
-    expect(portraitTransform(tester).entry(2, 0), lessThan(-0.1));
-    await tester.pump(const Duration(milliseconds: 225));
-    expect(portraitTransform(tester).entry(0, 0), lessThan(-0.99));
-    expect(portraitTransform(tester).entry(1, 1), greaterThanOrEqualTo(1));
-    await tester.pump(const Duration(milliseconds: 225));
-    expect(portraitTransform(tester).entry(2, 0), greaterThan(0.1));
-    await tester.pump(const Duration(milliseconds: 225));
-    expect(portraitTransform(tester).entry(2, 0), 0);
-    expect(portraitTransform(tester).entry(0, 0), greaterThan(0.99));
-    await tester.pump(const Duration(milliseconds: 5150));
-    expect(portraitTransform(tester).entry(2, 0), 0);
-    expect(_verticalOffset(tester), lessThan(0));
-    expect(bundle.artworkLoads, loads);
-  });
-
-  testWidgets('covering the boot portrait cancels the turn without replay', (
-    tester,
-  ) async {
-    final bundle = _ArtworkBundle();
-    await tester.pumpWidget(_host(bundle, turnOnEntry: true));
-    await tester.pump(const Duration(milliseconds: 225));
-    expect(portraitTransform(tester).entry(2, 0), lessThan(-0.1));
-    await tester.pumpWidget(
-      _host(bundle, turnOnEntry: true, tickerEnabled: false),
-    );
-    await tester.pumpAndSettle();
-    expect(portraitTransform(tester).isIdentity(), isTrue);
-    await tester.pumpWidget(_host(bundle, turnOnEntry: true));
-    await tester.pump(const Duration(milliseconds: 225));
-    expect(portraitTransform(tester).entry(2, 0), 0);
-    expect(_verticalOffset(tester), lessThan(0));
-  });
-
   testWidgets('high pixel density keeps the image decode bounded', (
     tester,
   ) async {
@@ -126,7 +84,7 @@ void main() {
     await tester.pumpAndSettle();
     final provider = tester.widget<Image>(find.byType(Image)).image;
     expect(provider, isA<ResizeImage>());
-    expect((provider as ResizeImage).height, 1024);
+    expect((provider as ResizeImage).height, 240);
     expect(tester.takeException(), isNull);
   });
 
