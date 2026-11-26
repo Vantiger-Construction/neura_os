@@ -200,6 +200,36 @@ void main() {
     await sub.cancel();
   });
 
+  localTest('a phrase the recognizer doubts is shown but never sent', () async {
+    final heard = <String>[];
+    final shown = <String>[];
+    final subs = [
+      input.finalPhraseStream.listen(heard.add),
+      input.transcriptStream.listen(shown.add),
+    ];
+    handler = (call) async {
+      if (call.method != 'poll') return true;
+      return {
+        'session': (call.arguments as Map)['session'],
+        'listening': true,
+        'text': 'Synthetic misheard phrase',
+        'final': true,
+        'unsure': true,
+      };
+    };
+    final status = input.statusStream.first;
+    expect(await input.startRecording(), isTrue);
+    expect(await status.timeout(const Duration(seconds: 5)),
+        NeuraLocalSpeechInput.unsureHeard);
+    expect(shown, ['Synthetic misheard phrase']);
+    expect(heard, isEmpty);
+    expect(input.isListening, isFalse);
+    expect(calls.last.method, 'stop');
+    for (final sub in subs) {
+      await sub.cancel();
+    }
+  });
+
   localTest('background polling stops capture and discards pending words',
       () async {
     expect(await input.startRecording(), isTrue);

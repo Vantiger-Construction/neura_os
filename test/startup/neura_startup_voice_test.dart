@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:neuro_companion/modules/chat/neura_chat_screen.dart';
 import 'package:neuro_companion/neura_shell/neura_shell_state.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
+import 'package:neuro_companion/services/neura_local_speech_input.dart';
 import 'package:neuro_companion/services/neura_speech_input.dart';
 import 'package:neuro_companion/services/neura_startup_voice_prefs.dart';
 import 'package:neuro_companion/services/neura_tts_service.dart';
@@ -278,6 +279,24 @@ void main() {
       await tester.pump();
       await disposing;
     }
+  });
+
+  startupTest('doubtful words stay in the box for review, never sent',
+      (tester) async {
+    await pumpChat(tester, startup: false, listenNow: true);
+    expect(input.isListening, isTrue);
+    input.transcripts.add('Synthetic misheard words');
+    await tester.pump();
+    input.statuses.add(NeuraLocalSpeechInput.unsureHeard);
+    await tester.pump();
+    final field = tester.widget<TextField>(find.byType(TextField).first);
+    expect(field.controller!.text, 'Synthetic misheard words');
+    expect(find.text(NeuraLocalSpeechInput.unsureHeard), findsOneWidget);
+    // A late final for the abandoned capture cannot send the draft.
+    input.finals.add('Synthetic misheard words');
+    await tester.pump();
+    expect(field.controller!.text, 'Synthetic misheard words');
+    await tester.pumpWidget(const SizedBox());
   });
 
   startupTest('ordinary chat stays silent even with startup opt-in',

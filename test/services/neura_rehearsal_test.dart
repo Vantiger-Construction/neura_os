@@ -24,6 +24,8 @@ class _ScriptedOllama extends NeuraOllamaChat {
     required NeuraGenerationCancel cancel,
     void Function(String partial)? onPartial,
     List<Map<String, dynamic>> tools = const [],
+    String cue = '',
+    int? maxTokens,
   }) async {
     systems.add(system);
     sent.add(messages);

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import '../profiles/local_profile_service.dart';
 import 'dart:ui';
 
@@ -20,8 +21,6 @@ import '../persona/services/neura_conversation_mode.dart';
 import '../reliability/safe_boot.dart';
 import '../relationships/services/crisis_text_scan.dart';
 import '../relationships/services/distress_detector.dart';
-import '../src/modules/focus/focus_controller.dart';
-import '../src/modules/focus/focus_mode.dart';
 import 'crisis_playbook_surface.dart';
 import 'emotion_analysis_service.dart';
 import 'neura_offline_prompt.dart';
@@ -136,6 +135,79 @@ class NeuraAiService {
     _diagnostics.recordCancellation();
   }
 
+  /// Primes the on-device model for the next ordinary offline reply in
+  /// [roomId]: loads it and pre-evaluates the exact system prompt and tools
+  /// [streamReply] will send, with no conversation text. Call when the user
+  /// opens offline chat, so the work overlaps with them typing or speaking.
+  /// [withTools] must match whether that reply will pass an `onToolCommand`.
+  /// Best effort and silent: a warm-up that cannot run changes nothing.
+  Future<void> warmOffline({
+    String agentId = AgentPersonaCatalog.generalId,
+    String roomId = 'penthouse',
+    NeuraConversationMode conversationMode = NeuraConversationMode.balanced,
+    bool withTools = true,
+  }) async {
+    try {
+      final profiles = LocalProfileService.instance;
+      final profileSession = profiles.enabled;
+      if (profileSession && !profiles.canUseSession) return;
+      final audience = profileSession
+          ? profiles.active!.audience
+          : NeuraAudienceService.instance.currentAudience;
+      // Must match the arguments streamReply uses for an offline reply
+      // without companion notes; a test pins the two prompts together.
+      final systemPrompt = await NeuraPromptBuilder.instance.buildSystemMessage(
+        agentId: agentId,
+        audience: audience,
+        module: roomId,
+        includePersistentMemory: false,
+        memoryPermission: null,
+        includeCurrentMood: false,
+        includePersonality: false,
+        conversationMode: conversationMode,
+        maxMemoryBytes: 1500,
+      );
+      final tools = !profileSession && withTools
+          ? _offlineTools(
+              NeuraChatPolicy.advertisedTools(NeuraChatPolicy.forRoom(roomId)),
+            )
+          : const <Map<String, dynamic>>[];
+      await (_ollama ??= NeuraOllamaChat()).warm(
+        system: _offlineSystemWithTools(
+          '$systemPrompt$kNeuraOfflineSystemSuffix',
+          tools,
+        ),
+        tools: tools,
+      );
+    } catch (_) {
+      // Warm-up is an optimization only.
+    }
+  }
+
+  static List<Map<String, dynamic>> _offlineTools(
+    List<Map<String, dynamic>> advertised,
+  ) =>
+      [
+        for (final tool in advertised)
+          {
+            'name': tool['name'],
+            'description': tool['description'],
+            'parameters': tool['input_schema'],
+          },
+      ];
+
+  static String _offlineSystemWithTools(
+    String offlineSystem,
+    List<Map<String, dynamic>> tools,
+  ) =>
+      tools.isEmpty
+          ? offlineSystem
+          : offlineSystem.replaceFirst(
+              'No tools are available.',
+              'Use a tool only when the user clearly asks for that action; '
+                  'the user must confirm each one.',
+            );
+
   /// Streams incremental text deltas for a reply to [history].
   ///
   /// Starting a new generation automatically cancels the previous one. Tool
@@ -159,6 +231,7 @@ class NeuraAiService {
     NeuraOfflineBudget offlineBudget = NeuraOfflineBudget.standard,
     String threadContext = '',
     NeuraReferenceGrant? offlineReference,
+    int? offlineMaxTokens,
   }) async* {
     _throwIfCloudBlocked();
     final profiles = LocalProfileService.instance;
@@ -320,39 +393,32 @@ class NeuraAiService {
             hiddenUserTurns: hidden,
           );
         }
-        // Tone and length examples from the user's own ratings: on-device
-        // only, never in profile sessions or reference answers.
-        final style = offlineReference == null &&
-                !profileSession &&
-                history.isNotEmpty &&
-                history.last.isUser
-            ? await NeuraStyleMemory.instance.promptSection(history.last.text)
-            : '';
-        final offlineSystem = '$systemPrompt$kNeuraOfflineSystemSuffix'
-            '${style.isEmpty ? '' : '\n\n$style'}'
-            '${emotionCue.isEmpty ? '' : '\n\n$emotionCue'}';
+        // Keep the system prefix reusable. Fit examples from this device into
+        // the same trailing cue as the emotion note, within its native limit.
+        var cue = emotionCue;
+        if (offlineReference == null &&
+            !profileSession &&
+            history.isNotEmpty &&
+            history.last.isUser) {
+          final separator = emotionCue.isEmpty ? '' : '\n\n';
+          final style = await NeuraStyleMemory.instance.promptSection(
+            history.last.text,
+            byteBudget: NeuraOllamaChat.maxCueBytes -
+                utf8.encode(emotionCue).length -
+                separator.length,
+          );
+          if (style.isNotEmpty) cue = '$emotionCue$separator$style';
+        }
+        final offlineSystem = '$systemPrompt$kNeuraOfflineSystemSuffix';
         if (offlineReference == null) {
           // Ordinary chat streams whole sentences, each screened before it is
           // shown or spoken, so speech starts after the first sentence.
           // The room's tools are offered too; every call is re-checked against
           // the room policy and confirmed by the user before it runs.
           final offlineTools = !profileSession && onToolCommand != null
-              ? [
-                  for (final tool in advertisedTools)
-                    {
-                      'name': tool['name'],
-                      'description': tool['description'],
-                      'parameters': tool['input_schema'],
-                    },
-                ]
+              ? _offlineTools(advertisedTools)
               : const <Map<String, dynamic>>[];
-          final system = offlineTools.isEmpty
-              ? offlineSystem
-              : offlineSystem.replaceFirst(
-                  'No tools are available.',
-                  'Use a tool only when the user clearly asks for that action; '
-                      'the user must confirm each one.',
-                );
+          final system = _offlineSystemWithTools(offlineSystem, offlineTools);
           var messages = recent;
           var actions = 0;
           for (var round = 0;; round++) {
@@ -362,6 +428,8 @@ class NeuraAiService {
               messages: messages,
               cancel: cancel,
               tools: offlineTools,
+              cue: cue,
+              maxTokens: offlineMaxTokens,
               onTurn: (value) => turn = value,
             );
             final calls = turn?.toolCalls ?? const <NeuraOllamaToolCall>[];
@@ -417,6 +485,7 @@ class NeuraAiService {
           system: offlineSystem,
           messages: recent,
           cancel: cancel,
+          cue: emotionCue,
         );
         cancel.throwIfCancelled();
         checkReference();
@@ -842,6 +911,8 @@ class NeuraAiService {
     required List<Map<String, dynamic>> messages,
     required NeuraGenerationCancel cancel,
     List<Map<String, dynamic>> tools = const [],
+    String cue = '',
+    int? maxTokens,
     void Function(NeuraOllamaTurn turn)? onTurn,
   }) async* {
     // A child token lets a guardrail block stop native generation without
@@ -856,6 +927,8 @@ class NeuraAiService {
           cancel: generation,
           onPartial: partials.add,
           tools: tools,
+          cue: cue,
+          maxTokens: maxTokens,
         )
         .whenComplete(partials.close);
     reply.ignore(); // Awaited below; avoid an unhandled-error report meanwhile.
@@ -970,8 +1043,10 @@ class NeuraAiService {
 
     final snapshot = NeuraContextSnapshot(
       now: DateTime.now(),
-      userInFocusMode:
-          FocusController.instance.state.value.mode != FocusMode.off,
+      // Focus modes suppress Neura's own proactive interruptions. A message
+      // the person chose to send is never one, so a focus mode must not turn
+      // every reply into "I can save this for later."
+      userInFocusMode: false,
       isMinor: isMinor,
       distressScore: scan.crisis ? 0.95 : (signal.active ? 0.9 : 0.1),
     );

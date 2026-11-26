@@ -184,10 +184,11 @@ class NeuraStyleMemory {
       .map((m) => m.group(0)!)
       .toSet();
 
-  /// The section for the on-device system prompt, or '' with nothing
+  /// The section for the on-device prompt, or '' with nothing
   /// learned. Picks the liked exchanges closest to [newest] (word overlap),
   /// then the most recent, within [maxSectionBytes].
-  Future<String> promptSection(String newest) async {
+  Future<String> promptSection(String newest,
+      {int byteBudget = maxSectionBytes}) async {
     final _StyleState state;
     try {
       // A plain read: it never waits behind a pending rating write, so a
@@ -196,16 +197,19 @@ class NeuraStyleMemory {
     } catch (_) {
       return ''; // An unreadable style memory never blocks a reply.
     }
-    return sectionFor(state.liked, state.ratings, newest);
+    return sectionFor(state.liked, state.ratings, newest,
+        byteBudget: byteBudget);
   }
 
   @visibleForTesting
   static String sectionFor(
     List<NeuraLikedReply> liked,
     List<({bool liked, int words})> ratings,
-    String newest,
-  ) {
-    final hint = lengthHint(ratings);
+    String newest, {
+    int byteBudget = maxSectionBytes,
+  }) {
+    final preference = lengthHint(ratings);
+    final hint = utf8.encode(preference).length <= byteBudget ? preference : '';
     if (liked.isEmpty) return hint;
     final words = _keywords(newest);
     final ranked = [...liked]..sort((a, b) {
@@ -218,7 +222,7 @@ class NeuraStyleMemory {
     for (final pair in ranked.take(2)) {
       final line = '- They said: "${pair.prompt}" You replied: "${pair.reply}"';
       final size = utf8.encode(line).length + 1;
-      if (bytes + size > maxSectionBytes) continue;
+      if (bytes + size > byteBudget || bytes + size > maxSectionBytes) continue;
       lines.add(line);
       bytes += size;
     }

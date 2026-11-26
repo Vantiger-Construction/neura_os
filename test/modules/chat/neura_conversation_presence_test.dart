@@ -48,6 +48,8 @@ void main() {
   var rustSnapshot = <String, Object>{'state': 'idle'};
   final events = <Object>[];
   final payloads = <Map<String, dynamic>>[];
+  final warmups = <Map<String, dynamic>>[];
+  final warmIds = <int>{};
   final nativeCalls = <String>[];
   Completer<void>? asrStop;
   Completer<void>? speechStop;
@@ -132,6 +134,8 @@ void main() {
     rustSnapshot = {'state': 'idle'};
     events.clear();
     payloads.clear();
+    warmups.clear();
+    warmIds.clear();
     nativeCalls.clear();
     modelReply = null;
     failModel = false;
@@ -184,7 +188,11 @@ void main() {
     binding.defaultBinaryMessenger.setMockMethodCallHandler(engine, (
       call,
     ) async {
-      nativeCalls.add('engine:${call.method}');
+      // Calls about a warm-up's own id are labelled apart, so checks on the
+      // conversational turn (for example, that it was not cancelled) hold.
+      nativeCalls.add(warmIds.contains(call.arguments)
+          ? 'engine:warm:${call.method}'
+          : 'engine:${call.method}');
       if (call.method == 'beginOllamaReadiness') {
         expect(call.arguments, isNull);
         return ++modelId;
@@ -201,10 +209,20 @@ void main() {
         };
       }
       if (call.method == 'beginOllama') {
-        payloads.add(
-          jsonDecode(call.arguments as String) as Map<String, dynamic>,
-        );
+        final payload =
+            jsonDecode(call.arguments as String) as Map<String, dynamic>;
+        // A warm-up carries only the charter and tools, never conversation
+        // text, so it is tracked apart from conversational payloads.
+        if (payload['warm'] == true) {
+          warmups.add(payload);
+          warmIds.add(++modelId);
+          return modelId;
+        }
+        payloads.add(payload);
         return ++modelId;
+      }
+      if (call.method == 'pollOllama' && warmIds.contains(call.arguments)) {
+        return 'Hi';
       }
       if (call.method == 'pollOllama') {
         if (failModel) throw PlatformException(code: 'synthetic-model-failure');
@@ -690,6 +708,28 @@ void main() {
     expect(
         events.whereType<NeuraTalkingEvent>().any((e) => e.isTalking), isFalse);
     expect(nativeCalls, contains('engine:cancelOllama'));
+  });
+
+  conversationTest(
+      'typing starts one silent warm-up with the reply prompt; opening does not',
+      (tester) async {
+    await chat(tester);
+    expect(warmups, isEmpty);
+    await tester.enterText(find.byType(TextField), 'Synth');
+    // The warm-up builds the room prompt first; give it bounded time.
+    for (var i = 0; i < 20 && warmups.isEmpty; i++) {
+      await drain(tester);
+    }
+    expect(warmups, hasLength(1));
+    expect(payloads, isEmpty);
+    await ask(tester);
+    // More typing in the same room does not repeat the warm-up.
+    expect(warmups, hasLength(1));
+    expect(warmups.single.containsKey('messages'), isFalse);
+    expect(warmups.single['system'], payloads.single['system']);
+    expect(warmups.single['tools'], payloads.single['tools']);
+    // Replies shown before they are spoken keep the full token budget.
+    expect(payloads.single.containsKey('max_tokens'), isFalse);
   });
 
   conversationTest(

@@ -55,6 +55,20 @@ void main() {
         lessThanOrEqualTo(NeuraStyleMemory.maxSectionBytes));
   });
 
+  test('turn cue budget keeps UTF-8 examples whole and reserves the hint',
+      () async {
+    for (final reply in ['short', 'closer', '🌧' * 75]) {
+      await memory.rate(prompt: 'Fictional rain', reply: reply, liked: true);
+      now = now.add(const Duration(minutes: 1));
+    }
+    final section = await memory.promptSection('rain', byteBudget: 220);
+    expect(utf8.encode(section).length, lessThanOrEqualTo(220));
+    expect(section, contains('closer'));
+    expect(section, isNot(contains('🌧')));
+    expect(section, endsWith('They prefer short replies.'));
+    expect(await memory.promptSection('rain', byteBudget: 1), isEmpty);
+  });
+
   test('a thumbs down removes that reply from the examples', () async {
     const reply = 'Here is a very long answer.';
     await memory.rate(prompt: 'Hi', reply: reply, liked: true);

@@ -990,6 +990,7 @@ class NeuraPenthousePainter extends CustomPainter {
   bool shouldRepaint(covariant NeuraPenthousePainter oldDelegate) {
     return oldDelegate.room.id != room.id ||
         oldDelegate.overlay != overlay ||
+        oldDelegate.weather != weather ||
         oldDelegate.lampOn != lampOn ||
         oldDelegate.curtainsClosed != curtainsClosed ||
         oldDelegate.showFurniture != showFurniture;

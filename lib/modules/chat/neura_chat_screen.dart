@@ -285,6 +285,17 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     }
     _voiceStatusSub = _voiceInput.statusStream.listen((message) {
       if (!mounted || !_continuousMode) return;
+      if (message == NeuraLocalSpeechInput.unsureHeard) {
+        // Recognition already stopped. Keep the doubtful words in the box so
+        // the person can fix them; ending the conversation would erase them.
+        _voiceSession++;
+        setState(() {
+          _continuousMode = false;
+          _listening = false;
+        });
+        _showVoiceNotice(message);
+        return;
+      }
       unawaited(_endConversation().catchError((_) {}));
       _showVoiceNotice(message);
     });
@@ -305,6 +316,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     _localOllama = !kIsWeb &&
         defaultTargetPlatform == TargetPlatform.windows &&
         !_ai.isConfigured;
+    _controller.addListener(_onDraftChanged);
     _localSession = widget.localSession ?? LocalConversationSession();
     _localSession.addListener(_onLocalChanged);
     SafeBoot.instance.safeMode.addListener(_stopForSafeMode);
@@ -591,6 +603,40 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     setState(() {
       _activeAgent = AgentSelectionService.instance.resolveAgent(room);
     });
+  }
+
+  String? _warmedPrompt;
+  DateTime? _warmedAt;
+
+  /// Loads the on-device model and pre-reads this room's offline prompt as
+  /// soon as the user starts typing or speaking, so the work overlaps with
+  /// composing the message. Opening chat alone stays silent. Only for the
+  /// selected offline route; Safe Mode, background and native admission
+  /// checks still apply. Repeats only when the prompt changes or Ollama's
+  /// keep-alive may have unloaded the model.
+  void _warmOffline() {
+    if (!mounted || !_localOllama || _localSelected || _busy) return;
+    if (!_foreground || SafeBoot.instance.safeMode.value) return;
+    final room = NeuraShell.of(context).room.id;
+    final prompt = '${_activeAgent.id}|$room|${_conversationMode.name}';
+    final now = DateTime.now();
+    final at = _warmedAt;
+    if (prompt == _warmedPrompt &&
+        at != null &&
+        now.difference(at) < const Duration(minutes: 4)) {
+      return;
+    }
+    _warmedPrompt = prompt;
+    _warmedAt = now;
+    unawaited(_ai.warmOffline(
+      agentId: _activeAgent.id,
+      roomId: room,
+      conversationMode: _conversationMode,
+    ));
+  }
+
+  void _onDraftChanged() {
+    if (_controller.text.trim().isNotEmpty) _warmOffline();
   }
 
   /// Every visible state change also re-derives the avatar's presence, so
@@ -887,6 +933,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     }
     final session = ++_voiceSession;
     _startingListening = true;
+    _warmOffline();
     try {
       await WakeWordListenerService.instance
           .stop()
@@ -1640,6 +1687,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         conversationMode: conversationMode,
         localOllama: localOllama,
         offlineBudget: _offlineBudget,
+        // Spoken replies stay short: each offline token costs ~0.5 s on a
+        // laptop CPU, and a listener waits for the whole answer.
+        offlineMaxTokens:
+            useStreamSpeech ? NeuraOllamaChat.spokenMaxTokens : null,
         threadContext: threadContext,
         generationId: generationId,
         selectedContext: selectedContext,

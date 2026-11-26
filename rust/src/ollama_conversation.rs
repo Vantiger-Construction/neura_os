@@ -24,12 +24,20 @@ const MAX_REPLY: usize = 8_192;
 const NUM_CTX: u32 = 4_096;
 /// Longest reply in tokens (about 350 words).
 const NUM_PREDICT: u32 = 512;
+/// Shortest reply cap the app may request (a spoken reply asks for fewer
+/// tokens than a typed one, because on a laptop CPU each token costs ~0.5 s).
+const MIN_MAX_TOKENS: u32 = 32;
 /// Recent turns and their combined UTF-8 bytes retained per request; matches
 /// the Dart `NeuraOfflineBudget.standard` cap.
 const MAX_TURNS: usize = 16;
 const MAX_HISTORY_BYTES: usize = 4_000;
 /// Charter, room and audience framing plus up to 1,500 bytes of approved notes.
 const MAX_SYSTEM_BYTES: usize = 8_192;
+/// A short per-turn note (the tentative mood read). It is sent as a system
+/// message after the newest turn instead of inside the charter, so the charter
+/// and earlier turns stay byte-identical between turns and Ollama reuses their
+/// cached prompt evaluation. On a 4-core laptop CPU that cache saves minutes.
+const MAX_CUE_BYTES: usize = 512;
 /// Whole-reply deadline. A 512-token reply on a 4-core laptop CPU takes about
 /// 100 s on the 4B model and about 200 s on the 8B, streaming throughout.
 const REPLY_DEADLINE: Duration = Duration::from_secs(300);
@@ -39,15 +47,26 @@ const STREAM_IDLE: Duration = Duration::from_secs(120);
 /// The larger model needs ~6 GB for weights plus its 4,096-token cache.
 const LARGE_MIN_TOTAL_MIB: u64 = 14_336;
 const LARGE_MIN_AVAILABLE_MIB: u64 = 6_656;
+/// RAM alone does not make the larger model usable. Measured on a 4-core
+/// laptop CPU (AMD A12-9800B, 15 GB): the 4B model reads prompts at ~5 tok/s
+/// and writes ~1.5-2 tok/s, and the 8B is about half that, so a reply would
+/// take several minutes. Require enough cores to keep it conversational.
+const LARGE_MIN_PHYSICAL_CORES: usize = 6;
 
 /// Whether this host can hold the larger model right now. A model already
 /// resident from the previous turn does not count against available RAM.
 fn large_admitted(resident_large: bool) -> bool {
-    memory_snapshot().is_some_and(|(total, available)| {
-        total >= LARGE_MIN_TOTAL_MIB
-            && available <= total
-            && (resident_large || available >= LARGE_MIN_AVAILABLE_MIB)
-    })
+    large_cores_admitted(physical_cores())
+        && memory_snapshot().is_some_and(|(total, available)| {
+            total >= LARGE_MIN_TOTAL_MIB
+                && available <= total
+                && (resident_large || available >= LARGE_MIN_AVAILABLE_MIB)
+        })
+}
+
+/// Unknown core counts are treated as too few.
+fn large_cores_admitted(cores: Option<usize>) -> bool {
+    cores.is_some_and(|cores| cores >= LARGE_MIN_PHYSICAL_CORES)
 }
 const READINESS_FIELDS: usize = 7;
 /// Streamed NDJSON carries per-token framing, so the body budget is larger
@@ -170,9 +189,20 @@ struct Tool {
 #[serde(deny_unknown_fields)]
 struct Request {
     system: String,
+    #[serde(default)]
     messages: Vec<Turn>,
     #[serde(default)]
     tools: Vec<Tool>,
+    #[serde(default)]
+    cue: String,
+    /// Reply cap below NUM_PREDICT, for replies that will be spoken.
+    #[serde(default)]
+    max_tokens: Option<u32>,
+    /// Load the model and pre-evaluate the charter and tools only: no turns,
+    /// one output token. The next reply with the same charter and tools then
+    /// skips both the cold load and the charter's prompt evaluation.
+    #[serde(default)]
+    warm: bool,
 }
 
 fn valid_tools(tools: &[Tool]) -> bool {
@@ -207,13 +237,28 @@ fn prepare(raw: &[u8]) -> Result<Value, ()> {
     let request: Request = serde_json::from_slice(raw).map_err(|_| ())?;
     if request.system.is_empty()
         || request.system.len() > MAX_SYSTEM_BYTES
-        || request.messages.is_empty()
+        || request.cue.len() > MAX_CUE_BYTES
+        || request
+            .max_tokens
+            .is_some_and(|n| !(MIN_MAX_TOKENS..=NUM_PREDICT).contains(&n))
+        || !valid_tools(&request.tools)
+    {
+        return Err(());
+    }
+    if request.warm {
+        // A warm-up carries no conversation text at all.
+        if !request.messages.is_empty() || !request.cue.is_empty() || request.max_tokens.is_some() {
+            return Err(());
+        }
+        let messages = vec![json!({"role":"system", "content": request.system})];
+        return Ok(payload_for(messages, 1, &request.tools));
+    }
+    if request.messages.is_empty()
         || request.messages.len() > 64
         || !matches!(
             request.messages.last().map(|t| t.role.as_str()),
             Some("user" | "tool")
         )
-        || !valid_tools(&request.tools)
         || request
             .messages
             .iter()
@@ -246,12 +291,21 @@ fn prepare(raw: &[u8]) -> Result<Value, ()> {
     }
     let mut messages = vec![json!({"role":"system", "content": request.system})];
     messages.extend(retained.iter().map(Turn::to_ollama));
+    if !request.cue.trim().is_empty() {
+        messages.push(json!({"role":"system", "content": request.cue}));
+    }
+    let num_predict = request.max_tokens.unwrap_or(NUM_PREDICT);
+    Ok(payload_for(messages, num_predict, &request.tools))
+}
+
+/// The Ollama request body. Warm-ups and replies share every option except
+/// `num_predict`, so a warm-up primes exactly the prefix the reply will reuse.
+fn payload_for(messages: Vec<Value>, num_predict: u32, tools: &[Tool]) -> Value {
     let mut payload = json!({"model": LOCAL_MODEL, "messages": messages, "stream": true,
         "think": false, "keep_alive": KEEP_ALIVE, "options": {"num_ctx":NUM_CTX,
-        "num_predict":NUM_PREDICT, "num_thread":inference_threads(),"temperature":0.6}});
-    if !request.tools.is_empty() {
-        payload["tools"] = request
-            .tools
+        "num_predict":num_predict, "num_thread":inference_threads(),"temperature":0.6}});
+    if !tools.is_empty() {
+        payload["tools"] = tools
             .iter()
             .map(|t| {
                 json!({"type": "function", "function": {
@@ -260,7 +314,7 @@ fn prepare(raw: &[u8]) -> Result<Value, ()> {
             })
             .collect();
     }
-    Ok(payload)
+    payload
 }
 
 #[cfg(test)]
@@ -912,6 +966,123 @@ mod tests {
         let threads = payload["options"]["num_thread"].as_u64().unwrap();
         assert!((2..=8).contains(&threads), "{threads}");
         assert!(payload.get("tools").is_none());
+    }
+
+    #[test]
+    fn warm_up_primes_exactly_the_reply_prefix_and_carries_no_turns() {
+        let tools = json!([{"name": "log_mood_entry", "description": "Save a mood check-in.",
+            "parameters": {"type":"object"}}]);
+        let warm = prepare(
+            json!({"system": "Neura charter", "tools": tools, "warm": true})
+                .to_string()
+                .as_bytes(),
+        )
+        .unwrap();
+        let reply = prepare(
+            json!({"system": "Neura charter", "tools": tools,
+                "messages": [{"role":"user","content":"Hello"}]})
+            .to_string()
+            .as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(
+            warm["messages"],
+            json!([{"role":"system","content":"Neura charter"}])
+        );
+        assert_eq!(warm["messages"][0], reply["messages"][0]);
+        assert_eq!(warm["tools"], reply["tools"]);
+        assert_eq!(warm["options"]["num_predict"], 1);
+        assert_eq!(warm["options"]["num_ctx"], reply["options"]["num_ctx"]);
+        assert_eq!(
+            warm["options"]["num_thread"],
+            reply["options"]["num_thread"]
+        );
+        assert_eq!(warm["keep_alive"], KEEP_ALIVE);
+        // A warm-up never carries conversation text, a cue or a reply cap.
+        for extra in [
+            json!({"messages": [{"role":"user","content":"Hello"}]}),
+            json!({"cue": "Likely mood: calm."}),
+            json!({"max_tokens": 64}),
+        ] {
+            let mut request = json!({"system": "Neura charter", "warm": true});
+            request
+                .as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            assert!(prepare(request.to_string().as_bytes()).is_err(), "{extra}");
+        }
+        assert!(prepare(br#"{"system":"","warm":true}"#).is_err());
+    }
+
+    #[test]
+    fn spoken_replies_may_ask_for_a_shorter_bounded_cap() {
+        let request = |max: Value| {
+            json!({"system": "Neura charter", "max_tokens": max,
+                "messages": [{"role":"user","content":"Hello"}]})
+            .to_string()
+            .into_bytes()
+        };
+        assert_eq!(
+            prepare(&request(json!(200))).unwrap()["options"]["num_predict"],
+            200
+        );
+        assert_eq!(
+            prepare(&request(json!(MIN_MAX_TOKENS))).unwrap()["options"]["num_predict"],
+            MIN_MAX_TOKENS
+        );
+        for bad in [
+            json!(0),
+            json!(MIN_MAX_TOKENS - 1),
+            json!(NUM_PREDICT + 1),
+            json!(-5),
+        ] {
+            assert!(prepare(&request(bad.clone())).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_larger_model_needs_enough_physical_cores() {
+        assert!(!large_cores_admitted(None));
+        assert!(!large_cores_admitted(Some(4)));
+        assert!(!large_cores_admitted(Some(LARGE_MIN_PHYSICAL_CORES - 1)));
+        assert!(large_cores_admitted(Some(LARGE_MIN_PHYSICAL_CORES)));
+        assert!(large_cores_admitted(Some(16)));
+    }
+
+    #[test]
+    fn cue_follows_the_newest_turn_so_the_cached_prefix_survives() {
+        let request = |cue: &str| {
+            json!({"system": "Neura charter", "cue": cue, "messages": [
+                {"role":"user","content":"Earlier"},
+                {"role":"assistant","content":"Reply"},
+                {"role":"user","content":"Newest"},
+            ]})
+            .to_string()
+            .into_bytes()
+        };
+        let calm = prepare(&request("Likely mood: calm.")).unwrap();
+        let tense = prepare(&request("Likely mood: tense.")).unwrap();
+        let messages = calm["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 5);
+        assert_eq!(messages[0]["content"], "Neura charter");
+        assert_eq!(messages[3]["content"], "Newest");
+        assert_eq!(
+            messages[4],
+            json!({"role":"system","content":"Likely mood: calm."})
+        );
+        // Everything before the cue is byte-identical across different cues.
+        assert_eq!(messages[..4], tense["messages"].as_array().unwrap()[..4]);
+        // No cue, or a blank one, adds no message.
+        for cue in ["", "  "] {
+            assert_eq!(
+                prepare(&request(cue)).unwrap()["messages"]
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                4
+            );
+        }
+        assert!(prepare(&request(&"x".repeat(MAX_CUE_BYTES + 1))).is_err());
     }
 
     fn tool_request(messages: Value) -> Vec<u8> {

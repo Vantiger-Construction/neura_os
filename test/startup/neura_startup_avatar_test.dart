@@ -28,6 +28,7 @@ class _ArtworkBundle extends CachingAssetBundle {
 Widget _host(
   _ArtworkBundle bundle, {
   bool animate = true,
+  bool turnOnEntry = false,
   bool reduceMotion = false,
   bool tickerEnabled = true,
   double pixelRatio = 1,
@@ -42,7 +43,12 @@ Widget _host(
           ),
           child: TickerMode(
             enabled: tickerEnabled,
-            child: Center(child: NeuraStartupAvatar(animate: animate)),
+            child: Center(
+              child: NeuraStartupAvatar(
+                animate: animate,
+                turnOnEntry: turnOnEntry,
+              ),
+            ),
           ),
         ),
       ),
@@ -61,6 +67,14 @@ double _verticalOffset(WidgetTester tester) => tester
     .storage[13];
 
 void main() {
+  Matrix4 portraitTransform(WidgetTester tester) => tester
+      .widget<Transform>(
+        find
+            .ancestor(of: find.byType(Image), matching: find.byType(Transform))
+            .first,
+      )
+      .transform;
+
   testWidgets('high pixel density keeps the image decode bounded', (
     tester,
   ) async {
@@ -70,7 +84,7 @@ void main() {
     await tester.pumpAndSettle();
     final provider = tester.widget<Image>(find.byType(Image)).image;
     expect(provider, isA<ResizeImage>());
-    expect((provider as ResizeImage).height, 1024);
+    expect((provider as ResizeImage).height, 240);
     expect(tester.takeException(), isNull);
   });
 
@@ -95,13 +109,15 @@ void main() {
     tester,
   ) async {
     final bundle = _ArtworkBundle();
-    await tester.pumpWidget(_host(bundle));
+    await tester.pumpWidget(_host(bundle, turnOnEntry: true));
     await tester.pump(const Duration(milliseconds: 700));
     expect(_verticalOffset(tester), lessThan(0));
 
-    await tester.pumpWidget(_host(bundle, reduceMotion: true));
+    await tester
+        .pumpWidget(_host(bundle, turnOnEntry: true, reduceMotion: true));
     await tester.pumpAndSettle();
     expect(_verticalOffset(tester), 0);
+    expect(portraitTransform(tester).isIdentity(), isTrue);
     expect(tester.binding.hasScheduledFrame, isFalse);
 
     await tester.pumpWidget(_host(bundle, animate: false));

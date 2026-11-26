@@ -52,6 +52,22 @@ std::string Text(ISpRecoResult* result) {
       static_cast<int>(size), text.data(), count, nullptr, nullptr) != count) return {};
   return text;
 }
+// Desktop dictation turns room noise and mumbles into plausible words. A
+// phrase SAPI itself rates low, or whose words are mostly rated low, goes to
+// the person for review instead of being sent as if they had said it.
+bool Unsure(ISpRecoResult* result) {
+  SPPHRASE* raw = nullptr;
+  if (FAILED(result->GetPhrase(&raw)) || !raw) return true;
+  std::unique_ptr<SPPHRASE, decltype(&CoTaskMemFree)> phrase(raw, CoTaskMemFree);
+  if (phrase->Rule.Confidence == SP_LOW_CONFIDENCE) return true;
+  const ULONG count = phrase->Rule.ulCountOfElements;
+  if (!count || !phrase->pElements) return false;
+  ULONG low = 0;
+  for (ULONG i = 0; i < count; ++i) {
+    if (phrase->pElements[i].ActualConfidence == SP_LOW_CONFIDENCE) ++low;
+  }
+  return low * 2 > count;
+}
 }  // namespace
 
 NeuraLocalSpeechInput::NeuraLocalSpeechInput(
@@ -151,10 +167,12 @@ Map NeuraLocalSpeechInput::Poll() {
     ComPtr<IUnknown> resource(event.elParamType == SPET_LPARAM_IS_OBJECT
         ? reinterpret_cast<IUnknown*>(event.lParam) : nullptr);
     if (event.eEventId == SPEI_RECOGNITION && resource) {
-      const auto text = Text(reinterpret_cast<ISpRecoResult*>(event.lParam));
+      auto* result = reinterpret_cast<ISpRecoResult*>(event.lParam);
+      const auto text = Text(result);
       if (!text.empty()) {
         packet[Value("text")] = Value(text);
         packet[Value("final")] = Value(true);
+        if (Unsure(result)) packet[Value("unsure")] = Value(true);
         break;  // One bounded utterance; Dart stops before generating a reply.
       }
     } else if (event.eEventId == SPEI_END_SR_STREAM) {
