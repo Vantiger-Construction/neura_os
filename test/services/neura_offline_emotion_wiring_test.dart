@@ -10,6 +10,8 @@ import 'package:neuro_companion/services/neura_model_router.dart';
 import 'package:neuro_companion/services/neura_offline_budget.dart';
 import 'package:neuro_companion/services/neura_offline_prompt.dart';
 import 'package:neuro_companion/services/neura_ollama_chat.dart';
+import 'package:neuro_companion/src/modules/focus/focus_controller.dart';
+import 'package:neuro_companion/src/modules/focus/focus_mode.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -194,4 +196,20 @@ void main() {
     ).join();
     expect(ollama.maxTokens, [NeuraOllamaChat.spokenMaxTokens, null]);
   });
+
+  for (final mode in FocusMode.values) {
+    test('a focus mode never swallows the message the user sent ($mode)',
+        () async {
+      await FocusController.instance.setMode(mode);
+      addTearDown(() => FocusController.instance.setMode(FocusMode.off));
+      final reply = await ai.streamReply(
+        const [
+          NeuraChatTurn(isUser: true, text: 'What should I cook tonight?')
+        ],
+        localOllama: true,
+      ).join();
+      expect(reply, 'Synthetic offline reply.');
+      expect(ollama.sent.single.last['content'], 'What should I cook tonight?');
+    });
+  }
 }

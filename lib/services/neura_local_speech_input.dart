@@ -52,6 +52,11 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
   static const silenceEnded =
       'No speech detected. The local recognition window ended.';
 
+  /// The recognizer doubted what it heard. Its words stay in the message box
+  /// for the person to correct or send; nothing is sent on their behalf.
+  static const unsureHeard =
+      "I'm not sure I heard that right. Check the words, then send.";
+
   // Windows may not report a lifecycle state until focus first changes, so
   // an unreported state counts as foreground, as it does everywhere else in
   // the app. The native recognizer still refuses to start unless Neura's
@@ -197,14 +202,23 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
         throw StateError('Invalid local speech session.');
       }
       final text = packet['text'];
+      final unsure = packet['final'] == true && packet['unsure'] == true;
       if (text is String &&
           text.length <= 16384 &&
           !text.codeUnits.any((c) => c == 0 || c == 0x7f)) {
         _text = text;
         if (text.isNotEmpty) {
           _transcripts.add(text);
-          if (packet['final'] == true) _finals.add(text);
+          // A phrase the recognizer itself doubts is shown, never sent.
+          if (packet['final'] == true && !unsure) _finals.add(text);
         }
+      }
+      if (unsure) {
+        await stopRecording();
+        if (_allowed && _generation == generation + 1) {
+          _statuses.add(unsureHeard);
+        }
+        return;
       }
       if (packet['listening'] != true && packet['final'] != true) {
         await stopRecording();
