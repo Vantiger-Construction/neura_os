@@ -30,6 +30,11 @@ const MAX_TURNS: usize = 16;
 const MAX_HISTORY_BYTES: usize = 4_000;
 /// Charter, room and audience framing plus up to 1,500 bytes of approved notes.
 const MAX_SYSTEM_BYTES: usize = 8_192;
+/// A short per-turn note (the tentative mood read). It is sent as a system
+/// message after the newest turn instead of inside the charter, so the charter
+/// and earlier turns stay byte-identical between turns and Ollama reuses their
+/// cached prompt evaluation. On a 4-core laptop CPU that cache saves minutes.
+const MAX_CUE_BYTES: usize = 512;
 /// Whole-reply deadline. A 512-token reply on a 4-core laptop CPU takes about
 /// 100 s on the 4B model and about 200 s on the 8B, streaming throughout.
 const REPLY_DEADLINE: Duration = Duration::from_secs(300);
@@ -173,6 +178,8 @@ struct Request {
     messages: Vec<Turn>,
     #[serde(default)]
     tools: Vec<Tool>,
+    #[serde(default)]
+    cue: String,
 }
 
 fn valid_tools(tools: &[Tool]) -> bool {
@@ -207,6 +214,7 @@ fn prepare(raw: &[u8]) -> Result<Value, ()> {
     let request: Request = serde_json::from_slice(raw).map_err(|_| ())?;
     if request.system.is_empty()
         || request.system.len() > MAX_SYSTEM_BYTES
+        || request.cue.len() > MAX_CUE_BYTES
         || request.messages.is_empty()
         || request.messages.len() > 64
         || !matches!(
@@ -246,6 +254,9 @@ fn prepare(raw: &[u8]) -> Result<Value, ()> {
     }
     let mut messages = vec![json!({"role":"system", "content": request.system})];
     messages.extend(retained.iter().map(Turn::to_ollama));
+    if !request.cue.trim().is_empty() {
+        messages.push(json!({"role":"system", "content": request.cue}));
+    }
     let mut payload = json!({"model": LOCAL_MODEL, "messages": messages, "stream": true,
         "think": false, "keep_alive": KEEP_ALIVE, "options": {"num_ctx":NUM_CTX,
         "num_predict":NUM_PREDICT, "num_thread":inference_threads(),"temperature":0.6}});
@@ -912,6 +923,42 @@ mod tests {
         let threads = payload["options"]["num_thread"].as_u64().unwrap();
         assert!((2..=8).contains(&threads), "{threads}");
         assert!(payload.get("tools").is_none());
+    }
+
+    #[test]
+    fn cue_follows_the_newest_turn_so_the_cached_prefix_survives() {
+        let request = |cue: &str| {
+            json!({"system": "Neura charter", "cue": cue, "messages": [
+                {"role":"user","content":"Earlier"},
+                {"role":"assistant","content":"Reply"},
+                {"role":"user","content":"Newest"},
+            ]})
+            .to_string()
+            .into_bytes()
+        };
+        let calm = prepare(&request("Likely mood: calm.")).unwrap();
+        let tense = prepare(&request("Likely mood: tense.")).unwrap();
+        let messages = calm["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 5);
+        assert_eq!(messages[0]["content"], "Neura charter");
+        assert_eq!(messages[3]["content"], "Newest");
+        assert_eq!(
+            messages[4],
+            json!({"role":"system","content":"Likely mood: calm."})
+        );
+        // Everything before the cue is byte-identical across different cues.
+        assert_eq!(messages[..4], tense["messages"].as_array().unwrap()[..4]);
+        // No cue, or a blank one, adds no message.
+        for cue in ["", "  "] {
+            assert_eq!(
+                prepare(&request(cue)).unwrap()["messages"]
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                4
+            );
+        }
+        assert!(prepare(&request(&"x".repeat(MAX_CUE_BYTES + 1))).is_err());
     }
 
     fn tool_request(messages: Value) -> Vec<u8> {
