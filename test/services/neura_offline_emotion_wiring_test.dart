@@ -80,8 +80,8 @@ void main() {
           text:
               "I have three deadlines tomorrow and I don't know where to start"),
     ]);
-    expect(cue,
-        'Likely mood: very overwhelmed. Respond to it without naming it.');
+    expect(
+        cue, 'Likely mood: very overwhelmed. Respond to it without naming it.');
     expect(utf8.encode(ollama.systems.single).length, lessThanOrEqualTo(6500));
     expect(
       utf8.encode(cue).length,
