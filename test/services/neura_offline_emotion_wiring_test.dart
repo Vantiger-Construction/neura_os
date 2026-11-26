@@ -18,6 +18,7 @@ class _CapturingOllama extends NeuraOllamaChat {
   _CapturingOllama() : super(supported: true);
   final systems = <String>[];
   final sent = <List<Map<String, dynamic>>>[];
+  final cues = <String>[];
 
   @override
   Future<String> reply({
@@ -26,9 +27,11 @@ class _CapturingOllama extends NeuraOllamaChat {
     required NeuraGenerationCancel cancel,
     void Function(String textSoFar)? onPartial,
     List<Map<String, dynamic>> tools = const [],
+    String cue = '',
   }) async {
     systems.add(system);
     sent.add(messages);
+    cues.add(cue);
     return 'Synthetic offline reply.';
   }
 }
@@ -54,6 +57,7 @@ void main() {
     );
   });
 
+  /// Returns the per-turn cue sent alongside the newest turn.
   Future<String> send(
     List<NeuraChatTurn> history, {
     NeuraOfflineBudget budget = NeuraOfflineBudget.standard,
@@ -62,32 +66,57 @@ void main() {
         .streamReply(history, localOllama: true, offlineBudget: budget)
         .join();
     expect(ollama.systems, hasLength(1));
-    return ollama.systems.single;
+    // The system prompt never carries the per-turn cue, so it stays identical
+    // between turns and the local model reuses its cached evaluation.
+    expect(ollama.systems.single, endsWith(kNeuraOfflineSystemSuffix));
+    return ollama.cues.single;
   }
 
-  test('a clear feeling adds one tentative cue after the offline rules',
+  test('a clear feeling adds one tentative cue after the newest turn',
       () async {
-    final system = await send(const [
+    final cue = await send(const [
       NeuraChatTurn(
           isUser: true,
           text:
               "I have three deadlines tomorrow and I don't know where to start"),
     ]);
-    expect(system, contains(kNeuraOfflineSystemSuffix));
+    expect(cue,
+        'Likely mood: very overwhelmed. Respond to it without naming it.');
+    expect(utf8.encode(ollama.systems.single).length, lessThanOrEqualTo(6500));
     expect(
-        system,
-        endsWith('$kNeuraOfflineSystemSuffix\n\n'
-            'Likely mood: very overwhelmed. Respond to it without naming it.'));
-    expect(utf8.encode(system).length, lessThanOrEqualTo(6500));
+      utf8.encode(cue).length,
+      lessThanOrEqualTo(NeuraOllamaChat.maxCueBytes),
+    );
+  });
+
+  test('the system prompt is identical whatever the mood', () async {
+    await ai.streamReply(const [
+      NeuraChatTurn(
+          isUser: true,
+          text:
+              "I have three deadlines tomorrow and I don't know where to start"),
+    ], localOllama: true).join();
+    await ai.streamReply(const [
+      NeuraChatTurn(isUser: true, text: 'How long should I boil an egg?'),
+    ], localOllama: true).join();
+    expect(ollama.systems, hasLength(2));
+    expect(ollama.systems.first, ollama.systems.last);
+    expect(ollama.cues.first, isNotEmpty);
+    expect(ollama.cues.last, isEmpty);
+  });
+
+  test('every possible cue fits the native cue limit', () {
+    expect(
+      EmotionRead.maxCueBytes,
+      lessThanOrEqualTo(NeuraOllamaChat.maxCueBytes),
+    );
   });
 
   test('an ordinary message sends no cue at all', () async {
-    final system = await send(const [
+    final cue = await send(const [
       NeuraChatTurn(isUser: true, text: 'How long should I boil an egg?'),
     ]);
-    expect(system, endsWith(kNeuraOfflineSystemSuffix));
-    expect(system, isNot(contains('Likely mood')));
-    expect(system, isNot(contains('Earlier in this chat')));
+    expect(cue, isEmpty);
   });
 
   test('a feeling that scrolled out of the model view is gently recalled',
@@ -103,19 +132,19 @@ void main() {
         NeuraChatTurn(isUser: true, text: 'Another everyday question $i?'),
       ],
     ];
-    final system = await send(history, budget: NeuraOfflineBudget.compact);
+    final cue = await send(history, budget: NeuraOfflineBudget.compact);
     final visible = ollama.sent.single.map((m) => m['content']).toList();
     expect(visible, isNot(contains(history.first.text)));
-    expect(system, endsWith(EmotionAnalysisService.earlierCue('anxious')));
+    expect(cue, EmotionAnalysisService.earlierCue('anxious'));
   });
 
   test('a feeling still in view is left for the model to read itself',
       () async {
-    final system = await send(const [
+    final cue = await send(const [
       NeuraChatTurn(isUser: true, text: "I'm so nervous about my exam"),
       NeuraChatTurn(isUser: false, text: 'Synthetic support.'),
       NeuraChatTurn(isUser: true, text: 'Anyway, what should I cook?'),
     ]);
-    expect(system, endsWith(kNeuraOfflineSystemSuffix));
+    expect(cue, isEmpty);
   });
 }
