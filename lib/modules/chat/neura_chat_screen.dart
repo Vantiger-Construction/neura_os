@@ -207,6 +207,17 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     _voiceInput = widget.speechInput ?? NeuraLocalSpeechInput.instance;
     _voiceStatusSub = _voiceInput.statusStream.listen((message) {
       if (!mounted || !_continuousMode) return;
+      if (message == NeuraLocalSpeechInput.unsureHeard) {
+        // Recognition already stopped. Keep the doubtful words in the box so
+        // the person can fix them; ending the conversation would erase them.
+        _voiceSession++;
+        setState(() {
+          _continuousMode = false;
+          _listening = false;
+        });
+        _showVoiceNotice(message);
+        return;
+      }
       unawaited(_endConversation().catchError((_) {}));
       _showVoiceNotice(message);
     });
