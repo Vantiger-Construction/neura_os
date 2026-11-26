@@ -31,6 +31,7 @@ import '../services/neura_swarm_service.dart';
 import '../services/wake_word_listener_service.dart';
 import '../services/wake_word_prefs.dart';
 import '../services/neura_startup_voice_prefs.dart';
+import '../services/neura_tts_service.dart';
 import '../src/modules/focus/focus_controller.dart';
 import '../src/shell/shell_prefs.dart';
 import 'neura_error_pipeline.dart';
@@ -315,6 +316,12 @@ class NeuraStartupCoordinator {
         'Disabled by Safe Mode.',
       );
     } else {
+      // Preference writes only: native playback stays lazy, and startup
+      // listening still requires its separate saved opt-in.
+      await _safe(
+        NeuraTtsService.instance.prepareReplySoundForStartup,
+        'ReplySoundStartup',
+      );
       ModuleHealthMonitor.instance.skipped(
         'VoicePack',
         'Deferred until user-requested playback to keep native audio out of launch.',
