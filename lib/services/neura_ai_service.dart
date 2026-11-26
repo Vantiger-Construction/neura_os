@@ -134,6 +134,79 @@ class NeuraAiService {
     _diagnostics.recordCancellation();
   }
 
+  /// Primes the on-device model for the next ordinary offline reply in
+  /// [roomId]: loads it and pre-evaluates the exact system prompt and tools
+  /// [streamReply] will send, with no conversation text. Call when the user
+  /// opens offline chat, so the work overlaps with them typing or speaking.
+  /// [withTools] must match whether that reply will pass an `onToolCommand`.
+  /// Best effort and silent: a warm-up that cannot run changes nothing.
+  Future<void> warmOffline({
+    String agentId = AgentPersonaCatalog.generalId,
+    String roomId = 'penthouse',
+    NeuraConversationMode conversationMode = NeuraConversationMode.balanced,
+    bool withTools = true,
+  }) async {
+    try {
+      final profiles = LocalProfileService.instance;
+      final profileSession = profiles.enabled;
+      if (profileSession && !profiles.canUseSession) return;
+      final audience = profileSession
+          ? profiles.active!.audience
+          : NeuraAudienceService.instance.currentAudience;
+      // Must match the arguments streamReply uses for an offline reply
+      // without companion notes; a test pins the two prompts together.
+      final systemPrompt = await NeuraPromptBuilder.instance.buildSystemMessage(
+        agentId: agentId,
+        audience: audience,
+        module: roomId,
+        includePersistentMemory: false,
+        memoryPermission: null,
+        includeCurrentMood: false,
+        includePersonality: false,
+        conversationMode: conversationMode,
+        maxMemoryBytes: 1500,
+      );
+      final tools = !profileSession && withTools
+          ? _offlineTools(
+              NeuraChatPolicy.advertisedTools(NeuraChatPolicy.forRoom(roomId)),
+            )
+          : const <Map<String, dynamic>>[];
+      await (_ollama ??= NeuraOllamaChat()).warm(
+        system: _offlineSystemWithTools(
+          '$systemPrompt$kNeuraOfflineSystemSuffix',
+          tools,
+        ),
+        tools: tools,
+      );
+    } catch (_) {
+      // Warm-up is an optimization only.
+    }
+  }
+
+  static List<Map<String, dynamic>> _offlineTools(
+    List<Map<String, dynamic>> advertised,
+  ) =>
+      [
+        for (final tool in advertised)
+          {
+            'name': tool['name'],
+            'description': tool['description'],
+            'parameters': tool['input_schema'],
+          },
+      ];
+
+  static String _offlineSystemWithTools(
+    String offlineSystem,
+    List<Map<String, dynamic>> tools,
+  ) =>
+      tools.isEmpty
+          ? offlineSystem
+          : offlineSystem.replaceFirst(
+              'No tools are available.',
+              'Use a tool only when the user clearly asks for that action; '
+                  'the user must confirm each one.',
+            );
+
   /// Streams incremental text deltas for a reply to [history].
   ///
   /// Starting a new generation automatically cancels the previous one. Tool
@@ -157,6 +230,7 @@ class NeuraAiService {
     NeuraOfflineBudget offlineBudget = NeuraOfflineBudget.standard,
     String threadContext = '',
     NeuraReferenceGrant? offlineReference,
+    int? offlineMaxTokens,
   }) async* {
     _throwIfCloudBlocked();
     final profiles = LocalProfileService.instance;
@@ -328,22 +402,9 @@ class NeuraAiService {
           // The room's tools are offered too; every call is re-checked against
           // the room policy and confirmed by the user before it runs.
           final offlineTools = !profileSession && onToolCommand != null
-              ? [
-                  for (final tool in advertisedTools)
-                    {
-                      'name': tool['name'],
-                      'description': tool['description'],
-                      'parameters': tool['input_schema'],
-                    },
-                ]
+              ? _offlineTools(advertisedTools)
               : const <Map<String, dynamic>>[];
-          final system = offlineTools.isEmpty
-              ? offlineSystem
-              : offlineSystem.replaceFirst(
-                  'No tools are available.',
-                  'Use a tool only when the user clearly asks for that action; '
-                      'the user must confirm each one.',
-                );
+          final system = _offlineSystemWithTools(offlineSystem, offlineTools);
           var messages = recent;
           var actions = 0;
           for (var round = 0;; round++) {
@@ -354,6 +415,7 @@ class NeuraAiService {
               cancel: cancel,
               tools: offlineTools,
               cue: emotionCue,
+              maxTokens: offlineMaxTokens,
               onTurn: (value) => turn = value,
             );
             final calls = turn?.toolCalls ?? const <NeuraOllamaToolCall>[];
@@ -743,6 +805,7 @@ class NeuraAiService {
     required NeuraGenerationCancel cancel,
     List<Map<String, dynamic>> tools = const [],
     String cue = '',
+    int? maxTokens,
     void Function(NeuraOllamaTurn turn)? onTurn,
   }) async* {
     // A child token lets a guardrail block stop native generation without
@@ -758,6 +821,7 @@ class NeuraAiService {
           onPartial: partials.add,
           tools: tools,
           cue: cue,
+          maxTokens: maxTokens,
         )
         .whenComplete(partials.close);
     reply.ignore(); // Awaited below; avoid an unhandled-error report meanwhile.

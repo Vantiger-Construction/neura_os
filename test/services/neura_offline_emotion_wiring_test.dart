@@ -19,6 +19,17 @@ class _CapturingOllama extends NeuraOllamaChat {
   final systems = <String>[];
   final sent = <List<Map<String, dynamic>>>[];
   final cues = <String>[];
+  final tools = <List<Map<String, dynamic>>>[];
+  final maxTokens = <int?>[];
+  final warmed = <({String system, List<Map<String, dynamic>> tools})>[];
+
+  @override
+  Future<void> warm({
+    required String system,
+    List<Map<String, dynamic>> tools = const [],
+  }) async {
+    warmed.add((system: system, tools: tools));
+  }
 
   @override
   Future<String> reply({
@@ -28,11 +39,16 @@ class _CapturingOllama extends NeuraOllamaChat {
     void Function(String textSoFar)? onPartial,
     List<Map<String, dynamic>> tools = const [],
     String cue = '',
+    int? maxTokens,
   }) async {
     systems.add(system);
     sent.add(messages);
     cues.add(cue);
-    return 'Synthetic offline reply.';
+    this.tools.add(tools);
+    this.maxTokens.add(maxTokens);
+    return tools.isEmpty
+        ? 'Synthetic offline reply.'
+        : jsonEncode({'text': 'Synthetic offline reply.', 'tool_calls': []});
   }
 }
 
@@ -146,5 +162,36 @@ void main() {
       NeuraChatTurn(isUser: true, text: 'Anyway, what should I cook?'),
     ]);
     expect(cue, isEmpty);
+  });
+
+  for (final withTools in [false, true]) {
+    test(
+        'the warm-up primes the exact prompt the next reply sends '
+        '(tools: $withTools)', () async {
+      for (final room in ['penthouse', 'mood_den']) {
+        await ai.warmOffline(roomId: room, withTools: withTools);
+        await ai.streamReply(
+          const [NeuraChatTurn(isUser: true, text: 'How are you today?')],
+          roomId: room,
+          localOllama: true,
+          onToolCommand: withTools ? (_) async => false : null,
+        ).join();
+        expect(ollama.warmed.last.system, ollama.systems.last, reason: room);
+        expect(ollama.warmed.last.tools, ollama.tools.last, reason: room);
+      }
+    });
+  }
+
+  test('spoken replies forward the shorter token cap', () async {
+    await ai.streamReply(
+      const [NeuraChatTurn(isUser: true, text: 'How are you today?')],
+      localOllama: true,
+      offlineMaxTokens: NeuraOllamaChat.spokenMaxTokens,
+    ).join();
+    await ai.streamReply(
+      const [NeuraChatTurn(isUser: true, text: 'How are you today?')],
+      localOllama: true,
+    ).join();
+    expect(ollama.maxTokens, [NeuraOllamaChat.spokenMaxTokens, null]);
   });
 }
