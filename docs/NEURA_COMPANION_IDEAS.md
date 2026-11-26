@@ -69,12 +69,13 @@ never saved.
 
 Each finished reply has a thumbs up and down. `NeuraStyleMemory` keeps up
 to 10 liked exchanges and the word counts of the last 40 ratings, encrypted
-with the device memory key. For the on-device model only, the system prompt
-gains up to two liked exchanges closest to the new message ("match their
-tone and length, not their content") and a length hint learned from ratings
-("They prefer short replies."), within 900 bytes. Nothing is retrained and
-nothing reaches a cloud prompt; profile sessions and reference answers never
-use it. Chat menu → **Forget what I've learned from ratings** clears it.
+with the device memory key. For ordinary on-device chat, a note after the newest
+turn can include a learned length preference and up to two relevant liked
+exchanges as examples of tone and length. The note shares a 512-byte UTF-8
+budget with the emotion cue. Only complete examples that fit are included.
+The system prompt stays reusable between turns. Cloud requests, profile
+sessions and reference answers omit the style examples. Chat menu →
+**Forget what I've learned from ratings** clears it.
 
 ## Mood weather room
 
