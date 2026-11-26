@@ -67,18 +67,17 @@ class _LegacyVaultToolsScreenState extends State<LegacyVaultToolsScreen> {
 
     setState(() => _busy = true);
     try {
-      final file = await LegacyVaultService.instance.exportVaultZip(
+      final result = await LegacyVaultService.instance.exportVaultZipResult(
         decryptEncrypted: true,
         passphrase: pass,
       );
       await SharePlus.instance.share(ShareParams(
-        files: [XFile(file.path)],
-        text:
-            'Neura Companion — Legacy Vault Backup (decrypted)\nTreat as sensitive.',
+        files: [XFile(result.file.path)],
+        text: 'Neura Companion — Legacy Vault Backup\n${result.description}',
       ));
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Decrypted backup share sheet opened.')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(result.description)));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -91,11 +90,11 @@ class _LegacyVaultToolsScreenState extends State<LegacyVaultToolsScreen> {
   Future<void> _importVault() async {
     setState(() => _busy = true);
     try {
-      final count =
-          await LegacyVaultService.instance.importVaultZipInteractive();
+      final result =
+          await LegacyVaultService.instance.importVaultZipInteractiveResult();
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Imported $count capsules.')));
+          .showSnackBar(SnackBar(content: Text(result.description)));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -123,7 +122,7 @@ class _LegacyVaultToolsScreenState extends State<LegacyVaultToolsScreen> {
             leading: const Icon(Icons.archive_outlined),
             title: const Text('Export backup (recommended)'),
             subtitle: const Text(
-                'Creates a ZIP of your Legacy Vault. Encrypted capsules stay encrypted.'),
+                'Encrypted capsule bodies stay encrypted. Attachment bytes and metadata remain readable in the ZIP.'),
             onTap: _busy ? null : _exportVault,
           ),
           ListTile(

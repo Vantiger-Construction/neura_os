@@ -1,0 +1,28 @@
+{
+  "synthetic": true,
+  "source_head": "a0ca21c87a3b3713934b6e307cd98ae8dbda1eea",
+  "fixtures": {
+    "long_trailing.zip": "0a3ca9577142d3b641b8fbbe227dc86d9ef6883ea1b408a8995675257168c457",
+    "vault_wrong.zip": "a251feb70f05001936da7eb93433bc0e1d932a47537e2b03d84fe532c19a0e78",
+    "vault_raw.zip": "02de281a850f4ccd9bb3248e2babfd2660edb82e86a8b1dc7448b72dfc24e4a1",
+    "duplicate_id.zip": "61d91f78a5b28281a4fa3ece3c3001a66856e381350c1ab71f4e6fbeab6b228f",
+    "attachment_write_failure.zip": "dcecc32eddf66d8ba336a835f16ac45cc6bb73cf788fa565509f2a1f5d7eb7c8",
+    "not_a_zip.zip": "062fc9df69e6f229ee67bbcd32c171a6506b89c8c7abd0615e92a0e5b20487af",
+    "packet_raw.zip": "3049ac44f77c63d7f2d1ddb1d2d2c355b9bddb38bc10cf1354ed4bd3a9e88600",
+    "invalid_json_after_valid.zip": "e235207149a028a32bfd90f19be223177187a8442474f824a9e181bdcd3b3391",
+    "truncated_eocd.zip": "79f2878ed9aa7b182ff272195943fde703200f7fcd40a1e1d87e3ba37cf628be",
+    "truncated_local_header.zip": "e4189512dce86b1947115e8c874fccfa6bc12be14b9d92cffe7955bc052865e8",
+    "vault_clear.zip": "4a1ab164e44a6a1757908159c41f7d650999603345e0ef1768e901dd5150b0ed",
+    "duplicate_existing_attachment.zip": "a0a0d826281b1c7ef3215b56763573f8e7ff817d4d670cd9f7765701aed4cf40",
+    "invalid_utf8_after_valid.zip": "258b05d3a05aaa089b785e66afd44b991fb6e6998bd44271dbb783ff923ac164",
+    "empty_input.zip": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "packet_clear.zip": "989e9462ff825d40d634682be0a2be9fa4fb4df6c5ad237eed4312d654475f70",
+    "missing_attachments.zip": "9f1ab17f4f11161f777ee4e5c0c2a35a46de9141838713b614238eef7b71a4bd",
+    "comment_eocd.zip": "9d6c33c09701c93fcc067dec98e6ad5f772f6183db09983c3a8a1c055451e4a7",
+    "packet_only_attachment.zip": "3d3544b81a3a04c8a9b26037cb62f94c26634ad148654b898e52b6b3fdc3a9b3",
+    "packet_wrong.zip": "05902987c941b544ccdfa9567ec1b5445d9774dd116adee753bb895f3f010efc",
+    "crc_only_corruption.zip": "6bde36d59b2de0b11a9f02f3594e9c553784b8f2f38479177c45234eb8f6e683",
+    "extra_path_attachment.zip": "c0cf467d18884f7c3c8e67ee027bd694b7ec5b050972af2bd23e0080a287227e",
+    "invalid_encrypted_fields.zip": "b75019d7d4c7838a5f7493552ce79d1cbab821f65105e9c3ecb00c77fafc8e72"
+  }
+}

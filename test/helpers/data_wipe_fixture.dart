@@ -10,6 +10,7 @@ import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 import 'package:neuro_companion/services/portable_vault_backup_service.dart';
 import 'package:neuro_companion/services/scheduled_backup_settings.dart';
 import 'package:neuro_companion/modules/vault/memory_vault_store.dart';
+import 'package:neuro_companion/src/modules/legacy/legacy_vault_service.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
@@ -60,6 +61,7 @@ class DataWipeFixture {
   static Future<DataWipeFixture> create() async {
     NeuraTeachingService.resetWipeGateForTesting();
     PortableVaultBackupService.resetWipeGateForTesting();
+    LegacyVaultService.resetWipeGateForTesting();
     ScheduledBackupSettings.resetWipeGateForTesting();
     MemoryVaultStore.fullWipeDrainTimeout = const Duration(seconds: 30);
     final root = await Directory.systemTemp.createTemp('neura-full-wipe-test-');
