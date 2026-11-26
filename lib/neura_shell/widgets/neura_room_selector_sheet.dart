@@ -68,7 +68,9 @@ class NeuraRoomSelectorSheet {
                       value: state.ambientEnabled,
                       onChanged: (v) => state.setAmbientEnabled(v),
                       title: const Text('Ambient sound'),
-                      subtitle: const Text('Soft background loop per room'),
+                      subtitle: const Text(
+                          'Soft background loop per room; gentle rain after a '
+                          'hard week'),
                     ),
                   ),
                 ],
