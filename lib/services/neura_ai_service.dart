@@ -20,8 +20,6 @@ import '../persona/services/neura_conversation_mode.dart';
 import '../reliability/safe_boot.dart';
 import '../relationships/services/crisis_text_scan.dart';
 import '../relationships/services/distress_detector.dart';
-import '../src/modules/focus/focus_controller.dart';
-import '../src/modules/focus/focus_mode.dart';
 import 'crisis_playbook_surface.dart';
 import 'emotion_analysis_service.dart';
 import 'neura_offline_prompt.dart';
@@ -936,8 +934,10 @@ class NeuraAiService {
 
     final snapshot = NeuraContextSnapshot(
       now: DateTime.now(),
-      userInFocusMode:
-          FocusController.instance.state.value.mode != FocusMode.off,
+      // Focus modes suppress Neura's own proactive interruptions. A message
+      // the person chose to send is never one, so a focus mode must not turn
+      // every reply into "I can save this for later."
+      userInFocusMode: false,
       isMinor: isMinor,
       distressScore: scan.crisis ? 0.95 : (signal.active ? 0.9 : 0.1),
     );
