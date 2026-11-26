@@ -1,0 +1,63 @@
+name: Neura legacy ZIP compatibility
+
+on:
+  pull_request:
+    branches: [Neura]
+    paths:
+      - 'lib/src/modules/legacy/**'
+      - 'test/legacy/**'
+      - 'tools/archive_compatibility/**'
+      - 'pubspec.lock'
+      - '.github/workflows/neura-legacy-zip-compatibility.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neura-legacy-zip-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compatibility:
+    name: Fictional legacy ZIP matrix (4.6.0 and 4.7.1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source without persistent credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the branch's Flutter pin
+        id: toolchain
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          source = Path('.github/workflows/neura-coverage.yml').read_text()
+          versions = re.findall(r'^  FLUTTER_VERSION: [\'\"]([0-9]+\.[0-9]+\.[0-9]+)[\'\"]\s*$', source, re.MULTILINE)
+          if len(versions) != 1:
+              raise SystemExit('Expected one pinned Flutter version')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print(f'flutter_version={versions[0]}', file=output)
+          PY
+      - name: Install the matching Flutter SDK
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ steps.toolchain.outputs.flutter_version }}
+          channel: stable
+          cache: true
+      - name: Restore locked application dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Run both real archive packages on fictional fixtures and fresh exports
+        run: python3 tools/archive_compatibility/run_matrix.py
+      - name: Preserve synthetic compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: neura-legacy-zip-${{ github.sha }}
+          path: build/legacy-zip-compatibility/
+          if-no-files-found: error
+          retention-days: 14
