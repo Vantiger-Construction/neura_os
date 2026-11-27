@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'mood_models.dart';
 import '../../core/memory/memory_crypto.dart';
+import '../../mood/services/neura_mood_weather.dart';
 import '../../os_shell/widgets_bridge/home_widget_bridge.dart';
 import '../../startup/neura_prefs_cache.dart';
 
@@ -111,6 +112,8 @@ class MoodStore {
       }
       await _persist(items, generation);
       unawaited(HomeWidgetBridge.instance.refresh());
+      // The room's weather follows the week's check-ins.
+      unawaited(NeuraMoodWeatherService.instance.refresh());
     });
   }
 
@@ -149,6 +152,7 @@ class MoodStore {
 
   Future<void> resetAfterDataWipe() async {
     _writesSuspended = true;
+    NeuraMoodWeatherService.instance.reset();
     _dataGeneration += 1;
     Object? drainFailure;
     try {

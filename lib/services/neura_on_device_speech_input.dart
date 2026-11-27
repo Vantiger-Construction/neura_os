@@ -134,8 +134,11 @@ class NeuraOnDeviceSpeechInput
     return true;
   }
 
+  /// Streams the current phrase, like the SAPI recognizer: partial text
+  /// while it is spoken, then the finished phrase. Chat joins phrases itself.
   void _onSegment(NeuraSpeechSegment segment, int generation) {
     _silence?.cancel();
+    final phrase = NeuraSpokenText.normalize(segment.text);
     if (segment.isFinal) {
       final text = segment.text.trim();
       if (text.isNotEmpty) {
@@ -145,10 +148,9 @@ class NeuraOnDeviceSpeechInput
     } else {
       _partial = segment.text.trim();
     }
-    final visible = _text;
-    if (visible.isNotEmpty) _transcripts.add(visible);
-    if (segment.isFinal && visible.isNotEmpty) {
-      _finals.add(visible);
+    if (phrase.isNotEmpty) _transcripts.add(phrase);
+    if (segment.isFinal && phrase.isNotEmpty) {
+      _finals.add(phrase);
     } else {
       _armSilence(generation);
     }

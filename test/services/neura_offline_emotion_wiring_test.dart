@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/modules/core/app_log.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
@@ -10,6 +11,7 @@ import 'package:neuro_companion/services/neura_model_router.dart';
 import 'package:neuro_companion/services/neura_offline_budget.dart';
 import 'package:neuro_companion/services/neura_offline_prompt.dart';
 import 'package:neuro_companion/services/neura_ollama_chat.dart';
+import 'package:neuro_companion/services/neura_style_memory.dart';
 import 'package:neuro_companion/src/modules/focus/focus_controller.dart';
 import 'package:neuro_companion/src/modules/focus/focus_mode.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
@@ -121,6 +123,31 @@ void main() {
     expect(ollama.systems.first, ollama.systems.last);
     expect(ollama.cues.first, isNotEmpty);
     expect(ollama.cues.last, isEmpty);
+  });
+
+  test('a liked reply fits beside the emotion cue without changing the prefix',
+      () async {
+    FlutterSecureStorage.setMockInitialValues({});
+    final style = NeuraStyleMemory.instance;
+    addTearDown(style.forget);
+    const history = [
+      NeuraChatTurn(
+          isUser: true,
+          text:
+              "I have three deadlines tomorrow and I don't know where to start"),
+    ];
+    final emotion = await send(history);
+    await style.rate(
+      prompt: 'Fictional deadlines',
+      reply: 'One small step at a time.',
+      liked: true,
+    );
+    await ai.streamReply(history, localOllama: true).join();
+    expect(ollama.systems.last, ollama.systems.first);
+    expect(ollama.cues.last, startsWith('$emotion\n\n'));
+    expect(ollama.cues.last, contains('One small step at a time.'));
+    expect(utf8.encode(ollama.cues.last).length,
+        lessThanOrEqualTo(NeuraOllamaChat.maxCueBytes));
   });
 
   test('every possible cue fits the native cue limit', () {
