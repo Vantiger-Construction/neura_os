@@ -8,6 +8,7 @@ import '../../neura_shell/models/neura_room.dart';
 import '../../neura_shell/models/neura_room_presence_profile.dart';
 import '../../neura_shell/widgets/neura_penthouse_scene.dart';
 import '../../mood/services/neura_mood_weather.dart';
+import '../../relationships/services/promise_garden.dart';
 import '../../neura_shell/widgets/neura_room_presence_avatar.dart';
 import '../../services/neura_companion_presence.dart';
 import '../../src/shell/shell_prefs.dart';
@@ -142,6 +143,8 @@ class _PresenceNavigationShellState extends State<PresenceNavigationShell> {
     _indexCommands();
     // The room's weather reflects the week's mood check-ins.
     unawaited(NeuraMoodWeatherService.instance.refresh());
+    // The plant by the window shows the promises kept so far.
+    unawaited(PromiseGardenService.instance.refresh());
   }
 
   @override

@@ -48,6 +48,7 @@ import '../../reliability/safe_boot.dart';
 import '../../reliability/timeline_vault.dart';
 import '../../relationships/services/feedback_service.dart';
 import '../../relationships/services/interaction_service.dart';
+import '../../relationships/services/promise_garden.dart';
 import '../../relationships/services/promise_service.dart';
 import '../../relationships/services/relationship_profile_service.dart';
 import '../../shared/services/self_heal_service.dart';
@@ -328,6 +329,7 @@ class NeuraDataWipeService {
     DreamThemeService.instance.resetAfterDataWipe();
     RelationshipProfileService.instance.resetAfterDataWipe();
     PromiseService.instance.resetAfterDataWipe();
+    PromiseGardenService.instance.reset();
     NeuraPersonaService.instance.resetAfterDataWipe();
     NeuraAudienceService.instance.resetAfterDataWipe();
     AgentSelectionService.instance.resetAfterDataWipe();

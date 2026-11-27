@@ -24,6 +24,7 @@ class _RelationshipListScreenState extends State<RelationshipListScreen> {
   bool _promisesOutstanding = false;
   List<int> _recentMoods = [];
   int? _daysSinceLastContact;
+  String? _longestSinceName;
   DistressSignal _distressSignal = DistressSignal(active: false);
 
   @override
@@ -47,12 +48,14 @@ class _RelationshipListScreenState extends State<RelationshipListScreen> {
         .toList();
 
     int? daysSinceLastContact;
+    String? longestSinceName;
     for (final p in list) {
       final lastContact = p.lastContact;
       if (lastContact == null) continue;
       final days = DateTime.now().difference(lastContact).inDays;
       if (daysSinceLastContact == null || days > daysSinceLastContact) {
         daysSinceLastContact = days;
+        longestSinceName = p.name;
       }
     }
 
@@ -68,6 +71,7 @@ class _RelationshipListScreenState extends State<RelationshipListScreen> {
       _promisesOutstanding = openCount > 0;
       _recentMoods = recentMoods;
       _daysSinceLastContact = daysSinceLastContact;
+      _longestSinceName = longestSinceName;
       _distressSignal = signal;
       _loading = false;
     });
@@ -185,6 +189,7 @@ class _RelationshipListScreenState extends State<RelationshipListScreen> {
                         recentMoods: _recentMoods,
                         promisesOutstanding: _promisesOutstanding,
                         daysSinceLastContact: _daysSinceLastContact,
+                        personName: _longestSinceName,
                         onAction: _handleOneGoodMoveAction,
                       ),
                     ],

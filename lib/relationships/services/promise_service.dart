@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../notifications/neura_notifications_prefs.dart';
 import '../../notifications/neura_notifications_service.dart';
 import '../models/neura_promise.dart';
+import 'promise_garden.dart';
 
 abstract interface class PromiseReminderScheduler {
   Future<void> schedulePromiseReminder({
@@ -162,6 +164,10 @@ class PromiseService {
     _cache[idx] = updated;
     await _save();
     await _syncReminder(updated);
+    // A kept promise grows the plant in Neura's penthouse.
+    if (identical(this, instance)) {
+      unawaited(PromiseGardenService.instance.refresh());
+    }
   }
 
   /// Re-applies the current reminders-enabled preference to every promise.

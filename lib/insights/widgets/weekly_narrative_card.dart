@@ -20,6 +20,7 @@ class _WeeklyNarrativeCardState extends State<WeeklyNarrativeCard> {
 
   bool _loading = true;
   String? _text;
+  WeeklyNarrativeCorrection? _correction;
 
   @override
   void initState() {
@@ -42,8 +43,44 @@ class _WeeklyNarrativeCardState extends State<WeeklyNarrativeCard> {
     if (!mounted) return;
     setState(() {
       _text = state?.summaryText;
+      _correction = _service.pendingCorrection;
       _loading = false;
     });
+  }
+
+  /// "Not quite right?": the user picks what was off, and next week's draft
+  /// follows fixed guidance for it. Their own words never reach the model.
+  Future<void> _correct() async {
+    final picked = await showModalBottomSheet<WeeklyNarrativeCorrection>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const ListTile(
+              title: Text('What was off about this week’s words?'),
+              subtitle: Text('Next week’s letter will take it into account.'),
+            ),
+            for (final option in WeeklyNarrativeCorrection.values)
+              ListTile(
+                title: Text(option.label),
+                onTap: () => Navigator.of(context).pop(option),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    var message = 'Thanks. Next week’s letter will take that into account.';
+    try {
+      await _service.recordCorrection(picked);
+    } catch (_) {
+      message = 'That could not be saved on this device.';
+    }
+    if (!mounted) return;
+    setState(() => _correction = _service.pendingCorrection);
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -92,6 +129,18 @@ class _WeeklyNarrativeCardState extends State<WeeklyNarrativeCard> {
             ),
             const SizedBox(height: 8),
             Text(text, style: const TextStyle(color: Colors.white)),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: _correct,
+                style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                child: Text(
+                  _correction == null
+                      ? 'Not quite right?'
+                      : 'Noted for next week: ${_correction!.label}',
+                ),
+              ),
+            ),
           ],
         ),
       ),
