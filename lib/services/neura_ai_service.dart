@@ -36,6 +36,7 @@ import 'neura_selected_context.dart';
 import 'neura_model_types.dart';
 import 'neura_provider_credentials.dart';
 import 'neura_ollama_chat.dart';
+import 'neura_spoken_meaning.dart';
 import 'neura_offline_budget.dart';
 import 'neura_companion_presence.dart';
 import '../reference/neura_reference_shelf.dart';
@@ -232,6 +233,7 @@ class NeuraAiService {
     String threadContext = '',
     NeuraReferenceGrant? offlineReference,
     int? offlineMaxTokens,
+    bool newestSpoken = false,
   }) async* {
     _throwIfCloudBlocked();
     final profiles = LocalProfileService.instance;
@@ -396,18 +398,30 @@ class NeuraAiService {
         // Keep the system prefix reusable. Fit examples from this device into
         // the same trailing cue as the emotion note, within its native limit.
         var cue = emotionCue;
+        // A spoken message may contain misheard words; ask the model to
+        // answer the likely meaning and to check when it is ambiguous. The
+        // note goes first so style examples fill only the bytes left over.
+        if (newestSpoken &&
+            offlineReference == null &&
+            history.isNotEmpty &&
+            history.last.isUser) {
+          cue = NeuraSpokenTurnCue.build(
+            otherCue: emotionCue,
+            maxBytes: NeuraOllamaChat.maxCueBytes,
+          );
+        }
         if (offlineReference == null &&
             !profileSession &&
             history.isNotEmpty &&
             history.last.isUser) {
-          final separator = emotionCue.isEmpty ? '' : '\n\n';
+          final separator = cue.isEmpty ? '' : '\n\n';
           final style = await NeuraStyleMemory.instance.promptSection(
             history.last.text,
             byteBudget: NeuraOllamaChat.maxCueBytes -
-                utf8.encode(emotionCue).length -
+                utf8.encode(cue).length -
                 separator.length,
           );
-          if (style.isNotEmpty) cue = '$emotionCue$separator$style';
+          if (style.isNotEmpty) cue = '$cue$separator$style';
         }
         final offlineSystem = '$systemPrompt$kNeuraOfflineSystemSuffix';
         if (offlineReference == null) {

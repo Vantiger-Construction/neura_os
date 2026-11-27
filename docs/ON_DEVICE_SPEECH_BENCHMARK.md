@@ -22,7 +22,9 @@ The Windows runner now contains a prototype implementation of
 supports only the seam's `isAvailable`, `start`, `stop`, and `onSegment`
 contract. The Android runner remains unimplemented. No model binary, runtime
 DLL, dependency download, license acceptance, or claimed accuracy is hidden in
-this change. Production selection continues to use the existing engines.
+this change. Chat voice uses this engine only when it reports available (see
+"Chat voice with the streaming model" below); otherwise it keeps the local
+SAPI recognizer.
 
 ## Explicit Windows prototype setup
 
@@ -94,11 +96,54 @@ cmake -S windows -B build/windows/x64 `
 cmake --build build/windows/x64 --config Debug
 ```
 
-This enables the native channel, not production engine selection. A deliberate
-developer benchmark must construct `NeuraOnnxInt4SpeechEngine` and invoke
-`NeuraSpeechBenchmarkHarness.run`; ordinary chat/journal microphone routing is
-unchanged. Do not log `segments` or the return from `stop`. Always dispose the
-engine in a `finally` block. No startup/background capture is installed.
+This enables the native channel. A deliberate developer benchmark constructs
+`NeuraOnnxInt4SpeechEngine` and invokes `NeuraSpeechBenchmarkHarness.run`.
+Chat voice selects the engine as described below; journal microphone routing
+is unchanged. Do not log `segments` or the return from `stop`. Always dispose
+the engine in a `finally` block. No startup/background capture is installed.
+
+## Chat voice with the streaming model
+
+`tools/Install-NeuraOfflineSpeech.ps1` is the explicit, person-run setup. It
+refuses to download anything without `-AcceptModelLicense`, fetches the pinned
+Sherpa-ONNX `v1.12.14` Windows x64 shared SDK and the
+`sherpa-onnx-streaming-zipformer-en-2023-06-26` model from the k2-fsa GitHub
+releases, verifies them against `-SdkSha256`/`-ModelSha256` when given (and
+prints the hashes to pin otherwise), and writes `neura-asr-manifest.json` in
+the `NeuraOnDeviceAsrPackageManifest` format. `-SetEnvironment` sets the three
+runtime opt-in variables for the Windows user; `-Build` builds the evaluation
+app with `NEURA_ENABLE_WINDOWS_ON_DEVICE_ASR=ON` and copies the runtime DLLs.
+`-Disable` removes the opt-in. Neura itself still never downloads a model.
+
+`NeuraVoiceInputRouter` chooses the recognizer at the start of each chat
+listening turn. Both candidates are on-device: the streaming model
+(`NeuraOnDeviceSpeechInput`) when the engine reports available, otherwise the
+existing SAPI `NeuraLocalSpeechInput`. The choice is logged as a fixed engine
+name (`sherpa` or `sapi`), never with text. `NeuraOnDeviceSpeechInput` adds the
+gates the native prototype lacks: it refuses to start and stops capture in
+Safe Mode, when a restart is required, in a profile session, and whenever the
+app leaves the foreground. It ends a turn in which nothing was heard after 20
+seconds, like the SAPI recognition window. Data wipe and profile boundaries stop
+it through `shutdownOnDeviceForDataWipe`. The streaming model emits upper-case
+words; `NeuraSpokenText.normalize` turns them into sentence case.
+
+## Understanding what was meant
+
+Recognition errors are handled in two local, bounded ways
+(`lib/services/neura_spoken_meaning.dart`):
+
+- **Spoken-turn cue.** When the newest offline chat message came straight from
+  the recognizer, the per-turn cue (never the system prompt) tells the local
+  model the words may be misheard, to answer the likely meaning from the
+  conversation, and to ask one short question when two meanings are plausible
+  and the choice matters. It shares the 512-byte cue limit with the emotion cue.
+- **Corrections the person teaches.** If the person fixes a transcript before
+  sending it and the change is one short span (up to four words), Neura offers
+  "Remember that X means Y when you speak?". Only a tap on Remember stores it.
+  `NeuraSpokenLexiconStore` keeps at most 64 entries in local preferences,
+  applies them to later transcripts before they are shown or sent, is inactive
+  in profile sessions, is never copied into companion memory, and is cleared by
+  data wipe.
 
 `isAvailable` returns true only when the backend was explicitly compiled, the
 runtime opt-in is exactly `1`, all four model files resolve inside that local

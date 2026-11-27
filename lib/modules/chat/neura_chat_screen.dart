@@ -65,6 +65,9 @@ import '../../planning/neura_daily_plan_screen.dart';
 import '../../services/neura_reply_batch.dart';
 import '../../services/neura_speech_input.dart';
 import '../../services/neura_local_speech_input.dart';
+import '../../services/neura_spoken_lexicon_store.dart';
+import '../../services/neura_spoken_meaning.dart';
+import '../../services/neura_voice_input_router.dart';
 import '../../services/neura_startup_voice_prefs.dart';
 import '../../services/ambient_listening_service.dart';
 import '../../services/neura_tone_runtime.dart';
@@ -184,6 +187,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   bool _startingListening = false;
   int _voiceSession = 0;
 
+  /// The words the recognizer put in the message box for the current turn.
+  /// Lets [_send] tell the model the message was spoken, and lets the person
+  /// teach Neura a word she keeps mishearing when they fix it before sending.
+  String? _heardText;
+
   // "Talk freely" mode: once started via the mic, Neura automatically starts
   // listening again after each spoken reply, so the conversation keeps going
   // hands-free instead of needing a fresh tap to start every turn.
@@ -228,7 +236,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final unfinished = NeuraTurnPatience.soundsUnfinished(_heard);
     setState(() {
       _waitingForMore = unfinished;
-      _controller.text = _heard;
+      _controller.text = NeuraSpokenLexiconStore.instance.apply(_heard);
       _controller.selection = TextSelection.collapsed(
         offset: _controller.text.length,
       );
@@ -264,7 +272,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final lifecycle = WidgetsBinding.instance.lifecycleState;
     _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
-    _voiceInput = widget.speechInput ?? NeuraLocalSpeechInput.instance;
+    _voiceInput = widget.speechInput ?? NeuraVoiceInputRouter.instance;
     if (NeuraMorningReflection.instance.enabled) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => unawaited(_offerMorningReflection()),
@@ -292,6 +300,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         setState(() {
           _continuousMode = false;
           _listening = false;
+          _heardText = _controller.text;
         });
         _showVoiceNotice(message);
         return;
@@ -883,8 +892,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     _patienceTimer = null;
     try {
       final last = await _voiceInput.stopRecording();
-      // Every phrase of the turn, not only the latest one.
-      final text = _heard.isNotEmpty ? _heard : last;
+      // Every phrase of the turn, not only the latest one, with the person's
+      // confirmed corrections applied.
+      final text = NeuraSpokenLexiconStore.instance
+          .apply(_heard.isNotEmpty ? _heard : last);
       _clearPatience();
       if (!_voiceSessionActive(session)) return;
       final command = NeuraVoiceCommand.parse(text);
@@ -895,6 +906,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       setState(() {
         _listening = false;
         _controller.text = text;
+        _heardText = text;
         _controller.selection = TextSelection.collapsed(
           offset: _controller.text.length,
         );
@@ -958,7 +970,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         _patienceTimer?.cancel();
         _patienceTimer = null;
         setState(() {
-          _controller.text = _withHeard(partial);
+          _controller.text =
+              NeuraSpokenLexiconStore.instance.apply(_withHeard(partial));
           _controller.selection = TextSelection.collapsed(
             offset: _controller.text.length,
           );
@@ -978,8 +991,18 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         await AppLog.instance.info('voice_input_unavailable', {
           if (input is NeuraLocalSpeechInput)
             'reason': input.lastFailure ?? 'unknown',
+          if (input is NeuraVoiceInputRouter) ...{
+            'reason': input.lastFailure ?? 'unknown',
+            'engine': input.activeEngine,
+          },
         });
         return;
+      }
+      final router = _voiceInput;
+      if (router is NeuraVoiceInputRouter) {
+        unawaited(AppLog.instance.info('voice_input_started', {
+          'engine': router.activeEngine,
+        }));
       }
       if (!_voiceSessionActive(session) || _turnEnding) {
         await _voiceInput.stopRecording();
@@ -1092,6 +1115,35 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       'room': move.from.id,
       'from': move.to.id,
     });
+  }
+
+  /// Offers to remember a word the person corrected in a transcript. Nothing
+  /// is stored unless they tap Remember; the entry stays on this device.
+  void _offerSpokenCorrection(NeuraSpokenCorrection correction) {
+    if (!mounted ||
+        SafeBoot.instance.safeMode.value ||
+        !NeuraSpokenLexiconStore.instance.canLearn) {
+      return;
+    }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            'Remember that "${correction.heard}" means "${correction.meant}" '
+            'when you speak?',
+          ),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+          duration: const Duration(seconds: 8),
+          action: SnackBarAction(
+            label: 'Remember',
+            onPressed: () => unawaited(
+              NeuraSpokenLexiconStore.instance.remember(correction),
+            ),
+          ),
+        ),
+      );
   }
 
   void _showVoiceNotice(String message) {
@@ -1509,6 +1561,12 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     final text = _controller.text.trim();
     final hasImage = imageBase64 != null;
     if (text.isEmpty && !hasImage) return;
+    final heard = _heardText?.trim();
+    _heardText = null;
+    final spoken = heard != null && heard.isNotEmpty && heard == text;
+    final correction = heard != null && heard.isNotEmpty && !spoken
+        ? NeuraSpokenLexicon.proposeFrom(heard: heard, sent: text)
+        : null;
     if (_localSelected) {
       await _sendLocalText(text, hasImage: hasImage);
       return;
@@ -1605,6 +1663,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     });
     _scrollToEnd();
     _reactToFeeling(text);
+    if (correction != null) _offerSpokenCorrection(correction);
     await AppLog.instance.info('chat_turn', {
       'character_count': displayText.runes.length,
       'has_image': hasImage,
@@ -1686,6 +1745,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         roomId: room.id,
         conversationMode: conversationMode,
         localOllama: localOllama,
+        newestSpoken: spoken,
         offlineBudget: _offlineBudget,
         // Spoken replies stay short: each offline token costs ~0.5 s on a
         // laptop CPU, and a listener waits for the whole answer.
