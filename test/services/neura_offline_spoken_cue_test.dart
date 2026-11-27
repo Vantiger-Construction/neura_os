@@ -16,12 +16,15 @@ class _CapturingOllama extends NeuraOllamaChat {
   _CapturingOllama() : super(supported: true);
   final systems = <String>[];
   final cues = <String>[];
+  var warms = 0;
 
   @override
   Future<void> warm({
     required String system,
     List<Map<String, dynamic>> tools = const [],
-  }) async {}
+  }) async {
+    warms++;
+  }
 
   @override
   Future<String> reply({
@@ -40,6 +43,9 @@ class _CapturingOllama extends NeuraOllamaChat {
         : jsonEncode({'text': 'Synthetic offline reply.', 'tool_calls': []});
   }
 }
+
+const _stressed =
+    "I have three deadlines tomorrow and I don't know where to start";
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -85,13 +91,8 @@ void main() {
   });
 
   test('the spoken note keeps a clear emotion cue alongside it', () async {
-    await ai.streamReply(const [
-      NeuraChatTurn(
-        isUser: true,
-        text:
-            "I have three deadlines tomorrow and I don't know where to start",
-      ),
-    ], localOllama: true, newestSpoken: true).join();
+    const mood = [NeuraChatTurn(isUser: true, text: _stressed)];
+    await ai.streamReply(mood, localOllama: true, newestSpoken: true).join();
     final cue = ollama.cues.single;
     expect(cue, contains('aloud'));
     expect(cue, contains('Likely mood: very overwhelmed.'));

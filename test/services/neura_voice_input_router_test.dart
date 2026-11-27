@@ -66,10 +66,21 @@ final class _FakeEngine implements NeuraSpeechEngine {
   }
 }
 
+final _sapiCalls = <String>[];
+
+Future<Object?> _sapi(MethodCall call) async {
+  _sapiCalls.add(call.method);
+  if (call.method == 'poll') {
+    final args = call.arguments as Map;
+    return {'session': args['session'], 'text': '', 'listening': true};
+  }
+  if (call.method == 'isAvailable' || call.method == 'start') return true;
+  return null;
+}
+
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
   const sapi = MethodChannel('neura/local_speech_input');
-  late List<String> sapiCalls;
   late bool foreground;
   late _FakeEngine engine;
   late NeuraOnDeviceSpeechInput onDevice;
@@ -77,21 +88,11 @@ void main() {
   late NeuraVoiceInputRouter router;
 
   setUp(() {
-    sapiCalls = [];
+    _sapiCalls.clear();
     foreground = true;
     SafeBoot.instance.safeMode.value = false;
     SafeBoot.instance.restartRequired.value = false;
-    binding.defaultBinaryMessenger.setMockMethodCallHandler(sapi,
-        (call) async {
-      sapiCalls.add(call.method);
-      if (call.method == 'poll') {
-        final args = call.arguments as Map;
-        return {'session': args['session'], 'text': '', 'listening': true};
-      }
-      return call.method == 'isAvailable' || call.method == 'start'
-          ? true
-          : null;
-    });
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(sapi, _sapi);
     engine = _FakeEngine();
     onDevice = NeuraOnDeviceSpeechInput(
       engine: engine,
@@ -121,14 +122,12 @@ void main() {
       () async {
     final finals = <String>[];
     final partials = <String>[];
-    final subs = [
-      router.finalPhraseStream.listen(finals.add),
-      router.transcriptStream.listen(partials.add),
-    ];
+    final finalSub = router.finalPhraseStream.listen(finals.add);
+    final partialSub = router.transcriptStream.listen(partials.add);
 
     expect(await router.startRecording(), isTrue);
     expect(router.activeEngine, 'sherpa');
-    expect(sapiCalls, isNot(contains('start')));
+    expect(_sapiCalls, isNot(contains('start')));
 
     engine.emit('IS CAMERA');
     engine.emit('IS CAMERA HAWK ON', isFinal: true);
@@ -139,9 +138,8 @@ void main() {
     engine.stopText = 'IS CAMERA HAWK ON';
     expect(await router.stopRecording(), 'Is camera hawk on');
     expect(engine.stops, 1);
-    for (final sub in subs) {
-      await sub.cancel();
-    }
+    await finalSub.cancel();
+    await partialSub.cancel();
   });
 
   test('keeps the existing local recognizer when the engine is unavailable',
@@ -150,7 +148,7 @@ void main() {
     expect(await router.startRecording(), isTrue);
     expect(router.activeEngine, 'sapi');
     expect(engine.starts, 0);
-    expect(sapiCalls, contains('start'));
+    expect(_sapiCalls, contains('start'));
     await router.stopRecording();
   });
 
