@@ -10,6 +10,7 @@ import '../integrations/tts/neura_windows_tts.dart';
 import '../avatar/motion/neura_motion.dart';
 import 'neura_audio_focus.dart';
 import 'neura_companion_presence.dart';
+import 'neura_language.dart';
 import 'neura_spoken_text.dart';
 import 'neura_voice_tone.dart';
 import '../reliability/safe_boot.dart';
@@ -78,6 +79,7 @@ class NeuraTtsService with WidgetsBindingObserver {
   static const _kLegacySpeakRepliesKey = 'neura.tts.speak_replies';
   static const _kReplySoundOnStartupKey = 'neura.tts.sound_on_startup.v1';
   static const _kMatchMoodKey = 'neura.tts.match_mood.v1';
+  static const _kVoiceForLanguagePrefix = 'neura.tts.voice_for.v1.';
 
   FlutterTts? _tts;
   final Duration _nativeCommandTimeout;
@@ -100,6 +102,16 @@ class NeuraTtsService with WidgetsBindingObserver {
   double _pitch = 1.05;
   double _volume = 1.0;
   NeuraVoiceTone _tone = NeuraVoiceTone.neutral;
+  // The language upcoming replies are in (null: the chosen default voice),
+  // and the language of the voice the engine currently has.
+  NeuraLanguage? _replyLanguage;
+  NeuraLanguage? _voiceLanguage;
+
+  /// Set when a reply was not spoken because no local voice for its language
+  /// is installed. The chat shows this once; it never falls back to reading
+  /// one language with another language's voice.
+  final ValueNotifier<NeuraLanguage?> missingVoice =
+      ValueNotifier<NeuraLanguage?>(null);
   // What the engine was last told, so an unchanged tone costs no native call.
   double? _appliedRate;
   double? _appliedPitch;
@@ -205,6 +217,117 @@ class NeuraTtsService with WidgetsBindingObserver {
 
   NeuraVoiceTone get replyTone => _tone;
 
+  /// The language of upcoming replies. English, or null, uses the chosen
+  /// default voice; another language switches to an installed local voice
+  /// for it before the next utterance, and back again afterwards.
+  void setReplyLanguage(NeuraLanguage? language) {
+    _replyLanguage = language == NeuraLanguage.en ? null : language;
+  }
+
+  NeuraLanguage? get replyLanguage => _replyLanguage;
+
+  /// Installed voices for [language], local voices only on Android.
+  Future<List<NeuraVoiceOption>> voicesFor(NeuraLanguage language) async {
+    if (!await _ensureInit() || !playbackAllowed) return const [];
+    try {
+      return _localVoicesFor(language, await _tts!.getVoices as List<dynamic>)
+          .map(
+            (voice) => NeuraVoiceOption(
+              name: voice['name'].toString(),
+              locale: voice['locale'].toString(),
+              gender: voice['gender']?.toString() ?? 'unknown',
+            ),
+          )
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// The voice to use for replies in [language]; English uses [setVoice].
+  Future<void> setVoiceForLanguage(
+    NeuraLanguage language,
+    NeuraVoiceOption voice,
+  ) async {
+    if (language == NeuraLanguage.en) return setVoice(voice);
+    try {
+      await NeuraPrefsCache.prefs
+          .setString('$_kVoiceForLanguagePrefix${language.code}', voice.name);
+    } catch (_) {
+      // The automatic choice still applies.
+    }
+    if (_voiceLanguage == language) _voiceLanguage = null;
+  }
+
+  static bool _localeIs(Object? locale, NeuraLanguage language) {
+    final value = locale?.toString().toLowerCase() ?? '';
+    return value == language.code ||
+        value.startsWith('${language.code}-') ||
+        value.startsWith('${language.code}_');
+  }
+
+  // Windows lists only Microsoft desktop voices. Elsewhere, a voice must not
+  // need the network and must be installed, as for the startup voice.
+  List<Map<dynamic, dynamic>> _localVoicesFor(
+    NeuraLanguage language,
+    List<dynamic> voices,
+  ) {
+    final windows = !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    return voices
+        .whereType<Map<dynamic, dynamic>>()
+        .where((voice) => _localeIs(voice['locale'], language))
+        .where((voice) =>
+            windows ||
+            (voice['network_required']?.toString() != '1' &&
+                !(voice['features']?.toString().contains('notInstalled') ??
+                    false)))
+        .toList();
+  }
+
+  /// Puts a voice for the reply language on the engine. False means there is
+  /// no local voice for it, and the utterance is skipped.
+  Future<bool> _applyLanguage(int? cancellation) async {
+    final tts = _tts;
+    if (tts == null) return true;
+    final wanted = _replyLanguage;
+    if (wanted == _voiceLanguage) return true;
+    if (wanted == null) {
+      await _applySavedOrDefaultVoice(cancellation);
+      _voiceLanguage = null;
+      return true;
+    }
+    final voices =
+        _localVoicesFor(wanted, await tts.getVoices as List<dynamic>);
+    if (voices.isEmpty) {
+      missingVoice.value = wanted;
+      return false;
+    }
+    final saved = NeuraPrefsCache.prefsOrNull
+        ?.getString('$_kVoiceForLanguagePrefix${wanted.code}');
+    bool female(Map<dynamic, dynamic> voice) =>
+        voice['gender']?.toString().toLowerCase() == 'female';
+    bool natural(Map<dynamic, dynamic> voice) =>
+        voice['name']?.toString().toLowerCase().contains('natural') ?? false;
+    final ranked = [
+      ...voices.where((voice) => voice['name'] == saved),
+      ...voices.where((voice) => female(voice) && natural(voice)),
+      ...voices.where(female),
+      ...voices,
+    ];
+    if (!_configurationAllowed(cancellation)) return false;
+    final voice = ranked.first;
+    final result = await tts.setVoice({
+      'name': voice['name'].toString(),
+      'locale': voice['locale'].toString(),
+    });
+    if (result == 0) {
+      missingVoice.value = wanted;
+      return false;
+    }
+    _voiceLanguage = wanted;
+    return true;
+  }
+
   /// A tone chosen by a feature itself (a bedtime story), regardless of
   /// [matchMood]. The next user message's mood read replaces it.
   void useTone(NeuraVoiceTone tone) => _tone = tone;
@@ -284,6 +407,8 @@ class NeuraTtsService with WidgetsBindingObserver {
       throw StateError('Local startup voice could not be selected.');
     }
     _selectedVoiceName = selected['name'].toString();
+    // The engine now has the default voice, not a reply-language one.
+    _voiceLanguage = null;
   }
 
   Future<bool> _ensureInit() {
@@ -474,6 +599,7 @@ class NeuraTtsService with WidgetsBindingObserver {
     });
     if (result == 0) return;
     _selectedVoiceName = voice.name;
+    _voiceLanguage = null;
     try {
       final prefs = NeuraPrefsCache.prefs;
       await prefs.setString(_kVoiceNameKey, voice.name);
@@ -528,15 +654,24 @@ class NeuraTtsService with WidgetsBindingObserver {
     });
     if (result == 0) return;
     if (!current()) return;
-    // A preview plays the saved settings exactly, without a mood lean.
+    // A preview plays the saved settings exactly, without a mood lean, in
+    // the voice being previewed rather than a reply-language voice.
     _tone = NeuraVoiceTone.neutral;
-    await speak(sampleText);
+    final language = _replyLanguage;
+    _replyLanguage = null;
+    _voiceLanguage = null;
+    try {
+      await speak(sampleText);
+    } finally {
+      _replyLanguage = language;
+    }
   }
 
   /// Re-applies the persisted/selected voice after a preview.
   Future<void> restoreSelectedVoice() async {
     if (!await _ensureInit()) return;
     await _applySavedOrDefaultVoice();
+    _voiceLanguage = null;
   }
 
   bool _configurationAllowed(int? cancellation) =>
@@ -674,6 +809,10 @@ class NeuraTtsService with WidgetsBindingObserver {
       });
       await _applyTone();
       if (!current()) {
+        _finish(playback);
+        return;
+      }
+      if (!await _applyLanguage(null) || !current()) {
         _finish(playback);
         return;
       }

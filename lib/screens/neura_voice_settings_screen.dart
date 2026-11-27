@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
+import '../services/neura_language.dart';
+import '../services/neura_language_prefs.dart';
 import '../services/neura_tts_service.dart';
 import '../services/neura_startup_voice_prefs.dart';
 import '../services/neura_startup_voice_setup.dart';
@@ -30,6 +32,95 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
   NeuraReplySpeechMode _replySpeechMode = NeuraReplySpeechMode.off;
   bool _savingStartup = false;
   bool _replySoundOnStartup = true;
+  // Loaded when the Languages section is opened, not at screen start.
+  Map<NeuraLanguage, List<NeuraVoiceOption>>? _languageVoices;
+
+  Future<void> _loadLanguageVoices() async {
+    if (_languageVoices != null) return;
+    final service = NeuraTtsService.instance;
+    final found = <NeuraLanguage, List<NeuraVoiceOption>>{};
+    for (final language in NeuraLanguage.values) {
+      found[language] = await service.voicesFor(language);
+    }
+    if (mounted) setState(() => _languageVoices = found);
+  }
+
+  Widget _languageSection() => ValueListenableBuilder<NeuraLanguage?>(
+        valueListenable: NeuraLanguagePrefs.instance.listening,
+        builder: (context, _, __) {
+          final prefs = NeuraLanguagePrefs.instance;
+          final voices = _languageVoices;
+          return ExpansionTile(
+            key: const Key('language-settings'),
+            leading: const Icon(Icons.translate),
+            title: const Text('Languages'),
+            subtitle: const Text(
+              'English, Español, Italiano, Deutsch, Français',
+            ),
+            onExpansionChanged: (open) {
+              if (open) unawaited(_loadLanguageVoices());
+            },
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  'Neura answers in the language you speak or type. Her '
+                  'voice switches to an installed voice for that language.',
+                ),
+              ),
+              ListTile(
+                title: const Text('Listening language'),
+                subtitle: const Text(
+                  'Automatic lets the offline multilingual model detect each '
+                  'phrase. Choose one language if your recognizer cannot '
+                  'detect languages.',
+                ),
+                trailing: DropdownButton<NeuraLanguage?>(
+                  key: const Key('listening-language'),
+                  value: prefs.listeningLanguage,
+                  onChanged: (language) =>
+                      unawaited(prefs.setListeningLanguage(language)),
+                  items: [
+                    const DropdownMenuItem<NeuraLanguage?>(
+                      value: null,
+                      child: Text('Automatic'),
+                    ),
+                    for (final language in NeuraLanguage.values)
+                      DropdownMenuItem<NeuraLanguage?>(
+                        value: language,
+                        child: Text(language.nativeName),
+                      ),
+                  ],
+                ),
+              ),
+              if (voices == null)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else
+                for (final language in NeuraLanguage.values)
+                  ListTile(
+                    dense: true,
+                    leading: Icon(
+                      voices[language]!.isEmpty
+                          ? Icons.volume_off_outlined
+                          : Icons.record_voice_over_outlined,
+                    ),
+                    title: Text('${language.nativeName} voice'),
+                    subtitle: Text(
+                      voices[language]!.isEmpty
+                          ? 'None installed. Replies in '
+                              '${language.englishName} are shown but not '
+                              'spoken; add a voice in your system speech '
+                              'settings.'
+                          : voices[language]!.map((v) => v.name).join(', '),
+                    ),
+                  ),
+            ],
+          );
+        },
+      );
 
   Future<void> _setReplySoundOnStartup(bool value) async {
     try {
@@ -325,6 +416,8 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
                       ],
                     ),
                   ),
+                const Divider(),
+                _languageSection(),
               ],
             ),
     );

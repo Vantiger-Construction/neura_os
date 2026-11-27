@@ -18,6 +18,10 @@ import '../../services/emotion_analysis_service.dart';
 import '../../services/neura_voice_tone.dart';
 import '../../services/neura_turn_patience.dart';
 import '../../services/neura_future_notes.dart';
+import '../../services/neura_language.dart';
+import '../../services/neura_note_command.dart';
+import '../../services/neura_quick_notes.dart';
+import '../../screens/neura_notes_screen.dart';
 import '../../services/neura_worry_parking.dart';
 import 'neura_worry_time_screen.dart';
 import 'neura_before_send_screen.dart';
@@ -187,6 +191,15 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   bool _startingListening = false;
   int _voiceSession = 0;
 
+  /// The language of this conversation, from the latest turn that showed it
+  /// clearly. Replies and her voice follow it; it is never stored.
+  NeuraLanguage? _conversationLanguage;
+
+  /// The language the recognizer reported for the turn about to be sent.
+  String? _heardLanguageCode;
+
+  final NeuraNoteSession _notes = NeuraNoteSession.instance;
+
   /// The words the recognizer put in the message box for the current turn.
   /// Lets [_send] tell the model the message was spoken, and lets the person
   /// teach Neura a word she keeps mishearing when they fix it before sending.
@@ -224,6 +237,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
 
   void _onPhraseHeard(String phrase, int session) {
     if (!_voiceSessionActive(session) || _turnEnding) return;
+    if (_notes.active.value) {
+      _onNotePhrase(phrase, session);
+      return;
+    }
     _heard = _withHeard(phrase);
     _patienceTimer?.cancel();
     // Commands ("stop", "scroll up") act at once.
@@ -293,6 +310,17 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     }
     _voiceStatusSub = _voiceInput.statusStream.listen((message) {
       if (!mounted || !_continuousMode) return;
+      // While taking notes, a recognizer that ended its own listening window
+      // (silence, one finished utterance) simply starts the next one.
+      if (_notes.active.value &&
+          (message == NeuraLocalSpeechInput.silenceEnded ||
+              message == NeuraLocalSpeechInput.listeningStopped ||
+              message == NeuraLocalSpeechInput.unsureHeard)) {
+        _voiceSession++;
+        setState(() => _listening = false);
+        unawaited(_startListeningTurn());
+        return;
+      }
       if (message == NeuraLocalSpeechInput.unsureHeard) {
         // Recognition already stopped. Keep the doubtful words in the box so
         // the person can fix them; ending the conversation would erase them.
@@ -308,6 +336,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       unawaited(_endConversation().catchError((_) {}));
       _showVoiceNotice(message);
     });
+    _tts.missingVoice.addListener(_onMissingVoice);
+    _notes.active.addListener(_onNotesChanged);
+    _notes.phrases.addListener(_onNotesChanged);
     if (widget.startWithVoice) {
       NeuraStartupVoicePrefs.instance.enabled
           .addListener(_onStartupVoiceChanged);
@@ -672,6 +703,11 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
 
   @override
   void dispose() {
+    _tts.missingVoice.removeListener(_onMissingVoice);
+    _notes.active.removeListener(_onNotesChanged);
+    _notes.phrases.removeListener(_onNotesChanged);
+    // Leaving chat pauses note-taking; nothing is saved without a tap.
+    _notes.pause();
     _disposed = true;
     _observedShell?.removeListener(_onShellChanged);
     _patienceTimer?.cancel();
@@ -866,6 +902,10 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
 
   Future<void> _toggleListening() async {
     if (_localSelected) return;
+    if (_notes.active.value) {
+      await _finishNoteTaking();
+      return;
+    }
     if (_startupGreeting) {
       await _endConversation();
       return;
@@ -903,6 +943,21 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         await _handleVoiceCommand(command);
         return;
       }
+      // "Neura, take a note ..." in any of her languages. Crisis language is
+      // never filed away: it goes through the normal reply instead.
+      final note =
+          CrisisTextScan.of(text).crisis ? null : NeuraNoteCommand.parse(text);
+      if (note != null) {
+        setState(() {
+          _listening = false;
+          _controller.clear();
+        });
+        // Not awaited: this turn ends first, so listening can resume after
+        // the note is saved (or note-taking starts) without being refused.
+        unawaited(_handleNoteCommand(note));
+        return;
+      }
+      _heardLanguageCode = _reportedLanguage();
       setState(() {
         _listening = false;
         _controller.text = text;
@@ -1021,6 +1076,9 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   }
 
   Future<void> _endConversation({bool revokePendingMemory = true}) async {
+    // Leaving the conversation pauses note-taking; the words stay on screen
+    // until the person saves or discards them.
+    if (_notes.active.value) _notes.pause();
     if (revokePendingMemory) {
       _memoryPermission?.revoke();
       _memoryPermission = null;
@@ -1267,6 +1325,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       case NeuraVoiceCommand.openFocus:
       case NeuraVoiceCommand.openQuests:
       case NeuraVoiceCommand.openTimeline:
+      case NeuraVoiceCommand.openNotes:
       case NeuraVoiceCommand.openSettings:
       case NeuraVoiceCommand.openVoiceSettings:
       case NeuraVoiceCommand.openAccessibility:
@@ -1405,6 +1464,36 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
                     subtitle: Text(command.description),
                   ),
               ],
+              Padding(
+                padding: const EdgeInsets.only(top: 16, bottom: 8),
+                child: Text(
+                  'Notes',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              const ListTile(
+                dense: true,
+                title: Text('“Neura, take a note …”'),
+                subtitle: Text(
+                  'Saves what follows as a note on this device. Also '
+                  '“toma nota”, “prendi nota”, “notiere”, “prends note”.',
+                ),
+              ),
+              const ListTile(
+                dense: true,
+                title: Text('“Neura, start taking notes”'),
+                subtitle: Text(
+                  'Writes down a conversation, after you confirm on screen '
+                  'that everyone knows. Say “Neura, stop taking notes” or tap '
+                  'the mic to save.',
+                ),
+              ),
+              const Text(
+                'Neura listens and replies in English, Spanish, Italian, '
+                'German and French. Choose a listening language in Voice '
+                'settings, or leave it on Automatic.',
+              ),
+              const SizedBox(height: 12),
               const Text(
                 'Voice commands cannot approve cloud requests, save journal '
                 'entries, or turn on background listening. Safe Mode keeps '
@@ -1563,6 +1652,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
     if (text.isEmpty && !hasImage) return;
     final heard = _heardText?.trim();
     _heardText = null;
+    final heardLanguage = _heardLanguageCode;
+    _heardLanguageCode = null;
     final spoken = heard != null && heard.isNotEmpty && heard == text;
     final correction = heard != null && heard.isNotEmpty && !spoken
         ? NeuraSpokenLexicon.proposeFrom(heard: heard, sent: text)
@@ -1597,6 +1688,20 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       await _saveFutureNote(futureNote);
       return;
     }
+    final noteCommand =
+        private ? NeuraNoteCommand.parse(text, typed: true) : null;
+    if (noteCommand != null) {
+      await _handleNoteCommand(noteCommand);
+      return;
+    }
+    // Answer in the language they used: what the recognizer reported for a
+    // spoken turn, else a clear guess from the words, else the language the
+    // conversation was already in.
+    final turnLanguage =
+        (spoken ? NeuraLanguage.fromCode(heardLanguage) : null) ??
+            NeuraLanguageGuess.of(text);
+    if (turnLanguage != null) _conversationLanguage = turnLanguage;
+    final replyLanguage = turnLanguage ?? _conversationLanguage;
     final worry = private ? NeuraWorryParking.worryFrom(text) : null;
     if (worry != null) {
       await _parkWorry(worry);
@@ -1710,6 +1815,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
 
     final useStreamSpeech =
         _speechEnabled && _tts.replySpeechMode == NeuraReplySpeechMode.streamed;
+    _tts.setReplyLanguage(replyLanguage);
     final speech = ReplySpeechQueue(
       speak: (text) => _tts.speak(text).timeout(
             const Duration(seconds: 45),
@@ -1746,6 +1852,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         conversationMode: conversationMode,
         localOllama: localOllama,
         newestSpoken: spoken,
+        replyLanguage: replyLanguage,
         offlineBudget: _offlineBudget,
         // Spoken replies stay short: each offline token costs ~0.5 s on a
         // laptop CPU, and a listener waits for the whole answer.
@@ -1839,6 +1946,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       }
       return;
     } finally {
+      _tts.setReplyLanguage(null);
       _roomMover.drop(generationId);
       updates.dispose();
       if (identical(_replyUpdates, updates)) _replyUpdates = null;
@@ -2216,6 +2324,283 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       content: Text('${found.when}: "${found.text}"'),
       action: SnackBarAction(label: 'Thanks', onPressed: () {}),
     ));
+  }
+
+  String? _reportedLanguage() {
+    final input = _voiceInput;
+    return input is NeuraSpeechLanguageSource
+        ? (input as NeuraSpeechLanguageSource).heardLanguage
+        : null;
+  }
+
+  void _onNotesChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onMissingVoice() {
+    final language = _tts.missingVoice.value;
+    if (language == null || !mounted) return;
+    _showVoiceNotice(
+      'No ${language.englishName} voice is installed for spoken replies. '
+      'Replies still appear here. Add a ${language.englishName} voice in '
+      'your system speech settings to hear them.',
+    );
+  }
+
+  bool get _notesAllowed =>
+      !LocalProfileService.instance.enabled &&
+      !SafeBoot.instance.safeMode.value;
+
+  /// Says a short note-taking confirmation in the language it was asked in.
+  Future<void> _sayNoteReply(String message, NeuraLanguage language) async {
+    if (!_speechEnabled || _tts.replySpeechMode == NeuraReplySpeechMode.off) {
+      return;
+    }
+    _tts.setReplyLanguage(language);
+    try {
+      await _tts.speak(message);
+    } catch (_) {
+      // The message is already on screen.
+    } finally {
+      _tts.setReplyLanguage(null);
+    }
+  }
+
+  void _showNoteSaved(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+          action: SnackBarAction(label: 'View', onPressed: _openNotes),
+        ),
+      );
+  }
+
+  void _openNotes() {
+    if (!mounted) return;
+    unawaited(Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: '/memory/notes'),
+        builder: (_) => const NeuraNotesScreen(),
+      ),
+    ));
+  }
+
+  Future<void> _handleNoteCommand(NeuraNoteCommand command) async {
+    if (!_notesAllowed) {
+      if (mounted) setState(_controller.clear);
+      _showVoiceNotice('Notes are not available here.');
+      return;
+    }
+    switch (command.action) {
+      case NeuraNoteAction.add:
+        await _addNote(command);
+      case NeuraNoteAction.startTaking:
+        await _startNoteTaking(command.language);
+      case NeuraNoteAction.stopTaking:
+        if (_notes.active.value || _notes.hasUnsaved) {
+          await _finishNoteTaking();
+        } else {
+          if (mounted) setState(_controller.clear);
+          _showVoiceNotice("I'm not taking notes right now.");
+        }
+    }
+  }
+
+  Future<void> _addNote(NeuraNoteCommand command) async {
+    String message;
+    var saved = false;
+    try {
+      await NeuraQuickNotes.instance.add(
+        command.text,
+        languages: [command.language],
+      );
+      message = NeuraNoteCommand.savedReply(command.language);
+      saved = true;
+      if (mounted) setState(_controller.clear);
+    } on ArgumentError catch (error) {
+      message = '${error.message}';
+    } catch (_) {
+      message = 'The note could not be saved on this device.';
+    }
+    if (!mounted) return;
+    if (saved) {
+      _showNoteSaved(message);
+    } else {
+      _showVoiceNotice(message);
+    }
+    await _sayNoteReply(message, command.language);
+    if (_continuousMode && mounted && !_busy) {
+      unawaited(_startListeningTurn());
+    }
+  }
+
+  /// Starts writing down what Neura hears, after the person confirms that
+  /// everyone being written down knows. Foreground chat only; Safe Mode,
+  /// leaving chat or the background pause it.
+  Future<void> _startNoteTaking(NeuraLanguage language) async {
+    if (mounted) setState(_controller.clear);
+    if (_notes.active.value) {
+      _showVoiceNotice('Already taking notes.');
+      return;
+    }
+    // A pending reply must not be heard and written down.
+    final session = _voiceSession;
+    await _endConversation(revokePendingMemory: false);
+    if (!mounted || _voiceSession != session + 1) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Take notes?'),
+        content: const Text(
+          'Neura will write down what she hears in English, Spanish, '
+          'Italian, German or French until you say “Neura, stop taking '
+          'notes” or tap the mic. Make sure everyone nearby knows and agrees '
+          'before you start. Only text is kept, on this device; no audio is '
+          'saved, and she does not reply while taking notes.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Everyone knows — start'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true ||
+        !mounted ||
+        !_notesAllowed ||
+        !_foreground ||
+        !_routeVisible) {
+      return;
+    }
+    if (_notes.hasUnsaved) {
+      // Continue the paused notes rather than replacing them.
+      _notes.start(_notes.language);
+    } else {
+      _notes.start(language);
+    }
+    final started = NeuraNoteCommand.startedReply(language);
+    _showVoiceNotice(started);
+    // Completion is awaited so she does not write down her own words.
+    await _sayNoteReply(started, language);
+    if (!mounted || !_notes.active.value) return;
+    _continuousMode = true;
+    await _startListeningTurn();
+  }
+
+  void _onNotePhrase(String phrase, int session) {
+    final heard = NeuraSpokenLexiconStore.instance.apply(phrase.trim());
+    if (heard.isEmpty) return;
+    final stop =
+        NeuraNoteCommand.parse(heard)?.action == NeuraNoteAction.stopTaking ||
+            NeuraVoiceCommand.parse(heard) == NeuraVoiceCommand.stopListening;
+    if (stop) {
+      unawaited(_finishNoteTaking());
+      return;
+    }
+    final language = NeuraLanguage.fromCode(_reportedLanguage()) ??
+        NeuraLanguageGuess.of(heard);
+    final added = _notes.add(heard, language: language);
+    if (mounted) setState(_controller.clear);
+    if (!added && _voiceSessionActive(session)) {
+      // Full: save what is there rather than dropping new words.
+      unawaited(_finishNoteTaking());
+    }
+  }
+
+  /// Stops listening and saves the notes taken so far.
+  Future<void> _finishNoteTaking() async {
+    _notes.pause();
+    await _endConversation(revokePendingMemory: false);
+    await _saveNotes();
+  }
+
+  Future<void> _saveNotes() async {
+    final language = _notes.language;
+    if (!_notesAllowed) {
+      _showVoiceNotice('Notes are not available here.');
+      return;
+    }
+    String message;
+    var saved = false;
+    try {
+      final note = await _notes.save();
+      saved = note != null;
+      message = saved
+          ? NeuraNoteCommand.stoppedReply(language)
+          : 'Nothing was written down.';
+    } catch (_) {
+      message = 'The notes could not be saved on this device. They are '
+          'still here; try Save again.';
+    }
+    if (!mounted) return;
+    if (saved) {
+      _showNoteSaved(message);
+    } else {
+      _showVoiceNotice(message);
+    }
+    if (saved) await _sayNoteReply(message, language);
+  }
+
+  /// Shown while notes are being taken, or paused with words not yet saved.
+  Widget _noteTakingBar(BuildContext context) {
+    final active = _notes.active.value;
+    final count = _notes.phrases.value;
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+        child: Row(
+          children: [
+            Icon(
+              active ? Icons.edit_note : Icons.pause_circle_outline,
+              color: scheme.onSecondaryContainer,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                active
+                    ? 'Taking notes · $count '
+                        '${count == 1 ? 'phrase' : 'phrases'} · '
+                        'everyone nearby should know'
+                    : 'Notes paused · $count '
+                        '${count == 1 ? 'phrase' : 'phrases'} not saved',
+                style: TextStyle(color: scheme.onSecondaryContainer),
+              ),
+            ),
+            if (!active)
+              TextButton(
+                onPressed: () => unawaited(_startNoteTaking(_notes.language)),
+                child: const Text('Resume'),
+              ),
+            TextButton(
+              onPressed: () => unawaited(
+                active ? _finishNoteTaking() : _saveNotes(),
+              ),
+              child: Text(active ? 'Stop & save' : 'Save'),
+            ),
+            if (!active)
+              TextButton(
+                onPressed: () {
+                  _notes.discard();
+                  _showVoiceNotice('Notes discarded.');
+                },
+                child: const Text('Discard'),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   bool get _futureNotesAllowed =>
@@ -2997,6 +3382,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
               ),
             ),
           ),
+          if (_notes.active.value || _notes.hasUnsaved) _noteTakingBar(context),
           if (_selectedContext != null)
             InputChip(
               label: Text('Next reply: ${_selectedContext!.name}'),

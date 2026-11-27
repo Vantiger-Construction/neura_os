@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
+import 'package:neuro_companion/services/neura_language.dart';
 import 'package:neuro_companion/services/neura_local_speech_input.dart';
 
 void main() {
@@ -280,5 +281,97 @@ void main() {
     expect(await input.startRecording(), isFalse);
     await expectLater(
         input.shutdownForDataWipe(), throwsA(isA<PlatformException>()));
+  });
+
+  group('listening language', () {
+    late String? language;
+    late NeuraLocalSpeechInput spoken;
+
+    setUp(() {
+      language = 'es';
+      spoken = NeuraLocalSpeechInput(
+        foreground: () => foreground,
+        requestPermission: () async => granted,
+        language: () => language,
+      );
+    });
+
+    tearDown(() async => spoken.dispose());
+
+    test('asks the engine for the chosen language and reports it', () async {
+      final received = spoken.finalPhraseStream.first;
+      handler = (call) async {
+        if (call.method != 'poll') return true;
+        return {
+          'session': (call.arguments as Map)['session'],
+          'listening': true,
+          'text': 'Hola, ¿cómo estás?',
+          'final': true,
+          'language': 'es',
+        };
+      };
+      expect(await spoken.startRecording(), isTrue);
+      expect(calls[0].arguments, {'language': 'es'});
+      expect((calls[1].arguments as Map)['language'], 'es');
+      expect(await received.timeout(const Duration(seconds: 5)),
+          'Hola, ¿cómo estás?');
+      expect(spoken.heardLanguage, 'es');
+      await spoken.stopRecording();
+    });
+
+    test('automatic keeps the original argument-free calls', () async {
+      language = null;
+      expect(await spoken.startRecording(), isTrue);
+      expect(calls[0].arguments, isNull);
+      expect((calls[1].arguments as Map).containsKey('language'), isFalse);
+      await spoken.stopRecording();
+    });
+
+    test('a missing language engine is named, never widened', () async {
+      language = 'it';
+      handler = (call) async => call.method == 'isAvailable' ? false : null;
+      expect(await spoken.startRecording(), isFalse);
+      expect(spoken.lastFailure, 'no_language_engine');
+      expect(spoken.requestedLanguage, NeuraLanguage.it);
+      expect(calls.map((c) => c.method), ['isAvailable']);
+    });
+
+    test('a missing on-device language pack says so', () async {
+      handler = (call) async {
+        if (call.method != 'poll') return true;
+        return {
+          'session': (call.arguments as Map)['session'],
+          'listening': false,
+          'text': '',
+          'final': false,
+          'languageUnavailable': true,
+        };
+      };
+      final status = spoken.statusStream.first;
+      expect(await spoken.startRecording(), isTrue);
+      expect(
+        await status.timeout(const Duration(seconds: 5)),
+        NeuraLocalSpeechInput.languageUnavailable(NeuraLanguage.es),
+      );
+      expect(spoken.isListening, isFalse);
+    });
+
+    test('an unknown reported language is ignored', () async {
+      final received = spoken.finalPhraseStream.first;
+      handler = (call) async {
+        if (call.method != 'poll') return true;
+        return {
+          'session': (call.arguments as Map)['session'],
+          'listening': true,
+          'text': 'Konnichiwa',
+          'final': true,
+          'language': 'ja',
+        };
+      };
+      expect(await spoken.startRecording(), isTrue);
+      await received.timeout(const Duration(seconds: 5));
+      expect(spoken.heardLanguage, isNull);
+      await spoken.stopRecording();
+    });
   });
 }

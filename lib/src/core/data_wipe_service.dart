@@ -68,6 +68,8 @@ import '../../services/neura_swarm_service.dart';
 import '../../services/neura_tone_runtime.dart';
 import '../../services/wake_word_listener_service.dart';
 import '../../services/wake_word_prefs.dart';
+import '../../services/neura_language_prefs.dart';
+import '../../services/neura_quick_notes.dart';
 import '../../services/neura_spoken_lexicon_store.dart';
 import '../../services/neura_voice_input_router.dart';
 import '../../startup/neura_bootstrap_log.dart';
@@ -323,6 +325,8 @@ class NeuraDataWipeService {
     // back after SharedPreferences.clear() but before its own reset.
     FocusController.instance.resetAfterDataWipe();
     NeuraSpokenLexiconStore.instance.resetAfterDataWipe();
+    NeuraNoteSession.instance.resetAfterDataWipe();
+    NeuraLanguagePrefs.instance.resetAfterDataWipe();
     HumanPrefsController.instance.resetAfterDataWipe();
     AppLockPrefsController.instance.resetAfterDataWipe();
     JokePrefsController.instance.resetAfterDataWipe();

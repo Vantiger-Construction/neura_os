@@ -90,6 +90,57 @@ void main() {
     await subscription.cancel();
   });
 
+  test('a chosen language is requested and reported languages are kept',
+      () async {
+    final arguments = <Object?>[];
+    final spanish = NeuraOnnxInt4SpeechEngine(
+      channel: channel,
+      language: () => 'es',
+    );
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      calls.add(call.method);
+      arguments.add(call.arguments);
+      return call.method == 'stop' ? '' : true;
+    });
+    final received = <NeuraSpeechSegment>[];
+    final subscription = spanish.segments.listen(received.add);
+    try {
+      expect(await spanish.start(), isTrue);
+      expect(arguments, [
+        {'language': 'es'},
+        {'language': 'es'},
+      ]);
+      await sendNativeSegment({
+        'text': 'Hola',
+        'is_final': true,
+        'language': 'es',
+      });
+      await sendNativeSegment({
+        'text': 'Sin idioma válido',
+        'is_final': true,
+        'language': 'es"}',
+      });
+      expect(received.map((s) => s.language), ['es', null]);
+    } finally {
+      await subscription.cancel();
+      await spanish.dispose();
+    }
+  });
+
+  test('automatic language keeps argument-free native calls', () async {
+    final arguments = <Object?>[];
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
+      arguments.add(call.arguments);
+      return call.method == 'stop' ? '' : true;
+    });
+    expect(await engine.start(), isTrue);
+    expect(arguments, [null, null]);
+  });
+
   test(
     'Safe Mode begins teardown and discards queued native segments',
     () async {

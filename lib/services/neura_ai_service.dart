@@ -36,6 +36,7 @@ import 'neura_selected_context.dart';
 import 'neura_model_types.dart';
 import 'neura_provider_credentials.dart';
 import 'neura_ollama_chat.dart';
+import 'neura_language.dart';
 import 'neura_spoken_meaning.dart';
 import 'neura_offline_budget.dart';
 import 'neura_companion_presence.dart';
@@ -234,6 +235,7 @@ class NeuraAiService {
     NeuraReferenceGrant? offlineReference,
     int? offlineMaxTokens,
     bool newestSpoken = false,
+    NeuraLanguage? replyLanguage,
   }) async* {
     _throwIfCloudBlocked();
     final profiles = LocalProfileService.instance;
@@ -397,18 +399,32 @@ class NeuraAiService {
         }
         // Keep the system prefix reusable. Fit examples from this device into
         // the same trailing cue as the emotion note, within its native limit.
+        final newestUserTurn = offlineReference == null &&
+            history.isNotEmpty &&
+            history.last.isUser;
+        // A non-English turn asks for a reply in the same language. That note
+        // comes first and is kept whole; the other notes share what is left.
+        final languageCue =
+            newestUserTurn ? NeuraLanguageCue.forLanguage(replyLanguage) : '';
+        final languageBytes =
+            languageCue.isEmpty ? 0 : utf8.encode(languageCue).length + 1;
         var cue = emotionCue;
+        if (languageCue.isNotEmpty &&
+            utf8.encode(emotionCue).length >
+                NeuraOllamaChat.maxCueBytes - languageBytes) {
+          cue = '';
+        }
         // A spoken message may contain misheard words; ask the model to
         // answer the likely meaning and to check when it is ambiguous. The
         // note goes first so style examples fill only the bytes left over.
-        if (newestSpoken &&
-            offlineReference == null &&
-            history.isNotEmpty &&
-            history.last.isUser) {
+        if (newestSpoken && newestUserTurn) {
           cue = NeuraSpokenTurnCue.build(
             otherCue: emotionCue,
-            maxBytes: NeuraOllamaChat.maxCueBytes,
+            maxBytes: NeuraOllamaChat.maxCueBytes - languageBytes,
           );
+        }
+        if (languageCue.isNotEmpty) {
+          cue = cue.isEmpty ? languageCue : '$languageCue $cue';
         }
         if (offlineReference == null &&
             !profileSession &&

@@ -24,6 +24,7 @@ $Root = (Resolve-Path -LiteralPath $Root).Path
 $runnerRoot = Join-Path $Root 'windows\runner'
 $sourcePath = Join-Path $runnerRoot 'neura_on_device_asr.cpp'
 $sessionPath = Join-Path $runnerRoot 'neura_asr_session.h'
+$segmentedPath = Join-Path $runnerRoot 'neura_segmented_asr.h'
 $headerPath = Join-Path $runnerRoot 'neura_on_device_asr.h'
 $cmakePath = Join-Path $runnerRoot 'CMakeLists.txt'
 $windowPath = Join-Path $runnerRoot 'flutter_window.cpp'
@@ -33,6 +34,7 @@ $dartConfigPath = Join-Path $Root 'lib\services\neura_on_device_asr_config.dart'
 foreach ($requiredPath in @(
     $sourcePath,
     $sessionPath,
+    $segmentedPath,
     $headerPath,
     $cmakePath,
     $windowPath,
@@ -46,6 +48,7 @@ foreach ($requiredPath in @(
 
 $source = Get-Content -LiteralPath $sourcePath -Raw
 $session = Get-Content -LiteralPath $sessionPath -Raw
+$segmented = Get-Content -LiteralPath $segmentedPath -Raw
 $header = Get-Content -LiteralPath $headerPath -Raw
 $cmake = Get-Content -LiteralPath $cmakePath -Raw
 $window = Get-Content -LiteralPath $windowPath -Raw
@@ -74,7 +77,23 @@ foreach ($modelFile in @(
         "The explicit model contract is missing $modelFile."
 }
 
-$combinedNative = $source + "`n" + $session + "`n" + $cmake
+foreach ($modelFile in @(
+    '-encoder.int8.onnx',
+    '-decoder.int8.onnx',
+    '-tokens.txt',
+    'silero_vad.onnx'
+)) {
+    Require-Literal $source $modelFile `
+        "The multilingual model contract is missing $modelFile."
+}
+Require-Literal $segmented 'kMaxPendingSegments' `
+    'Multilingual phrase decoding must remain bounded.'
+Require-Literal $segmented 'worker_.join()' `
+    'Stop does not join the multilingual decode thread.'
+Require-Literal $source 'if (running_) return false;' `
+    'A running session must never have its model rebuilt.'
+
+$combinedNative = $source + "`n" + $session + "`n" + $segmented + "`n" + $cmake
 $networkOrDownloadPattern = @(
     '\bWinHttpOpen\b',
     '\bInternetOpen(?:A|W)?\b',
