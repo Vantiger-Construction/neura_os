@@ -42,4 +42,3 @@ On each device, use fictional text and check:
 7. If only one local voice exists, record that limitation. Additional voice packages are a separate device setup action; Neura does not install them automatically.
 
 Do not change the installed application or device speech settings merely to claim that these checks passed.
-
