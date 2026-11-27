@@ -33,6 +33,7 @@ import 'neura_selected_context.dart';
 import 'neura_model_types.dart';
 import 'neura_provider_credentials.dart';
 import 'neura_ollama_chat.dart';
+import 'neura_spoken_meaning.dart';
 import 'neura_offline_budget.dart';
 import 'neura_companion_presence.dart';
 import '../reference/neura_reference_shelf.dart';
@@ -229,6 +230,7 @@ class NeuraAiService {
     String threadContext = '',
     NeuraReferenceGrant? offlineReference,
     int? offlineMaxTokens,
+    bool newestSpoken = false,
   }) async* {
     _throwIfCloudBlocked();
     final profiles = LocalProfileService.instance;
@@ -403,6 +405,15 @@ class NeuraAiService {
               ? _offlineTools(advertisedTools)
               : const <Map<String, dynamic>>[];
           final system = _offlineSystemWithTools(offlineSystem, offlineTools);
+          // A spoken message may contain misheard words; ask the model to
+          // answer the likely meaning and to check when it is ambiguous.
+          final turnCue =
+              newestSpoken && history.isNotEmpty && history.last.isUser
+                  ? NeuraSpokenTurnCue.build(
+                      otherCue: emotionCue,
+                      maxBytes: NeuraOllamaChat.maxCueBytes,
+                    )
+                  : emotionCue;
           var messages = recent;
           var actions = 0;
           for (var round = 0;; round++) {
@@ -412,7 +423,7 @@ class NeuraAiService {
               messages: messages,
               cancel: cancel,
               tools: offlineTools,
-              cue: emotionCue,
+              cue: turnCue,
               maxTokens: offlineMaxTokens,
               onTurn: (value) => turn = value,
             );
