@@ -8,6 +8,7 @@ import '../services/neura_ai_service.dart';
 import '../services/neura_local_speech_input.dart';
 import '../services/neura_speech_to_text_service.dart';
 import '../services/neura_tts_service.dart';
+import '../services/neura_voice_input_router.dart';
 import '../services/neura_voice_pack.dart';
 import '../services/voice_journal_service.dart';
 import '../services/sleep_listener_service.dart';
@@ -23,6 +24,7 @@ abstract final class LocalProfileRuntime {
     // Attempt every shutdown; activation fails if any owner cannot stop.
     final results = await Future.wait([
       _attempt(NeuraLocalSpeechInput.instance.shutdownForDataWipe),
+      _attempt(NeuraVoiceInputRouter.instance.shutdownOnDeviceForDataWipe),
       _attempt(NeuraSpeechToTextService.instance.shutdownForProfiles),
       _attempt(VoiceJournalService.shutdownAllForProfiles),
       _attempt(NeuraVoicePack.I.stopMic),
