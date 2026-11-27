@@ -5,37 +5,71 @@ import 'package:neuro_companion/services/neura_voice_command.dart';
 
 void main() {
   group('adding one note', () {
-    const examples = <String, (NeuraLanguage, String)>{
-      'Neura, take a note: call the clinic on Monday':
-          (NeuraLanguage.en, 'call the clinic on Monday'),
-      'Neura take a note buy milk': (NeuraLanguage.en, 'buy milk'),
-      'Hey Neura, make a note. Water the plants.':
-          (NeuraLanguage.en, 'Water the plants.'),
-      'Neura, note that Sam likes tea': (NeuraLanguage.en, 'Sam likes tea'),
-      'Neura, toma nota: comprar leche mañana':
-          (NeuraLanguage.es, 'comprar leche mañana'),
-      'Oye Neura, anota que la cita es el jueves':
-          (NeuraLanguage.es, 'que la cita es el jueves'),
-      'Neura, prendi nota: chiamare la mamma domani':
-          (NeuraLanguage.it, 'chiamare la mamma domani'),
-      'Neura, notiere: morgen Mama anrufen':
-          (NeuraLanguage.de, 'morgen Mama anrufen'),
-      'Neura, schreib auf, dass ich Brot brauche':
-          (NeuraLanguage.de, 'dass ich Brot brauche'),
-      'Neura, prends note : appeler maman demain':
-          (NeuraLanguage.fr, 'appeler maman demain'),
-      "Neura, note : je dois appeler le médecin aujourd'hui":
-          (NeuraLanguage.fr, "je dois appeler le médecin aujourd'hui"),
-    };
-    for (final example in examples.entries) {
-      test(example.key, () {
-        final command = NeuraNoteCommand.parse(example.key);
+    void expectNote(String message, NeuraLanguage language, String text) {
+      test(message, () {
+        final command = NeuraNoteCommand.parse(message);
         expect(command, isNotNull);
         expect(command!.action, NeuraNoteAction.add);
-        expect(command.language, example.value.$1);
-        expect(command.text, example.value.$2);
+        expect(command.language, language);
+        expect(command.text, text);
       });
     }
+
+    expectNote(
+      'Neura, take a note: call the clinic on Monday',
+      NeuraLanguage.en,
+      'call the clinic on Monday',
+    );
+    expectNote(
+      'Neura take a note buy milk',
+      NeuraLanguage.en,
+      'buy milk',
+    );
+    expectNote(
+      'Hey Neura, make a note. Water the plants.',
+      NeuraLanguage.en,
+      'Water the plants.',
+    );
+    expectNote(
+      'Neura, note that Sam likes tea',
+      NeuraLanguage.en,
+      'Sam likes tea',
+    );
+    expectNote(
+      'Neura, toma nota: comprar leche mañana',
+      NeuraLanguage.es,
+      'comprar leche mañana',
+    );
+    expectNote(
+      'Oye Neura, anota que la cita es el jueves',
+      NeuraLanguage.es,
+      'que la cita es el jueves',
+    );
+    expectNote(
+      'Neura, prendi nota: chiamare la mamma domani',
+      NeuraLanguage.it,
+      'chiamare la mamma domani',
+    );
+    expectNote(
+      'Neura, notiere: morgen Mama anrufen',
+      NeuraLanguage.de,
+      'morgen Mama anrufen',
+    );
+    expectNote(
+      'Neura, schreib auf, dass ich Brot brauche',
+      NeuraLanguage.de,
+      'dass ich Brot brauche',
+    );
+    expectNote(
+      'Neura, prends note : appeler maman demain',
+      NeuraLanguage.fr,
+      'appeler maman demain',
+    );
+    expectNote(
+      "Neura, note : je dois appeler le médecin aujourd'hui",
+      NeuraLanguage.fr,
+      "je dois appeler le médecin aujourd'hui",
+    );
 
     test('a typed request may leave out the address when it uses a colon', () {
       final command =
