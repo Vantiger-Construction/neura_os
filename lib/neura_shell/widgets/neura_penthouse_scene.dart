@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../avatar/motion/neura_motion.dart';
 import '../../mood/services/neura_mood_weather.dart';
+import '../../relationships/services/promise_garden.dart';
 import '../models/neura_room.dart';
 import '../neura_shell_state.dart';
 
@@ -32,6 +33,7 @@ class NeuraPenthouseScene extends StatelessWidget {
     this.dimColor,
     this.showFurniture = true,
     this.weather,
+    this.garden,
   });
 
   final NeuraRoom room;
@@ -43,20 +45,37 @@ class NeuraPenthouseScene extends StatelessWidget {
   /// check-ins ([NeuraMoodWeatherService]).
   final NeuraMoodWeather? weather;
 
+  /// The plant by the lounge window. Null follows the promises the user has
+  /// kept ([PromiseGardenService]).
+  final PromiseGardenStage? garden;
+
   /// How long one room takes to fade into the next.
   static const Duration crossfade = Duration(milliseconds: 700);
 
   @override
   Widget build(BuildContext context) {
-    final fixed = weather;
-    if (fixed != null) return _build(context, fixed);
-    return ValueListenableBuilder<NeuraMoodWeather>(
-      valueListenable: NeuraMoodWeatherService.instance.weather,
-      builder: (context, value, _) => _build(context, value),
+    final fixedGarden = garden;
+    if (fixedGarden != null) return _withWeather(context, fixedGarden);
+    return ValueListenableBuilder<PromiseGardenStage>(
+      valueListenable: PromiseGardenService.instance.stage,
+      builder: (context, value, _) => _withWeather(context, value),
     );
   }
 
-  Widget _build(BuildContext context, NeuraMoodWeather weather) {
+  Widget _withWeather(BuildContext context, PromiseGardenStage plant) {
+    final fixed = weather;
+    if (fixed != null) return _build(context, fixed, plant);
+    return ValueListenableBuilder<NeuraMoodWeather>(
+      valueListenable: NeuraMoodWeatherService.instance.weather,
+      builder: (context, value, _) => _build(context, value, plant),
+    );
+  }
+
+  Widget _build(
+    BuildContext context,
+    NeuraMoodWeather weather,
+    PromiseGardenStage plant,
+  ) {
     final overlay = (dimColor ?? Theme.of(context).colorScheme.surface)
         .withValues(alpha: dim.clamp(0.0, 1.0));
     final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
@@ -74,6 +93,7 @@ class NeuraPenthouseScene extends StatelessWidget {
       curtainsClosed: penthouse?.curtainsClosed ?? false,
       showFurniture: showFurniture,
       weather: weather,
+      garden: plant,
     );
     return AnimatedSwitcher(
       duration: animate ? crossfade : Duration.zero,
@@ -98,6 +118,7 @@ class NeuraPenthousePainter extends CustomPainter {
     required this.overlay,
     required this.showFurniture,
     this.weather = NeuraMoodWeather.mild,
+    this.garden = PromiseGardenStage.empty,
   });
 
   final NeuraRoom room;
@@ -106,6 +127,7 @@ class NeuraPenthousePainter extends CustomPainter {
   final Color overlay;
   final bool showFurniture;
   final NeuraMoodWeather weather;
+  final PromiseGardenStage garden;
 
   static const _skyTop = Color(0xFF070B1C);
   static const _skyMid = Color(0xFF16163A);
@@ -162,7 +184,10 @@ class NeuraPenthousePainter extends CustomPainter {
         _paintCity(canvas, w, h, floorY, rnd);
         _paintWindowFrame(canvas, w, floorY);
         _paintFloor(canvas, w, h, floorY, const Color(0xFF6B3E8C));
-        if (showFurniture) _drawLounge(canvas, w, h, floorY);
+        if (showFurniture) {
+          _drawLounge(canvas, w, h, floorY);
+          _drawPromisePlant(canvas, w, h, floorY);
+        }
     }
 
     _paintWeather(canvas, w, floorY);
@@ -986,11 +1011,110 @@ class NeuraPenthousePainter extends CustomPainter {
     );
   }
 
+  /// The plant that grows with kept promises, in a pot by the window. It
+  /// only grows, and nothing is drawn until the first promise is kept.
+  void _drawPromisePlant(Canvas canvas, double w, double h, double floorY) {
+    if (garden == PromiseGardenStage.empty) return;
+    final unit = math.min(w, h);
+    final baseX = w * 0.9;
+    final potW = unit * 0.07;
+    final potH = unit * 0.06;
+    final potTop = floorY - potH;
+    final pot = Path()
+      ..moveTo(baseX - potW / 2, potTop)
+      ..lineTo(baseX + potW / 2, potTop)
+      ..lineTo(baseX + potW * 0.36, floorY)
+      ..lineTo(baseX - potW * 0.36, floorY)
+      ..close();
+    canvas.drawPath(pot, Paint()..color = const Color(0xFF6E4A3A));
+    canvas.drawRect(
+      Rect.fromLTWH(
+        baseX - potW * 0.55,
+        potTop - potH * 0.15,
+        potW * 1.1,
+        potH * 0.22,
+      ),
+      Paint()..color = const Color(0xFF805846),
+    );
+
+    const leafColor = Color(0xFF6FBF7A);
+    final leaf = Paint()..color = leafColor;
+    if (garden == PromiseGardenStage.seed) {
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(baseX, potTop - potH * 0.2),
+          width: potW * 0.3,
+          height: potH * 0.3,
+        ),
+        leaf,
+      );
+      return;
+    }
+
+    const heights = <PromiseGardenStage, double>{
+      PromiseGardenStage.sprout: 0.10,
+      PromiseGardenStage.leafy: 0.18,
+      PromiseGardenStage.blooming: 0.24,
+    };
+    const leafPairs = <PromiseGardenStage, int>{
+      PromiseGardenStage.sprout: 1,
+      PromiseGardenStage.leafy: 3,
+      PromiseGardenStage.blooming: 4,
+    };
+    final stemH = unit * (heights[garden] ?? 0.1);
+    final stemTop = potTop - stemH;
+    canvas.drawLine(
+      Offset(baseX, potTop),
+      Offset(baseX, stemTop),
+      Paint()
+        ..color = const Color(0xFF4E8F58)
+        ..strokeWidth = math.max(1.5, unit * 0.006)
+        ..strokeCap = StrokeCap.round,
+    );
+
+    final pairs = leafPairs[garden] ?? 1;
+    final leafW = unit * 0.045;
+    final leafH = unit * 0.02;
+    for (var i = 0; i < pairs; i++) {
+      final y = stemTop + stemH * (i / pairs) + leafH;
+      for (final side in <double>[-1, 1]) {
+        canvas.save();
+        canvas.translate(baseX + side * leafW * 0.45, y);
+        canvas.rotate(side * -0.5);
+        canvas.drawOval(
+          Rect.fromCenter(center: Offset.zero, width: leafW, height: leafH),
+          leaf,
+        );
+        canvas.restore();
+      }
+    }
+
+    if (garden == PromiseGardenStage.blooming) {
+      final flower = Offset(baseX, stemTop);
+      _drawGlow(
+        canvas,
+        flower,
+        unit * 0.08,
+        const Color(0xFFFFB7D5).withValues(alpha: 0.25),
+      );
+      final petal = Paint()..color = const Color(0xFFFFB7D5);
+      final petals = <Offset>[
+        Offset(0, -leafH * 0.6),
+        Offset(-leafW * 0.6, leafH * 1.6),
+        Offset(leafW * 0.6, leafH * 2.4),
+      ];
+      for (final offset in petals) {
+        canvas.drawCircle(flower + offset, unit * 0.012, petal);
+      }
+    }
+  }
+
   @override
   bool shouldRepaint(covariant NeuraPenthousePainter oldDelegate) {
     return oldDelegate.room.id != room.id ||
         oldDelegate.overlay != overlay ||
         oldDelegate.weather != weather ||
+        oldDelegate.garden != garden ||
         oldDelegate.lampOn != lampOn ||
         oldDelegate.curtainsClosed != curtainsClosed ||
         oldDelegate.showFurniture != showFurniture;

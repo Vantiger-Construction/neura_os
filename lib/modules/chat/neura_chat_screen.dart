@@ -40,6 +40,8 @@ import '../../services/neura_conversation_thread.dart';
 import '../../neura_link/reply_speech_queue.dart';
 import '../../neura_link/local_conversation_session.dart';
 import '../../relationships/services/crisis_text_scan.dart';
+import '../../relationships/services/promise_catcher.dart';
+import '../../relationships/services/promise_service.dart';
 import '../../guardrails/support_resources.dart';
 import '../../services/crisis_playbook_surface.dart';
 import '../../reliability/safe_boot.dart';
@@ -1894,6 +1896,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         await _tts.speak(botLine.text);
       }
       unawaited(_offerFutureNote(text));
+      _offerPromiseCatch(text);
       if (!mounted || _activeReplyId != generationId) return;
       await _settleRoomMove(generationId);
     } on NeuraGenerationCancelled catch (e) {
@@ -2662,6 +2665,41 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
         onPressed: () => _showFutureNote(offered),
       ),
     ));
+  }
+
+  /// After a reply, offers to keep a small commitment the user just made
+  /// ("I'll call my sister") as a promise. Only the short commitment is kept,
+  /// and only if they tap; the message itself is never stored.
+  void _offerPromiseCatch(String userText) {
+    if (!mounted ||
+        LocalProfileService.instance.enabled ||
+        SafeBoot.instance.safeMode.value ||
+        CrisisTextScan.of(userText).crisis) {
+      return;
+    }
+    final commitment = PromiseCatcher.commitmentFrom(userText);
+    if (commitment == null) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      duration: const Duration(seconds: 10),
+      content: Text('Keep “$commitment” as a promise?'),
+      action: SnackBarAction(
+        label: 'Keep it',
+        onPressed: () => unawaited(_keepCaughtPromise(commitment)),
+      ),
+    ));
+  }
+
+  Future<void> _keepCaughtPromise(String commitment) async {
+    final messenger = ScaffoldMessenger.of(context);
+    String message;
+    try {
+      await PromiseService.instance.create(description: commitment);
+      message = 'Kept. You’ll find it with your promises.';
+    } catch (_) {
+      message = 'The promise could not be saved on this device.';
+    }
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _showFutureNote(FutureNote note) async {

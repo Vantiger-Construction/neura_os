@@ -8,6 +8,7 @@ import '../../modules/review/weekly_review_screen.dart';
 import '../../modules/review/weekly_review_store.dart';
 import '../../weekly/widgets/weekly_life_snapshot_card.dart';
 import '../services/weekly_snapshot_export_service.dart';
+import 'wellbeing_check_screen.dart';
 import '../widgets/weekly_narrative_card.dart';
 
 /// The single, consolidated "Weekly Snapshot" screen. Combines:
@@ -177,6 +178,22 @@ class _WeeklySnapshotScreenState extends State<WeeklySnapshotScreen> {
                   const WeeklyLifeSnapshotCard(),
                   const SizedBox(height: 16),
                   const WeeklyNarrativeCard(),
+                  const SizedBox(height: 16),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.spa_outlined),
+                      title: const Text('Monthly wellbeing check'),
+                      subtitle: const Text(
+                        'Five questions, about a minute. Stays on this device.',
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const WellbeingCheckScreen(),
+                        ),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   if (review != null) _numbersCard(review),
                   if (_trendEntries.length >= 2) ...[

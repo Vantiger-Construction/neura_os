@@ -7,6 +7,9 @@ class OneGoodMoveTile extends StatefulWidget {
   final List<int> recentMoods;
   final bool promisesOutstanding;
   final int? daysSinceLastContact;
+
+  /// The person it has been longest since, named in the reconnect nudge.
+  final String? personName;
   final void Function(RelationshipSuggestion suggestion) onAction;
 
   const OneGoodMoveTile({
@@ -14,6 +17,7 @@ class OneGoodMoveTile extends StatefulWidget {
     required this.recentMoods,
     required this.promisesOutstanding,
     this.daysSinceLastContact,
+    this.personName,
     required this.onAction,
   });
 
@@ -31,6 +35,7 @@ class _OneGoodMoveTileState extends State<OneGoodMoveTile> {
       recentMoods: widget.recentMoods,
       promisesOutstanding: widget.promisesOutstanding,
       daysSinceLastContact: widget.daysSinceLastContact,
+      personName: widget.personName,
     );
 
     if (suggestion == null) return const SizedBox.shrink();

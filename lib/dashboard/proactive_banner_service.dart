@@ -718,6 +718,7 @@ class ProactiveBannerService {
           (profile) => profile.openPromiseCount > 0,
         ),
         daysSinceLastContact: maxDays,
+        personName: mostOverdue?.name,
       );
       if (suggestion == null) return null;
       final subject = mostOverdue ?? profiles.first;
