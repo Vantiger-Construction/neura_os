@@ -5,6 +5,7 @@ import 'package:neuro_companion/modules/core/app_log.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/services/neura_ai_service.dart';
 import 'package:neuro_companion/services/neura_generation_cancel.dart';
+import 'package:neuro_companion/services/neura_language.dart';
 import 'package:neuro_companion/services/neura_model_router.dart';
 import 'package:neuro_companion/services/neura_offline_prompt.dart';
 import 'package:neuro_companion/services/neura_ollama_chat.dart';
@@ -96,5 +97,35 @@ void main() {
     final cue = ollama.cues.single;
     expect(cue, contains('aloud'));
     expect(cue, contains('Likely mood: very overwhelmed.'));
+  });
+
+  test('a Spanish turn asks for a Spanish reply, ahead of other notes',
+      () async {
+    const spanish = [
+      NeuraChatTurn(isUser: true, text: 'Estoy muy cansado y necesito ayuda'),
+    ];
+    await ai
+        .streamReply(
+          spanish,
+          localOllama: true,
+          newestSpoken: true,
+          replyLanguage: NeuraLanguage.es,
+        )
+        .join();
+    final cue = ollama.cues.single;
+    expect(cue, startsWith('They are speaking Spanish.'));
+    expect(cue, contains('aloud'));
+    expect(
+      utf8.encode(cue).length,
+      lessThanOrEqualTo(NeuraOllamaChat.maxCueBytes),
+    );
+    expect(ollama.systems.single, isNot(contains('Spanish')));
+  });
+
+  test('English turns carry no language note', () async {
+    await ai
+        .streamReply(turn, localOllama: true, replyLanguage: NeuraLanguage.en)
+        .join();
+    expect(ollama.cues.single, isNot(contains('They are speaking')));
   });
 }

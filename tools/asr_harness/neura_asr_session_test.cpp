@@ -50,14 +50,20 @@ void DenyNetwork() {
 struct Segments {
   std::mutex mutex;
   std::condition_variable changed;
-  struct Entry { std::string text; bool final; uint64_t generation; };
+  struct Entry {
+    std::string text;
+    std::string language;
+    bool final;
+    uint64_t generation;
+  };
   std::vector<Entry> entries;
 
-  static void Receive(std::string text, bool final, uint64_t generation,
-                      void* context) {
+  static void Receive(std::string text, std::string language, bool final,
+                      uint64_t generation, void* context) {
     auto& self = *static_cast<Segments*>(context);
     std::lock_guard<std::mutex> lock(self.mutex);
-    self.entries.push_back({std::move(text), final, generation});
+    self.entries.push_back({std::move(text), std::move(language), final,
+                            generation});
     self.changed.notify_all();
   }
 
@@ -76,6 +82,8 @@ class FakeBackend : public neura::AsrBackend {
   bool throw_decode = false;
   bool block_decode = false;
   bool endpoint = true;
+  bool fail_result = false;
+  std::string language;
   std::atomic<int> created{0}, opened{0}, closed{0}, destroyed{0};
   std::atomic<int> accepted{0}, decoded{0}, finished{0};
   std::mutex mutex;
@@ -146,7 +154,9 @@ class FakeBackend : public neura::AsrBackend {
   }
   neura::AsrResult Result() override {
     CheckWorker();
-    return {text_, endpoint};
+    neura::AsrResult result{text_, endpoint, language, false};
+    if (fail_result && !text_.empty()) result.failed = true;
+    return result;
   }
   void Reset() override { CheckWorker(); text_.clear(); }
   void FinishInput() override { CheckWorker(); ++finished; }
@@ -317,6 +327,51 @@ void BenchmarkCallerDiscards() {
   Require(backend.destroyed == 1 && backend.closed == 1, "Benchmark leaked mic");
 }
 
+void LanguagePassesThrough() {
+  FakeBackend backend;
+  backend.language = "es";
+  Segments segments;
+  neura::AsrSession session(backend, &Segments::Receive, &segments);
+  Require(session.Start(3), "Start failed");
+  backend.Audio();
+  segments.Wait(1);
+  session.Stop(true);
+  Require(segments.entries[0].final && segments.entries[0].language == "es",
+          "Reported language was not delivered with the segment");
+}
+
+void UnsafeLanguageIsDropped() {
+  FakeBackend backend;
+  backend.language = "<|es|>";
+  Segments segments;
+  neura::AsrSession session(backend, &Segments::Receive, &segments);
+  Require(session.Start(4), "Start failed");
+  backend.Audio();
+  segments.Wait(1);
+  session.Stop(true);
+  Require(segments.entries[0].language.empty(),
+          "A malformed language code reached the UI");
+  Require(segments.entries[0].text == "synthetic private phrase",
+          "Dropping the language also dropped the text");
+}
+
+void BackendFailureFailsClosed() {
+  FakeBackend backend;
+  backend.fail_result = true;
+  Segments segments;
+  neura::AsrSession session(backend, &Segments::Receive, &segments);
+  Require(session.Start(5), "Start failed");
+  backend.Audio();
+  backend.WaitForDecode();
+  // The worker stops itself after a failed result; wait for that.
+  for (int i = 0; i < 200 && backend.Audio(); ++i) {
+    std::this_thread::sleep_for(5ms);
+  }
+  Require(session.Stop(false).empty(), "Failed backend returned a transcript");
+  Require(segments.entries.empty(), "Failed backend emitted a segment");
+  Require(backend.finished == 0, "Failed backend flushed more inference");
+}
+
 }  // namespace
 
 int main() {
@@ -333,6 +388,9 @@ int main() {
         {"overflow fails closed", OverflowFailsClosed},
         {"decoder exception and disposal", DecoderExceptionAndDisposal},
         {"benchmark caller discards stop text", BenchmarkCallerDiscards},
+        {"reported language reaches the segment", LanguagePassesThrough},
+        {"malformed language is dropped", UnsafeLanguageIsDropped},
+        {"backend failure fails closed", BackendFailureFailsClosed},
     };
     for (const auto& [name, test] : tests) {
       test();

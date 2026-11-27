@@ -7,3 +7,10 @@ abstract interface class NeuraSpeechInput {
   Future<bool> startRecording();
   Future<String> stopRecording();
 }
+
+/// Implemented by recognizers that know which language they heard, either
+/// because the model identified it or because it was asked to listen for it.
+abstract interface class NeuraSpeechLanguageSource {
+  /// Two-letter code of the most recent turn's language, or null if unknown.
+  String? get heardLanguage;
+}

@@ -54,6 +54,8 @@ enum NeuraVoiceCommand {
       group: NeuraVoiceCommandGroup.screens),
   openTimeline('open timeline', 'View your local life timeline.',
       group: NeuraVoiceCommandGroup.screens),
+  openNotes('open my notes', 'View notes you asked Neura to take.',
+      group: NeuraVoiceCommandGroup.screens),
   openSettings('open settings', 'Open Settings.',
       group: NeuraVoiceCommandGroup.screens),
   openVoiceSettings(
@@ -88,11 +90,20 @@ enum NeuraVoiceCommand {
   final String description;
   final NeuraVoiceCommandGroup group;
 
+  // "Hey Neura" in each of her languages: oye (es), ehi (it), hallo (de),
+  // dis (fr).
   static final _address = RegExp(
-    r'^(?:hey\s+)?neura(?:\s*[,!:]\s*|\s+)(.+)$',
+    r'^(?:(?:hey|oye|ehi|hallo|dis)\s+)?neura(?:\s*[,!:]\s*|\s+)(.+)$',
     caseSensitive: false,
   );
   static final _spaces = RegExp(r'\s+');
+  static const _politeEndings = [
+    ' por favor',
+    ' per favore',
+    ' bitte',
+    " s'il te plaît",
+    " s'il vous plaît",
+  ];
   static final _trailingPunctuation = RegExp(r'[.!?]+$');
 
   // Build the allowlist once. Parsing stays exact and O(1) after
@@ -170,6 +181,37 @@ enum NeuraVoiceCommand {
     'open dream room': openDreamAtrium,
     'go to legacy vault': openLegacyVault,
     'open legacy': openLegacyVault,
+    'open notes': openNotes,
+    'show my notes': openNotes,
+    // The same controls in Spanish, Italian, German and French.
+    'para': stopListening,
+    'detente': stopListening,
+    'deja de escuchar': stopListening,
+    'basta': stopListening,
+    'fermati': stopListening,
+    'smetti di ascoltare': stopListening,
+    'stopp': stopListening,
+    'hör auf': stopListening,
+    'hör auf zuzuhören': stopListening,
+    'arrête': stopListening,
+    "arrête d'écouter": stopListening,
+    'cállate': stopSpeaking,
+    'deja de hablar': stopSpeaking,
+    'smetti di parlare': stopSpeaking,
+    'hör auf zu reden': stopSpeaking,
+    'arrête de parler': stopSpeaking,
+    'silencio': muteReplies,
+    'silenzio': muteReplies,
+    'stumm': muteReplies,
+    'silence': muteReplies,
+    'ayuda': help,
+    'aiuto': help,
+    'hilfe': help,
+    'aide': help,
+    'abre mis notas': openNotes,
+    'apri i miei appunti': openNotes,
+    'öffne meine notizen': openNotes,
+    'ouvre mes notes': openNotes,
   };
 
   static NeuraVoiceCommand? parse(String transcript) {
@@ -182,6 +224,14 @@ enum NeuraVoiceCommand {
     if (phrase.startsWith('please ')) phrase = phrase.substring(7);
     if (phrase.endsWith(' please')) {
       phrase = phrase.substring(0, phrase.length - 7);
+    }
+    // "por favor", "per favore", "bitte", "s'il te plaît" like "please".
+    for (final polite in _politeEndings) {
+      if (phrase.endsWith(polite)) {
+        phrase = phrase.substring(0, phrase.length - polite.length).trim();
+        phrase = phrase.replaceFirst(RegExp(r',$'), '').trim();
+        break;
+      }
     }
     return _commandsByPhrase[phrase];
   }

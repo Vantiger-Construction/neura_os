@@ -51,4 +51,35 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test('multilingual profiles require Whisper and the speech detector', () {
+    for (final profile in [
+      NeuraOnDeviceAsrProfiles.whisperBaseInt8,
+      NeuraOnDeviceAsrProfiles.whisperSmallInt8,
+    ]) {
+      expect(NeuraOnDeviceAsrProfiles.byId(profile.id), same(profile));
+      expect(profile.requiredFiles, contains('silero_vad.onnx'));
+      NeuraOnDeviceAsrPackageManifest(
+        profileId: profile.id,
+        fileSha256: {for (final file in profile.requiredFiles) file: hash},
+        licenseEvidence: 'operator_verified_whisper_and_silero_licenses',
+        networkRequired: false,
+        createdAtUtc: DateTime.utc(2026, 11, 27),
+      ).validateProfile(profile);
+      // Without the speech detector the package is incomplete.
+      expect(
+        () => NeuraOnDeviceAsrPackageManifest(
+          profileId: profile.id,
+          fileSha256: {
+            for (final file in profile.requiredFiles)
+              if (file != 'silero_vad.onnx') file: hash,
+          },
+          licenseEvidence: 'verified',
+          networkRequired: false,
+          createdAtUtc: DateTime.utc(2026, 11, 27),
+        ).validateProfile(profile),
+        throwsFormatException,
+      );
+    }
+  });
 }

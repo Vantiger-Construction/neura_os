@@ -39,6 +39,7 @@ final class NeuraSpeechSegment {
     required this.observedAtUtc,
     this.confidence,
     this.pauseBefore = Duration.zero,
+    this.language,
   }) {
     if (engineId.isEmpty || engineId.length > 128) {
       throw const FormatException('Invalid speech engine ID.');
@@ -57,7 +58,12 @@ final class NeuraSpeechSegment {
     if (pauseBefore.isNegative) {
       throw const FormatException('Invalid speech pause.');
     }
+    if (language != null && !_languageCode.hasMatch(language!)) {
+      throw const FormatException('Invalid speech language.');
+    }
   }
+
+  static final RegExp _languageCode = RegExp(r'^[a-z]{2,8}$');
 
   final String engineId;
   final String text;
@@ -65,6 +71,10 @@ final class NeuraSpeechSegment {
   final DateTime observedAtUtc;
   final double? confidence;
   final Duration pauseBefore;
+
+  /// Two-letter code the engine itself reported for this text ("es"), or null
+  /// when the engine does not identify languages.
+  final String? language;
 }
 
 /// Strict local-only registry so platform selection and benchmarking do not

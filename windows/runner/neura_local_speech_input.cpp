@@ -33,6 +33,42 @@ int64_t Session(const Value* args) {
   if (const auto* id = std::get_if<int32_t>(&field->second)) return *id;
   throw std::invalid_argument("Invalid speech session");
 }
+// Optional "language" argument: one of Neura's listening languages, or
+// absent/"auto" for the first installed engine. Anything else is refused.
+std::string Language(const Value* args) {
+  const auto* map = args ? std::get_if<Map>(args) : nullptr;
+  if (!map) return {};
+  const auto field = map->find(Value("language"));
+  if (field == map->end()) return {};
+  const auto* value = std::get_if<std::string>(&field->second);
+  if (!value || *value == "auto") return {};
+  if (*value == "en" || *value == "es" || *value == "it" || *value == "de" ||
+      *value == "fr") {
+    return *value;
+  }
+  throw SpeechFailure("unsupported_language");
+}
+// Microsoft desktop engine tokens are named "MS-<decimal LCID>-80-DESK".
+// Returns the two-letter code of the LCID's primary language, if Neura
+// listens in it.
+std::string EngineLanguage(const std::wstring& leaf) {
+  const auto start = leaf.find(L'-');
+  const auto end = start == std::wstring::npos ? start : leaf.find(L'-', start + 1);
+  if (end == std::wstring::npos || end - start < 2 || end - start > 6) return {};
+  unsigned long lcid = 0;
+  for (auto i = start + 1; i < end; ++i) {
+    if (leaf[i] < L'0' || leaf[i] > L'9') return {};
+    lcid = lcid * 10 + static_cast<unsigned long>(leaf[i] - L'0');
+  }
+  switch (lcid & 0x3ff) {
+    case 0x09: return "en";
+    case 0x0a: return "es";
+    case 0x10: return "it";
+    case 0x07: return "de";
+    case 0x0c: return "fr";
+    default: return {};
+  }
+}
 std::string Text(ISpRecoResult* result) {
   wchar_t* raw = nullptr;
   // SAPI declares this all-elements sentinel as a signed enum, while GetText
@@ -84,7 +120,8 @@ NeuraLocalSpeechInput::~NeuraLocalSpeechInput() {
   Background();
 }
 
-NeuraLocalSpeechInput::ComPtr<ISpObjectToken> NeuraLocalSpeechInput::FindEngine() {
+NeuraLocalSpeechInput::ComPtr<ISpObjectToken> NeuraLocalSpeechInput::FindEngine(
+    const std::string& language, std::string* found) {
   ISpObjectTokenCategory* raw_category = nullptr;
   Check(CoCreateInstance(CLSID_SpObjectTokenCategory, nullptr, CLSCTX_INPROC_SERVER,
       IID_ISpObjectTokenCategory, reinterpret_cast<void**>(&raw_category)));
@@ -109,24 +146,32 @@ NeuraLocalSpeechInput::ComPtr<ISpObjectToken> NeuraLocalSpeechInput::FindEngine(
     // Installed Microsoft desktop engine tokens only; never a system-default
     // or third-party/online recognizer. Missing language packs fail closed.
     if (leaf.rfind(L"MS-", 0) == 0 && leaf.find(L"-DESK") != std::wstring::npos) {
+      const auto engine_language = EngineLanguage(leaf);
+      // A requested language never falls back to an engine for another one.
+      if (!language.empty() && engine_language != language) continue;
+      if (found) *found = engine_language;
       return token;
     }
   }
   return {};
 }
 
-void NeuraLocalSpeechInput::Start(int64_t session) {
+void NeuraLocalSpeechInput::Start(int64_t session, const std::string& language) {
   Background();
   if (session <= 0 || !IsNeuraForeground(window_)) {
     throw SpeechFailure("not_foreground");
   }
   ComPtr<ISpObjectToken> token;
+  std::string engine_language;
   try {
-    token = FindEngine();
+    token = FindEngine(language, &engine_language);
   } catch (...) {
     throw SpeechFailure("no_local_engine");
   }
-  if (!token) throw SpeechFailure("no_local_engine");
+  if (!token) {
+    throw SpeechFailure(language.empty() ? "no_local_engine"
+                                         : "no_language_engine");
+  }
   ISpRecognizer* raw_recognizer = nullptr;
   Check(CoCreateInstance(CLSID_SpInprocRecognizer, nullptr, CLSCTX_INPROC_SERVER,
       IID_ISpRecognizer, reinterpret_cast<void**>(&raw_recognizer)), "recognizer");
@@ -151,6 +196,7 @@ void NeuraLocalSpeechInput::Start(int64_t session) {
   // Opening the capture device happens on activation.
   Check(recognizer_->SetRecoState(SPRST_ACTIVE), "microphone");
   session_ = session;
+  language_ = engine_language;
 }
 
 Map NeuraLocalSpeechInput::Poll() {
@@ -172,6 +218,7 @@ Map NeuraLocalSpeechInput::Poll() {
       if (!text.empty()) {
         packet[Value("text")] = Value(text);
         packet[Value("final")] = Value(true);
+        if (!language_.empty()) packet[Value("language")] = Value(language_);
         if (Unsure(result)) packet[Value("unsure")] = Value(true);
         break;  // One bounded utterance; Dart stops before generating a reply.
       }
@@ -186,6 +233,7 @@ Map NeuraLocalSpeechInput::Poll() {
 
 void NeuraLocalSpeechInput::Background() noexcept {
   session_ = 0;
+  language_.clear();
   if (recognizer_) recognizer_->SetRecoState(SPRST_INACTIVE_WITH_PURGE);
   grammar_.reset();
   context_.reset();
@@ -197,9 +245,9 @@ void NeuraLocalSpeechInput::Handle(const flutter::MethodCall<Value>& call,
     std::unique_ptr<flutter::MethodResult<Value>> result) {
   try {
     if (call.method_name() == "isAvailable") {
-      result->Success(Value(FindEngine() != nullptr));
+      result->Success(Value(FindEngine(Language(call.arguments())) != nullptr));
     } else if (call.method_name() == "start") {
-      Start(Session(call.arguments()));
+      Start(Session(call.arguments()), Language(call.arguments()));
       result->Success(Value(true));
     } else if (call.method_name() == "stop") {
       const auto session = Session(call.arguments());

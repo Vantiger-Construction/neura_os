@@ -7,8 +7,11 @@ Sets up Neura's offline streaming speech recognizer (Sherpa-ONNX) on this PC.
 Neura never downloads a model by itself. This script is the explicit,
 person-run step that does it, once, and only when -AcceptModelLicense is given:
 
-  1. Downloads the pinned Sherpa-ONNX Windows x64 shared SDK and the English
-     streaming Zipformer int8 model from the k2-fsa GitHub releases.
+  1. Downloads the pinned Sherpa-ONNX Windows x64 shared SDK and the chosen
+     model from the k2-fsa GitHub releases: the English streaming Zipformer
+     (-Model English, the default) or multilingual Whisper with the Silero
+     voice-activity model (-Model MultilingualBase or MultilingualSmall),
+     which hears and identifies English, Spanish, Italian, German and French.
   2. Verifies each archive against -SdkSha256 / -ModelSha256 when given;
      otherwise prints the hashes so you can record and pin them.
   3. Copies the four model files into -ModelDir and writes
@@ -31,6 +34,11 @@ built-in Windows (SAPI) recognizer as before.
 .EXAMPLE
 .\tools\Install-NeuraOfflineSpeech.ps1 -AcceptModelLicense -SetEnvironment `
   -VcpkgRoot C:\vcpkg -Build
+
+.EXAMPLE
+# English, Spanish, Italian, German and French, detected per phrase.
+.\tools\Install-NeuraOfflineSpeech.ps1 -Model MultilingualBase `
+  -AcceptModelLicense -SetEnvironment -VcpkgRoot C:\vcpkg -Build
 #>
 [CmdletBinding(DefaultParameterSetName = 'Install')]
 param(
@@ -48,6 +56,16 @@ param(
 
     [Parameter(ParameterSetName = 'Install')]
     [string]$ModelSha256 = '',
+
+    # English: streaming English Zipformer (about 200 MB, fastest).
+    # MultilingualBase / MultilingualSmall: Whisper base (about 200 MB) or
+    # small (about 600 MB, more accurate, slower) plus Silero VAD.
+    [Parameter(ParameterSetName = 'Install')]
+    [ValidateSet('English', 'MultilingualBase', 'MultilingualSmall')]
+    [string]$Model = 'English',
+
+    [Parameter(ParameterSetName = 'Install')]
+    [string]$VadSha256 = '',
 
     [Parameter(ParameterSetName = 'Install')]
     [string]$PortAudioRoot = '',
@@ -76,16 +94,37 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$profileId = 'zipformer-en-2023-06-26-int8'
-$modelArchiveName = 'sherpa-onnx-streaming-zipformer-en-2023-06-26'
-$modelFiles = @(
-    'encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx',
-    'decoder-epoch-99-avg-1-chunk-16-left-128.onnx',
-    'joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx',
-    'tokens.txt'
-)
+$needsVad = $false
+switch ($Model) {
+    'English' {
+        $profileId = 'zipformer-en-2023-06-26-int8'
+        $modelArchiveName = 'sherpa-onnx-streaming-zipformer-en-2023-06-26'
+        $modelFiles = @(
+            'encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx',
+            'decoder-epoch-99-avg-1-chunk-16-left-128.onnx',
+            'joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx',
+            'tokens.txt'
+        )
+        $modelDocsUrl = 'https://k2-fsa.github.io/sherpa/onnx/pretrained_models/online-transducer/zipformer-transducer-models.html'
+        $modelSize = 'about 200 MB'
+    }
+    default {
+        $size = if ($Model -eq 'MultilingualSmall') { 'small' } else { 'base' }
+        $profileId = "whisper-$size-int8"
+        $modelArchiveName = "sherpa-onnx-whisper-$size"
+        $modelFiles = @(
+            "$size-encoder.int8.onnx",
+            "$size-decoder.int8.onnx",
+            "$size-tokens.txt"
+        )
+        $needsVad = $true
+        $modelDocsUrl = 'https://k2-fsa.github.io/sherpa/onnx/pretrained_models/whisper/index.html'
+        $modelSize = if ($size -eq 'small') { 'about 600 MB' } else { 'about 200 MB' }
+    }
+}
+$vadFile = 'silero_vad.onnx'
+$vadUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/$vadFile"
 $licenseUrl = 'https://github.com/k2-fsa/sherpa-onnx/blob/master/LICENSE'
-$modelDocsUrl = 'https://k2-fsa.github.io/sherpa/onnx/pretrained_models/online-transducer/zipformer-transducer-models.html'
 
 function Set-UserVariable([string]$Name, [string]$Value) {
     [Environment]::SetEnvironmentVariable($Name, $Value, 'User')
@@ -104,7 +143,10 @@ if ($Disable) {
 }
 
 if (-not $AcceptModelLicense) {
-    Write-Host 'This downloads the Sherpa-ONNX SDK and an English speech model (about 200 MB).'
+    Write-Host "This downloads the Sherpa-ONNX SDK and the $Model speech model ($modelSize)."
+    if ($needsVad) {
+        Write-Host 'Whisper models are released by OpenAI under the MIT license; Silero VAD under the MIT license.'
+    }
     Write-Host "Review the licenses first: $licenseUrl"
     Write-Host "Model documentation: $modelDocsUrl"
     Write-Host 'Re-run with -AcceptModelLicense to continue. Nothing was downloaded.'
@@ -184,11 +226,21 @@ foreach ($file in $modelFiles) {
     Copy-Item -LiteralPath $source.FullName -Destination $target -Force
     $fileHashes[$file] = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
 }
+$vadEvidence = ''
+if ($needsVad) {
+    # Silero VAD splits live audio into phrases for the whole-phrase model.
+    $vadDownload = Join-Path $downloads $vadFile
+    $vadHash = Get-VerifiedArchive -Url $vadUrl -Destination $vadDownload -ExpectedSha256 $VadSha256
+    $target = Join-Path $ModelDir $vadFile
+    Copy-Item -LiteralPath $vadDownload -Destination $target -Force
+    $fileHashes[$vadFile] = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
+    $vadEvidence = " Voice activity model from $vadUrl (SHA-256 $vadHash)."
+}
 
 $manifest = [ordered]@{
     profileId = $profileId
     fileSha256 = $fileHashes
-    licenseEvidence = "Downloaded from $modelUrl (archive SHA-256 $modelHash) with SDK $sdkUrl (SHA-256 $sdkHash). License accepted by the person running Install-NeuraOfflineSpeech.ps1 on $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')); see $licenseUrl."
+    licenseEvidence = "Downloaded from $modelUrl (archive SHA-256 $modelHash) with SDK $sdkUrl (SHA-256 $sdkHash).$vadEvidence License accepted by the person running Install-NeuraOfflineSpeech.ps1 on $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')); see $licenseUrl."
     networkRequired = $false
     createdAtUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 }
@@ -251,6 +303,9 @@ try {
     }
     Write-Host "Built with offline recognition: $exeDir"
     Write-Host 'Start Neura from there, open chat and tap the microphone.'
+    if ($needsVad) {
+        Write-Host 'Speak English, Spanish, Italian, German or French; Neura replies in the language she hears.'
+    }
 } finally {
     Pop-Location
 }

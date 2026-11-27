@@ -59,6 +59,11 @@ class AsrAudioQueue {
 struct AsrResult {
   std::string text;
   bool endpoint = false;
+  // Short language code the model itself reported for this text ("es"), or
+  // empty when the model does not identify languages.
+  std::string language;
+  // The backend could not keep up or lost audio; the session fails closed.
+  bool failed = false;
 };
 
 // Production implements this with local Sherpa/PortAudio calls. The standalone
@@ -85,7 +90,8 @@ class AsrBackend {
 // Stop(true): close capture, cancel further decoding, join, and discard text.
 class AsrSession {
  public:
-  using Segment = void (*)(std::string, bool, uint64_t, void*);
+  // text, language (may be empty), is_final, generation, context.
+  using Segment = void (*)(std::string, std::string, bool, uint64_t, void*);
 
   AsrSession(AsrBackend& backend, Segment segment, void* context)
       : backend_(backend), segment_(segment), context_(context) {}
@@ -152,6 +158,15 @@ class AsrSession {
 
   void ReadResult(bool finishing) {
     auto result = backend_.Result();
+    if (result.failed) {
+      failed_.store(true);
+      return;
+    }
+    if (result.language.size() > 16 ||
+        result.language.find_first_not_of("abcdefghijklmnopqrstuvwxyz") !=
+            std::string::npos) {
+      result.language.clear();
+    }
     if (result.text.size() > 16384 ||
         result.text.find('\0') != std::string::npos ||
         result.text.find('\x7f') != std::string::npos) {
@@ -168,11 +183,13 @@ class AsrSession {
         transcript_ += result.text;
         partial_.clear();
         if (!cancelled_.load()) {
-          segment_(std::move(result.text), true, generation_, context_);
+          segment_(std::move(result.text), std::move(result.language), true,
+                   generation_, context_);
         }
       } else if (result.text != partial_ && !cancelled_.load()) {
         partial_ = result.text;
-        segment_(std::move(result.text), false, generation_, context_);
+        segment_(std::move(result.text), std::move(result.language), false,
+                 generation_, context_);
       }
     }
     if (result.endpoint) {

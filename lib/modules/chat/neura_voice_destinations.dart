@@ -4,6 +4,7 @@ import '../../notifications/notifications_settings_screen.dart';
 import '../../screens/dream_journal_calendar_screen.dart';
 import '../../screens/help_screen.dart';
 import '../../screens/journal_prompt_screen.dart';
+import '../../screens/neura_notes_screen.dart';
 import '../../screens/neura_voice_settings_screen.dart';
 import '../../services/neura_voice_command.dart';
 import '../../src/modules/focus/focus_office_screen.dart';
@@ -59,6 +60,10 @@ NeuraVoiceDestination? neuraVoiceDestination(NeuraVoiceCommand command) =>
       NeuraVoiceCommand.openTimeline => (
           name: '/memory/timeline',
           builder: (_) => const LifeTimelineScreen()
+        ),
+      NeuraVoiceCommand.openNotes => (
+          name: '/memory/notes',
+          builder: (_) => const NeuraNotesScreen()
         ),
       NeuraVoiceCommand.openSettings => (
           name: '/settings',
