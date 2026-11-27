@@ -68,6 +68,8 @@ import '../../services/neura_swarm_service.dart';
 import '../../services/neura_tone_runtime.dart';
 import '../../services/wake_word_listener_service.dart';
 import '../../services/wake_word_prefs.dart';
+import '../../services/neura_spoken_lexicon_store.dart';
+import '../../services/neura_voice_input_router.dart';
 import '../../startup/neura_bootstrap_log.dart';
 import '../../mood/services/mood_state_service.dart';
 import '../modules/focus/focus_controller.dart';
@@ -145,6 +147,8 @@ class NeuraDataWipeService {
         failures, 'local profile writer shutdown', () => profileDrain);
     await _attempt(failures, 'startup microphone shutdown',
         NeuraLocalSpeechInput.instance.shutdownForDataWipe);
+    await _attempt(failures, 'offline recognizer shutdown',
+        NeuraVoiceInputRouter.instance.shutdownOnDeviceForDataWipe);
     await _attempt(
       failures,
       'native crash-log writer shutdown',
@@ -318,6 +322,7 @@ class NeuraDataWipeService {
     // This closes the window where a live controller could write an old cache
     // back after SharedPreferences.clear() but before its own reset.
     FocusController.instance.resetAfterDataWipe();
+    NeuraSpokenLexiconStore.instance.resetAfterDataWipe();
     HumanPrefsController.instance.resetAfterDataWipe();
     AppLockPrefsController.instance.resetAfterDataWipe();
     JokePrefsController.instance.resetAfterDataWipe();
