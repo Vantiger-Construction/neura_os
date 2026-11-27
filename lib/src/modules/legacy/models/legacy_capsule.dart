@@ -79,6 +79,8 @@ class LegacyCapsule {
 
   bool get isLocked => unlockAt != null && DateTime.now().isBefore(unlockAt!);
 
+  /// Use [clearEncryption] only after successful body decryption. Omitted
+  /// crypto fields otherwise retain their values for existing edit callers.
   LegacyCapsule copyWith({
     String? id,
     String? title,
@@ -90,6 +92,7 @@ class LegacyCapsule {
     DateTime? unlockAt,
     bool? isSealed,
     bool? isEncrypted,
+    bool clearEncryption = false,
     String? cipherTextB64,
     String? nonceB64,
     String? macB64,
@@ -110,11 +113,12 @@ class LegacyCapsule {
       tags: tags ?? this.tags,
       unlockAt: unlockAt ?? this.unlockAt,
       isSealed: isSealed ?? this.isSealed,
-      isEncrypted: isEncrypted ?? this.isEncrypted,
-      cipherTextB64: cipherTextB64 ?? this.cipherTextB64,
-      nonceB64: nonceB64 ?? this.nonceB64,
-      macB64: macB64 ?? this.macB64,
-      saltB64: saltB64 ?? this.saltB64,
+      isEncrypted: clearEncryption ? false : isEncrypted ?? this.isEncrypted,
+      cipherTextB64:
+          clearEncryption ? null : cipherTextB64 ?? this.cipherTextB64,
+      nonceB64: clearEncryption ? null : nonceB64 ?? this.nonceB64,
+      macB64: clearEncryption ? null : macB64 ?? this.macB64,
+      saltB64: clearEncryption ? null : saltB64 ?? this.saltB64,
       attachments: attachments ?? this.attachments,
       deliveryEnabled: deliveryEnabled ?? this.deliveryEnabled,
       deliveryTrigger: deliveryTrigger ?? this.deliveryTrigger,
