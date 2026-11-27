@@ -77,6 +77,7 @@ class NeuraTtsService with WidgetsBindingObserver {
   static const _kReplySpeechModeKey = 'neura.tts.reply_speech_mode.v1';
   static const _kLegacySpeakRepliesKey = 'neura.tts.speak_replies';
   static const _kReplySoundOnStartupKey = 'neura.tts.sound_on_startup.v1';
+  static const _kMatchMoodKey = 'neura.tts.match_mood.v1';
 
   FlutterTts? _tts;
   final Duration _nativeCommandTimeout;
