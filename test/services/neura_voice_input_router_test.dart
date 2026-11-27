@@ -102,7 +102,11 @@ void main() {
       foreground: () => foreground,
       requestPermission: () async => true,
     );
-    router = NeuraVoiceInputRouter(local: local, onDevice: () => onDevice);
+    router = NeuraVoiceInputRouter(
+      local: local,
+      onDevice: () => onDevice,
+      optedIn: () => true,
+    );
   });
 
   tearDown(() async {
@@ -192,6 +196,20 @@ void main() {
     expect(onDevice.isListening, isFalse);
     expect(statuses, [NeuraLocalSpeechInput.silenceEnded]);
     await sub.cancel();
+  });
+
+  test('without the runtime opt-in the streaming engine is never queried',
+      () async {
+    final plain = NeuraVoiceInputRouter(
+      local: local,
+      onDevice: () => onDevice,
+      optedIn: () => false,
+    );
+    expect(await plain.startRecording(), isTrue);
+    expect(plain.activeEngine, 'sapi');
+    expect(engine.starts, 0);
+    await plain.stopRecording();
+    await plain.dispose();
   });
 
   test('data-wipe shutdown stops the offline engine', () async {

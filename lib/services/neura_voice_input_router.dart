@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'neura_local_speech_input.dart';
+import 'neura_on_device_asr_opt_in.dart';
 import 'neura_on_device_speech_input.dart';
 import 'neura_speech_input.dart';
 
@@ -18,13 +19,16 @@ class NeuraVoiceInputRouter implements NeuraSpeechInput {
   NeuraVoiceInputRouter({
     NeuraLocalSpeechInput? local,
     NeuraOnDeviceSpeechInput Function()? onDevice,
+    bool Function()? optedIn,
   })  : _local = local ?? NeuraLocalSpeechInput.instance,
-        _onDeviceFactory = onDevice ?? NeuraOnDeviceSpeechInput.new;
+        _onDeviceFactory = onDevice ?? NeuraOnDeviceSpeechInput.new,
+        _optedIn = optedIn ?? neuraOnDeviceAsrOptedIn;
 
   static final NeuraVoiceInputRouter instance = NeuraVoiceInputRouter();
 
   final NeuraLocalSpeechInput _local;
   final NeuraOnDeviceSpeechInput Function() _onDeviceFactory;
+  final bool Function() _optedIn;
   NeuraOnDeviceSpeechInput? _onDevice;
   NeuraSpeechInput? _active;
 
@@ -62,7 +66,8 @@ class NeuraVoiceInputRouter implements NeuraSpeechInput {
   void _wire() {
     if (_wired) return;
     _wired = true;
-    for (final source in <NeuraSpeechInput>[_local, _streaming]) {
+    final sources = <NeuraSpeechInput>[_local, if (_optedIn()) _streaming];
+    for (final source in sources) {
       _forward(source.transcriptStream, _transcripts, source);
       _forward(source.finalPhraseStream, _finals, source);
       _forward(source.statusStream, _statuses, source);
@@ -78,15 +83,18 @@ class NeuraVoiceInputRouter implements NeuraSpeechInput {
   @override
   bool get isListening => _active?.isListening ?? false;
 
+  Future<bool> _streamingAvailable() async =>
+      _optedIn() && await _streaming.isAvailable();
+
   Future<bool> isAvailable() async =>
-      await _streaming.isAvailable() || await _local.isAvailable();
+      await _streamingAvailable() || await _local.isAvailable();
 
   @override
   Future<bool> startRecording() async {
     _wire();
     final active = _active;
     if (active != null && active.isListening) return true;
-    if (await _streaming.isAvailable()) {
+    if (await _streamingAvailable()) {
       _active = _streaming;
       if (await _streaming.startRecording()) return true;
     }

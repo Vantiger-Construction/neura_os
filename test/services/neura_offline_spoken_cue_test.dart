@@ -76,7 +76,7 @@ void main() {
     // The per-turn note never enters the system prompt, so the local model
     // keeps reusing its cached evaluation between turns.
     expect(ollama.systems.single, endsWith(kNeuraOfflineSystemSuffix));
-    expect(ollama.systems.single, isNot(contains('aloud')));
+    expect(ollama.systems.single, isNot(contains(cue)));
   });
 
   test('typed turns are unchanged', () async {
