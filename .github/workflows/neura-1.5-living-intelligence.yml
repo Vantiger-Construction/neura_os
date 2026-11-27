@@ -33,7 +33,8 @@ env:
 jobs:
   validate:
     name: Validate Living Intelligence safety and integration
-    runs-on: [self-hosted, Windows, X64, neura]
+    # Run PR dependencies and the complete suite in a fresh Windows VM.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["windows-latest"]' || '["self-hosted","Windows","X64","neura"]') }}
     timeout-minutes: 75
 
     steps:
@@ -100,6 +101,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: source
+          persist-credentials: false
 
       - name: Reject unresolved merge markers
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
@@ -157,7 +159,9 @@ jobs:
         shell: 'powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"'
         run: |
           Set-Location -LiteralPath $env:NEURA_SOURCE_ROOT
-          flutter test --no-pub --reporter expanded *>&1 |
+          # Match coverage CI's bounded full-suite budget. Backup recovery
+          # exercises real key derivation and can exceed the 30s runner default.
+          flutter test --no-pub --concurrency 2 --timeout 2m --reporter expanded *>&1 |
             Tee-Object -FilePath complete-tests.log |
             Out-Host
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
