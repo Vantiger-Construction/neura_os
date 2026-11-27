@@ -36,7 +36,6 @@ class NeuraVoiceInputRouter implements NeuraSpeechInput {
   final _finals = StreamController<String>.broadcast();
   final _statuses = StreamController<String>.broadcast();
   final List<StreamSubscription<String>> _subs = [];
-  bool _wired = false;
 
   NeuraOnDeviceSpeechInput get _streaming => _onDevice ??= _onDeviceFactory();
 
@@ -63,15 +62,19 @@ class NeuraVoiceInputRouter implements NeuraSpeechInput {
     }));
   }
 
-  void _wire() {
-    if (_wired) return;
-    _wired = true;
-    final sources = <NeuraSpeechInput>[_local, if (_optedIn()) _streaming];
-    for (final source in sources) {
-      _forward(source.transcriptStream, _transcripts, source);
-      _forward(source.finalPhraseStream, _finals, source);
-      _forward(source.statusStream, _statuses, source);
+  /// Makes [source] the active recognizer and forwards only its events.
+  /// Subscriptions are renewed on every turn, in the caller's zone, rather
+  /// than kept for the life of this singleton.
+  Future<void> _follow(NeuraSpeechInput source) async {
+    final previous = List.of(_subs);
+    _subs.clear();
+    for (final sub in previous) {
+      await sub.cancel();
     }
+    _active = source;
+    _forward(source.transcriptStream, _transcripts, source);
+    _forward(source.finalPhraseStream, _finals, source);
+    _forward(source.statusStream, _statuses, source);
   }
 
   @override
@@ -91,14 +94,13 @@ class NeuraVoiceInputRouter implements NeuraSpeechInput {
 
   @override
   Future<bool> startRecording() async {
-    _wire();
     final active = _active;
     if (active != null && active.isListening) return true;
     if (await _streamingAvailable()) {
-      _active = _streaming;
+      await _follow(_streaming);
       if (await _streaming.startRecording()) return true;
     }
-    _active = _local;
+    await _follow(_local);
     return _local.startRecording();
   }
 
