@@ -120,9 +120,12 @@ final class NeuraSpokenLexicon {
       ..sort((a, b) => b.heard.length.compareTo(a.heard.length));
     var result = text;
     for (final entry in ordered) {
+      // Letters of every language count as word characters, so "café"
+      // is not matched inside "cafés" and "über" stays whole.
       final pattern = RegExp(
-        '(?<![A-Za-z0-9])${RegExp.escape(entry.heard)}(?![A-Za-z0-9])',
+        '(?<![\\p{L}\\p{N}])${RegExp.escape(entry.heard)}(?![\\p{L}\\p{N}])',
         caseSensitive: false,
+        unicode: true,
       );
       result = result.replaceAll(pattern, entry.meant);
     }

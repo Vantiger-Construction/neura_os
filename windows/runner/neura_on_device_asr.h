@@ -34,6 +34,7 @@ class NeuraOnDeviceAsr {
  private:
   struct PendingSegment {
     std::string text;
+    std::string language;
     bool is_final = false;
     uint64_t generation = 0;
   };
@@ -43,7 +44,8 @@ class NeuraOnDeviceAsr {
   void HandleMethodCall(
       const flutter::MethodCall<flutter::EncodableValue>& call,
       std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
-  void QueueSegment(std::string text, bool is_final, uint64_t generation);
+  void QueueSegment(std::string text, std::string language, bool is_final,
+                    uint64_t generation);
   void ClearPendingSegments();
 
   HWND window_ = nullptr;

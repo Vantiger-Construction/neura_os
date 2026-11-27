@@ -5,6 +5,7 @@
 #include <flutter/method_channel.h>
 #include <flutter/standard_method_codec.h>
 #include <memory>
+#include <string>
 
 // A separate on-device input path. All COM/channel work stays on the main STA;
 // polling avoids native callbacks retaining this owner across window teardown.
@@ -19,8 +20,10 @@ class NeuraLocalSpeechInput {
   template <typename T> using ComPtr = std::unique_ptr<T, Release>;
   void Handle(const flutter::MethodCall<flutter::EncodableValue>& call,
               std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result);
-  ComPtr<ISpObjectToken> FindEngine();
-  void Start(int64_t session);
+  // Empty [language] keeps the first installed Microsoft desktop engine.
+  ComPtr<ISpObjectToken> FindEngine(const std::string& language,
+                                    std::string* found = nullptr);
+  void Start(int64_t session, const std::string& language);
   flutter::EncodableMap Poll();
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> channel_;
   HWND window_;
@@ -29,4 +32,5 @@ class NeuraLocalSpeechInput {
   ComPtr<ISpRecoContext> context_;
   ComPtr<ISpRecoGrammar> grammar_;
   int64_t session_ = 0;
+  std::string language_;  // Language of the engine that is listening.
 };

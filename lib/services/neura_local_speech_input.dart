@@ -8,18 +8,23 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../reliability/safe_boot.dart';
 import 'neura_companion_presence.dart';
+import 'neura_language.dart';
+import 'neura_language_prefs.dart';
 import 'neura_speech_input.dart';
 
 /// Chat voice uses an explicitly local native recognizer. This channel has
 /// no WinRT dictation, platform default recognizer, model download or fallback.
-class NeuraLocalSpeechInput implements NeuraSpeechInput {
+class NeuraLocalSpeechInput
+    implements NeuraSpeechInput, NeuraSpeechLanguageSource {
   NeuraLocalSpeechInput({
     MethodChannel channel = const MethodChannel('neura/local_speech_input'),
     Future<bool> Function()? requestPermission,
     bool Function()? foreground,
+    String? Function()? language,
   })  : _channel = channel,
         _requestPermission = requestPermission,
-        _foreground = foreground {
+        _foreground = foreground,
+        _language = language ?? _preferredLanguage {
     SafeBoot.instance.safeMode.addListener(_onSafetyChanged);
     SafeBoot.instance.restartRequired.addListener(_onSafetyChanged);
   }
@@ -28,6 +33,9 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
   final MethodChannel _channel;
   final Future<bool> Function()? _requestPermission;
   final bool Function()? _foreground;
+
+  /// The listening language to request, or null for the installed default.
+  final String? Function() _language;
   final _transcripts = StreamController<String>.broadcast();
   final _finals = StreamController<String>.broadcast();
   final _statuses = StreamController<String>.broadcast();
@@ -42,6 +50,19 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
   int _generation = 0;
   int? _nativeSession;
   String _text = '';
+  String? _heardLanguage;
+  String? _requestedLanguage;
+
+  static String? _preferredLanguage() =>
+      NeuraLanguagePrefs.instance.listeningCode;
+
+  /// The language of the engine that heard this turn, when it said so.
+  @override
+  String? get heardLanguage => _heardLanguage;
+
+  /// The language most recently asked for, so a failure can name it.
+  NeuraLanguage? get requestedLanguage =>
+      NeuraLanguage.fromCode(_requestedLanguage);
 
   String? _lastFailure;
 
@@ -52,10 +73,21 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
   static const silenceEnded =
       'No speech detected. The local recognition window ended.';
 
+  /// The recognizer ended its own listening window after an utterance.
+  static const listeningStopped =
+      'Local listening stopped. Tap the microphone to resume.';
+
   /// The recognizer doubted what it heard. Its words stay in the message box
   /// for the person to correct or send; nothing is sent on their behalf.
   static const unsureHeard =
       "I'm not sure I heard that right. Check the words, then send.";
+
+  /// The on-device recognizer has no pack for the chosen listening language.
+  static String languageUnavailable(NeuraLanguage? language) =>
+      'Offline speech recognition for '
+      '${language?.englishName ?? 'this language'} is not installed on this '
+      'device. Add it in your system speech settings, or set Listening '
+      'language to Automatic.';
 
   // Windows may not report a lifecycle state until focus first changes, so
   // an unreported state counts as foreground, as it does everywhere else in
@@ -90,11 +122,18 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
   Future<bool> isAvailable() async {
     if (!_allowed) return false;
     try {
-      return await _channel.invokeMethod<bool>('isAvailable') == true;
+      return await _channel.invokeMethod<bool>(
+            'isAvailable',
+            _languageArguments(_language()),
+          ) ==
+          true;
     } catch (_) {
       return false;
     }
   }
+
+  static Map<String, Object?>? _languageArguments(String? language) =>
+      language == null ? null : {'language': language};
 
   @override
   Future<bool> startRecording() {
@@ -128,12 +167,20 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
 
     var nativeRequested = false;
     _lastFailure = null;
+    _heardLanguage = null;
+    final language = _language();
+    _requestedLanguage = language;
     try {
       final stopping = _stopping;
       if (stopping != null) await stopping;
       if (!current()) return false;
-      if (await _channel.invokeMethod<bool>('isAvailable') != true) {
-        _lastFailure = 'no_local_engine';
+      if (await _channel.invokeMethod<bool>(
+            'isAvailable',
+            _languageArguments(language),
+          ) !=
+          true) {
+        _lastFailure =
+            language == null ? 'no_local_engine' : 'no_language_engine';
         return false;
       }
       if (!current()) return false;
@@ -150,9 +197,11 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
       _text = '';
       nativeRequested = true;
       _nativeSession = generation;
-      final started =
-          await _channel.invokeMethod<bool>('start', {'session': generation}) ==
-              true;
+      final started = await _channel.invokeMethod<bool>('start', {
+            'session': generation,
+            if (language != null) 'language': language,
+          }) ==
+          true;
       if (!started) _lastFailure = 'native_start_refused';
       if (!started || !current()) {
         await _stopNative(generation);
@@ -182,6 +231,8 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
   static const _nativeReasons = <String>{
     'not_foreground',
     'no_local_engine',
+    'no_language_engine',
+    'unsupported_language',
     'recognizer',
     'microphone',
     'dictation',
@@ -203,6 +254,8 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
       }
       final text = packet['text'];
       final unsure = packet['final'] == true && packet['unsure'] == true;
+      final heard = NeuraLanguage.fromCode(packet['language']?.toString());
+      if (heard != null) _heardLanguage = heard.code;
       if (text is String &&
           text.length <= 16384 &&
           !text.codeUnits.any((c) => c == 0 || c == 0x7f)) {
@@ -223,9 +276,11 @@ class NeuraLocalSpeechInput implements NeuraSpeechInput {
       if (packet['listening'] != true && packet['final'] != true) {
         await stopRecording();
         if (_allowed && _generation == generation + 1) {
-          _statuses.add(packet['silenceEnded'] == true
-              ? silenceEnded
-              : 'Local listening stopped. Tap the microphone to resume.');
+          _statuses.add(packet['languageUnavailable'] == true
+              ? languageUnavailable(requestedLanguage)
+              : packet['silenceEnded'] == true
+                  ? silenceEnded
+                  : listeningStopped);
         }
       }
     } catch (_) {

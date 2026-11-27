@@ -24,7 +24,7 @@ import 'neura_spoken_meaning.dart';
 /// a restart requirement turns on, or a profile session is active.
 class NeuraOnDeviceSpeechInput
     with WidgetsBindingObserver
-    implements NeuraSpeechInput {
+    implements NeuraSpeechInput, NeuraSpeechLanguageSource {
   NeuraOnDeviceSpeechInput({
     NeuraSpeechEngine? engine,
     bool Function()? foreground,
@@ -54,6 +54,11 @@ class NeuraOnDeviceSpeechInput
   int _generation = 0;
   String _committed = '';
   String _partial = '';
+  String? _heardLanguage;
+
+  /// The language the model reported for this turn's speech, if it did.
+  @override
+  String? get heardLanguage => _heardLanguage;
 
   String? _lastFailure;
   String? get lastFailure => _lastFailure;
@@ -109,6 +114,7 @@ class NeuraOnDeviceSpeechInput
     _lastFailure = null;
     _committed = '';
     _partial = '';
+    _heardLanguage = null;
     await _segmentSub?.cancel();
     _segmentSub = _engine.segments.listen((segment) {
       // The generation alone gates delivery: a segment may arrive between the
@@ -139,6 +145,7 @@ class NeuraOnDeviceSpeechInput
   void _onSegment(NeuraSpeechSegment segment, int generation) {
     _silence?.cancel();
     final phrase = NeuraSpokenText.normalize(segment.text);
+    if (segment.language != null) _heardLanguage = segment.language;
     if (segment.isFinal) {
       final text = segment.text.trim();
       if (text.isNotEmpty) {

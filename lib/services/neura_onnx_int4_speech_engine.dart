@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../modules/core/app_log.dart';
 import '../reliability/safe_boot.dart';
+import 'neura_language_prefs.dart';
 import 'neura_speech_engine.dart';
 
 /// Experimental native seam for operator-supplied ONNX streaming ASR.
@@ -17,12 +18,17 @@ import 'neura_speech_engine.dart';
 final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
   NeuraOnnxInt4SpeechEngine({
     MethodChannel channel = const MethodChannel('neura/on_device_asr'),
-  }) : _channel = channel {
+    String? Function()? language,
+  })  : _channel = channel,
+        _language = language ?? _preferredLanguage {
     _channel.setMethodCallHandler(_handleCall);
     SafeBoot.instance.safeMode.addListener(_onSafeModeChanged);
   }
 
   final MethodChannel _channel;
+
+  /// The listening language to request, or null to let the model detect it.
+  final String? Function() _language;
   final StreamController<NeuraSpeechSegment> _segments =
       StreamController<NeuraSpeechSegment>.broadcast();
   bool _listening = false;
@@ -32,6 +38,18 @@ final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
   Future<String>? _stopping;
   Completer<void>? _startSettled;
   int _startGeneration = 0;
+
+  static String? _preferredLanguage() =>
+      NeuraLanguagePrefs.instance.listeningCode;
+
+  static final RegExp _languageCode = RegExp(r'^[a-z]{2,8}$');
+
+  /// Arguments naming the requested language; null keeps the original
+  /// argument-free calls for automatic detection.
+  Map<String, Object?>? _languageArguments() {
+    final language = _language();
+    return language == null ? null : {'language': language};
+  }
 
   @override
   String get id => 'onnx_int4_experimental';
@@ -61,7 +79,10 @@ final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
   Future<bool> isAvailable() async {
     if (!listeningAllowed) return false;
     try {
-      final available = await _channel.invokeMethod<bool>('isAvailable');
+      final available = await _channel.invokeMethod<bool>(
+        'isAvailable',
+        _languageArguments(),
+      );
       return listeningAllowed && available == true;
     } on MissingPluginException {
       return false;
@@ -90,7 +111,11 @@ final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
         return false;
       }
       _nativeStartPending = true;
-      final started = await _channel.invokeMethod<bool>('start') == true;
+      final started = await _channel.invokeMethod<bool>(
+            'start',
+            _languageArguments(),
+          ) ==
+          true;
       _nativeStartPending = false;
       if (!listeningAllowed || generation != _startGeneration) {
         // A stop can reach native code before its pending start completes.
@@ -164,6 +189,7 @@ final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
     final text = raw['text']?.toString() ?? '';
     final confidence = raw['confidence'];
     final pauseMs = raw['pause_ms'];
+    final language = raw['language'];
     _segments.add(
       NeuraSpeechSegment(
         engineId: id,
@@ -177,6 +203,9 @@ final class NeuraOnnxInt4SpeechEngine implements NeuraSpeechEngine {
               pauseMs is num ? pauseMs.toInt().clamp(0, 60000).toInt() : 0,
         ),
         observedAtUtc: DateTime.now().toUtc(),
+        language: language is String && _languageCode.hasMatch(language)
+            ? language
+            : null,
       ),
     );
   }

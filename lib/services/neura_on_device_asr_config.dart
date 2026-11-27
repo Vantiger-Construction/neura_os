@@ -106,7 +106,36 @@ abstract final class NeuraOnDeviceAsrProfiles {
     ],
   );
 
-  static const all = [int4Candidate, zipformerEn20230626Int8];
+  /// Multilingual Whisper with Silero VAD: English, Spanish, Italian,
+  /// German and French, each phrase's language identified by the model.
+  static const whisperBaseInt8 = NeuraOnDeviceAsrProfile(
+    id: 'whisper-base-int8',
+    description: 'Sherpa-ONNX multilingual Whisper base int8 with Silero VAD.',
+    requiredFiles: [
+      'base-encoder.int8.onnx',
+      'base-decoder.int8.onnx',
+      'base-tokens.txt',
+      'silero_vad.onnx',
+    ],
+  );
+
+  static const whisperSmallInt8 = NeuraOnDeviceAsrProfile(
+    id: 'whisper-small-int8',
+    description: 'Sherpa-ONNX multilingual Whisper small int8 with Silero VAD.',
+    requiredFiles: [
+      'small-encoder.int8.onnx',
+      'small-decoder.int8.onnx',
+      'small-tokens.txt',
+      'silero_vad.onnx',
+    ],
+  );
+
+  static const all = [
+    int4Candidate,
+    zipformerEn20230626Int8,
+    whisperBaseInt8,
+    whisperSmallInt8,
+  ];
 
   static NeuraOnDeviceAsrProfile byId(String id) => all.firstWhere(
         (profile) => profile.id == id,

@@ -15,7 +15,8 @@ import 'neura_speech_input.dart';
 /// existing local SAPI recognizer is used exactly as before. There is no
 /// cloud recognizer, model download or silent substitution: the choice is
 /// visible through [activeEngine] and logged by the chat screen.
-class NeuraVoiceInputRouter implements NeuraSpeechInput {
+class NeuraVoiceInputRouter
+    implements NeuraSpeechInput, NeuraSpeechLanguageSource {
   NeuraVoiceInputRouter({
     NeuraLocalSpeechInput? local,
     NeuraOnDeviceSpeechInput Function()? onDevice,
@@ -50,6 +51,15 @@ class NeuraVoiceInputRouter implements NeuraSpeechInput {
   String? get lastFailure {
     if (_usingStreaming) return _onDevice?.lastFailure;
     return _local.lastFailure;
+  }
+
+  /// The language the active recognizer heard, when it knows.
+  @override
+  String? get heardLanguage {
+    final active = _active;
+    return active is NeuraSpeechLanguageSource
+        ? (active as NeuraSpeechLanguageSource).heardLanguage
+        : null;
   }
 
   void _forward(
