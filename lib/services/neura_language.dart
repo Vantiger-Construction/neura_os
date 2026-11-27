@@ -50,46 +50,39 @@ abstract final class NeuraLanguageGuess {
 
   // Words that are frequent in one language and rare in the others. Words the
   // languages share ("a", "la", "de", "un", "no") are deliberately absent.
-  static const Map<NeuraLanguage, Set<String>> _words = {
-    NeuraLanguage.en: {
-      'the', 'and', 'is', 'are', 'you', 'i', "i'm", 'it', "it's", 'what',
-      'how', 'this', 'that', 'with', 'have', 'my', 'me', 'was', 'not',
-      "don't", 'can', 'do', 'to', 'of', 'for', 'about', 'feel', 'today',
-      'please', 'yes', 'just', 'really', 'would', 'could', 'need', 'want',
-    },
-    NeuraLanguage.es: {
-      'el', 'los', 'las', 'es', 'está', 'estoy', 'estás', 'que', 'qué',
-      'y', 'por', 'para', 'con', 'pero', 'muy', 'cómo', 'tengo', 'tienes',
-      'quiero', 'puedes', 'hoy', 'mi', 'yo', 'eres', 'soy', 'también',
-      'gracias', 'hola', 'bien', 'necesito', 'siento', 'ayuda', 'ahora',
-      'mañana', 'nada', 'algo', 'cuando', 'donde', 'dónde', 'sí', 'una',
-      'del', 'al', 'lo', 'le', 'nos',
-    },
-    NeuraLanguage.it: {
-      'il', 'gli', 'è', 'sono', 'che', 'e', 'per', 'con', 'ma', 'molto',
-      'come', 'ho', 'hai', 'voglio', 'puoi', 'oggi', 'mio', 'mia', 'io',
-      'sei', 'anche', 'grazie', 'ciao', 'bene', 'bisogno', 'sento',
-      'aiuto', 'adesso', 'domani', 'niente', 'qualcosa', 'quando', 'dove',
-      'non', 'della', 'del', 'di', 'questo', 'questa', 'perché', 'cosa',
-      'mi', 'ti', 'ci', 'una', 'uno', 'sto', 'stai',
-    },
-    NeuraLanguage.de: {
-      'der', 'die', 'das', 'und', 'ist', 'bin', 'bist', 'ich', 'du', 'nicht',
-      'mit', 'für', 'aber', 'sehr', 'wie', 'habe', 'hast', 'will', 'kannst',
-      'heute', 'mein', 'meine', 'auch', 'danke', 'hallo', 'gut', 'brauche',
-      'fühle', 'hilfe', 'jetzt', 'morgen', 'nichts', 'etwas', 'wenn', 'wo',
-      'was', 'ein', 'eine', 'es', 'mir', 'mich', 'dich', 'dir', 'ja', 'nein',
-      'zu', 'auf', 'noch',
-    },
-    NeuraLanguage.fr: {
-      'le', 'les', 'est', 'suis', 'es', 'que', 'qui', 'et', 'pour', 'avec',
-      'mais', 'très', 'comment', "j'ai", 'tu', 'je', 'veux', 'peux', 'aujourd',
-      "aujourd'hui", 'mon', 'ma', 'mes', 'aussi', 'merci', 'bonjour', 'salut',
-      'bien', 'besoin', 'sens', 'aide', 'maintenant', 'demain', 'rien',
-      'quelque', 'quand', 'où', 'pas', 'ne', 'des', 'du', 'une', 'ce', "c'est",
-      'moi', 'toi', 'oui', 'vous', 'nous', "m'aider",
-    },
+  static final Map<NeuraLanguage, Set<String>> _words = {
+    NeuraLanguage.en: _set(
+      "the and is are you i i'm it it's what how this that with have my me "
+      "was not don't can do to of for about feel today please yes just "
+      'really would could need want',
+    ),
+    NeuraLanguage.es: _set(
+      'el los las es está estoy estás que qué y por para con pero muy cómo '
+      'tengo tienes quiero puedes hoy mi yo eres soy también gracias hola '
+      'bien necesito siento ayuda ahora mañana nada algo cuando donde dónde '
+      'sí una del al lo le nos',
+    ),
+    NeuraLanguage.it: _set(
+      'il gli è sono che e per con ma molto come ho hai voglio puoi oggi '
+      'mio mia io sei anche grazie ciao bene bisogno sento aiuto adesso '
+      'domani niente qualcosa quando dove non della del di questo questa '
+      'perché cosa mi ti ci una uno sto stai',
+    ),
+    NeuraLanguage.de: _set(
+      'der die das und ist bin bist ich du nicht mit für aber sehr wie habe '
+      'hast will kannst heute mein meine auch danke hallo gut brauche fühle '
+      'hilfe jetzt morgen nichts etwas wenn wo was ein eine es mir mich '
+      'dich dir ja nein zu auf noch',
+    ),
+    NeuraLanguage.fr: _set(
+      "le les est suis es que qui et pour avec mais très comment j'ai tu je "
+      "veux peux aujourd aujourd'hui mon ma mes aussi merci bonjour salut "
+      'bien besoin sens aide maintenant demain rien quelque quand où pas ne '
+      "des du une ce c'est moi toi oui vous nous m'aider",
+    ),
   };
+
+  static Set<String> _set(String words) => words.split(' ').toSet();
 
   // Letters used by only one of the five languages.
   static const Map<NeuraLanguage, String> _letters = {

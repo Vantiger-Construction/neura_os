@@ -132,8 +132,8 @@ final class NeuraNoteCommand {
         if (!lower.startsWith(phrase)) continue;
         final after = rest.substring(phrase.length);
         // The phrase must end at a word boundary ("note" but not "notebook").
-        if (after.isNotEmpty && RegExp(r'^[\p{L}\p{N}]', unicode: true)
-            .hasMatch(after)) {
+        if (after.isNotEmpty &&
+            RegExp(r'^[\p{L}\p{N}]', unicode: true).hasMatch(after)) {
           continue;
         }
         // Typed requests without the address need an explicit colon.

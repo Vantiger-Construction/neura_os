@@ -945,9 +945,8 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       }
       // "Neura, take a note ..." in any of her languages. Crisis language is
       // never filed away: it goes through the normal reply instead.
-      final note = CrisisTextScan.of(text).crisis
-          ? null
-          : NeuraNoteCommand.parse(text);
+      final note =
+          CrisisTextScan.of(text).crisis ? null : NeuraNoteCommand.parse(text);
       if (note != null) {
         setState(() {
           _listening = false;
@@ -2500,16 +2499,15 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   void _onNotePhrase(String phrase, int session) {
     final heard = NeuraSpokenLexiconStore.instance.apply(phrase.trim());
     if (heard.isEmpty) return;
-    final stop = NeuraNoteCommand.parse(heard)?.action ==
-            NeuraNoteAction.stopTaking ||
-        NeuraVoiceCommand.parse(heard) == NeuraVoiceCommand.stopListening;
+    final stop =
+        NeuraNoteCommand.parse(heard)?.action == NeuraNoteAction.stopTaking ||
+            NeuraVoiceCommand.parse(heard) == NeuraVoiceCommand.stopListening;
     if (stop) {
       unawaited(_finishNoteTaking());
       return;
     }
-    final language =
-        NeuraLanguage.fromCode(_reportedLanguage()) ??
-            NeuraLanguageGuess.of(heard);
+    final language = NeuraLanguage.fromCode(_reportedLanguage()) ??
+        NeuraLanguageGuess.of(heard);
     final added = _notes.add(heard, language: language);
     if (mounted) setState(_controller.clear);
     if (!added && _voiceSessionActive(session)) {
