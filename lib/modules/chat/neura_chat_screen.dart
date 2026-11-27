@@ -3381,8 +3381,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
               ),
             ),
           ),
-          if (_notes.active.value || _notes.hasUnsaved)
-            _noteTakingBar(context),
+          if (_notes.active.value || _notes.hasUnsaved) _noteTakingBar(context),
           if (_selectedContext != null)
             InputChip(
               label: Text('Next reply: ${_selectedContext!.name}'),

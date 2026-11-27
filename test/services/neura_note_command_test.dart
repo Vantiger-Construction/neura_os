@@ -134,8 +134,11 @@ void main() {
         'Neura, open my notes': NeuraVoiceCommand.openNotes,
       };
       for (final entry in examples.entries) {
-        expect(NeuraVoiceCommand.parse(entry.key), entry.value,
-            reason: entry.key);
+        expect(
+          NeuraVoiceCommand.parse(entry.key),
+          entry.value,
+          reason: entry.key,
+        );
       }
     });
 
