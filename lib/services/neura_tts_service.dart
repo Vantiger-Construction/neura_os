@@ -76,7 +76,7 @@ class NeuraTtsService with WidgetsBindingObserver {
   static const _kVolumeKey = 'neura.tts.volume';
   static const _kReplySpeechModeKey = 'neura.tts.reply_speech_mode.v1';
   static const _kLegacySpeakRepliesKey = 'neura.tts.speak_replies';
-  static const _kMatchMoodKey = 'neura.tts.match_mood.v1';
+  static const _kReplySoundOnStartupKey = 'neura.tts.sound_on_startup.v1';
 
   FlutterTts? _tts;
   final Duration _nativeCommandTimeout;
@@ -129,6 +129,38 @@ class NeuraTtsService with WidgetsBindingObserver {
   double get speechRate => _speechRate;
   double get pitch => _pitch;
   double get volume => _volume;
+
+  /// Reply sound is restored on normal launch unless the user opts out.
+  /// This controls output preferences only, independently of microphone consent.
+  bool get replySoundOnStartup =>
+      NeuraPrefsCache.prefsOrNull?.getBool(_kReplySoundOnStartupKey) ?? true;
+
+  Future<void> setReplySoundOnStartup(bool value) async {
+    final saved =
+        await NeuraPrefsCache.prefs.setBool(_kReplySoundOnStartupKey, value);
+    if (!saved) throw StateError('Startup sound preference was not saved.');
+  }
+
+  /// Restore audible replies without initializing native audio during boot.
+  /// The separate startup-listening opt-in is never read or changed here.
+  Future<void> prepareReplySoundForStartup() async {
+    if (!replySoundOnStartup ||
+        SafeBoot.instance.safeMode.value ||
+        SafeBoot.instance.restartRequired.value) {
+      return;
+    }
+    if (replySpeechMode == NeuraReplySpeechMode.off) {
+      await setReplySpeechMode(NeuraReplySpeechMode.afterComplete);
+    }
+    final prefs = NeuraPrefsCache.prefs;
+    final savedVolume = prefs.getDouble(_kVolumeKey) ?? 1.0;
+    _volume = savedVolume.isFinite && savedVolume > 0
+        ? savedVolume.clamp(0.0, 1.0)
+        : 0.7;
+    if (_volume != savedVolume) {
+      await prefs.setDouble(_kVolumeKey, _volume);
+    }
+  }
 
   /// The explicit automatic speech policy for chat replies. Reading this
   /// value never forces the native TTS engine to initialize.

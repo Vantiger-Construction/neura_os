@@ -71,6 +71,7 @@ import '../../services/wake_word_prefs.dart';
 import '../../startup/neura_bootstrap_log.dart';
 import '../../mood/services/mood_state_service.dart';
 import '../modules/focus/focus_controller.dart';
+import '../modules/legacy/legacy_vault_service.dart';
 
 /// Raised when a writer cannot drain or a deletion cannot be verified.
 ///
@@ -106,8 +107,8 @@ class NeuraDataWipeService {
     RegExp(r'^usage_report_[0-9]+\.pdf$'),
     RegExp(r'^neura_weekly_snapshot_[0-9]+\.(?:csv|pdf)$'),
     RegExp(r'^neura_recap_[0-9]+\.pdf$'),
-    RegExp(r'^neura_legacy_vault_export_[0-9]+\.zip$'),
-    RegExp(r'^legacy_packet_.+_[0-9]+\.zip$'),
+    RegExp(r'^neura_legacy_vault_export_[0-9]+\.zip(?:\.partial)?$'),
+    RegExp(r'^legacy_packet_.+_[0-9]+\.zip(?:\.partial)?$'),
     RegExp(r'^legacy_.+_[0-9]+\.pdf$'),
     RegExp(r'^neura_life_timeline_.+\.json$'),
     RegExp(r'^amb_playback_[0-9]+\.wav$'),
@@ -131,6 +132,7 @@ class NeuraDataWipeService {
     NeuraTeachingService.suspendAllForDataWipe();
     MemoryVaultStore.instance.suspendForDataWipe();
     PortableVaultBackupService.suspendForDataWipe();
+    LegacyVaultService.suspendForDataWipe();
     ScheduledBackupSettings.suspendForDataWipe();
     CompanionMemoryService.suspendAllForDataWipe();
     EncryptedMemoryDurableScopedAdapter.suspendAllForDataWipe();
@@ -187,6 +189,7 @@ class NeuraDataWipeService {
     await _attempt(failures, 'backup writer drain', () async {
       await PortableVaultBackupService.drainForDataWipe();
       await ScheduledBackupSettings.drainForDataWipe();
+      await LegacyVaultService.drainForDataWipe();
       backupWritersDrained = true;
     });
     if (!backupWritersDrained) {
@@ -416,22 +419,23 @@ class NeuraDataWipeService {
   }
 
   /// Deletes only the exact Legacy Vault directory in application documents.
-  static Future<void> wipeLegacyVault() async {
-    final failures = <String>[];
-    await _withDirectory(
-      failures,
-      'application documents lookup',
-      getApplicationDocumentsDirectory,
-      (documents) => _deleteExact(
-        failures,
-        '${documents.path}${Platform.pathSeparator}neura_legacy_vault',
-        'Legacy Vault deletion',
-      ),
-    );
-    if (failures.isNotEmpty) {
-      throw NeuraDataWipeException(List<String>.unmodifiable(failures));
-    }
-  }
+  static Future<void> wipeLegacyVault() =>
+      LegacyVaultService.withDataWipe(() async {
+        final failures = <String>[];
+        await _withDirectory(
+          failures,
+          'application documents lookup',
+          getApplicationDocumentsDirectory,
+          (documents) => _deleteExact(
+            failures,
+            '${documents.path}${Platform.pathSeparator}neura_legacy_vault',
+            'Legacy Vault deletion',
+          ),
+        );
+        if (failures.isNotEmpty) {
+          throw NeuraDataWipeException(List<String>.unmodifiable(failures));
+        }
+      });
 
   static Future<void> _wipeApplicationDocuments(List<String> failures) {
     return _withDirectory(

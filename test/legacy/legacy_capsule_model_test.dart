@@ -12,6 +12,29 @@ LegacyCapsule _minimal() => LegacyCapsule(
 
 void main() {
   group('LegacyCapsule model', () {
+    test(
+        'clearEncryption clears all crypto fields and preserves other metadata',
+        () {
+      final original = _minimal().copyWith(
+          isEncrypted: true,
+          body: '',
+          cipherTextB64: 'cipher',
+          nonceB64: 'nonce',
+          macB64: 'mac',
+          saltB64: 'salt',
+          attachments: ['capsule_test-id/attachments/fictional.txt']);
+      final clear = original.copyWith(
+          body: 'Fictional clear body', clearEncryption: true);
+      expect(clear.isEncrypted, false);
+      expect([clear.cipherTextB64, clear.nonceB64, clear.macB64, clear.saltB64],
+          everyElement(isNull));
+      expect(clear.id, original.id);
+      expect(clear.attachments, original.attachments);
+      expect(original.isEncrypted, true);
+      expect(original.cipherTextB64, 'cipher');
+      expect(original.copyWith(title: 'Fictional renamed').cipherTextB64,
+          'cipher');
+    });
     test('round-trips through toMap / fromMap', () {
       final original = _minimal();
       final restored = LegacyCapsule.fromMap(original.toMap());

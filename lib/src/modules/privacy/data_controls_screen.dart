@@ -74,16 +74,14 @@ class _DataControlsScreenState extends State<DataControlsScreen> {
         if (pass == null || pass.trim().isEmpty) return;
       }
 
-      final zip = await LegacyVaultService.instance.exportVaultZip(
+      final result = await LegacyVaultService.instance.exportVaultZipResult(
         passphrase: pass,
         decryptEncrypted: decrypt,
       );
 
       await SharePlus.instance.share(ShareParams(
-        files: [XFile(zip.path)],
-        text: decrypt
-            ? 'Neura Legacy Vault export (decrypted)'
-            : 'Neura Legacy Vault export (raw)',
+        files: [XFile(result.file.path)],
+        text: 'Neura Legacy Vault export\n${result.description}',
       ));
     } catch (e) {
       if (!mounted) return;
@@ -97,10 +95,11 @@ class _DataControlsScreenState extends State<DataControlsScreen> {
   Future<void> _importLegacyVault() async {
     setState(() => _busy = true);
     try {
-      final n = await LegacyVaultService.instance.importVaultZipInteractive();
+      final result =
+          await LegacyVaultService.instance.importVaultZipInteractiveResult();
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Imported $n capsule(s).')));
+          .showSnackBar(SnackBar(content: Text(result.description)));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)

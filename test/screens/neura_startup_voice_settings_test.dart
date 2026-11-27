@@ -101,6 +101,39 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  settingsTest('startup sound has a saved switch independent of listening',
+      (tester) async {
+    granted = false;
+    available = false;
+    final sound = find.byKey(const Key('reply-sound-on-startup-switch'));
+    expect(tester.widget<SwitchListTile>(sound).value, isTrue);
+    await tester.tap(sound);
+    await tester.pumpAndSettle();
+    expect(NeuraTtsService.instance.replySoundOnStartup, isFalse);
+    await tester.tap(sound);
+    await tester.pumpAndSettle();
+    expect(NeuraTtsService.instance.replySoundOnStartup, isTrue);
+    expect(NeuraStartupVoicePrefs.instance.enabled.value, isFalse);
+    expect(NeuraPrefsCache.prefs.getBool(NeuraStartupVoicePrefs.key), isNull);
+    expect(spoken, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  settingsTest(
+      'entering Safe Mode updates startup-listening controls immediately',
+      (tester) async {
+    await tester.tap(find.byKey(const Key('safe-mode-switch')));
+    await tester.pumpAndSettle();
+    expect(SafeBoot.instance.safeMode.value, isTrue);
+    expect(
+        tester
+            .widget<SwitchListTile>(
+                find.byKey(const Key('startup-voice-switch')))
+            .onChanged,
+        isNull);
+    expect(spoken, isEmpty);
+  });
+
   settingsTest('denied microphone permission cannot save an opt-in',
       (tester) async {
     granted = false;
