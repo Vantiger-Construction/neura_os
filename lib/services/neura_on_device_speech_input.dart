@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../profiles/local_profile_service.dart';
@@ -200,7 +199,6 @@ class NeuraOnDeviceSpeechInput
     await stopRecording().timeout(const Duration(seconds: 3));
   }
 
-  @visibleForTesting
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
