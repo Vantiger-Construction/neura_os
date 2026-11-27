@@ -515,7 +515,15 @@ void main() {
           ),
         );
       }
-      expect(payloads.single.keys.toSet(), {'system', 'messages', 'tools'});
+      // A spoken turn adds only the per-turn note that the words were heard,
+      // never anything in the system prompt.
+      expect(
+        payloads.single.keys.toSet(),
+        {'system', 'messages', 'tools', 'cue'},
+      );
+      final cue = payloads.single['cue'] as String;
+      expect(cue, contains('aloud'));
+      expect(payloads.single['system'] as String, isNot(contains(cue)));
       expect(payloads.single['tools'], isNotEmpty);
       expect((payloads.single['messages'] as List).last, {
         'role': 'user',
