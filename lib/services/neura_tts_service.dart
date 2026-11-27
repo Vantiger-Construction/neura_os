@@ -11,6 +11,7 @@ import '../avatar/motion/neura_motion.dart';
 import 'neura_audio_focus.dart';
 import 'neura_companion_presence.dart';
 import 'neura_spoken_text.dart';
+import 'neura_voice_tone.dart';
 import '../reliability/safe_boot.dart';
 import '../startup/neura_prefs_cache.dart';
 
@@ -76,6 +77,7 @@ class NeuraTtsService with WidgetsBindingObserver {
   static const _kReplySpeechModeKey = 'neura.tts.reply_speech_mode.v1';
   static const _kLegacySpeakRepliesKey = 'neura.tts.speak_replies';
   static const _kReplySoundOnStartupKey = 'neura.tts.sound_on_startup.v1';
+  static const _kMatchMoodKey = 'neura.tts.match_mood.v1';
 
   FlutterTts? _tts;
   final Duration _nativeCommandTimeout;
@@ -97,6 +99,10 @@ class NeuraTtsService with WidgetsBindingObserver {
   double _speechRate = 0.5;
   double _pitch = 1.05;
   double _volume = 1.0;
+  NeuraVoiceTone _tone = NeuraVoiceTone.neutral;
+  // What the engine was last told, so an unchanged tone costs no native call.
+  double? _appliedRate;
+  double? _appliedPitch;
   NeuraReplySpeechMode _replySpeechMode = NeuraReplySpeechMode.off;
 
   bool get playbackAllowed =>
@@ -175,6 +181,48 @@ class NeuraTtsService with WidgetsBindingObserver {
       return NeuraReplySpeechMode.streamed;
     }
     return _replySpeechMode;
+  }
+
+  /// Whether her voice leans with the feeling of the user's latest message.
+  /// On by default; only rate and pitch change, within about 12%.
+  bool get matchMood =>
+      NeuraPrefsCache.prefsOrNull?.getBool(_kMatchMoodKey) ?? true;
+
+  Future<void> setMatchMood(bool value) async {
+    try {
+      await NeuraPrefsCache.prefs.setBool(_kMatchMoodKey, value);
+    } catch (_) {
+      // Unsaved: the default applies next launch.
+    }
+    if (!value) _tone = NeuraVoiceTone.neutral;
+  }
+
+  /// The tone for upcoming replies, from the on-device read of the user's
+  /// latest message. It applies from the next utterance onward.
+  void setReplyTone(NeuraVoiceTone tone) {
+    _tone = matchMood ? tone : NeuraVoiceTone.neutral;
+  }
+
+  NeuraVoiceTone get replyTone => _tone;
+
+  /// A tone chosen by a feature itself (a bedtime story), regardless of
+  /// [matchMood]. The next user message's mood read replaces it.
+  void useTone(NeuraVoiceTone tone) => _tone = tone;
+
+  /// Tells the engine the user's rate and pitch leaned by the current tone.
+  Future<void> _applyTone() async {
+    final tts = _tts;
+    if (tts == null) return;
+    final rate = (_speechRate * _tone.rate).clamp(0.2, 0.8);
+    final pitch = (_pitch * _tone.pitch).clamp(0.5, 2.0);
+    if (rate != _appliedRate) {
+      await tts.setSpeechRate(rate);
+      _appliedRate = rate;
+    }
+    if (pitch != _appliedPitch) {
+      await tts.setPitch(pitch);
+      _appliedPitch = pitch;
+    }
   }
 
   /// Compatibility surface for existing callers. New UI should use
@@ -294,8 +342,10 @@ class NeuraTtsService with WidgetsBindingObserver {
     _pitch = (prefs?.getDouble(_kPitchKey) ?? 1.05).clamp(0.5, 2.0);
     _volume = (prefs?.getDouble(_kVolumeKey) ?? 1.0).clamp(0.0, 1.0);
     await tts.setSpeechRate(_speechRate);
+    _appliedRate = _speechRate;
     if (!current()) return false;
     await tts.setPitch(_pitch);
+    _appliedPitch = _pitch;
     if (!current()) return false;
     await tts.setVolume(_volume);
     if (!current()) return false;
@@ -438,7 +488,10 @@ class NeuraTtsService with WidgetsBindingObserver {
     try {
       await NeuraPrefsCache.prefs.setDouble(_kSpeechRateKey, _speechRate);
     } catch (_) {}
-    if (await _ensureInit()) await _tts!.setSpeechRate(_speechRate);
+    if (await _ensureInit()) {
+      await _tts!.setSpeechRate(_speechRate);
+      _appliedRate = _speechRate;
+    }
   }
 
   Future<void> setPitch(double value) async {
@@ -446,7 +499,10 @@ class NeuraTtsService with WidgetsBindingObserver {
     try {
       await NeuraPrefsCache.prefs.setDouble(_kPitchKey, _pitch);
     } catch (_) {}
-    if (await _ensureInit()) await _tts!.setPitch(_pitch);
+    if (await _ensureInit()) {
+      await _tts!.setPitch(_pitch);
+      _appliedPitch = _pitch;
+    }
   }
 
   Future<void> setVolume(double value) async {
@@ -472,6 +528,8 @@ class NeuraTtsService with WidgetsBindingObserver {
     });
     if (result == 0) return;
     if (!current()) return;
+    // A preview plays the saved settings exactly, without a mood lean.
+    _tone = NeuraVoiceTone.neutral;
     await speak(sampleText);
   }
 
@@ -614,6 +672,11 @@ class NeuraTtsService with WidgetsBindingObserver {
           }),
         );
       });
+      await _applyTone();
+      if (!current()) {
+        _finish(playback);
+        return;
+      }
       // Body language follows her speech rhythm (punctuation only).
       NeuraSpeechBeats.instance.begin(text);
       final result = await _tts!.speak(text);

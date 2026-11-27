@@ -30,6 +30,7 @@ import 'package:neuro_companion/neura_link/local_conversation_session.dart';
 import 'package:neuro_companion/reliability/safe_boot.dart';
 import 'package:neuro_companion/services/neura_local_speech_input.dart';
 import 'package:neuro_companion/services/neura_tts_service.dart';
+import 'package:neuro_companion/services/neura_turn_patience.dart';
 import 'package:neuro_companion/services/wake_word_prefs.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
 
@@ -454,6 +455,9 @@ void main() {
       await tester.pump();
       expect(phases(), ['listen:true']);
       await native(tester, 'onFinal', 'Synthetic private question');
+      // Patient listening: the turn ends after a short pause, not at once.
+      await drain(tester);
+      await tester.pump(NeuraTurnPatience.settled);
       await drain(tester);
       expect(phases().take(3), ['listen:true', 'listen:false', 'think:true']);
       await answer(tester);
@@ -576,6 +580,9 @@ void main() {
       await tester.tap(find.byTooltip('Talk freely (hands-free)'));
       await drain(tester);
       await native(tester, 'onFinal', 'Synthetic private question');
+      // Patient listening: the turn ends after a short pause, not at once.
+      await drain(tester);
+      await tester.pump(NeuraTurnPatience.settled);
       await drain(tester);
       expect(payloads, hasLength(1));
       if (cancelled) {

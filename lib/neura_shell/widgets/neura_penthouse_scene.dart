@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../avatar/motion/neura_motion.dart';
+import '../../mood/services/neura_mood_weather.dart';
 import '../models/neura_room.dart';
 import '../neura_shell_state.dart';
 
@@ -30,6 +31,7 @@ class NeuraPenthouseScene extends StatelessWidget {
     this.dim = 0,
     this.dimColor,
     this.showFurniture = true,
+    this.weather,
   });
 
   final NeuraRoom room;
@@ -37,11 +39,24 @@ class NeuraPenthouseScene extends StatelessWidget {
   final Color? dimColor;
   final bool showFurniture;
 
+  /// The weather over the room. Null follows the user's recent mood
+  /// check-ins ([NeuraMoodWeatherService]).
+  final NeuraMoodWeather? weather;
+
   /// How long one room takes to fade into the next.
   static const Duration crossfade = Duration(milliseconds: 700);
 
   @override
   Widget build(BuildContext context) {
+    final fixed = weather;
+    if (fixed != null) return _build(context, fixed);
+    return ValueListenableBuilder<NeuraMoodWeather>(
+      valueListenable: NeuraMoodWeatherService.instance.weather,
+      builder: (context, value, _) => _build(context, value),
+    );
+  }
+
+  Widget _build(BuildContext context, NeuraMoodWeather weather) {
     final overlay = (dimColor ?? Theme.of(context).colorScheme.surface)
         .withValues(alpha: dim.clamp(0.0, 1.0));
     final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
@@ -58,6 +73,7 @@ class NeuraPenthouseScene extends StatelessWidget {
       lampOn: penthouse?.lampOn ?? true,
       curtainsClosed: penthouse?.curtainsClosed ?? false,
       showFurniture: showFurniture,
+      weather: weather,
     );
     return AnimatedSwitcher(
       duration: animate ? crossfade : Duration.zero,
@@ -81,6 +97,7 @@ class NeuraPenthousePainter extends CustomPainter {
     this.curtainsClosed = false,
     required this.overlay,
     required this.showFurniture,
+    this.weather = NeuraMoodWeather.mild,
   });
 
   final NeuraRoom room;
@@ -88,6 +105,7 @@ class NeuraPenthousePainter extends CustomPainter {
   final bool curtainsClosed;
   final Color overlay;
   final bool showFurniture;
+  final NeuraMoodWeather weather;
 
   static const _skyTop = Color(0xFF070B1C);
   static const _skyMid = Color(0xFF16163A);
@@ -147,6 +165,8 @@ class NeuraPenthousePainter extends CustomPainter {
         if (showFurniture) _drawLounge(canvas, w, h, floorY);
     }
 
+    _paintWeather(canvas, w, floorY);
+
     // Gentle vignette.
     canvas.drawRect(
       Offset.zero & size,
@@ -163,6 +183,49 @@ class NeuraPenthousePainter extends CustomPainter {
 
     if (overlay.a > 0) {
       canvas.drawRect(Offset.zero & size, Paint()..color = overlay);
+    }
+  }
+
+  /// A light layer over the view from the room: subtle enough that the
+  /// room still reads as itself. Static, so it costs no frames.
+  void _paintWeather(Canvas canvas, double w, double floorY) {
+    final view = Rect.fromLTWH(0, 0, w, floorY);
+    switch (weather) {
+      case NeuraMoodWeather.mild:
+        return;
+      case NeuraMoodWeather.clear:
+        _drawGlow(
+          canvas,
+          Offset(w * 0.78, floorY * 0.18),
+          math.max(w, floorY) * 0.55,
+          const Color(0xFFFFD9A0).withValues(alpha: 0.16),
+        );
+      case NeuraMoodWeather.overcast:
+        _fillVertical(canvas, view, <Color>[
+          const Color(0xFF8A90A8).withValues(alpha: 0.20),
+          const Color(0xFF8A90A8).withValues(alpha: 0.06),
+        ]);
+      case NeuraMoodWeather.rain:
+        _fillVertical(canvas, view, <Color>[
+          const Color(0xFF5E6E8C).withValues(alpha: 0.24),
+          const Color(0xFF5E6E8C).withValues(alpha: 0.08),
+        ]);
+        final rnd = math.Random(23);
+        final streak = Paint()
+          ..color = const Color(0xFFCFE3FF).withValues(alpha: 0.16)
+          ..strokeWidth = 1
+          ..strokeCap = StrokeCap.round;
+        for (var i = 0; i < 70; i++) {
+          final x = rnd.nextDouble() * w;
+          final y = rnd.nextDouble() * floorY;
+          final length = 8 + rnd.nextDouble() * 14;
+          if (y + length > floorY) continue;
+          canvas.drawLine(
+            Offset(x, y),
+            Offset(x - length * 0.18, y + length),
+            streak,
+          );
+        }
     }
   }
 
@@ -927,6 +990,7 @@ class NeuraPenthousePainter extends CustomPainter {
   bool shouldRepaint(covariant NeuraPenthousePainter oldDelegate) {
     return oldDelegate.room.id != room.id ||
         oldDelegate.overlay != overlay ||
+        oldDelegate.weather != weather ||
         oldDelegate.lampOn != lampOn ||
         oldDelegate.curtainsClosed != curtainsClosed ||
         oldDelegate.showFurniture != showFurniture;

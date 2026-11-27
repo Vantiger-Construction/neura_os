@@ -269,6 +269,20 @@ class _NeuraVoiceSettingsScreenState extends State<NeuraVoiceSettingsScreen> {
                         onChanged: (value) => setState(() => _volume = value),
                         onChangeEnd: service.setVolume,
                       ),
+                      SwitchListTile(
+                        key: const Key('match-mood-switch'),
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Match my mood'),
+                        subtitle: const Text(
+                          'Speak a little slower and softer when you are '
+                          'having a hard time, brighter for good news.',
+                        ),
+                        value: service.matchMood,
+                        onChanged: (value) async {
+                          await service.setMatchMood(value);
+                          if (mounted) setState(() {});
+                        },
+                      ),
                       const Text(
                         'Settings stay on this device. Ambient sound lowers automatically while Neura speaks.',
                         textAlign: TextAlign.center,
