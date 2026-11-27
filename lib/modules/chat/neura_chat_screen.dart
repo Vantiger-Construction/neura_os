@@ -1325,6 +1325,7 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
       case NeuraVoiceCommand.openFocus:
       case NeuraVoiceCommand.openQuests:
       case NeuraVoiceCommand.openTimeline:
+      case NeuraVoiceCommand.openNotes:
       case NeuraVoiceCommand.openSettings:
       case NeuraVoiceCommand.openVoiceSettings:
       case NeuraVoiceCommand.openAccessibility:
