@@ -15,6 +15,7 @@ import '../modules/support/wellbeing_home_card.dart';
 import '../modules/support/wellbeing_session_screen.dart';
 import '../theme/app_theme.dart';
 import 'neura_demo_session.dart';
+import 'neura_lounge_preview_screen.dart';
 
 class NeuraDemoApp extends StatefulWidget {
   const NeuraDemoApp({super.key, this.session});
@@ -141,6 +142,48 @@ class _NeuraDemoAppState extends State<NeuraDemoApp>
                       'Use fictional text. Your changes disappear when the preview closes or hot restarts.'),
                   const SizedBox(height: 12),
                   WellbeingHomeCard(destinationBuilder: _destination),
+                  const SizedBox(height: 12),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Explore the lounge',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Try a room concept with sample reflections, '
+                            'small steps and quiet-writing activities.',
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            key: const ValueKey('open-lounge-preview'),
+                            onPressed: () =>
+                                _navigator.currentState!.push<void>(
+                              MaterialPageRoute<void>(
+                                builder: (_) => NeuraLoungePreviewScreen(
+                                  quietWritingBuilder: (_) => _destination(
+                                    WellbeingDestination.quietWriting,
+                                  ),
+                                  smallStepBuilder: (_) => _destination(
+                                    WellbeingDestination.smallStep,
+                                  ),
+                                  settleBuilder: (_) => _destination(
+                                    WellbeingDestination.settle,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            icon: const Icon(Icons.weekend_outlined),
+                            label: const Text('Open lounge preview'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   const Text(
                       'Unavailable here: real journals and contacts, profiles, backup/restore/wipe, '
