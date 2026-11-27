@@ -65,12 +65,13 @@ class NeuraVoiceInputRouter implements NeuraSpeechInput {
   /// Makes [source] the active recognizer and forwards only its events.
   /// Subscriptions are renewed on every turn, in the caller's zone, rather
   /// than kept for the life of this singleton.
-  Future<void> _follow(NeuraSpeechInput source) async {
-    final previous = List.of(_subs);
-    _subs.clear();
-    for (final sub in previous) {
-      await sub.cancel();
+  void _follow(NeuraSpeechInput source) {
+    // Not awaited: a cancel future from an earlier zone must not hold up the
+    // new turn. The [identical] guard already drops stale events.
+    for (final sub in _subs) {
+      unawaited(sub.cancel());
     }
+    _subs.clear();
     _active = source;
     _forward(source.transcriptStream, _transcripts, source);
     _forward(source.finalPhraseStream, _finals, source);
@@ -97,10 +98,10 @@ class NeuraVoiceInputRouter implements NeuraSpeechInput {
     final active = _active;
     if (active != null && active.isListening) return true;
     if (await _streamingAvailable()) {
-      await _follow(_streaming);
+      _follow(_streaming);
       if (await _streaming.startRecording()) return true;
     }
-    await _follow(_local);
+    _follow(_local);
     return _local.startRecording();
   }
 
