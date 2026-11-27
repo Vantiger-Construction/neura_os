@@ -1,0 +1,196 @@
+{
+  "schema_version": 1,
+  "preview_id": "recovered_lounge",
+  "repository_base_commit": "ed8fa75a4b5d22370fa9f71a793f57cd331f2c2f",
+  "source_archive": {
+    "filename": "NeuraCompanion_FullApp_Working_Unity.zip",
+    "sha256": "787b0754f090eeaf2a2d6882ceab27abea5a1d9d97c8f251e79b70985d9f40e6",
+    "size_bytes": 127972201
+  },
+  "recovered_image": {
+    "archive_path": "NeuraCompanion_FullApp_Working/LocalApp/assets/rooms/lounge.png",
+    "repository_path": "assets/preview/lounge/lounge.png",
+    "sha256": "1bc3c836dbcf2787ba41867566c5c255c80438b767b4741126da7c917586adf7",
+    "size_bytes": 237448,
+    "width_px": 1600,
+    "height_px": 900,
+    "media_type": "image/png",
+    "modification": "none; copied byte-for-byte",
+    "role": "historical concept/backplate artwork, not a finished 3D room"
+  },
+  "source_room_profile": {
+    "archive_path": "NeuraCompanion_FullApp_Working/UnityProject/Assets/Neura/FinishedRooms/Resources/Neura/FinishedRooms/neura_finished_room_profiles.json",
+    "sha256": "b198b1fcf823a5e55b4ba54308888d4ecd8a7b686297c78b4ec691b64b46f420",
+    "room_id": "Lounge",
+    "default_mode": "conversation",
+    "hotspots": [
+      {
+        "hotspot_id": "sofa_seat",
+        "source_label": "Talk",
+        "mode_key": "conversation",
+        "intent_key": "conversation",
+        "source_mode_title": "Conversation",
+        "source_target_room": null,
+        "source_unity_local_position": {
+          "x": -1.4,
+          "y": 0.85,
+          "z": -2.2
+        }
+      },
+      {
+        "hotspot_id": "coffee_table",
+        "source_label": "Brainstorm",
+        "mode_key": "brainstorm",
+        "intent_key": "brainstorm",
+        "source_mode_title": "Brainstorm",
+        "source_target_room": null,
+        "source_unity_local_position": {
+          "x": 0,
+          "y": 1,
+          "z": -1.1
+        }
+      },
+      {
+        "hotspot_id": "reflection_window",
+        "source_label": "Reflect",
+        "mode_key": "reflection",
+        "intent_key": "deep_reflection",
+        "source_mode_title": "Deep Reflection",
+        "source_target_room": null,
+        "source_unity_local_position": {
+          "x": 3,
+          "y": 1.6,
+          "z": 1.3
+        }
+      },
+      {
+        "hotspot_id": "memory_cards",
+        "source_label": "Memory",
+        "mode_key": "memory",
+        "intent_key": "memory_reflection",
+        "source_mode_title": "Memory Conversation",
+        "source_target_room": null,
+        "source_unity_local_position": {
+          "x": -3,
+          "y": 1.7,
+          "z": 1.3
+        }
+      },
+      {
+        "hotspot_id": "office_handoff",
+        "source_label": "Office",
+        "mode_key": "office",
+        "intent_key": "send_to_office",
+        "source_mode_title": "Send Idea to Office",
+        "source_target_room": "Office",
+        "source_unity_local_position": {
+          "x": -4.2,
+          "y": 0.8,
+          "z": -2.8
+        }
+      },
+      {
+        "hotspot_id": "spa_handoff",
+        "source_label": "Spa",
+        "mode_key": "spa",
+        "intent_key": "spa_reset",
+        "source_mode_title": "Reset in Spa",
+        "source_target_room": "Spa",
+        "source_unity_local_position": {
+          "x": 4.2,
+          "y": 0.8,
+          "z": -2.8
+        }
+      }
+    ]
+  },
+  "preview_layout": {
+    "coordinate_space": "normalized 2D image coordinates",
+    "position_origin": "newly authored for this Flutter preview",
+    "projects_source_unity_positions": false,
+    "source_unity_positions_role": "provenance only; not rendered or interpreted as screen coordinates",
+    "marker_min_scene_width_logical_pixels": 600,
+    "marker_max_text_scale": 1.5,
+    "text_choices_always_available": true
+  },
+  "integration_scope": {
+    "entrypoint": "isolated NEURA_DEMO Windows host; Lounge preview",
+    "state": "in-memory synthetic preview session",
+    "screen_integration": "current wellbeing screen ports",
+    "imports_archived_javascript": false,
+    "imports_archived_companion_host": false,
+    "imports_archived_storage": false,
+    "loads_unity_player": false
+  },
+  "validation": {
+    "recorded_date": "2026-11-26",
+    "toolchain": {
+      "flutter": "3.47.9",
+      "dart": "3.13.7"
+    },
+    "asset_and_profile_integrity": "Passed: archive and image hashes, byte equality, image dimensions, profile hash and all six original mappings verified",
+    "focused_flutter_tests": "Passed: 17 tests in neura_demo_test.dart and neura_lounge_preview_test.dart",
+    "strict_analysis": "Passed: dart analyze --fatal-infos; no issues found",
+    "preview_host_configuration_local": "One source check passed; three CMake configuration checks blocked because CMake is not installed",
+    "synthetic_render_review": "Reviewed desktop composition and image-marker selection at 1280 by 1000 in a Flutter widget harness; native Windows visual acceptance pending",
+    "windows_interactive_acceptance": "Pending",
+    "physical_laptop_performance": "Pending",
+    "unity_runtime_acceptance": "Not in scope; this preview does not run Unity"
+  },
+  "image_decode_request": {
+    "cache_width_px": 1280,
+    "cache_height_px": 720,
+    "rgba_buffer_bytes_arithmetic": 3686400,
+    "is_measured_application_ram": false
+  },
+  "preview_actions": [
+    {
+      "hotspot_id": "sofa_seat",
+      "label": "Talk",
+      "content": "fictional conversation prompts",
+      "screen_action": null
+    },
+    {
+      "hotspot_id": "coffee_table",
+      "label": "Brainstorm",
+      "content": "fictional idea choices",
+      "screen_action": {
+        "label": "Try a small step",
+        "current_preview_destination": "WellbeingDestination.smallStep"
+      }
+    },
+    {
+      "hotspot_id": "reflection_window",
+      "label": "Reflect",
+      "content": "sample reflection question",
+      "screen_action": {
+        "label": "Try quiet writing",
+        "current_preview_destination": "GuidedSupportScreen quietWriting through in-memory support port"
+      }
+    },
+    {
+      "hotspot_id": "memory_cards",
+      "label": "Memory",
+      "content": "fictional sample reflections; no saved records opened",
+      "screen_action": null
+    },
+    {
+      "hotspot_id": "office_handoff",
+      "label": "Office",
+      "content": "Office handoff concept; no Office room routing",
+      "screen_action": {
+        "label": "Try a small step",
+        "current_preview_destination": "WellbeingDestination.smallStep"
+      }
+    },
+    {
+      "hotspot_id": "spa_handoff",
+      "label": "Spa",
+      "content": "quiet-pause concept",
+      "screen_action": {
+        "label": "Try guided support",
+        "current_preview_destination": "existing demo settle destination"
+      }
+    }
+  ]
+}
