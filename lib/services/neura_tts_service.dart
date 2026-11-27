@@ -26,6 +26,24 @@ class NeuraVoiceOption {
     required this.locale,
     required this.gender,
   });
+
+  /// Names may be shared by voices with different English variants.
+  String get id => '$accentKey:$name';
+  String get accentKey => locale.replaceAll('_', '-').toLowerCase();
+
+  String get accentLabel => switch (accentKey) {
+        'en-us' => 'American English',
+        'en-gb' => 'British English',
+        'en-au' => 'Australian English',
+        'en-ca' => 'Canadian English',
+        'en-in' => 'Indian English',
+        'en-ie' => 'Irish English',
+        'en-nz' => 'New Zealand English',
+        'en-za' => 'South African English',
+        'en-sg' => 'Singaporean English',
+        'en' => 'English',
+        _ => 'English ($locale)',
+      };
 }
 
 enum NeuraReplySpeechMode { off, afterComplete, streamed }
@@ -86,6 +104,7 @@ class NeuraTtsService with WidgetsBindingObserver {
   bool _initialized = false;
   bool enabled = true;
   String? _selectedVoiceName;
+  String? _selectedVoiceLocale;
   Future<void>? _nativeTail;
   _TtsPlayback? _playing;
   bool _acceptCallbacks = false;
@@ -127,6 +146,7 @@ class NeuraTtsService with WidgetsBindingObserver {
   /// The currently active voice's display name, or null before initialization
   /// or when no voice has been explicitly selected.
   String? get selectedVoiceName => _selectedVoiceName;
+  String? get selectedVoiceLocale => _selectedVoiceLocale;
   double get speechRate => _speechRate;
   double get pitch => _pitch;
   double get volume => _volume;
@@ -137,8 +157,10 @@ class NeuraTtsService with WidgetsBindingObserver {
       NeuraPrefsCache.prefsOrNull?.getBool(_kReplySoundOnStartupKey) ?? true;
 
   Future<void> setReplySoundOnStartup(bool value) async {
-    final saved =
-        await NeuraPrefsCache.prefs.setBool(_kReplySoundOnStartupKey, value);
+    final saved = await NeuraPrefsCache.prefs.setBool(
+      _kReplySoundOnStartupKey,
+      value,
+    );
     if (!saved) throw StateError('Startup sound preference was not saved.');
   }
 
@@ -266,15 +288,22 @@ class NeuraTtsService with WidgetsBindingObserver {
     }
     if (defaultTargetPlatform == TargetPlatform.windows) return;
     final voices = await _tts!.getVoices as List<dynamic>;
-    final local = voices.whereType<Map>().where((voice) =>
-        voice['network_required']?.toString() == '0' &&
-        !(voice['features']?.toString().contains('notInstalled') ?? false));
+    final local = voices.whereType<Map>().where(
+          (voice) =>
+              voice['network_required']?.toString() == '0' &&
+              !(voice['features']?.toString().contains('notInstalled') ??
+                  false),
+        );
     if (local.isEmpty) throw StateError('No installed on-device voice.');
-    final selected = local.firstWhere((v) => v['name'] == _selectedVoiceName,
-        orElse: () => local.firstWhere(
-            (v) =>
-                v['locale']?.toString().toLowerCase().startsWith('en') ?? false,
-            orElse: () => local.first));
+    final selected = local.firstWhere(
+      (v) =>
+          v['name'] == _selectedVoiceName &&
+          v['locale'] == _selectedVoiceLocale,
+      orElse: () => local.firstWhere(
+        (v) => v['locale']?.toString().toLowerCase().startsWith('en') ?? false,
+        orElse: () => local.first,
+      ),
+    );
     if (!playbackAllowed) return;
     final result = await _tts!.setVoice({
       'name': selected['name'].toString(),
@@ -284,6 +313,7 @@ class NeuraTtsService with WidgetsBindingObserver {
       throw StateError('Local startup voice could not be selected.');
     }
     _selectedVoiceName = selected['name'].toString();
+    _selectedVoiceLocale = selected['locale'].toString();
   }
 
   Future<bool> _ensureInit() {
@@ -362,8 +392,12 @@ class NeuraTtsService with WidgetsBindingObserver {
     }
   }
 
-  void _finish(_TtsPlayback? playback,
-      {Object? error, StackTrace? stack, bool completed = false}) {
+  void _finish(
+    _TtsPlayback? playback, {
+    Object? error,
+    StackTrace? stack,
+    bool completed = false,
+  }) {
     if (playback == null || playback.done.isCompleted) return;
     if (error == null && playback.requireCompletion && !completed) {
       error = StateError('Local startup greeting did not complete.');
@@ -436,28 +470,46 @@ class NeuraTtsService with WidgetsBindingObserver {
     }
   }
 
-  /// English voices available on this system, for the Settings voice picker.
+  /// Installed English voices for the picker. Android must explicitly report
+  /// a voice as local and installed; never offer a network/download voice.
   Future<List<NeuraVoiceOption>> availableVoices() async {
     if (!await _ensureInit()) return const [];
     if (!playbackAllowed) return const [];
 
+    final cancellation = _cancelGeneration;
     try {
       final voices = await _tts!.getVoices as List<dynamic>;
-      return voices
-          .cast<Map<dynamic, dynamic>>()
-          .where(
-            (voice) =>
-                voice['locale']?.toString().toLowerCase().startsWith('en') ??
-                false,
-          )
-          .map(
-            (voice) => NeuraVoiceOption(
-              name: voice['name'].toString(),
-              locale: voice['locale'].toString(),
-              gender: voice['gender']?.toString() ?? 'unknown',
-            ),
-          )
-          .toList();
+      if (!_configurationAllowed(cancellation)) return const [];
+      final options = <String, NeuraVoiceOption>{};
+      for (final voice in voices.whereType<Map>()) {
+        final name = voice['name']?.toString().trim() ?? '';
+        final locale = voice['locale']?.toString().trim() ?? '';
+        if (name.isEmpty ||
+            locale.replaceAll('_', '-').split('-').first.toLowerCase() !=
+                'en') {
+          continue;
+        }
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+          final network = voice['network_required'];
+          final local = network == '0' || network == 0 || network == false;
+          final missing = voice['features']?.toString().toLowerCase().contains(
+                    'notinstalled',
+                  ) ??
+              false;
+          if (!local || missing) continue;
+        }
+        final option = NeuraVoiceOption(
+          name: name,
+          locale: locale,
+          gender: voice['gender']?.toString() ?? 'unknown',
+        );
+        options.putIfAbsent(option.id, () => option);
+      }
+      return options.values.toList()
+        ..sort((a, b) {
+          final accent = a.accentLabel.compareTo(b.accentLabel);
+          return accent != 0 ? accent : a.name.compareTo(b.name);
+        });
     } catch (_) {
       return const [];
     }
@@ -468,12 +520,14 @@ class NeuraTtsService with WidgetsBindingObserver {
     if (!await _ensureInit()) return;
     if (!playbackAllowed) return;
 
+    final cancellation = _cancelGeneration;
     final result = await _tts!.setVoice({
       'name': voice.name,
       'locale': voice.locale,
     });
-    if (result == 0) return;
+    if (result == 0 || !_configurationAllowed(cancellation)) return;
     _selectedVoiceName = voice.name;
+    _selectedVoiceLocale = voice.locale;
     try {
       final prefs = NeuraPrefsCache.prefs;
       await prefs.setString(_kVoiceNameKey, voice.name);
@@ -559,6 +613,7 @@ class NeuraTtsService with WidgetsBindingObserver {
         });
         if (result != 0) {
           _selectedVoiceName = savedName;
+          _selectedVoiceLocale = savedLocale;
           return;
         }
       }
@@ -598,7 +653,10 @@ class NeuraTtsService with WidgetsBindingObserver {
         'name': natural['name'].toString(),
         'locale': natural['locale'].toString(),
       });
-      if (result != 0) _selectedVoiceName = natural['name'].toString();
+      if (result != 0) {
+        _selectedVoiceName = natural['name'].toString();
+        _selectedVoiceLocale = natural['locale'].toString();
+      }
     } catch (_) {
       // Fall back silently to the system default voice.
     }

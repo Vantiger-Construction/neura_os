@@ -18,7 +18,12 @@ void main() {
       calls.add(call.method);
       if (call.method == 'getVoices') {
         return [
-          {'name': 'Synthetic', 'locale': 'en-US', 'gender': 'female'},
+          {
+            'name': 'Synthetic',
+            'locale': 'en-US',
+            'gender': 'female',
+            'network_required': '0',
+          },
         ];
       }
       if (call.method == 'awaitSpeakCompletion') {
@@ -32,6 +37,9 @@ void main() {
           home: const NeuraVoiceSettingsScreen()));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(find.byTooltip('Play a sample'), 180);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byTooltip('Play a sample'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Play a sample'));
       await tester.pumpAndSettle();
       expect(calls.where((method) => method == 'speak').length, 1);
