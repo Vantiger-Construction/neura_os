@@ -100,6 +100,10 @@ void main() {
   });
 
   testWidgets('answering every question shows the score', (tester) async {
+    // Tall enough that the lazy list builds every question and the button.
+    tester.view.physicalSize = const Size(1200, 4000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     final check = service();
     await tester.pumpWidget(MaterialApp(
       home: WellbeingCheckScreen(service: check),
