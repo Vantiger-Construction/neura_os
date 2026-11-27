@@ -35,6 +35,47 @@ class WeeklyNarrativeState {
   }
 }
 
+/// What the user said was wrong with a weekly narrative. Each maps to a
+/// fixed line of guidance for the next draft, so the user's own words never
+/// enter the prompt.
+enum WeeklyNarrativeCorrection {
+  tooHarsh(
+    'Too harsh',
+    'The reader found last week’s narrative too harsh: be gentler and lead '
+        'with what went well.',
+  ),
+  tooRosy(
+    'Too rosy',
+    'The reader found last week’s narrative too rosy: be honest about the '
+        'harder parts, kindly.',
+  ),
+  missedWhatMattered(
+    'Missed what mattered',
+    'The reader said last week’s narrative missed what mattered: stay close '
+        'to the numbers and do not guess at causes.',
+  ),
+  tooLong(
+    'Too long',
+    'The reader found last week’s narrative too long: use three short '
+        'sentences.',
+  );
+
+  const WeeklyNarrativeCorrection(this.label, this.guidance);
+
+  /// What the user picks.
+  final String label;
+
+  /// The line added to the next draft's prompt.
+  final String guidance;
+
+  static WeeklyNarrativeCorrection? byName(String? name) {
+    for (final value in values) {
+      if (value.name == name) return value;
+    }
+    return null;
+  }
+}
+
 /// Drafts a short LLM-written weekly narrative, at most once every 7 days.
 ///
 /// Platform note: there is no OS-level scheduler in this app, and Flutter
@@ -54,6 +95,7 @@ class WeeklySummaristService {
   static final WeeklySummaristService instance = WeeklySummaristService._();
 
   static const _key = 'neura.weekly_summarist_state.v1';
+  static const _correctionKey = 'neura.weekly_summarist_correction.v1';
   static const _staleAfter = Duration(days: 7);
 
   Future<void>? _inFlight;
@@ -77,6 +119,22 @@ class WeeklySummaristService {
     final prefs = NeuraPrefsCache.prefs;
     await prefs.setString(_key, jsonEncode(state.toMap()));
     if (generation != _dataGeneration) await prefs.remove(_key);
+  }
+
+  /// The correction the user gave the last narrative, until the next draft
+  /// has taken it into account.
+  WeeklyNarrativeCorrection? get pendingCorrection =>
+      WeeklyNarrativeCorrection.byName(
+        NeuraPrefsCache.prefsOrNull?.getString(_correctionKey),
+      );
+
+  /// Records what was wrong with the current narrative. The next weekly
+  /// draft follows the matching guidance; the current one is unchanged.
+  Future<void> recordCorrection(WeeklyNarrativeCorrection correction) async {
+    final generation = _dataGeneration;
+    final prefs = NeuraPrefsCache.prefs;
+    await prefs.setString(_correctionKey, correction.name);
+    if (generation != _dataGeneration) await prefs.remove(_correctionKey);
   }
 
   Future<bool> isDue({DateTime? now}) async {
@@ -144,10 +202,13 @@ class WeeklySummaristService {
           'most common storm feeling ${summary.topStormFeeling}; '
           'recurring dream theme ${summary.topDreamTheme}. '
           'Write a short (3-5 sentence) second-person narrative using only these numbers.';
+      final correction = pendingCorrection;
+      final guided =
+          correction == null ? prompt : '$prompt ${correction.guidance}';
 
       if (generation != _dataGeneration) return;
       final text = await NeuraAiService.instance.completeOnce(
-        prompt,
+        guided,
         agentId: AgentPersonaCatalog.weeklySummarist.id,
       );
 
@@ -158,6 +219,10 @@ class WeeklySummaristService {
             generatedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
           ),
           generation);
+      // The correction has shaped this draft; the next one starts fresh.
+      if (correction != null && generation == _dataGeneration) {
+        await NeuraPrefsCache.prefs.remove(_correctionKey);
+      }
     } catch (e, st) {
       if (generation != _dataGeneration) return;
       // Network failure, guardrail block (NeuraGuardrailBlocked), or missing

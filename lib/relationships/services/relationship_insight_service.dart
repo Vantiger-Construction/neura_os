@@ -7,6 +7,7 @@ class RelationshipInsightService {
     required List<int> recentMoods,
     required bool promisesOutstanding,
     int? daysSinceLastContact,
+    String? personName,
   }) {
     final reasons = <String>[];
 
@@ -34,6 +35,20 @@ class RelationshipInsightService {
     }
 
     if (daysSinceLastContact != null && daysSinceLastContact >= 7) {
+      final name = personName?.trim() ?? '';
+      if (name.isNotEmpty) {
+        reasons.add(
+            'It’s been $daysSinceLastContact days since you last logged time '
+            'with $name.');
+        return RelationshipSuggestion(
+          title: 'Reconnect with $name',
+          description:
+              'It’s been $daysSinceLastContact days since you connected with '
+              '$name. A short “thinking of you” message is enough.',
+          actionLabel: 'Send $name a gentle ping',
+          reasons: reasons,
+        );
+      }
       reasons.add(
           'It’s been over a week since you connected with someone important.');
       return RelationshipSuggestion(
