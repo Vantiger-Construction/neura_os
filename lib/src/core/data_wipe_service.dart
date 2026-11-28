@@ -24,6 +24,7 @@ import '../../dreams/services/dream_theme_service.dart';
 import '../../intelligence/action_loom.dart';
 import '../../intelligence/neura_intelligence_controller.dart';
 import '../../insights/services/weekly_summarist_service.dart';
+import '../../insights/services/wellbeing_check_service.dart';
 import '../../memory/space_memory_engine.dart';
 import '../../mascot/neura_window_role.dart';
 import '../../neura_runtime/neura_runtime_controller.dart';
@@ -133,6 +134,9 @@ class NeuraDataWipeService {
     // Keep the live gate closed for the rest of this process; the next launch
     // starts clean after the persisted Safe Boot marker is deleted.
     SafeBoot.instance.safeMode.value = true;
+    WellbeingCheckService.suspendAllForDataWipe();
+    PromiseService.instance.suspendForDataWipe();
+    WeeklySummaristService.instance.suspendForDataWipe();
     final profileDrain = LocalProfileService.suspendAllForDataWipe();
     NeuraTeachingService.suspendAllForDataWipe();
     MemoryVaultStore.instance.suspendForDataWipe();
@@ -190,6 +194,16 @@ class NeuraDataWipeService {
     if (!teachingDrained) {
       // An admitted native write (or key load) must finish before deleting
       // preferences/keys. Timeout is incomplete deletion, never success.
+      throw NeuraDataWipeException(List<String>.unmodifiable(failures));
+    }
+    var wellbeingWritersDrained = false;
+    await _attempt(failures, 'wellbeing and commitment writer drain', () async {
+      await WellbeingCheckService.drainAllForDataWipe();
+      await PromiseService.instance.drainForDataWipe();
+      await WeeklySummaristService.instance.drainForDataWipe();
+      wellbeingWritersDrained = true;
+    });
+    if (!wellbeingWritersDrained) {
       throw NeuraDataWipeException(List<String>.unmodifiable(failures));
     }
     var backupWritersDrained = false;

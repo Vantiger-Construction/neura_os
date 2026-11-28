@@ -1,3 +1,7 @@
+import '../insights/services/wellbeing_check_service.dart';
+import '../insights/services/weekly_summarist_service.dart';
+import '../relationships/services/promise_service.dart';
+import '../relationships/services/promise_garden.dart';
 import '../avatar/motion/neura_motion.dart';
 import '../encrypted_memory/companion_memory_service.dart';
 import '../mascot/mascot_window_service.dart';
@@ -17,12 +21,19 @@ import '../modules/vault/vault_session.dart';
 
 abstract final class LocalProfileRuntime {
   static Future<void> stop() async {
+    WellbeingCheckService.instance.invalidateSession();
+    WeeklySummaristService.instance.invalidateSession();
+    PromiseService.instance.invalidateSession();
+    PromiseGardenService.instance.reset();
     NeuraAiService.instance.cancelActiveGeneration();
     CompanionMemoryService.revokeAllForProfileBoundary();
     VaultSession.lock();
     NeuraMotion.instance.engine.setMood(0, 0.5);
     // Attempt every shutdown; activation fails if any owner cannot stop.
     final results = await Future.wait([
+      _attempt(WellbeingCheckService.instance.drainForDataWipe),
+      _attempt(WeeklySummaristService.instance.drainForDataWipe),
+      _attempt(PromiseService.instance.drainForDataWipe),
       _attempt(NeuraLocalSpeechInput.instance.shutdownForDataWipe),
       _attempt(NeuraVoiceInputRouter.instance.shutdownOnDeviceForDataWipe),
       _attempt(NeuraSpeechToTextService.instance.shutdownForProfiles),

@@ -33,6 +33,8 @@ import 'package:neuro_companion/services/neura_tts_service.dart';
 import 'package:neuro_companion/services/neura_turn_patience.dart';
 import 'package:neuro_companion/services/wake_word_prefs.dart';
 import 'package:neuro_companion/startup/neura_prefs_cache.dart';
+import 'package:neuro_companion/relationships/services/promise_service.dart';
+import 'package:neuro_companion/profiles/local_profile_service.dart';
 
 // The same real chat/ASR/Ollama/TTS flow runs independently on #157 and on
 // the pinned disposable #157 + #158 + #149 source combination in CI. Only
@@ -121,6 +123,7 @@ void main() {
     WakeWordPrefsController.instance.enabled.value = false;
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await NeuraPrefsCache.prefs.clear();
+    PromiseService.instance.resetAfterDataWipe();
     ollama = NeuraOllamaChat(supported: true);
     ai = NeuraAiService.forTesting(
       modelRouter: NeuraSecureModelRouter(),
@@ -336,6 +339,21 @@ void main() {
     await drain(tester);
   }
 
+  Future<SnackBarAction> caughtPromise(WidgetTester tester) async {
+    await chat(tester);
+    modelReply = 'A fictional local reply.';
+    speechState = 'completed';
+    await tester.enterText(find.byType(TextField), "I'll call Sam tonight.");
+    await tester.tap(find.byTooltip('Send'));
+    await drain(tester);
+    final review = find.descendant(
+        of: find.byType(SnackBar),
+        matching: find.widgetWithText(SnackBarAction, 'Review'));
+    expect(review, findsOneWidget);
+    expect(NeuraPrefsCache.prefs.containsKey('neura_promises'), isFalse);
+    return tester.widget<SnackBarAction>(review);
+  }
+
   void conversationTest(String name, Future<void> Function(WidgetTester) body) {
     testWidgets(name, (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.windows;
@@ -360,6 +378,48 @@ void main() {
         avatar.dispose();
         debugDefaultTargetPlatformOverride = null;
       }
+    });
+  }
+
+  for (final save in [false, true]) {
+    conversationTest('caught commitment requires exact review (save: $save)',
+        (tester) async {
+      final action = await caughtPromise(tester);
+      action.onPressed();
+      await tester.pumpAndSettle();
+      expect(find.text('Save this commitment?'), findsOneWidget);
+      expect(NeuraPrefsCache.prefs.containsKey('neura_promises'), isFalse);
+      await tester.tap(find.text(save ? 'Save commitment' : 'No thanks'));
+      await drain(tester);
+      final stored = await tester.runAsync(() => PromiseService.instance.all());
+      expect(stored!.length, save ? 1 : 0);
+      if (save) {
+        expect(stored.single.description, 'Call Sam tonight');
+        expect(stored.single.dueAt, isNull);
+        // Replaying the captured action cannot create a second promise.
+        action.onPressed();
+        await drain(tester);
+        expect(
+            (await tester.runAsync(() => PromiseService.instance.all()))!
+                .length,
+            1);
+      }
+    });
+  }
+
+  for (final profile in [false, true]) {
+    conversationTest('stale commitment action is rejected (profile: $profile)',
+        (tester) async {
+      final action = await caughtPromise(tester);
+      if (profile) {
+        await NeuraPrefsCache.prefs.setBool(LocalProfileService.modeKey, true);
+      } else {
+        SafeBoot.instance.safeMode.value = true;
+      }
+      action.onPressed();
+      await drain(tester);
+      expect(find.text('Save this commitment?'), findsNothing);
+      expect(NeuraPrefsCache.prefs.containsKey('neura_promises'), isFalse);
     });
   }
 

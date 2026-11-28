@@ -59,7 +59,7 @@ class _WeeklyNarrativeCardState extends State<WeeklyNarrativeCard> {
           children: [
             const ListTile(
               title: Text('What was off about this week’s words?'),
-              subtitle: Text('Next week’s letter will take it into account.'),
+              subtitle: Text('Your feedback will be kept for a future draft.'),
             ),
             for (final option in WeeklyNarrativeCorrection.values)
               ListTile(
@@ -72,7 +72,7 @@ class _WeeklyNarrativeCardState extends State<WeeklyNarrativeCard> {
     );
     if (picked == null || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
-    var message = 'Thanks. Next week’s letter will take that into account.';
+    var message = 'Thanks. Your feedback is saved for a future draft.';
     try {
       await _service.recordCorrection(picked);
     } catch (_) {
@@ -137,7 +137,7 @@ class _WeeklyNarrativeCardState extends State<WeeklyNarrativeCard> {
                 child: Text(
                   _correction == null
                       ? 'Not quite right?'
-                      : 'Noted for next week: ${_correction!.label}',
+                      : 'Saved feedback: ${_correction!.label}',
                 ),
               ),
             ),

@@ -47,7 +47,7 @@ void main() {
     expect(WellbeingBand.of(0), WellbeingBand.low);
   });
 
-  test('results are kept encrypted, and the check comes back monthly',
+  test('injected serialization and the 28-day offer cadence round-trip',
       () async {
     final check = service();
     expect(await check.isDue(), isTrue);
@@ -110,7 +110,8 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    final button = find.widgetWithText(FilledButton, 'See my score');
+    final button =
+        find.widgetWithText(FilledButton, 'Save check and see score');
     expect(tester.widget<FilledButton>(button).onPressed, isNull);
 
     for (var i = 0; i < WellbeingCheckService.questions.length; i++) {
@@ -124,7 +125,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('80 / 100'), findsOneWidget);
-    expect(find.text('In the range most people report.'), findsOneWidget);
+    expect(
+        find.text(
+            'Your answers describe more frequent wellbeing over these two weeks.'),
+        findsOneWidget);
     expect((await check.history()).single.answers, [4, 4, 4, 4, 4]);
   });
 }

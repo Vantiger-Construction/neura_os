@@ -50,6 +50,20 @@ void main() {
     expect(scheduler.scheduled, isEmpty);
   });
 
+  test('revoked captured-promise approval cannot reach the save queue',
+      () async {
+    final scheduler = _RecordingScheduler();
+    final service = PromiseService.forTesting(scheduler: scheduler);
+    var allowed = true;
+    final pending = service.create(
+        description: 'A fictional walk', stillAllowed: () => allowed);
+    allowed = false;
+    await expectLater(pending, throwsStateError);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.containsKey('neura_promises'), isFalse);
+    expect(scheduler.scheduled, isEmpty);
+  });
+
   test('completing a promise cancels its reminder', () async {
     final scheduler = _RecordingScheduler();
     final service = PromiseService.forTesting(scheduler: scheduler);

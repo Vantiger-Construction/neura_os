@@ -1,4 +1,7 @@
 import 'package:neuro_companion/teaching/neura_teaching_service.dart';
+import 'package:neuro_companion/insights/services/wellbeing_check_service.dart';
+import 'package:neuro_companion/insights/services/weekly_summarist_service.dart';
+import 'package:neuro_companion/relationships/services/promise_service.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -51,6 +54,7 @@ class DataWipeFixture {
   int networkAttempts = 0;
   PausedWipeFile? pausedFile;
   Future<void> Function(String key)? beforeSecretDelete;
+  Future<void> Function(String key)? beforeSecretWrite;
 
   Directory get documents => Directory('${root.path}/documents');
   Directory get support => Directory('${root.path}/support');
@@ -59,6 +63,10 @@ class DataWipeFixture {
   String get bootstrapPath => '${root.path}/bootstrap/bootstrap_crash.ndjson';
 
   static Future<DataWipeFixture> create() async {
+    WellbeingCheckService.resetWipeGateForTesting();
+    WellbeingCheckService.fullWipeDrainTimeout = const Duration(seconds: 30);
+    WeeklySummaristService.resetWipeGateForTesting();
+    PromiseService.resetWipeGateForTesting();
     NeuraTeachingService.resetWipeGateForTesting();
     PortableVaultBackupService.resetWipeGateForTesting();
     LegacyVaultService.resetWipeGateForTesting();
@@ -107,6 +115,7 @@ class DataWipeFixture {
         case 'read':
           return fixture.secrets[key];
         case 'write':
+          await fixture.beforeSecretWrite?.call(key);
           fixture.secrets[key] = args['value'] as String;
           return null;
         case 'delete':

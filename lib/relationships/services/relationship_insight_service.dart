@@ -16,7 +16,7 @@ class RelationshipInsightService {
       return RelationshipSuggestion(
         title: 'Follow-through time',
         description:
-            'You have people waiting on you. Finishing even one small promise builds huge trust.',
+            'If it would help, review one open commitment. You can change or drop it.',
         actionLabel: 'Review open commitments',
         reasons: reasons,
       );
@@ -43,9 +43,9 @@ class RelationshipInsightService {
         return RelationshipSuggestion(
           title: 'Reconnect with $name',
           description:
-              'It’s been $daysSinceLastContact days since you connected with '
-              '$name. A short “thinking of you” message is enough.',
-          actionLabel: 'Send $name a gentle ping',
+              'Your last logged connection was $daysSinceLastContact days ago with '
+              '$name. If reconnecting feels safe and welcome, you could choose a small next step.',
+          actionLabel: 'Review $name’s details',
           reasons: reasons,
         );
       }

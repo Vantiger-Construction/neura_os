@@ -1,4 +1,5 @@
 import 'dart:ui' as ui;
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -119,5 +120,15 @@ void main() {
           .shouldRepaint(painter(PromiseGardenStage.leafy)),
       isFalse,
     );
+  });
+
+  test('a new completion refresh wins over an older pending refresh', () async {
+    final garden = PromiseGardenService.instance;
+    final previous = Completer<List<NeuraPromise>>();
+    final old = garden.refresh(load: () => previous.future);
+    await garden.refresh(load: () async => _kept(7));
+    previous.complete(_kept(0));
+    await old;
+    expect(garden.stage.value, PromiseGardenStage.leafy);
   });
 }

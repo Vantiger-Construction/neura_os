@@ -17,7 +17,7 @@ void main() {
     );
     expect(
       catchIn('I need to pay rent by friday because it is due'),
-      'Pay rent by friday',
+      isNull,
     );
   });
 
@@ -25,6 +25,9 @@ void main() {
     expect(catchIn('Should I call her?'), isNull);
     expect(catchIn('I will call her?'), isNull);
     expect(catchIn('I should probably sleep'), isNull);
+    expect(catchIn('I should sleep more.'), isNull);
+    expect(catchIn('If I win, I will buy a boat.'), isNull);
+    expect(catchIn('She said "I will call Sam".'), isNull);
     expect(catchIn("I'll be fine"), isNull);
     expect(catchIn("I'll never be good enough"), isNull);
     expect(catchIn('I am so ill today'), isNull);
