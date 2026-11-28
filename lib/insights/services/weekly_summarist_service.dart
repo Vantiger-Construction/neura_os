@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
+import '../../profiles/local_profile_service.dart';
 import '../../modules/core/app_log.dart';
 import '../../modules/review/weekly_review_store.dart';
 import '../../persona/agents/agent_persona_catalog.dart';
@@ -91,8 +94,17 @@ enum WeeklyNarrativeCorrection {
 /// feature's privacy surface identical to what [WeeklySnapshotScreen]
 /// already shows today, just narrated instead of tabulated.
 class WeeklySummaristService {
-  WeeklySummaristService._();
+  WeeklySummaristService._({Future<String> Function(String)? draft})
+      : _draft = draft;
   static final WeeklySummaristService instance = WeeklySummaristService._();
+
+  @visibleForTesting
+  factory WeeklySummaristService.forTesting({
+    required Future<String> Function(String) draft,
+  }) =>
+      WeeklySummaristService._(draft: draft);
+
+  final Future<String> Function(String)? _draft;
 
   static const _key = 'neura.weekly_summarist_state.v1';
   static const _correctionKey = 'neura.weekly_summarist_correction.v1';
@@ -100,8 +112,39 @@ class WeeklySummaristService {
 
   Future<void>? _inFlight;
   int _dataGeneration = 0;
+  int _correctionRevision = 0;
+  Future<void> _correctionTail = Future<void>.value();
+  bool _suspended = false;
+
+  bool get _available => !_suspended && !LocalProfileService.instance.enabled;
+  void invalidateSession() {
+    _dataGeneration++;
+  }
+
+  void suspendForDataWipe() {
+    _suspended = true;
+    invalidateSession();
+  }
+
+  Future<void> drainForDataWipe() => Future.wait<void>([
+        if (_inFlight != null) _inFlight!,
+        _correctionTail,
+      ]).timeout(const Duration(seconds: 30));
+
+  @visibleForTesting
+  static void resetWipeGateForTesting() {
+    instance._suspended = false;
+    instance._dataGeneration++;
+  }
+
+  Future<T> _correctionOperation<T>(Future<T> Function() operation) {
+    final next = _correctionTail.then((_) => operation());
+    _correctionTail = next.then((_) {}, onError: (_) {});
+    return next;
+  }
 
   Future<WeeklyNarrativeState?> _load() async {
+    if (!_available) return null;
     try {
       final prefs = NeuraPrefsCache.prefs;
       final raw = prefs.getString(_key);
@@ -114,27 +157,51 @@ class WeeklySummaristService {
     }
   }
 
-  Future<void> _save(WeeklyNarrativeState state, int generation) async {
-    if (generation != _dataGeneration) return;
+  Future<bool> _save(WeeklyNarrativeState state, int generation) async {
+    if (!_available || generation != _dataGeneration) return false;
     final prefs = NeuraPrefsCache.prefs;
-    await prefs.setString(_key, jsonEncode(state.toMap()));
-    if (generation != _dataGeneration) await prefs.remove(_key);
+    final saved = await prefs.setString(_key, jsonEncode(state.toMap()));
+    if (!saved) {
+      await prefs.reload();
+      throw StateError('The weekly draft could not be saved on this device.');
+    }
+    return _available && generation == _dataGeneration;
   }
 
   /// The correction the user gave the last narrative, until the next draft
   /// has taken it into account.
-  WeeklyNarrativeCorrection? get pendingCorrection =>
-      WeeklyNarrativeCorrection.byName(
-        NeuraPrefsCache.prefsOrNull?.getString(_correctionKey),
-      );
+  WeeklyNarrativeCorrection? get pendingCorrection => !_available
+      ? null
+      : WeeklyNarrativeCorrection.byName(
+          NeuraPrefsCache.prefsOrNull?.getString(_correctionKey),
+        );
 
   /// Records what was wrong with the current narrative. The next weekly
   /// draft follows the matching guidance; the current one is unchanged.
-  Future<void> recordCorrection(WeeklyNarrativeCorrection correction) async {
+  Future<void> recordCorrection(WeeklyNarrativeCorrection correction) {
     final generation = _dataGeneration;
-    final prefs = NeuraPrefsCache.prefs;
-    await prefs.setString(_correctionKey, correction.name);
-    if (generation != _dataGeneration) await prefs.remove(_correctionKey);
+    final epoch = LocalProfileService.instance.epoch;
+    if (!_available) return Future.error(StateError('Correction unavailable.'));
+    return _correctionOperation(() async {
+      if (!_available ||
+          generation != _dataGeneration ||
+          epoch != LocalProfileService.instance.epoch) {
+        throw StateError('This correction request has expired.');
+      }
+      final prefs = NeuraPrefsCache.prefs;
+      final saved = await prefs.setString(_correctionKey, correction.name);
+      if (!_available ||
+          generation != _dataGeneration ||
+          epoch != LocalProfileService.instance.epoch) {
+        throw StateError('This correction request has expired.');
+      }
+      if (!saved) {
+        await prefs.reload();
+        throw StateError('The correction could not be saved on this device.');
+      }
+      // Revision belongs to this confirmed write, including repeated choices.
+      _correctionRevision++;
+    });
   }
 
   Future<bool> isDue({DateTime? now}) async {
@@ -158,6 +225,7 @@ class WeeklySummaristService {
   /// UI itself, it only writes to prefs). Concurrent callers collapse into
   /// one HTTP call via [_inFlight].
   Future<void> maybeGenerateOnAppOpen() {
+    if (!_available) return Future.value();
     final existing = _inFlight;
     if (existing != null) return existing;
 
@@ -169,27 +237,25 @@ class WeeklySummaristService {
   }
 
   Future<void> resetAfterDataWipe() async {
-    _dataGeneration += 1;
-    final inFlight = _inFlight;
-    if (inFlight != null) {
-      try {
-        await inFlight.timeout(const Duration(seconds: 3));
-      } on TimeoutException {
-        // Generation invalidation prevents a late response from re-persisting.
-      }
-    }
+    suspendForDataWipe();
+    await drainForDataWipe();
   }
 
   Future<void> _generateIfDue(int generation) async {
-    if (!await isDue()) return;
-    if (generation != _dataGeneration) return;
-    if (!NeuraAiService.instance.isConfigured) return;
+    final epoch = LocalProfileService.instance.epoch;
+    bool current() =>
+        _available &&
+        generation == _dataGeneration &&
+        epoch == LocalProfileService.instance.epoch;
+    if (!current() || !await isDue()) return;
+    if (!current()) return;
+    if (_draft == null && !NeuraAiService.instance.isConfigured) return;
 
     try {
       final review = await WeeklyReviewStore.instance.generate();
-      if (generation != _dataGeneration) return;
+      if (!current()) return;
       final summary = await WeeklySnapshotService.instance.buildSummary();
-      if (generation != _dataGeneration) return;
+      if (!current()) return;
 
       final prompt =
           'week of ${review.weekStart.toIso8601String().substring(0, 10)}: '
@@ -202,29 +268,42 @@ class WeeklySummaristService {
           'most common storm feeling ${summary.topStormFeeling}; '
           'recurring dream theme ${summary.topDreamTheme}. '
           'Write a short (3-5 sentence) second-person narrative using only these numbers.';
-      final correction = pendingCorrection;
+      // Snapshot content and its committed revision in the same serialized turn.
+      final correctionSnapshot = await _correctionOperation(() async =>
+          (correction: pendingCorrection, revision: _correctionRevision));
+      if (!current()) return;
+      final correctionRevision = correctionSnapshot.revision;
+      final correction = correctionSnapshot.correction;
       final guided =
           correction == null ? prompt : '$prompt ${correction.guidance}';
 
-      if (generation != _dataGeneration) return;
-      final text = await NeuraAiService.instance.completeOnce(
-        guided,
-        agentId: AgentPersonaCatalog.weeklySummarist.id,
-      );
+      if (!current()) return;
+      final draft = _draft;
+      final text = draft != null
+          ? await draft(guided)
+          : await NeuraAiService.instance.completeOnce(
+              guided,
+              agentId: AgentPersonaCatalog.weeklySummarist.id,
+            );
 
-      if (generation != _dataGeneration) return;
-      await _save(
+      if (!current()) return;
+      final saved = await _save(
           WeeklyNarrativeState(
             summaryText: text,
             generatedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
           ),
           generation);
       // The correction has shaped this draft; the next one starts fresh.
-      if (correction != null && generation == _dataGeneration) {
-        await NeuraPrefsCache.prefs.remove(_correctionKey);
+      if (saved && correction != null) {
+        await _correctionOperation(() async {
+          if (!current() || correctionRevision != _correctionRevision) return;
+          if (!await NeuraPrefsCache.prefs.remove(_correctionKey)) {
+            throw StateError('The used correction could not be cleared.');
+          }
+        });
       }
     } catch (e, st) {
-      if (generation != _dataGeneration) return;
+      if (!current()) return;
       // Network failure, guardrail block (NeuraGuardrailBlocked), or missing
       // key -- don't persist anything, stay "due", retry next app-open. The
       // weekly snapshot screen just shows its existing deterministic cards.

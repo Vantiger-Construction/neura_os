@@ -2672,33 +2672,79 @@ class _NeuraChatScreenState extends State<NeuraChatScreen>
   /// and only if they tap; the message itself is never stored.
   void _offerPromiseCatch(String userText) {
     if (!mounted ||
+        !_foreground ||
+        !_routeVisible ||
         LocalProfileService.instance.enabled ||
         SafeBoot.instance.safeMode.value ||
-        CrisisTextScan.of(userText).crisis) {
+        SafeBoot.instance.restartRequired.value ||
+        CrisisTextScan.of(userText).distress) {
       return;
     }
     final commitment = PromiseCatcher.commitmentFrom(userText);
     if (commitment == null) return;
+    final epoch = LocalProfileService.instance.epoch;
+    final thread = _threadEpoch;
+    final turn = _generationSerial;
+    final expires = DateTime.now().add(const Duration(seconds: 10));
+    var used = false;
+    bool current() =>
+        mounted &&
+        _foreground &&
+        _routeVisible &&
+        !LocalProfileService.instance.enabled &&
+        !SafeBoot.instance.safeMode.value &&
+        !SafeBoot.instance.restartRequired.value &&
+        epoch == LocalProfileService.instance.epoch &&
+        thread == _threadEpoch &&
+        turn == _generationSerial;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       duration: const Duration(seconds: 10),
-      content: Text('Keep “$commitment” as a promise?'),
+      content: Text('Would you like to review “$commitment”?'),
       action: SnackBarAction(
-        label: 'Keep it',
-        onPressed: () => unawaited(_keepCaughtPromise(commitment)),
+        label: 'Review',
+        onPressed: () {
+          if (used || !current() || !DateTime.now().isBefore(expires)) return;
+          used = true;
+          unawaited(_keepCaughtPromise(commitment, current));
+        },
       ),
     ));
   }
 
-  Future<void> _keepCaughtPromise(String commitment) async {
+  Future<void> _keepCaughtPromise(
+      String commitment, bool Function() current) async {
+    if (!current()) return;
+    final expires = DateTime.now().add(const Duration(minutes: 1));
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Save this commitment?'),
+        content: Text('“$commitment”\n\nThis saves only this commitment in '
+            'your local promise list. That list is stored as text on this '
+            'device. It does not set a reminder or send a message.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('No thanks')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Save commitment')),
+        ],
+      ),
+    );
+    if (save != true || !current() || !DateTime.now().isBefore(expires)) return;
     final messenger = ScaffoldMessenger.of(context);
     String message;
     try {
-      await PromiseService.instance.create(description: commitment);
-      message = 'Kept. You’ll find it with your promises.';
+      await PromiseService.instance.create(
+        description: commitment,
+        stillAllowed: () => current() && DateTime.now().isBefore(expires),
+      );
+      message = 'Saved. You can change or drop it in your promises.';
     } catch (_) {
-      message = 'The promise could not be saved on this device.';
+      message = 'The commitment could not be saved on this device.';
     }
-    if (!mounted) return;
+    if (!current()) return;
     messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 

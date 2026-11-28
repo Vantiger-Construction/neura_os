@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ChangeNotifier, visibleForTesting;
+
 import '../../core/memory/memory_crypto.dart';
 import '../../profiles/local_profile_service.dart';
 import '../../startup/neura_prefs_cache.dart';
@@ -29,7 +31,11 @@ class WellbeingCheckResult {
     final taken = DateTime.tryParse('${value['taken']}');
     final answers = value['answers'];
     if (taken == null || answers is! List) return null;
-    final scores = answers.whereType<int>().toList();
+    if (answers.length != WellbeingCheckService.questions.length ||
+        answers.any((answer) => answer is! int)) {
+      return null;
+    }
+    final scores = answers.cast<int>().toList();
     if (scores.length != WellbeingCheckService.questions.length) return null;
     if (scores.any((score) => score < 0 || score > 5)) return null;
     return WellbeingCheckResult(takenAt: taken, answers: scores);
@@ -39,13 +45,13 @@ class WellbeingCheckResult {
 /// How a score reads. Not a diagnosis: a prompt to notice and, when it is
 /// low, to talk with someone.
 enum WellbeingBand {
-  /// 0-28: a hard stretch.
+  /// App presentation band for 0-28; not a diagnostic threshold.
   low,
 
-  /// 29-50: lower than people usually report.
+  /// App presentation band for 29-50; not a population comparison.
   reduced,
 
-  /// 51-100: in the range most people report.
+  /// More frequent self-reported positive experiences (51-100).
   good;
 
   static WellbeingBand of(int percent) {
@@ -61,18 +67,24 @@ enum WellbeingBand {
 /// Results are encrypted with the device memory key, stay on this device,
 /// never enter a model prompt and are removed by a local data wipe. Profile
 /// sessions cannot read or save them.
-class WellbeingCheckService {
+class WellbeingCheckService extends ChangeNotifier {
   WellbeingCheckService({
     Future<String> Function(Map<String, dynamic>)? encrypt,
     Future<Map<String, dynamic>> Function(String)? decrypt,
     DateTime Function()? now,
     bool Function()? allowed,
   })  : _encrypt = encrypt ??
-            ((json) async => (await MemoryCrypto.demo()).encryptJson(json)),
+            ((json) async {
+              final crypto = await MemoryCrypto.demo();
+              crypto.requireOsBackedKey();
+              return crypto.encryptJson(json);
+            }),
         _decrypt = decrypt ??
             ((blob) async => (await MemoryCrypto.demo()).decryptJson(blob)),
         _now = now ?? DateTime.now,
-        _allowed = allowed ?? (() => !LocalProfileService.instance.enabled);
+        _allowed = allowed ?? (() => !LocalProfileService.instance.enabled) {
+    _owners.add(WeakReference(this));
+  }
 
   static final WellbeingCheckService instance = WellbeingCheckService();
 
@@ -108,9 +120,66 @@ class WellbeingCheckService {
   final DateTime Function() _now;
   final bool Function() _allowed;
   Future<void> _tail = Future<void>.value();
+  static final Set<WeakReference<WellbeingCheckService>> _owners = {};
+  static bool _wipeSuspended = false;
+  @visibleForTesting
+  static Duration fullWipeDrainTimeout = const Duration(seconds: 30);
+  int _generation = 0;
+  bool _suspended = false;
+
+  // Admission closes synchronously. Already-submitted native writes must drain
+  // before the wipe may delete preferences or keys. Failure is not success.
+  void suspendForDataWipe() {
+    _suspended = true;
+    invalidateSession();
+  }
+
+  void invalidateSession() {
+    _generation++;
+    notifyListeners();
+  }
+
+  Future<void> drainForDataWipe() => _tail.timeout(fullWipeDrainTimeout);
+
+  static void suspendAllForDataWipe() {
+    _wipeSuspended = true;
+    _owners.removeWhere((reference) => reference.target == null);
+    for (final reference in _owners) {
+      reference.target?.suspendForDataWipe();
+    }
+  }
+
+  static Future<void> drainAllForDataWipe() => Future.wait([
+        for (final reference in _owners)
+          if (reference.target case final owner?) owner.drainForDataWipe()
+      ]);
+
+  @visibleForTesting
+  static void resetWipeGateForTesting() {
+    _wipeSuspended = false;
+    for (final reference in _owners) {
+      final owner = reference.target;
+      if (owner == null) continue;
+      owner._suspended = false;
+      owner._generation++;
+    }
+  }
+
+  bool _current(int generation, int epoch) =>
+      !_suspended &&
+      !_wipeSuspended &&
+      _allowed() &&
+      generation == _generation &&
+      epoch == LocalProfileService.instance.epoch;
+
+  void _requireCurrent(int generation, int epoch) {
+    if (!_current(generation, epoch)) {
+      throw StateError('This wellbeing request is no longer available.');
+    }
+  }
 
   /// Whether this session may use the check.
-  bool get available => _allowed();
+  bool get available => !_suspended && !_wipeSuspended && _allowed();
 
   Future<T> _serial<T>(Future<T> Function() operation) {
     final next = _tail.then((_) => operation());
@@ -118,11 +187,12 @@ class WellbeingCheckService {
     return next;
   }
 
-  Future<List<WellbeingCheckResult>> _read() async {
-    if (!_allowed()) return [];
+  Future<List<WellbeingCheckResult>> _read(int generation, int epoch) async {
+    if (!_current(generation, epoch)) return [];
     final blob = NeuraPrefsCache.prefs.getString(storageKey);
     if (blob == null) return [];
     final json = await _decrypt(blob);
+    if (!_current(generation, epoch)) return [];
     final items = json['results'];
     if (items is! List) return [];
     return items
@@ -132,38 +202,57 @@ class WellbeingCheckService {
   }
 
   /// Past results, oldest first.
-  Future<List<WellbeingCheckResult>> history() => _serial(_read);
+  Future<List<WellbeingCheckResult>> history() {
+    final generation = _generation;
+    final epoch = LocalProfileService.instance.epoch;
+    if (!_current(generation, epoch)) return Future.value([]);
+    return _serial(() => _read(generation, epoch));
+  }
 
   /// Saves a finished check. [answers] holds one 0-5 score per question.
-  Future<WellbeingCheckResult> record(List<int> answers) => _serial(() async {
-        if (!_allowed()) {
-          throw StateError('The wellbeing check is not available here.');
-        }
-        if (answers.length != questions.length ||
-            answers.any((score) => score < 0 || score > 5)) {
-          throw ArgumentError('Answer every question first.');
-        }
-        final result = WellbeingCheckResult(
-          takenAt: _now(),
-          answers: List<int>.unmodifiable(answers),
-        );
-        final results = [...await _read(), result];
-        while (results.length > maxResults) {
-          results.removeAt(0);
-        }
-        final blob = await _encrypt({
-          'results': [for (final item in results) item.toJson()],
-        });
-        if (!await NeuraPrefsCache.prefs.setString(storageKey, blob)) {
-          throw StateError('The check could not be saved on this device.');
-        }
-        return result;
+  Future<WellbeingCheckResult> record(List<int> answers) {
+    final generation = _generation;
+    final epoch = LocalProfileService.instance.epoch;
+    final admittedAnswers = List<int>.unmodifiable(answers);
+    if (!_current(generation, epoch)) {
+      return Future.error(StateError('The wellbeing check is unavailable.'));
+    }
+    return _serial(() async {
+      _requireCurrent(generation, epoch);
+      if (admittedAnswers.length != questions.length ||
+          admittedAnswers.any((score) => score < 0 || score > 5)) {
+        throw ArgumentError('Answer every question first.');
+      }
+      final result = WellbeingCheckResult(
+        takenAt: _now(),
+        answers: admittedAnswers,
+      );
+      final results = [...await _read(generation, epoch), result];
+      _requireCurrent(generation, epoch);
+      while (results.length > maxResults) {
+        results.removeAt(0);
+      }
+      final blob = await _encrypt({
+        'results': [for (final item in results) item.toJson()],
       });
+      _requireCurrent(generation, epoch);
+      final saved = await NeuraPrefsCache.prefs.setString(storageKey, blob);
+      _requireCurrent(generation, epoch);
+      if (!saved) {
+        await NeuraPrefsCache.prefs.reload();
+        throw StateError('The check could not be saved on this device.');
+      }
+      return result;
+    });
+  }
 
   /// Whether a check is due: never taken, or the last was [interval] ago.
   Future<bool> isDue() async {
-    if (!_allowed()) return false;
+    final generation = _generation;
+    final epoch = LocalProfileService.instance.epoch;
+    if (!_current(generation, epoch)) return false;
     final results = await history();
+    if (!_current(generation, epoch)) return false;
     if (results.isEmpty) return true;
     return !_now().isBefore(results.last.takenAt.add(interval));
   }

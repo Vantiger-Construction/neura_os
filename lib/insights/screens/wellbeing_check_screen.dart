@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../profiles/local_profile_service.dart';
 import '../services/wellbeing_check_service.dart';
 
 /// The monthly wellbeing check: five questions about the last two weeks,
@@ -24,14 +25,38 @@ class _WellbeingCheckScreenState extends State<WellbeingCheckScreen> {
   bool _saving = false;
   bool _answering = true;
   String? _error;
+  int _viewGeneration = 0;
 
   @override
   void initState() {
     super.initState();
+    LocalProfileService.instance.addListener(_onSessionChanged);
+    _service.addListener(_onSessionChanged);
     _load();
   }
 
+  void _onSessionChanged() {
+    if (!mounted) return;
+    _viewGeneration++;
+    setState(() {
+      _history = const [];
+      _answers.fillRange(0, _answers.length, null);
+      _error = null;
+      _answering = true;
+      _saving = false;
+      _loading = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    LocalProfileService.instance.removeListener(_onSessionChanged);
+    _service.removeListener(_onSessionChanged);
+    super.dispose();
+  }
+
   Future<void> _load() async {
+    final epoch = _viewGeneration;
     List<WellbeingCheckResult> history = const [];
     var due = true;
     String? error;
@@ -41,7 +66,7 @@ class _WellbeingCheckScreenState extends State<WellbeingCheckScreen> {
     } catch (_) {
       error = 'Past checks could not be read on this device.';
     }
-    if (!mounted) return;
+    if (!mounted || epoch != _viewGeneration || !_service.available) return;
     setState(() {
       _history = history;
       _answering = due || history.isEmpty;
@@ -54,6 +79,7 @@ class _WellbeingCheckScreenState extends State<WellbeingCheckScreen> {
 
   Future<void> _save() async {
     if (!_complete || _saving) return;
+    final epoch = _viewGeneration;
     setState(() => _saving = true);
     String? error;
     try {
@@ -61,7 +87,7 @@ class _WellbeingCheckScreenState extends State<WellbeingCheckScreen> {
     } catch (_) {
       error = 'The check could not be saved on this device.';
     }
-    if (!mounted) return;
+    if (!mounted || epoch != _viewGeneration || !_service.available) return;
     if (error != null) {
       setState(() {
         _saving = false;
@@ -74,20 +100,20 @@ class _WellbeingCheckScreenState extends State<WellbeingCheckScreen> {
       _loading = true;
     });
     await _load();
-    if (!mounted) return;
-    setState(() => _answering = false);
+    if (!mounted || epoch != _viewGeneration || !_service.available) return;
+    if (_history.isNotEmpty) setState(() => _answering = false);
   }
 
   static String _bandText(WellbeingBand band) {
     switch (band) {
       case WellbeingBand.good:
-        return 'In the range most people report.';
+        return 'Your answers describe more frequent wellbeing over these two weeks.';
       case WellbeingBand.reduced:
-        return 'Lower than people usually report. Worth noticing, and worth '
-            'being gentle with yourself.';
+        return 'Your answers suggest that these two weeks may have been difficult. '
+            'If you would like, consider talking with someone you trust or a health professional.';
       case WellbeingBand.low:
-        return 'This has been a hard stretch. Talking with someone you trust '
-            'or a doctor can really help.';
+        return 'Your answers suggest that these two weeks may have been difficult. '
+            'If you would like, consider talking with someone you trust or a health professional.';
     }
   }
 
@@ -139,8 +165,9 @@ class _WellbeingCheckScreenState extends State<WellbeingCheckScreen> {
       ),
       const SizedBox(height: 4),
       Text(
-        'Five questions from the WHO-5 Well-Being Index. Your answers stay '
-        'on this device.',
+        'Five questions from the WHO-5 Well-Being Index. Saving keeps your '
+        'answers and date encrypted on this device, with up to 24 checks. '
+        'Go back without saving whenever you like.',
         style: theme.textTheme.bodySmall,
       ),
       for (var i = 0; i < WellbeingCheckService.questions.length; i++) ...[
@@ -167,7 +194,7 @@ class _WellbeingCheckScreenState extends State<WellbeingCheckScreen> {
       const SizedBox(height: 24),
       FilledButton(
         onPressed: _complete && !_saving ? _save : null,
-        child: Text(_saving ? 'Saving…' : 'See my score'),
+        child: Text(_saving ? 'Saving…' : 'Save check and see score'),
       ),
     ];
   }
@@ -186,6 +213,10 @@ class _WellbeingCheckScreenState extends State<WellbeingCheckScreen> {
         Text('${latest.percent} / 100', style: theme.textTheme.displaySmall),
         const SizedBox(height: 8),
         Text(_bandText(WellbeingBand.of(latest.percent))),
+        const SizedBox(height: 8),
+        const Text('This is a reflection on your answers, not a diagnosis or a '
+            'test of how well you are doing. A higher score does not rule out '
+            'difficulties, and changes alone do not show what caused them.'),
         if (change != null) ...[
           const SizedBox(height: 8),
           Text(_changeText(change)),

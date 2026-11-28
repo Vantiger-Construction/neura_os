@@ -56,34 +56,37 @@ enum PromiseGardenStage {
 /// Keeps [stage] current from the promises on this device. Profile sessions
 /// never read installation-wide promises and see an empty pot.
 class PromiseGardenService {
-  PromiseGardenService._();
+  PromiseGardenService._() {
+    LocalProfileService.instance.addListener(reset);
+  }
 
   static final PromiseGardenService instance = PromiseGardenService._();
 
   final ValueNotifier<PromiseGardenStage> stage =
       ValueNotifier<PromiseGardenStage>(PromiseGardenStage.empty);
 
-  Future<void>? _refreshing;
+  int _refreshSerial = 0;
   int _generation = 0;
 
   /// Re-reads promises. Failures leave the garden as it was.
-  Future<void> refresh({Future<List<NeuraPromise>> Function()? load}) {
-    final pending = _refreshing;
-    if (pending != null) return pending;
-    final future = _refresh(load ?? PromiseService.instance.all);
-    _refreshing = future;
-    return future.whenComplete(() => _refreshing = null);
-  }
+  Future<void> refresh({Future<List<NeuraPromise>> Function()? load}) =>
+      _refresh(load ?? PromiseService.instance.all, ++_refreshSerial);
 
-  Future<void> _refresh(Future<List<NeuraPromise>> Function() load) async {
+  Future<void> _refresh(
+      Future<List<NeuraPromise>> Function() load, int requestSerial) async {
     final generation = _generation;
+    final epoch = LocalProfileService.instance.epoch;
     if (LocalProfileService.instance.enabled) {
       stage.value = PromiseGardenStage.empty;
       return;
     }
     try {
       final promises = await load();
-      if (generation != _generation) return;
+      if (generation != _generation ||
+          requestSerial != _refreshSerial ||
+          epoch != LocalProfileService.instance.epoch) {
+        return;
+      }
       if (LocalProfileService.instance.enabled) {
         stage.value = PromiseGardenStage.empty;
         return;
@@ -98,6 +101,7 @@ class PromiseGardenService {
   /// already reading cannot bring the old plant back.
   void reset() {
     _generation += 1;
+    _refreshSerial++;
     stage.value = PromiseGardenStage.empty;
   }
 }

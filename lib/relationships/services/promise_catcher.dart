@@ -11,9 +11,9 @@ class PromiseCatcher {
   static const maxLength = 80;
 
   static final _lead = RegExp(
-    r"(?<![\w'’])(?:i\s*['’]ll|i\s+will|i\s*['’]m\s+going\s+to|"
-    r"i\s+am\s+going\s+to|i\s+promise\s+to|remind\s+me\s+to|"
-    r"i\s+need\s+to|i\s+have\s+to|i\s+should)\s+",
+    r"^(?:ok(?:ay)?[, ]+|tomorrow\s+)?(?:i\s*['’]ll|i\s+will|i\s*['’]m\s+going\s+to|"
+    r"i\s+am\s+going\s+to|i\s+promise\s+to|remind\s+me\s+to"
+    r")\s+",
     caseSensitive: false,
   );
 
@@ -43,7 +43,16 @@ class PromiseCatcher {
     final text = message.trim();
     if (text.isEmpty || text.length > 600) return null;
     // Questions ask; they do not promise.
-    if (text.endsWith('?')) return null;
+    if (text.contains('?')) return null;
+    // Conservative offers: quoted, conditional and retracted statements are
+    // easy to misread as commitments. Manual promise entry remains available.
+    if (RegExp(
+            r'["“”]|\b(?:if|unless|maybe|perhaps|might|not|never|'
+            r"won['’]t|can['’]t)\b|changed my mind|no longer",
+            caseSensitive: false)
+        .hasMatch(text)) {
+      return null;
+    }
     final match = _lead.firstMatch(text);
     if (match == null) return null;
     var rest = text.substring(match.end);

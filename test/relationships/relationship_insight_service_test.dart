@@ -13,7 +13,7 @@ void main() {
     )!;
     expect(suggestion.title, 'Reconnect with Marcus');
     expect(suggestion.description, contains('12 days'));
-    expect(suggestion.actionLabel, 'Send Marcus a gentle ping');
+    expect(suggestion.actionLabel, 'Review Marcus’s details');
     expect(suggestion.reasons.single, contains('Marcus'));
   });
 
